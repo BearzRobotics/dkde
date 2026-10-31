@@ -76,6 +76,9 @@ pub const SettingsWindow = struct {
     search_len: usize = 0,
     account_names: std.ArrayList([:0]u8) = .empty,
     selected_account: ?usize = null,
+    /// The bar that appears when settings are changed but not applied.
+    apply_bar: *gtk.Box = undefined,
+    apply_label: *gtk.Label = undefined,
 
     pub fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*SettingsWindow {
         const self = try allocator.create(SettingsWindow);
@@ -89,6 +92,10 @@ pub const SettingsWindow = struct {
             .term = try common.Config.load(allocator, "term.conf"),
         };
         self.loadApps();
+        // Changes are held until Apply: the files are not written before.
+        self.shared.stage(SettingsWindow, onStaged, self);
+        self.panel.stage(SettingsWindow, onStaged, self);
+        self.term.stage(SettingsWindow, onStaged, self);
 
         const window = self.window;
         window.as(gtk.Window).setTitle(common.tr("Settings"));
@@ -113,14 +120,7 @@ pub const SettingsWindow = struct {
         sidebar.setFilterFunc(filterPages, self, null);
         _ = gtk.ListBox.signals.row_selected.connect(sidebar, *SettingsWindow, &onCategory, self, .{});
 
-        _ = self.stack.addNamed(self.appearancePage().as(gtk.Widget), "appearance");
-        _ = self.stack.addNamed(self.taskbarPage().as(gtk.Widget), "taskbar");
-        _ = self.stack.addNamed(self.startMenuPage().as(gtk.Widget), "startmenu");
-        _ = self.stack.addNamed(self.terminalPage().as(gtk.Widget), "terminal");
-        _ = self.stack.addNamed(self.keyboardPage().as(gtk.Widget), "keyboard");
-        _ = self.stack.addNamed(self.mousePage().as(gtk.Widget), "mouse");
-        _ = self.stack.addNamed(self.defaultsPage().as(gtk.Widget), "defaults");
-        _ = self.stack.addNamed(self.userPage().as(gtk.Widget), "users");
+        self.addEagerPages();
 
         const scroller = gtk.ScrolledWindow.new();
         scroller.setChild(self.stack.as(gtk.Widget));
@@ -148,11 +148,120 @@ pub const SettingsWindow = struct {
         paned.setEndChild(scroller.as(gtk.Widget));
         paned.setShrinkStartChild(0);
         paned.setResizeStartChild(0);
-        window.as(gtk.Window).setChild(paned.as(gtk.Widget));
+        paned.as(gtk.Widget).setVexpand(1);
 
+        // The Apply bar, shown only while there is something to apply.
+        self.apply_bar = gtk.Box.new(.horizontal, 8);
+        self.apply_bar.as(gtk.Widget).addCssClass("dkde-apply-bar");
+        self.apply_bar.as(gtk.Widget).setMarginTop(8);
+        self.apply_bar.as(gtk.Widget).setMarginBottom(8);
+        self.apply_bar.as(gtk.Widget).setMarginStart(16);
+        self.apply_bar.as(gtk.Widget).setMarginEnd(16);
+        self.apply_label = gtk.Label.new("");
+        self.apply_label.setXalign(0);
+        self.apply_label.as(gtk.Widget).setHexpand(1);
+        self.apply_bar.append(self.apply_label.as(gtk.Widget));
+        const revert = gtk.Button.newWithLabel(common.tr("Revert"));
+        const apply = gtk.Button.newWithLabel(common.tr("Apply"));
+        apply.as(gtk.Widget).addCssClass("suggested-action");
+        _ = gtk.Button.signals.clicked.connect(revert, *SettingsWindow, &onRevert, self, .{});
+        _ = gtk.Button.signals.clicked.connect(apply, *SettingsWindow, &onApply, self, .{});
+        self.apply_bar.append(revert.as(gtk.Widget));
+        self.apply_bar.append(apply.as(gtk.Widget));
+        self.apply_bar.as(gtk.Widget).setVisible(0);
+
+        const body = gtk.Box.new(.vertical, 0);
+        body.append(paned.as(gtk.Widget));
+        body.append(gtk.Separator.new(.horizontal).as(gtk.Widget));
+        body.append(self.apply_bar.as(gtk.Widget));
+        window.as(gtk.Window).setChild(body.as(gtk.Widget));
+
+        _ = gtk.Window.signals.close_request.connect(window.as(gtk.Window), *SettingsWindow, &onCloseRequest, self, .{});
         _ = gtk.Widget.signals.destroy.connect(window, *SettingsWindow, &onDestroy, self, .{});
         if (sidebar.getRowAtIndex(0)) |row| sidebar.selectRow(row);
         return self;
+    }
+
+    /// The pages whose settings are plain config values.
+    fn addEagerPages(self: *SettingsWindow) void {
+        _ = self.stack.addNamed(self.appearancePage().as(gtk.Widget), "appearance");
+        _ = self.stack.addNamed(self.taskbarPage().as(gtk.Widget), "taskbar");
+        _ = self.stack.addNamed(self.startMenuPage().as(gtk.Widget), "startmenu");
+        _ = self.stack.addNamed(self.terminalPage().as(gtk.Widget), "terminal");
+        _ = self.stack.addNamed(self.keyboardPage().as(gtk.Widget), "keyboard");
+        _ = self.stack.addNamed(self.mousePage().as(gtk.Widget), "mouse");
+        _ = self.stack.addNamed(self.defaultsPage().as(gtk.Widget), "defaults");
+        _ = self.stack.addNamed(self.userPage().as(gtk.Widget), "users");
+    }
+
+    // ---- Apply and Revert ------------------------------------------------
+
+    fn pendingCount(self: *const SettingsWindow) usize {
+        return self.shared.pendingCount() + self.panel.pendingCount() + self.term.pendingCount();
+    }
+
+    fn onStaged(self: *SettingsWindow) void {
+        const n = self.pendingCount();
+        self.apply_bar.as(gtk.Widget).setVisible(@intFromBool(n > 0));
+        var buf: [96]u8 = undefined;
+        self.apply_label.setText(std.fmt.bufPrintSentinel(&buf, "{d} change{s} not applied yet", .{ n, if (n == 1) "" else "s" }, 0) catch "");
+    }
+
+    /// Writes every pending change; returns false if a file could not be written.
+    fn applyAll(self: *SettingsWindow) bool {
+        var ok = true;
+        for ([_]*common.Config{ &self.shared, &self.panel, &self.term }) |cfg| {
+            cfg.apply() catch {
+                ok = false;
+            };
+        }
+        if (!ok) common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot save the settings"), common.tr("A settings file could not be written. Your changes are still pending."));
+        return ok;
+    }
+
+    fn onApply(_: *gtk.Button, self: *SettingsWindow) callconv(.c) void {
+        _ = self.applyAll();
+    }
+
+    fn onRevert(_: *gtk.Button, self: *SettingsWindow) callconv(.c) void {
+        self.revertAll();
+    }
+
+    /// Forgets the pending changes and shows the saved values again.
+    fn revertAll(self: *SettingsWindow) void {
+        for ([_]*common.Config{ &self.shared, &self.panel, &self.term }) |cfg| cfg.discard() catch {};
+        // The controls still show the unapplied values: build the pages again.
+        const sidebar = self.sidebar orelse return;
+        while (self.stack.as(gtk.Widget).getFirstChild()) |child| self.stack.remove(child);
+        self.audio_built = false;
+        self.addEagerPages();
+        if (sidebar.getSelectedRow()) |row| onCategory(sidebar, row, self);
+    }
+
+    fn onCloseRequest(_: *gtk.Window, self: *SettingsWindow) callconv(.c) c_int {
+        if (self.pendingCount() == 0) return 0;
+        common.dialogs.choose(
+            self.window.as(gtk.Window),
+            common.tr("Apply your changes?"),
+            common.tr("Some settings have been changed but not applied."),
+            &.{ "Cancel", "Discard", "Apply" },
+            0,
+            SettingsWindow,
+            onCloseAnswer,
+            self,
+        );
+        return 1;
+    }
+
+    fn onCloseAnswer(self: *SettingsWindow, index: c_int) void {
+        switch (index) {
+            1 => {
+                for ([_]*common.Config{ &self.shared, &self.panel, &self.term }) |cfg| cfg.discard() catch {};
+                self.window.as(gtk.Window).close();
+            },
+            2 => if (self.applyAll()) self.window.as(gtk.Window).close(),
+            else => {},
+        }
     }
 
     /// The account card at the top of the navigation, like Windows 11's.

@@ -512,9 +512,15 @@ cancel button, password-protected archives, opening an archive as a folder.
 
 ### 5.5 Settings (`dkde-settings`)
 
-**Window:** a category list on the left and a page on the right. Changes take
-effect immediately; there is no Apply button. The settings app writes config
-files and the components pick up the changes through their file monitors.
+**Window:** a category list on the left and a page on the right. Changes are
+**not** written as you make them: they are held in memory (the controls show
+them) and a bar at the bottom says "N changes not applied yet" with **Revert**
+and **Apply**. Apply writes the config files once, and the components pick the
+changes up through their file monitors. Revert drops the held changes and shows
+the saved values. Closing the window with held changes asks whether to apply
+them. Actions that run a program (connecting to Wi-Fi, pairing, changing the
+volume, the keyboard-shortcut take-over, Display's own apply with a revert
+timer) are their own explicit actions and are not held back.
 
 **v1 pages:**
 
@@ -792,6 +798,12 @@ The taskbar-button and start-menu-item menus also open from the keyboard
   never mixed into config.
 - Missing or invalid values fall back to the default and log a warning; they
   never crash a component.
+- **Static files:** a config file is written only when the user changes a
+  setting, and only if that changes its content: setting a value that is
+  already in effect writes nothing, and nothing creates or rewrites a config
+  file at start-up. Apps that remember something as they run (recent files,
+  window sizes) use state files instead. The Settings app additionally holds
+  its changes until Apply (see 5.5), through `Config.stage`.
 
 ### 6.2 Styling
 

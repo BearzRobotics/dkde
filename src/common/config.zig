@@ -24,6 +24,21 @@ pub const Config = struct {
     watch_free: ?*const fn (std.mem.Allocator, *anyopaque) void = null,
     /// Tests point this at a temporary file instead of `$XDG_CONFIG_HOME`.
     user_path_override: ?[:0]const u8 = null,
+    /// Staged mode (the Settings app): `set*` changes the values in memory and
+    /// queues the change; nothing is written until `apply`.
+    staged: bool = false,
+    ops: std.ArrayList(Op) = .empty,
+    staged_callback: ?*const fn (*anyopaque) void = null,
+    staged_data: ?*anyopaque = null,
+
+    /// One queued change.
+    const Op = union(enum) {
+        string: struct { group: [:0]u8, key: [:0]u8, value: [:0]u8 },
+        int: struct { group: [:0]u8, key: [:0]u8, value: i32 },
+        boolean: struct { group: [:0]u8, key: [:0]u8, value: bool },
+        list: struct { group: [:0]u8, key: [:0]u8, values: [][:0]u8 },
+        remove_group: [:0]u8,
+    };
 
     pub fn load(allocator: std.mem.Allocator, name: []const u8) !Config {
         var self: Config = .{
@@ -47,6 +62,8 @@ pub const Config = struct {
             m.as(gobject.Object).unref();
         }
         if (self.watch_ctx) |ctx| self.watch_free.?(self.allocator, ctx);
+        self.clearOps();
+        self.ops.deinit(self.allocator);
         self.keyfile.free();
         self.allocator.free(self.name);
         self.* = undefined;
@@ -67,6 +84,95 @@ pub const Config = struct {
 
         self.keyfile.free();
         self.keyfile = fresh;
+        // Staged changes are not on disk yet: keep them on top.
+        if (self.staged) for (self.ops.items) |op| applyOp(self.keyfile, op);
+    }
+
+    // ---- staged changes ---------------------------------------------------------------
+
+    /// Turns on staged mode. `callback(data)` runs whenever the number of
+    /// queued changes changes.
+    pub fn stage(self: *Config, comptime Data: type, callback: *const fn (*Data) void, data: *Data) void {
+        self.staged = true;
+        self.staged_callback = @ptrCast(callback);
+        self.staged_data = data;
+    }
+
+    pub fn pendingCount(self: *const Config) usize {
+        return self.ops.items.len;
+    }
+
+    fn notifyStaged(self: *Config) void {
+        if (self.staged_callback) |cb| cb(self.staged_data.?);
+    }
+
+    fn clearOps(self: *Config) void {
+        const a = self.allocator;
+        for (self.ops.items) |op| switch (op) {
+            .string => |o| {
+                a.free(o.group);
+                a.free(o.key);
+                a.free(o.value);
+            },
+            .int => |o| {
+                a.free(o.group);
+                a.free(o.key);
+            },
+            .boolean => |o| {
+                a.free(o.group);
+                a.free(o.key);
+            },
+            .list => |o| {
+                a.free(o.group);
+                a.free(o.key);
+                for (o.values) |v| a.free(v);
+                a.free(o.values);
+            },
+            .remove_group => |g| a.free(g),
+        };
+        self.ops.clearRetainingCapacity();
+    }
+
+    fn applyOp(file: *glib.KeyFile, op: Op) void {
+        switch (op) {
+            .string => |o| file.setString(o.group, o.key, o.value),
+            .int => |o| file.setInteger(o.group, o.key, o.value),
+            .boolean => |o| file.setBoolean(o.group, o.key, @intFromBool(o.value)),
+            .list => |o| {
+                const z = std.heap.c_allocator.alloc(?[*:0]const u8, o.values.len + 1) catch return;
+                defer std.heap.c_allocator.free(z);
+                for (o.values, 0..) |v, i| z[i] = v.ptr;
+                z[o.values.len] = null;
+                file.setStringList(o.group, o.key, @ptrCast(z.ptr), o.values.len);
+            },
+            .remove_group => |g| _ = file.removeGroup(g, null),
+        }
+    }
+
+    /// Queues `op` and shows its effect in memory.
+    fn queue(self: *Config, op: Op) !void {
+        try self.ops.append(self.allocator, op);
+        applyOp(self.keyfile, op);
+        self.notifyStaged();
+    }
+
+    /// Writes the queued changes to the user's file (only what changed).
+    pub fn apply(self: *Config) !void {
+        if (self.ops.items.len == 0) return;
+        const user = try self.loadUserFile();
+        defer user.file.free();
+        for (self.ops.items) |op| applyOp(user.file, op);
+        self.clearOps();
+        self.notifyStaged();
+        try self.saveUserFile(user);
+    }
+
+    /// Drops the queued changes and returns to what is on disk.
+    pub fn discard(self: *Config) !void {
+        if (self.ops.items.len == 0) return;
+        self.clearOps();
+        try self.reload();
+        self.notifyStaged();
     }
 
     /// Calls `callback(data)` after the config has been reloaded because the
@@ -163,6 +269,16 @@ pub const Config = struct {
     /// then reloads. The settings app and the file manager's bookmarks use
     /// this; running components pick the change up through their monitors.
     pub fn setString(self: *Config, group: [:0]const u8, key: [:0]const u8, value: [:0]const u8) !void {
+        // A value that is already in effect is not written.
+        if (self.keyfile.getString(group, key, null)) |cur| {
+            defer glib.free(cur);
+            if (std.mem.eql(u8, std.mem.span(cur), value)) return;
+        }
+        if (self.staged) return self.queue(.{ .string = .{
+            .group = try self.allocator.dupeSentinel(u8, group, 0),
+            .key = try self.allocator.dupeSentinel(u8, key, 0),
+            .value = try self.allocator.dupeSentinel(u8, value, 0),
+        } });
         const user = try self.loadUserFile();
         defer user.file.free();
         user.file.setString(group, key, value);
@@ -170,6 +286,12 @@ pub const Config = struct {
     }
 
     pub fn setInt(self: *Config, group: [:0]const u8, key: [:0]const u8, value: i32) !void {
+        if (self.keyfile.hasKey(group, key, null) != 0 and self.keyfile.getInteger(group, key, null) == value) return;
+        if (self.staged) return self.queue(.{ .int = .{
+            .group = try self.allocator.dupeSentinel(u8, group, 0),
+            .key = try self.allocator.dupeSentinel(u8, key, 0),
+            .value = value,
+        } });
         const user = try self.loadUserFile();
         defer user.file.free();
         user.file.setInteger(group, key, value);
@@ -177,6 +299,12 @@ pub const Config = struct {
     }
 
     pub fn setBool(self: *Config, group: [:0]const u8, key: [:0]const u8, value: bool) !void {
+        if (self.keyfile.hasKey(group, key, null) != 0 and (self.keyfile.getBoolean(group, key, null) != 0) == value) return;
+        if (self.staged) return self.queue(.{ .boolean = .{
+            .group = try self.allocator.dupeSentinel(u8, group, 0),
+            .key = try self.allocator.dupeSentinel(u8, key, 0),
+            .value = value,
+        } });
         const user = try self.loadUserFile();
         defer user.file.free();
         user.file.setBoolean(group, key, @intFromBool(value));
@@ -184,6 +312,23 @@ pub const Config = struct {
     }
 
     pub fn setStringList(self: *Config, group: [:0]const u8, key: [:0]const u8, values: []const []const u8) !void {
+        if (self.staged) {
+            const copy = try self.allocator.alloc([:0]u8, values.len);
+            var made: usize = 0;
+            errdefer {
+                for (copy[0..made]) |c| self.allocator.free(c);
+                self.allocator.free(copy);
+            }
+            for (values, 0..) |v, i| {
+                copy[i] = try self.allocator.dupeSentinel(u8, v, 0);
+                made += 1;
+            }
+            return self.queue(.{ .list = .{
+                .group = try self.allocator.dupeSentinel(u8, group, 0),
+                .key = try self.allocator.dupeSentinel(u8, key, 0),
+                .values = copy,
+            } });
+        }
         const user = try self.loadUserFile();
         defer user.file.free();
 
@@ -202,6 +347,7 @@ pub const Config = struct {
 
     /// Removes a whole group from the user's file, then reloads.
     pub fn removeGroup(self: *Config, group: [:0]const u8) !void {
+        if (self.staged) return self.queue(.{ .remove_group = try self.allocator.dupeSentinel(u8, group, 0) });
         const user = try self.loadUserFile();
         defer user.file.free();
         _ = user.file.removeGroup(group, null);
@@ -223,18 +369,26 @@ pub const Config = struct {
         return try out.toOwnedSlice(allocator);
     }
 
-    const UserFile = struct { file: *glib.KeyFile, path: [:0]u8 };
+    const UserFile = struct { file: *glib.KeyFile, path: [:0]u8, before: [*:0]u8 };
 
     fn loadUserFile(self: *Config) !UserFile {
         const path = try self.userPath();
         errdefer self.allocator.free(path);
         const file = glib.KeyFile.new();
         _ = file.loadFromFile(path, .{}, null); // a missing file starts empty
-        return .{ .file = file, .path = path };
+        return .{ .file = file, .path = path, .before = file.toData(null, null) orelse return error.OutOfMemory };
     }
 
+    /// Writes the user's file, but only when its content actually changes.
     fn saveUserFile(self: *Config, user: UserFile) !void {
         defer self.allocator.free(user.path);
+        defer glib.free(user.before);
+        const after = user.file.toData(null, null) orelse return error.OutOfMemory;
+        defer glib.free(after);
+        if (std.mem.eql(u8, std.mem.span(user.before), std.mem.span(after))) {
+            // Nothing to write; the in-memory values are still right.
+            return self.reload();
+        }
         const dir = glib.pathGetDirname(user.path);
         defer glib.free(dir);
         _ = glib.mkdirWithParents(dir, 0o755);
@@ -369,5 +523,92 @@ test "writing a value keeps the rest of the user file and reads back" {
 
     try cfg.removeGroup("menu");
     try std.testing.expect((try cfg.getStringList(a, "menu", "pinned")) == null);
+    _ = std.c.unlink(path);
+}
+
+fn fileText(a: std.mem.Allocator, path: [:0]const u8) ![]u8 {
+    var contents: [*]u8 = undefined;
+    var length: usize = 0;
+    if (glib.fileGetContents(path, &contents, &length, null) == 0) return a.dupe(u8, "");
+    defer glib.free(contents);
+    return a.dupe(u8, contents[0..length]);
+}
+
+test "a value already in effect is not written, and a file is not created for nothing" {
+    const a = std.testing.allocator;
+    const dir = glib.Dir.makeTmp("dkde-config-XXXXXX", null) orelse return error.NoTmp;
+    defer glib.free(dir);
+    const path = try std.fmt.allocPrintSentinel(a, "{s}/user.conf", .{std.mem.span(dir)}, 0);
+    defer a.free(path);
+
+    var cfg = try Config.load(a, "user.conf");
+    defer cfg.deinit();
+    cfg.user_path_override = path;
+    try cfg.reload();
+    // Nothing set yet: the file does not exist.
+    try cfg.setInt("panel", "height", 48);
+    const first = try fileText(a, path);
+    defer a.free(first);
+    try std.testing.expect(first.len > 0);
+
+    // The same value again leaves the file exactly as it was.
+    try cfg.setInt("panel", "height", 48);
+    const second = try fileText(a, path);
+    defer a.free(second);
+    try std.testing.expectEqualStrings(first, second);
+    _ = std.c.unlink(path);
+
+    // And with no user file, a value equal to the default creates nothing.
+    try cfg.reload();
+    cfg.keyfile.setInteger("panel", "width", 10); // stands for a system default
+    try cfg.setInt("panel", "width", 10);
+    const none = try fileText(a, path);
+    defer a.free(none);
+    try std.testing.expectEqual(@as(usize, 0), none.len);
+}
+
+test "staged changes show at once and are written only on apply" {
+    const a = std.testing.allocator;
+    const dir = glib.Dir.makeTmp("dkde-config-XXXXXX", null) orelse return error.NoTmp;
+    defer glib.free(dir);
+    const path = try std.fmt.allocPrintSentinel(a, "{s}/user.conf", .{std.mem.span(dir)}, 0);
+    defer a.free(path);
+    const initial = "[panel]\nheight=48\n";
+    _ = glib.fileSetContents(path, initial.ptr, initial.len, null);
+
+    var cfg = try Config.load(a, "user.conf");
+    defer cfg.deinit();
+    cfg.user_path_override = path;
+    try cfg.reload();
+    var changes: usize = 0;
+    cfg.stage(usize, struct {
+        fn note(p: *usize) void {
+            p.* += 1;
+        }
+    }.note, &changes);
+
+    try cfg.setInt("panel", "height", 64);
+    try cfg.setString("panel", "clock-format", "%H");
+    try std.testing.expectEqual(@as(usize, 2), cfg.pendingCount());
+    try std.testing.expectEqual(@as(i32, 64), cfg.getInt("panel", "height", 0));
+    // Disk is untouched.
+    const before = try fileText(a, path);
+    defer a.free(before);
+    try std.testing.expectEqualStrings(initial, before);
+    // A reload (a file event) keeps the staged values.
+    try cfg.reload();
+    try std.testing.expectEqual(@as(i32, 64), cfg.getInt("panel", "height", 0));
+
+    try cfg.discard();
+    try std.testing.expectEqual(@as(i32, 48), cfg.getInt("panel", "height", 0));
+    try std.testing.expectEqual(@as(usize, 0), cfg.pendingCount());
+
+    try cfg.setInt("panel", "height", 70);
+    try cfg.apply();
+    try std.testing.expectEqual(@as(usize, 0), cfg.pendingCount());
+    const after = try fileText(a, path);
+    defer a.free(after);
+    try std.testing.expect(std.mem.indexOf(u8, after, "height=70") != null);
+    try std.testing.expect(changes >= 3);
     _ = std.c.unlink(path);
 }

@@ -69,6 +69,32 @@ to check that, and to run every format over a sample file without crashing.
 
 ## ImHex patterns
 
+### If you have never used ImHex
+
+ImHex is a hex editor whose community wrote a large collection of *pattern
+files* (`.hexpat`): small descriptions of file formats. You do not need ImHex
+itself. dkde-hex reads the same files, and the steps are:
+
+1. In dkde-hex choose **Structure ▸ Get ImHex patterns…** and press
+   **Download** (needs `git`, or `curl` or `wget` together with `tar`). It
+   fetches the collection into `~/.local/share/dkde/patterns`. You can also
+   clone <https://github.com/WerWolv/ImHex-Patterns> yourself and point
+   **Structure ▸ ImHex patterns folder…** at it.
+2. Open a file (File ▸ Open…). If a pattern fits, for example a PNG or ZIP, it
+   is applied by itself and a panel appears on the right listing the fields.
+3. If nothing was picked, choose **Structure ▸ Choose format…** (Ctrl+T), type
+   part of the name (`png`, `zip`, `elf`) and double-click the entry. Entries
+   from ImHex patterns and from Kaitai formats are in one list.
+4. Click a field in the panel to select its bytes; click a byte to find its
+   field. Fields are coloured in the hex view (**Show colours** turns that off).
+5. **Structure ▸ Clear** removes the panel again.
+
+To write your own, open the examples in the `patterns/` folder of the
+collection, or the ImHex documentation, and load your file with
+**Structure ▸ Load definition…**.
+
+### Details
+
 `.hexpat` files from [ImHex-Patterns](https://github.com/WerWolv/ImHex-Patterns)
 work as well. They are licensed under the GPL, so dkde does not include them.
 **Structure ▸ Get ImHex patterns…** downloads the collection (git, or curl/wget
