@@ -157,6 +157,9 @@ const TaskManager = struct {
     /// Pids in display order; mirrors `list`.
     order: std.ArrayList(u32) = .empty,
     sort_by: SortBy = .cpu,
+    /// Header clicks can flip the natural order (CPU and memory: biggest first).
+    sort_reverse: bool = false,
+    sort_columns: [4]?*gtk.ColumnViewColumn = @splat(null),
     prev_cpu: ?proc.CpuTimes = null,
     cpu_count: usize = 1,
     clock_ticks: f64 = 100,
@@ -248,8 +251,22 @@ const TaskManager = struct {
             const column = gtk.ColumnViewColumn.new(common.tr(titles[i]), factory.as(gtk.ListItemFactory));
             column.setResizable(1);
             column.setExpand(@intFromBool(kind == .name));
+            // Clicking a header sorts by it; the list itself is ordered in `less`.
+            const slot: ?usize = switch (kind) {
+                .name => 0,
+                .pid => 1,
+                .cpu => 2,
+                .memory => 3,
+                else => null,
+            };
+            if (slot) |idx| {
+                column.setSorter(gtk.CustomSorter.new(null, null, null).as(gtk.Sorter));
+                self.sort_columns[idx] = column;
+            }
             view.appendColumn(column);
         }
+        if (view.getSorter()) |sorter| _ = gtk.Sorter.signals.changed.connect(sorter, *TaskManager, &onSortChanged, self, .{});
+        if (self.sort_columns[2]) |cpu_column| view.sortByColumn(cpu_column, .descending);
         const scroller = gtk.ScrolledWindow.new();
         scroller.setChild(view.as(gtk.Widget));
         scroller.as(gtk.Widget).setVexpand(1);
@@ -418,15 +435,41 @@ const TaskManager = struct {
     fn less(self: *TaskManager, a: u32, b: u32) bool {
         const pa = self.processes.get(a) orelse return false;
         const pb = self.processes.get(b) orelse return true;
-        return switch (self.sort_by) {
+        const forward = switch (self.sort_by) {
             .cpu => if (pa.cpu != pb.cpu) pa.cpu > pb.cpu else pa.rss_kb > pb.rss_kb,
             .memory => pa.rss_kb > pb.rss_kb,
             .name => std.ascii.lessThanIgnoreCase(pa.nameSlice(), pb.nameSlice()),
             .pid => a < b,
         };
+        if (!self.sort_reverse) return forward;
+        // Reversed: strictly the other way round, so equal rows stay in a stable order.
+        return !forward and (a != b);
     }
 
     /// Rewrites the list in display order, keeping the selected pid selected.
+    /// A header was clicked: sort by that column, in the direction its arrow shows.
+    fn onSortChanged(sorter: *gtk.Sorter, _: gtk.SorterChange, self: *TaskManager) callconv(.c) void {
+        const view_sorter: *gtk.ColumnViewSorter = @ptrCast(sorter);
+        const column = view_sorter.getPrimarySortColumn() orelse return;
+        const ascending = view_sorter.getPrimarySortOrder() == .ascending;
+        for (self.sort_columns, 0..) |c, i| {
+            if (c != column) continue;
+            self.sort_by = switch (i) {
+                0 => .name,
+                1 => .pid,
+                2 => .cpu,
+                else => .memory,
+            };
+            // CPU and memory list the biggest first, names and ids the smallest.
+            self.sort_reverse = switch (self.sort_by) {
+                .cpu, .memory => ascending,
+                .name, .pid => !ascending,
+            };
+            self.rebuildList();
+            return;
+        }
+    }
+
     fn onSearchChanged(entry: *gtk.SearchEntry, self: *TaskManager) callconv(.c) void {
         const text = std.mem.span(entry.as(gtk.Editable).getText());
         const n = @min(text.len, self.query.len);
@@ -579,6 +622,7 @@ const TaskManager = struct {
         const sort: ?SortBy = if (eql(u8, action, "sort-cpu")) .cpu else if (eql(u8, action, "sort-memory")) .memory else if (eql(u8, action, "sort-name")) .name else if (eql(u8, action, "sort-pid")) .pid else null;
         if (sort) |s| {
             self.sort_by = s;
+            self.sort_reverse = false;
             self.rebuildList();
         }
     }
