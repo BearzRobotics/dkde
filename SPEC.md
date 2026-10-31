@@ -66,7 +66,7 @@ spec first.
 |---|---|---|
 | Language | **Zig** | Pin an exact version (see 3.1). |
 | Toolkit | **GTK4**, without libadwaita | Styled entirely by our own CSS. |
-| GTK bindings | **zig-gobject** | Same bindings Ghostty uses. **OPEN:** upstream or Ghostty's fork. |
+| GTK bindings | **zig-gobject** | Ghostty's build of zig-gobject (decided), pinned by hash. |
 | Layer shell | **gtk4-layer-shell** | Panel, start menu, wallpaper surfaces, desktop icons, snap corners (win 11), alt tab |
 | Wayland protocols | **zig-wayland** scanner | For protocols GTK doesn't expose (taskbar). |
 | Terminal core | **libghostty-vt** (Zig API) | Pre-1.0: pin a commit. |
@@ -76,8 +76,8 @@ spec first.
 
 ### 3.1 Version pinning
 
-- **Zig:** 0.17, set in `build.zig.zon` as
-  `.minimum_zig_version` and stated here. **OPEN:** which version. Zig is
+- **Zig:** 0.17.0, set in `build.zig.zon` as
+  `.minimum_zig_version` and stated here. Decided: **0.17.0**. Zig is
   pre-1.0; upgrading is a deliberate, separate change, never incidental.
 - **libghostty-vt and zig-gobject:** pinned by hash in `build.zig.zon`.
 - **labwc:** state the minimum version the panel is tested against.

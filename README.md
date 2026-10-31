@@ -57,7 +57,7 @@ folders shown are whatever was on that machine.
 
 | What | Version | How |
 |---|---|---|
-| Zig | **0.17.0** exactly | `zvm`: `curl https://www.zvm.app/install.sh \| bash`, then `zvm i 0.17.0` |
+| Zig | **0.17.0** exactly (set as `.minimum_zig_version`; upgrading is a deliberate, separate change) | `zvm`: `curl https://www.zvm.app/install.sh \| bash`, then `zvm i 0.17.0` |
 | git, curl | any | apt |
 | pkg-config | any | apt |
 
@@ -118,7 +118,7 @@ below for the full list and one install command.
 
 | Package | Source |
 |---|---|
-| zig-gobject (GTK bindings) | `deps.files.ghostty.org`, from ghostty-org/zig-gobject |
+| zig-gobject (GTK bindings) | Ghostty's build of zig-gobject (`deps.files.ghostty.org`, from ghostty-org/zig-gobject), the same bindings Ghostty uses |
 | zig-wayland | `deps.files.ghostty.org`, from ifreund/zig-wayland |
 | libghostty-vt | Ghostty tag `v1.4.0` (needs Zig 0.17.0) |
 
