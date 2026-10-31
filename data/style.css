@@ -806,6 +806,8 @@ notebook > header.top > tabs > tab:checked {
 .lit-violet { background-color: #813d9c; }
 .lit-rose { background-color: #f08aa6; }
 .lit-black { background-color: #241f31; }
+.lit-blue { background-color: #3584e4; }
+.lit-gold { background-color: #e5a50a; }
 
 .dkde-cal-lit.lit-white { background-color: alpha(#a0a0a0, 0.25); }
 .dkde-cal-lit.lit-red { background-color: alpha(#c01c28, 0.25); }
@@ -813,3 +815,5 @@ notebook > header.top > tabs > tab:checked {
 .dkde-cal-lit.lit-violet { background-color: alpha(#813d9c, 0.25); }
 .dkde-cal-lit.lit-rose { background-color: alpha(#f08aa6, 0.35); }
 .dkde-cal-lit.lit-black { background-color: alpha(#241f31, 0.35); }
+.dkde-cal-lit.lit-blue { background-color: alpha(#3584e4, 0.28); }
+.dkde-cal-lit.lit-gold { background-color: alpha(#e5a50a, 0.32); }

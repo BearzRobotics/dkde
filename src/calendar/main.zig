@@ -41,8 +41,10 @@ pub const CalendarApp = struct {
     today: Date,
     show_no: bool = false,
     show_tlm: bool = false,
+    show_ru: bool = false,
     table_no: ?liturgy.Table = null,
     table_tlm: ?liturgy.Table = null,
+    table_ru: ?liturgy.Table = null,
 
     // Widgets.
     grid: *gtk.Grid,
@@ -97,6 +99,7 @@ pub const CalendarApp = struct {
         };
         self.show_no = self.cfg.getBool("view", "novus-ordo", false);
         self.show_tlm = self.cfg.getBool("view", "tlm-1962", false);
+        self.show_ru = self.cfg.getBool("view", "orthodox-ru", false);
         self.ensureTables();
 
         const window = self.window.as(gtk.Window);
@@ -130,6 +133,11 @@ pub const CalendarApp = struct {
         tlm_check.as(gtk.Widget).setTooltipText(common.tr("Show the liturgical calendar of the 1962 Roman Missal"));
         _ = gtk.CheckButton.signals.toggled.connect(tlm_check, *CalendarApp, &onToggleTlm, self, .{});
 
+        const ru_check = gtk.CheckButton.newWithLabel(common.tr("Russian Orthodox"));
+        ru_check.setActive(@intFromBool(self.show_ru));
+        ru_check.as(gtk.Widget).setTooltipText(common.tr("Show the Russian Orthodox calendar (Old Calendar, Julian Pascha) and its fasts"));
+        _ = gtk.CheckButton.signals.toggled.connect(ru_check, *CalendarApp, &onToggleRu, self, .{});
+
         const add = gtk.Button.newWithLabel(common.tr("New event"));
         add.as(gtk.Widget).addCssClass("suggested-action");
         _ = gtk.Button.signals.clicked.connect(add, *CalendarApp, &onAdd, self, .{});
@@ -145,6 +153,7 @@ pub const CalendarApp = struct {
         bar.append(spacer.as(gtk.Widget));
         bar.append(no_check.as(gtk.Widget));
         bar.append(tlm_check.as(gtk.Widget));
+        bar.append(ru_check.as(gtk.Widget));
         bar.append(add.as(gtk.Widget));
 
         // ---- month grid ----------------------------------------------------------------
@@ -222,6 +231,7 @@ pub const CalendarApp = struct {
         self.flush();
         if (self.table_no) |*t| t.deinit();
         if (self.table_tlm) |*t| t.deinit();
+        if (self.table_ru) |*t| t.deinit();
         self.list.deinit();
         self.cfg.deinit();
         self.allocator.destroy(self);
@@ -234,6 +244,7 @@ pub const CalendarApp = struct {
     fn ensureTables(self: *CalendarApp) void {
         self.table_no = self.syncTable(self.table_no, self.show_no, .novus_ordo);
         self.table_tlm = self.syncTable(self.table_tlm, self.show_tlm, .tlm1962);
+        self.table_ru = self.syncTable(self.table_ru, self.show_ru, .orthodox_ru);
     }
 
     fn syncTable(self: *CalendarApp, current: ?liturgy.Table, want: bool, kind: liturgy.Kind) ?liturgy.Table {
@@ -260,6 +271,12 @@ pub const CalendarApp = struct {
     fn onToggleTlm(button: *gtk.CheckButton, self: *CalendarApp) callconv(.c) void {
         self.show_tlm = button.getActive() != 0;
         self.cfg.setBool("view", "tlm-1962", self.show_tlm) catch {};
+        self.overlaysChanged();
+    }
+
+    fn onToggleRu(button: *gtk.CheckButton, self: *CalendarApp) callconv(.c) void {
+        self.show_ru = button.getActive() != 0;
+        self.cfg.setBool("view", "orthodox-ru", self.show_ru) catch {};
         self.overlaysChanged();
     }
 
@@ -415,6 +432,7 @@ pub const CalendarApp = struct {
         var day: liturgy.Day = undefined;
         if (self.table_no) |*t| self.addLitLine(box, t, date, &day);
         if (self.table_tlm) |*t| self.addLitLine(box, t, date, &day);
+        if (self.table_ru) |*t| self.addLitLine(box, t, date, &day);
 
         var shown: usize = 0;
         var total: usize = 0;
@@ -451,7 +469,7 @@ pub const CalendarApp = struct {
         _ = self;
         liturgy.compute(table, date, day);
         var buf: [256]u8 = undefined;
-        const l = gtk.Label.new(bufZ(&buf, "{s}", .{day.name}) catch "");
+        const l = gtk.Label.new(bufZ(&buf, "{s}{s}{s}", .{ day.fast_emoji, if (day.fast_emoji.len > 0) " " else "", day.name }) catch "");
         l.setXalign(0);
         l.setEllipsize(.end);
         l.setWidthChars(4);
@@ -504,6 +522,7 @@ pub const CalendarApp = struct {
         var day: liturgy.Day = undefined;
         if (self.table_no) |*t| self.litBlock("Novus Ordo", t, &day);
         if (self.table_tlm) |*t| self.litBlock("Traditional (1962)", t, &day);
+        if (self.table_ru) |*t| self.litBlock("Russian Orthodox", t, &day);
     }
 
     fn litBlock(self: *CalendarApp, comptime title: [:0]const u8, table: *const liturgy.Table, day: *liturgy.Day) void {
@@ -543,6 +562,13 @@ pub const CalendarApp = struct {
         info.as(gtk.Widget).addCssClass("dim-label");
         card.append(info.as(gtk.Widget));
 
+        if (day.fast_emoji.len > 0) {
+            var fb: [256]u8 = undefined;
+            const f = gtk.Label.new(bufZ(&fb, "{s}  {s}", .{ day.fast_emoji, day.fast_text }) catch "");
+            f.setXalign(0);
+            f.setWrap(1);
+            card.append(f.as(gtk.Widget));
+        }
         for (day.alsoLines()) |line| {
             var lb: [256]u8 = undefined;
             const l = gtk.Label.new(bufZ(&lb, "{s}: {s}", .{ line.label, line.text }) catch "");
@@ -754,4 +780,6 @@ test "date keys" {
 test {
     _ = @import("liturgy.zig");
     _ = @import("calsys.zig");
+    _ = @import("orthodox.zig");
+    _ = @import("fasting.zig");
 }

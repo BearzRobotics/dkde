@@ -1,0 +1,73 @@
+# The Russian Orthodox Church (Old Calendar). One line per day, by the JULIAN date:
+#   MM-DD | rank | colour | name
+# rank: G Great Feast (fish, wine and oil on fast days), V major feast (fish allowed),
+#       F feast (wine and oil), S saint, C commemoration
+# colour: W white, R red, G green, V violet, B black, L blue, Y gold
+# Pascha and everything counted from it (the Triodion, Great Lent, Pentecost,
+# the Sundays after it) are worked out by the program. Copy this file to
+# ~/.config/dkde/liturgy-ru.txt to change it; that copy is used instead.
+01-01 | F | W | Circumcision of the Lord; Saint Basil the Great
+01-02 | S | W | Saint Seraphim of Sarov (repose)
+01-05 | C | V | Eve of Theophany (strict fast)
+01-06 | G | Y | Holy Theophany: the Baptism of the Lord
+01-07 | F | W | Synaxis of the Forerunner, John the Baptist
+01-17 | S | W | Saint Anthony the Great
+01-18 | S | W | Saints Athanasius and Cyril of Alexandria
+01-24 | S | W | Blessed Xenia of Saint Petersburg
+01-25 | S | W | Saint Gregory the Theologian
+01-30 | F | W | Synaxis of the Three Hierarchs: Basil, Gregory and John Chrysostom
+02-02 | G | Y | The Meeting of the Lord
+02-07 | S | W | Saint Parthenius of Lampsacus
+02-24 | F | W | First and Second Finding of the Head of John the Baptist
+03-09 | F | R | The Forty Martyrs of Sebaste
+03-25 | G | L | The Annunciation of the Most Holy Theotokos
+04-23 | F | R | Great Martyr George the Trophy-bearer
+04-25 | S | W | Holy Apostle and Evangelist Mark
+04-30 | S | W | Holy Apostle James, son of Zebedee
+05-08 | S | W | Holy Apostle and Evangelist John the Theologian
+05-09 | F | W | Translation of the relics of Saint Nicholas to Bari
+05-11 | F | W | Equal-to-the-Apostles Cyril and Methodius
+05-21 | F | W | Equal-to-the-Apostles Constantine and Helen
+06-11 | S | W | Holy Apostles Bartholomew and Barnabas
+06-24 | V | W | Nativity of the Holy Prophet and Forerunner John the Baptist
+06-29 | V | R | Holy Glorious Apostles Peter and Paul
+06-30 | F | W | Synaxis of the Twelve Apostles
+07-15 | S | W | Equal-to-the-Apostles Prince Vladimir
+07-17 | S | R | Holy Royal Martyrs of Russia
+07-19 | F | W | Saint Seraphim of Sarov (glorification)
+07-20 | F | W | Holy Prophet Elijah
+07-25 | S | W | Dormition of Righteous Anna, mother of the Theotokos
+07-27 | S | R | Great Martyr and Healer Panteleimon
+08-01 | S | W | Procession of the Honourable Wood of the Cross
+08-06 | G | Y | The Transfiguration of our Lord
+08-09 | S | R | Holy Apostle Matthias
+08-15 | G | L | The Dormition of the Most Holy Theotokos
+08-16 | S | W | The Icon of the Saviour Not-Made-by-Hands
+08-29 | F | R | The Beheading of the Holy Prophet and Forerunner John the Baptist (strict fast)
+09-01 | S | W | Beginning of the Church Year
+09-08 | G | L | The Nativity of the Most Holy Theotokos
+09-09 | S | W | Holy and Righteous Joachim and Anna
+09-14 | G | Y | The Universal Exaltation of the Precious and Life-giving Cross
+09-17 | S | R | Holy Martyrs Faith, Hope, Love and their mother Sophia
+09-25 | F | W | Saint Sergius of Radonezh (repose)
+09-26 | S | W | Repose of the Holy Apostle and Evangelist John the Theologian
+10-01 | V | L | The Protection of the Most Holy Theotokos
+10-06 | S | W | Holy Apostle Thomas
+10-18 | S | W | Holy Apostle and Evangelist Luke
+10-26 | S | R | Great Martyr Demetrius of Thessalonica
+11-01 | S | W | Holy Unmercenaries Cosmas and Damian
+11-08 | V | W | Synaxis of the Archangel Michael and the Bodiless Powers
+11-13 | S | W | Saint John Chrysostom
+11-14 | S | W | Holy Apostle Philip
+11-16 | S | W | Holy Apostle and Evangelist Matthew
+11-21 | G | L | The Entry of the Most Holy Theotokos into the Temple
+11-25 | S | R | Great Martyr Catherine
+11-30 | F | W | Holy Apostle Andrew the First-Called
+12-04 | S | R | Great Martyr Barbara
+12-06 | V | W | Saint Nicholas the Wonderworker, Archbishop of Myra
+12-12 | S | W | Saint Spyridon of Trimythous
+12-20 | S | W | Righteous John of Kronstadt
+12-24 | C | V | Eve of the Nativity (strict fast)
+12-25 | G | Y | The Nativity of our Lord, God and Saviour Jesus Christ
+12-26 | F | L | Synaxis of the Most Holy Theotokos
+12-27 | F | R | Apostle, First Martyr and Archdeacon Stephen

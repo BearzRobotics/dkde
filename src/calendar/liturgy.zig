@@ -9,24 +9,29 @@ const std = @import("std");
 const glib = @import("glib2");
 const common = @import("common");
 const civil = common.civil;
+const fasting = @import("fasting.zig");
+const orthodox = @import("orthodox.zig");
 
 pub const Date = civil.Date;
 
 pub const Kind = enum {
     novus_ordo,
     tlm1962,
+    orthodox_ru,
 
     pub fn fileName(self: Kind) []const u8 {
         return switch (self) {
             .novus_ordo => "liturgy-no.txt",
             .tlm1962 => "liturgy-1962.txt",
+            .orthodox_ru => "liturgy-ru.txt",
         };
     }
 
-    fn builtin(self: Kind) []const u8 {
+    pub fn builtinText(self: Kind) []const u8 {
         return switch (self) {
             .novus_ordo => @embedFile("liturgy-no.txt"),
             .tlm1962 => @embedFile("liturgy-1962.txt"),
+            .orthodox_ru => @embedFile("liturgy-ru.txt"),
         };
     }
 };
@@ -38,6 +43,8 @@ pub const Color = enum {
     violet,
     rose,
     black,
+    blue,
+    gold,
 
     pub fn cssClass(self: Color) []const u8 {
         return switch (self) {
@@ -47,6 +54,8 @@ pub const Color = enum {
             .violet => "lit-violet",
             .rose => "lit-rose",
             .black => "lit-black",
+            .blue => "lit-blue",
+            .gold => "lit-gold",
         };
     }
 
@@ -107,7 +116,7 @@ pub const Table = struct {
                 if (parse(allocator, kind, contents[0..len])) |t| return t else |_| {}
             }
         } else |_| {}
-        return parse(allocator, kind, kind.builtin());
+        return parse(allocator, kind, kind.builtinText());
     }
 
     pub fn parse(allocator: std.mem.Allocator, kind: Kind, source: []const u8) !Table {
@@ -134,6 +143,8 @@ pub const Table = struct {
                 'V' => .violet,
                 'P' => .rose,
                 'B' => .black,
+                'L' => .blue,
+                'Y' => .gold,
                 else => continue,
             };
             const ranked = rankOf(kind, rank) orelse continue;
@@ -154,6 +165,13 @@ fn rankOf(kind: Kind, code: []const u8) ?Ranked {
             if (std.mem.eql(u8, code, "F")) return .{ .p = 6, .class = 0 };
             if (std.mem.eql(u8, code, "M")) return .{ .p = 9, .class = 0 };
             if (std.mem.eql(u8, code, "O")) return .{ .p = 10, .class = 0 };
+        },
+        .orthodox_ru => {
+            if (std.mem.eql(u8, code, "G")) return .{ .p = 1, .class = 0 };
+            if (std.mem.eql(u8, code, "V")) return .{ .p = 2, .class = 0 };
+            if (std.mem.eql(u8, code, "F")) return .{ .p = 3, .class = 0 };
+            if (std.mem.eql(u8, code, "S")) return .{ .p = 6, .class = 0 };
+            if (std.mem.eql(u8, code, "C")) return .{ .p = 9, .class = 0 };
         },
         .tlm1962 => {
             if (std.mem.eql(u8, code, "1L")) return .{ .p = Tlm.lord_1, .class = 1 };
@@ -180,6 +198,9 @@ pub const Day = struct {
     season: []const u8 = "",
     /// Lectionary cycle (Novus Ordo only), for example "Sunday Year A, weekday Year II".
     cycle: []const u8 = "",
+    /// Food emoji for a fast or abstinence day, and what they mean (empty on other days).
+    fast_emoji: []const u8 = "",
+    fast_text: []const u8 = "",
     also: [8]Line = undefined,
     n_also: usize = 0,
     buf: [768]u8 = undefined,
@@ -189,14 +210,14 @@ pub const Day = struct {
         return self.also[0..self.n_also];
     }
 
-    fn print(self: *Day, comptime fmt: []const u8, args: anytype) []const u8 {
+    pub fn print(self: *Day, comptime fmt: []const u8, args: anytype) []const u8 {
         const rest = self.buf[self.used..];
         const text = std.fmt.bufPrint(rest, fmt, args) catch return "";
         self.used += text.len;
         return text;
     }
 
-    fn ord(self: *Day, n: i64) []const u8 {
+    pub fn ord(self: *Day, n: i64) []const u8 {
         const k: u64 = @intCast(@max(n, 0));
         const suffix: []const u8 = if (k % 100 >= 11 and k % 100 <= 13) "th" else switch (k % 10) {
             1 => "st",
@@ -207,7 +228,7 @@ pub const Day = struct {
         return self.print("{d}{s}", .{ k, suffix });
     }
 
-    fn addAlso(self: *Day, label: []const u8, text: []const u8) void {
+    pub fn addAlso(self: *Day, label: []const u8, text: []const u8) void {
         if (self.n_also == self.also.len) return;
         self.also[self.n_also] = .{ .label = label, .text = text };
         self.n_also += 1;
@@ -714,15 +735,22 @@ fn computeTlm(table: *const Table, d: Date, out: *Day) void {
 pub fn compute(table: *const Table, date: Date, out: *Day) void {
     out.* = .{};
     switch (table.kind) {
-        .novus_ordo => computeNo(table, date, out),
-        .tlm1962 => computeTlm(table, date, out),
+        .novus_ordo => {
+            computeNo(table, date, out);
+            fasting.catholic(.novus_ordo, date, out);
+        },
+        .tlm1962 => {
+            computeTlm(table, date, out);
+            fasting.catholic(.tlm1962, date, out);
+        },
+        .orthodox_ru => orthodox.compute(table, date, out),
     }
 }
 
 // ---- tests -------------------------------------------------------------------------------------
 
 fn testTable(kind: Kind) !Table {
-    return Table.parse(std.testing.allocator, kind, kind.builtin());
+    return Table.parse(std.testing.allocator, kind, kind.builtinText());
 }
 
 fn dayOf(table: *const Table, y: i32, m: u8, d: u8, out: *Day) void {
@@ -831,4 +859,26 @@ test "1962 precedence, commemorations and transfers" {
     try std.testing.expectEqualStrings("Matthias, apostle", d.name);
     dayOf(&t, 2027, 2, 24, &d);
     try std.testing.expectEqualStrings("Matthias, apostle", d.name);
+}
+
+test "Catholic fast and abstinence days" {
+    var no = try testTable(.novus_ordo);
+    defer no.deinit();
+    var tlm = try testTable(.tlm1962);
+    defer tlm.deinit();
+    var d: Day = undefined;
+    dayOf(&no, 2026, 2, 18, &d); // Ash Wednesday
+    try std.testing.expectEqualStrings("⛔", d.fast_emoji);
+    dayOf(&no, 2026, 2, 27, &d); // Friday of Lent
+    try std.testing.expectEqualStrings("🐟", d.fast_emoji);
+    dayOf(&no, 2026, 2, 26, &d); // Thursday of Lent: nothing in the current rules
+    try std.testing.expectEqualStrings("", d.fast_emoji);
+    dayOf(&no, 2026, 12, 25, &d); // Christmas on a Friday: a solemnity
+    try std.testing.expectEqualStrings("", d.fast_emoji);
+    dayOf(&tlm, 2026, 2, 26, &d); // Thursday of Lent: fast (one full meal)
+    try std.testing.expectEqualStrings("🍽️", d.fast_emoji);
+    dayOf(&tlm, 2026, 9, 23, &d); // Ember Wednesday in September
+    try std.testing.expectEqualStrings("⛔", d.fast_emoji);
+    dayOf(&tlm, 2026, 8, 14, &d); // Vigil of the Assumption
+    try std.testing.expectEqualStrings("⛔", d.fast_emoji);
 }
