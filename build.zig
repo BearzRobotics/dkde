@@ -57,6 +57,16 @@ pub fn build(b: *std.Build) void {
     pdfrender.addIncludePath(b.path("third_party/stb"));
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = pdfrender })).step);
 
+    // dkde-pdfcheck: draws many PDFs without a display and reports what was not drawn.
+    const check_mod = b.createModule(.{ .root_source_file = b.path("src/pdfcheck/main.zig"), .target = target, .optimize = optimize, .link_libc = true });
+    check_mod.addImport("zpdf", zpdf_mod);
+    check_mod.addImport("pdfrender", pdfrender);
+    check_mod.addImport("cairo1", gobject.module("cairo1"));
+    check_mod.addImport("glib2", gobject.module("glib2"));
+    check_mod.linkSystemLibrary("cairo", .{});
+    check_mod.linkSystemLibrary("glib-2.0", .{});
+    b.installArtifact(b.addExecutable(.{ .name = "dkde-pdfcheck", .root_module = check_mod }));
+
     inline for (components) |name| {
         // dkde-pdf needs poppler, so it is only built when asked for.
         const is_pdf = comptime std.mem.eql(u8, name, "pdf");

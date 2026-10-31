@@ -2,8 +2,9 @@
 //! draws wrongly leaves a trail here, so a large set of files can be checked
 //! with `dkde-pdfcheck` and the gaps sorted by how often they occur.
 //!
-//! Set `DKDE_PDF_LOG=1` (any value) to log each event as it happens through
-//! `std.log` (scope `.pdfrender`).
+//! Each event is logged through `std.log` (scope `.pdfrender`) at debug level,
+//! so `DKDE_LOG=debug` shows them in any dkde program; `DKDE_PDF_LOG=1` (any
+//! value) raises them to warnings.
 
 const std = @import("std");
 
@@ -39,7 +40,7 @@ pub const Diag = struct {
             gop.value_ptr.* = 0;
         }
         gop.value_ptr.* += 1;
-        if (self.verbose) log.warn("page {d}: {s}: {s}", .{ self.page + 1, kind, detail });
+        if (self.verbose) log.warn("page {d}: {s}: {s}", .{ self.page + 1, kind, detail }) else log.debug("page {d}: {s}: {s}", .{ self.page + 1, kind, detail });
     }
 
     pub fn total(self: *const Diag) u32 {
