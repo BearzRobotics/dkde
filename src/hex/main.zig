@@ -72,6 +72,7 @@ const HexEditor = struct {
     /// True while a click in the structure panel moves the view, so the view
     /// does not answer by re-selecting in the panel.
     picking: bool = false,
+    proc_guard: *common.proc.Guard(HexEditor) = undefined,
 
     const Pending = enum { open, close, revert, new };
 
@@ -90,6 +91,7 @@ const HexEditor = struct {
         errdefer self.config.deinit();
         self.view = try View.create(allocator, &self.buffer, onViewChanged, self);
         self.panel = try structure.Panel.create(allocator, onPanelPick, self);
+        self.proc_guard = common.proc.Guard(HexEditor).create(self);
 
         const window = self.window.as(gtk.Window);
         window.setTitle(common.tr("Hex Editor"));
@@ -144,6 +146,7 @@ const HexEditor = struct {
                 mb.check("Show _colours", "colours", true),
                 mb.check("Structure _panel", "structure-panel", true),
                 .separator,
+                mb.item("_Get formats…", "get-formats", null),
                 mb.item("Formats _folder…", "formats-folder", null),
                 .separator,
                 mb.item("Find _strings…", "strings", null),
@@ -211,6 +214,7 @@ const HexEditor = struct {
 
     fn onDestroy(_: *gtk.ApplicationWindow, self: *HexEditor) callconv(.c) void {
         if (self.reparse_source != 0) _ = glib.Source.remove(self.reparse_source);
+        self.proc_guard.kill();
         self.panel.destroy();
         self.allocator.free(self.ranges);
         if (self.library) |l| l.deinit();
@@ -792,12 +796,7 @@ const HexEditor = struct {
     fn chooseFormat(self: *HexEditor) void {
         const lib = self.ensureLibrary();
         if (lib == null or lib.?.entries.items.len == 0) {
-            common.dialogs.showError(
-                self.window.as(gtk.Window),
-                common.tr("No formats found"),
-                common.tr("Choose a folder with Kaitai Struct .ksy files, for example a clone of kaitai_struct_formats."),
-            );
-            return self.formatsFolderDialog();
+            return self.getFormats();
         }
         const picker = self.allocator.create(Picker) catch return;
         const window = gtk.Window.new();
@@ -941,6 +940,142 @@ const HexEditor = struct {
         dlg.editor.allocator.destroy(dlg);
     }
 
+    // ---- getting formats ----------------------------------------------------------------------
+
+    const formats_url = "https://github.com/kaitai-io/kaitai_struct_formats";
+    const formats_git = "https://github.com/kaitai-io/kaitai_struct_formats.git";
+    const formats_tarball = "https://github.com/kaitai-io/kaitai_struct_formats/archive/refs/heads/master.tar.gz";
+
+    const GetFormats = struct {
+        editor: *HexEditor,
+        window: *gtk.Window,
+        note: *gtk.Label,
+        download: *gtk.Button,
+    };
+
+    /// Which tool can fetch the formats, if any.
+    fn downloadTool() enum { git, curl, wget, none } {
+        if (common.proc.hasProgram("git")) return .git;
+        if (common.proc.hasProgram("tar")) {
+            if (common.proc.hasProgram("curl")) return .curl;
+            if (common.proc.hasProgram("wget")) return .wget;
+        }
+        return .none;
+    }
+
+    fn getFormats(self: *HexEditor) void {
+        const dir = self.formatsDir() catch return;
+        defer self.allocator.free(dir);
+        const dlg = self.allocator.create(GetFormats) catch return;
+        const window = gtk.Window.new();
+        window.setTitle(common.tr("Get formats"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setModal(1);
+        window.setDefaultSize(480, -1);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 10);
+        box.as(gtk.Widget).setMarginTop(16);
+        box.as(gtk.Widget).setMarginBottom(16);
+        box.as(gtk.Widget).setMarginStart(16);
+        box.as(gtk.Widget).setMarginEnd(16);
+        window.setChild(box.as(gtk.Widget));
+
+        const intro = gtk.Label.new(common.tr("Structure views need Kaitai Struct format files, which are free but not included with dkde. They come from this project (the formats have their own licences):"));
+        intro.setWrap(1);
+        intro.setXalign(0);
+        box.append(intro.as(gtk.Widget));
+        const link = gtk.LinkButton.newWithLabel(formats_url, formats_url);
+        link.as(gtk.Widget).setHalign(.start);
+        box.append(link.as(gtk.Widget));
+
+        const tool = downloadTool();
+        var buf: [768]u8 = undefined;
+        const where = std.fmt.bufPrintSentinel(&buf, "{s}{s}", .{
+            switch (tool) {
+                .git => "git is installed, so dkde can download them into: ",
+                .curl => "curl and tar are installed, so dkde can download them into: ",
+                .wget => "wget and tar are installed, so dkde can download them into: ",
+                .none => "To download them from here, install git (or curl or wget, together with tar). Or download them yourself into: ",
+            },
+            dir,
+        }, 0) catch "";
+        const note = gtk.Label.new(where);
+        note.setWrap(1);
+        note.setXalign(0);
+        note.setSelectable(1);
+        box.append(note.as(gtk.Widget));
+
+        const buttons = gtk.Box.new(.horizontal, 8);
+        buttons.as(gtk.Widget).setHalign(.end);
+        const folder = gtk.Button.newWithLabel(common.tr("Choose folder\u{2026}"));
+        const close = gtk.Button.newWithLabel(common.tr("Close"));
+        const download = gtk.Button.newWithLabel(common.tr("Download"));
+        download.as(gtk.Widget).addCssClass("suggested-action");
+        download.as(gtk.Widget).setSensitive(@intFromBool(tool != .none));
+        buttons.append(folder.as(gtk.Widget));
+        buttons.append(close.as(gtk.Widget));
+        buttons.append(download.as(gtk.Widget));
+        box.append(buttons.as(gtk.Widget));
+
+        dlg.* = .{ .editor = self, .window = window, .note = note, .download = download };
+        _ = gtk.Button.signals.clicked.connect(folder, *GetFormats, &onGetFolder, dlg, .{});
+        _ = gtk.Button.signals.clicked.connect(close, *GetFormats, &onGetClose, dlg, .{});
+        _ = gtk.Button.signals.clicked.connect(download, *GetFormats, &onGetDownload, dlg, .{});
+        _ = gtk.Widget.signals.destroy.connect(window, *GetFormats, &onGetDestroy, dlg, .{});
+        window.present();
+    }
+
+    fn onGetFolder(_: *gtk.Button, dlg: *GetFormats) callconv(.c) void {
+        dlg.window.destroy();
+        dlg.editor.formatsFolderDialog();
+    }
+
+    fn onGetClose(_: *gtk.Button, dlg: *GetFormats) callconv(.c) void {
+        dlg.window.destroy();
+    }
+
+    fn onGetDestroy(_: *gtk.Window, dlg: *GetFormats) callconv(.c) void {
+        // A download in flight reports to the editor's status line, not here.
+        dlg.editor.allocator.destroy(dlg);
+    }
+
+    fn onGetDownload(_: *gtk.Button, dlg: *GetFormats) callconv(.c) void {
+        const self = dlg.editor;
+        const dir = self.formatsDir() catch return;
+        defer self.allocator.free(dir);
+        // Refuse to mix into a folder that already has something in it.
+        if (std.fs.path.dirname(dir)) |parent| {
+            const z = self.allocator.dupeSentinel(u8, parent, 0) catch return;
+            defer self.allocator.free(z);
+            _ = glib.mkdirWithParents(z, 0o755);
+        }
+        if (self.library) |l| if (l.entries.items.len > 0) {
+            dlg.note.setText(common.tr("There are already formats in that folder. Remove it first, or choose another folder."));
+            return;
+        };
+        const argv: []const []const u8 = switch (downloadTool()) {
+            .git => &.{ "git", "clone", "--depth", "1", formats_git, dir },
+            .curl => &.{ "sh", "-c", "mkdir -p \"$1\" && curl -fsSL \"$2\" | tar -xz -C \"$1\" --strip-components=1", "sh", dir, formats_tarball },
+            .wget => &.{ "sh", "-c", "mkdir -p \"$1\" && wget -qO- \"$2\" | tar -xz -C \"$1\" --strip-components=1", "sh", dir, formats_tarball },
+            .none => return,
+        };
+        self.status.setText(common.tr("Downloading formats\u{2026}"));
+        common.proc.run(HexEditor, self.proc_guard, argv, onDownloadDone);
+        dlg.window.destroy();
+    }
+
+    fn onDownloadDone(self: *HexEditor, ok: bool, _: []const u8) void {
+        if (!ok) {
+            self.status.setText("");
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("The download did not work"), common.tr("Check the network, and that the formats folder is empty or does not exist yet."));
+        }
+        self.rescanLibrary();
+        const count = if (self.library) |l| l.entries.items.len else 0;
+        var buf: [96]u8 = undefined;
+        self.status.setText(std.fmt.bufPrintSentinel(&buf, "Downloaded: {d} formats found.", .{count}, 0) catch "");
+        self.autoDetect();
+    }
+
     // ---- menu --------------------------------------------------------------------------------
 
     fn onMenubarAction(self: *HexEditor, action: []const u8) void {
@@ -971,6 +1106,7 @@ const HexEditor = struct {
             const w = self.inspector.as(gtk.Widget);
             return w.setVisible(@intFromBool(w.getVisible() == 0));
         }
+        if (eql(u8, action, "get-formats")) return self.getFormats();
         if (eql(u8, action, "strings")) return self.showStrings();
         if (eql(u8, action, "choose-format")) return self.chooseFormat();
         if (eql(u8, action, "load-ksy")) return self.loadDefinitionDialog();

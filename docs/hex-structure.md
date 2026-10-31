@@ -5,6 +5,8 @@ binary format, parse the open file with it and show the result next to the bytes
 
 ## Getting formats
 
+**Structure ▸ Get formats…** shows the link and, if git (or curl or wget with tar) is installed, downloads them for you into the formats folder. By hand:
+
 Formats are not bundled with dkde, because the community collection
 ([kaitai_struct_formats](https://github.com/kaitai-io/kaitai_struct_formats)) has
 mixed licences. Clone it, or any folder of `.ksy` files, and point dkde at it:
