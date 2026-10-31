@@ -17,5 +17,5 @@
             .hash = "ghostty-1.4.0-5UdBC-qohwWqLS0BImOz05t4hVyTwbaKslyTPvKYvAtE",
         },
     },
-    .paths = .{ "build.zig", "build.zig.zon", "src", "data", "protocols" },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "data", "protocols", "third_party", "LICENSE", "README.md" },
 }

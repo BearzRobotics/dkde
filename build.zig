@@ -74,7 +74,15 @@ pub fn build(b: *std.Build) void {
             }
             if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "hex") or std.mem.eql(u8, name, "color") or std.mem.eql(u8, name, "pdf")) mod.addImport("cairo1", gobject.module("cairo1"));
             if (std.mem.eql(u8, name, "pdf")) mod.linkSystemLibrary("poppler-glib", .{});
-            if (std.mem.eql(u8, name, "hex")) mod.addImport("pangocairo1", gobject.module("pangocairo1"));
+            if (std.mem.eql(u8, name, "hex")) {
+                mod.addImport("pangocairo1", gobject.module("pangocairo1"));
+                // YAML, for Kaitai Struct format files (third_party/zig-yaml).
+                mod.addImport("yaml", b.createModule(.{
+                    .root_source_file = b.path("third_party/zig-yaml/src/lib.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                }));
+            }
             if (std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "pointer") or std.mem.eql(u8, name, "idle")) {
                 mod.addImport("gdkwayland4", gobject.module("gdkwayland4"));
                 mod.addImport("wayland", wayland_module);
