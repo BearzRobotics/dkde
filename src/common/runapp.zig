@@ -8,13 +8,15 @@ const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 
 const style = @import("style.zig");
+const perf = @import("perf.zig");
 
 /// The program's arguments after its name, for a window that takes a file.
 pub var args: []const [*:0]const u8 = &.{};
 
 pub fn run(comptime app_id: [:0]const u8, comptime Window: type, init: std.process.Init.Minimal) !void {
-    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = debug_allocator.deinit();
+    perf.init();
+    var debug_allocator: perf.Gpa = .{};
+    defer debug_allocator.deinit();
 
     const State = struct {
         allocator: std.mem.Allocator,

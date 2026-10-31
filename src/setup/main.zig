@@ -470,8 +470,8 @@ fn writeConfig(allocator: std.mem.Allocator) void {
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
-    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = debug_allocator.deinit();
+    var debug_allocator: common.perf.Gpa = .{};
+    defer debug_allocator.deinit();
     const allocator = debug_allocator.allocator();
 
     var check_only = false;

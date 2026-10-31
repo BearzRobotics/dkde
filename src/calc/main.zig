@@ -276,8 +276,9 @@ const Calculator = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
-    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = debug_allocator.deinit();
+    common.perf.init();
+    var debug_allocator: common.perf.Gpa = .{};
+    defer debug_allocator.deinit();
     const allocator = debug_allocator.allocator();
 
     var app: App = .{ .allocator = allocator };

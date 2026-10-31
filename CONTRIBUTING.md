@@ -21,7 +21,8 @@ as the code when the code changes the design.
 ## Building and testing
 
 ```
-zig build               # needs Zig 0.17.0, see the README for libraries
+zig build               # needs Zig 0.17.0, see the README for libraries (Debug build)
+zig build --release=small   # what to install: far smaller and faster
 zig build test          # unit tests
 zig fmt src build.zig   # formatting is mandatory
 ```

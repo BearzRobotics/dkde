@@ -76,7 +76,6 @@ const Clock = struct {
         _ = notebook.appendPage(self.alarmPage().as(gtk.Widget), gtk.Label.new(common.tr("Alarm")).as(gtk.Widget));
         window.setChild(notebook.as(gtk.Widget));
 
-        self.tick_source = glib.timeoutAdd(50, onTick, self);
         _ = gtk.Widget.signals.destroy.connect(self.window, *Clock, &onDestroy, self, .{});
         return self;
     }
@@ -131,6 +130,12 @@ const Clock = struct {
         return box;
     }
 
+    /// The 50 ms display tick runs only while the stopwatch or timer is running,
+    /// so an idle window does not wake the CPU.
+    fn ensureTick(self: *Clock) void {
+        if (self.tick_source == 0) self.tick_source = glib.timeoutAdd(50, onTick, self);
+    }
+
     fn swElapsed(self: *const Clock) u64 {
         return self.sw_accumulated + if (self.sw_running) nowMs() - self.sw_started_at else 0;
     }
@@ -143,6 +148,7 @@ const Clock = struct {
         } else {
             self.sw_started_at = nowMs();
             self.sw_running = true;
+            self.ensureTick();
             self.sw_start_button.setLabel(common.tr("Stop"));
         }
     }
@@ -219,6 +225,7 @@ const Clock = struct {
         if (self.timerTotalMs() == 0) return;
         self.tm_end_at = nowMs() + self.timerTotalMs();
         self.tm_running = true;
+        self.ensureTick();
         self.tm_button.setLabel(common.tr("Cancel"));
     }
 
@@ -311,6 +318,10 @@ const Clock = struct {
             } else {
                 self.tm_label.setText(std.fmt.bufPrintSentinel(&z, "{s}", .{pure.formatCountdown(&buf, self.tm_end_at - now)}, 0) catch "");
             }
+        }
+        if (!self.sw_running and !self.tm_running) {
+            self.tick_source = 0;
+            return 0;
         }
         return 1;
     }

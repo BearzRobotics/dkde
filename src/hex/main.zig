@@ -361,7 +361,6 @@ const HexEditor = struct {
         self.panel = try structure.Panel.create(allocator, onPanelPick, self);
         self.proc_guard = common.proc.Guard(HexEditor).create(self);
 
-
         // Data inspector on the right.
         self.inspector.as(gtk.Widget).addCssClass("dkde-hex-inspector");
         self.inspector.as(gtk.Widget).setSizeRequest(230, -1);
@@ -3050,8 +3049,9 @@ fn submitAsk(ctx: *HexEditor.Ask) void {
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
-    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = debug_allocator.deinit();
+    common.perf.init();
+    var debug_allocator: common.perf.Gpa = .{};
+    defer debug_allocator.deinit();
     const allocator = debug_allocator.allocator();
 
     var app: App = .{ .allocator = allocator, .file = null };

@@ -403,13 +403,14 @@ const App = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    common.perf.init();
     // `dkde-panel msg <command>` talks to the running panel and exits.
     if (init.args.vector.len >= 2 and std.mem.eql(u8, std.mem.span(init.args.vector[1]), "msg")) {
         return sendMessage(init);
     }
 
-    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = debug_allocator.deinit();
+    var debug_allocator: common.perf.Gpa = .{};
+    defer debug_allocator.deinit();
     const allocator = debug_allocator.allocator();
 
     var app: App = .{

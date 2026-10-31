@@ -1409,8 +1409,8 @@ fn formatSize(buf: *[32]u8, bytes: u64) []const u8 {
 pub fn main(init: std.process.Init.Minimal) !void {
     // `--selftest IMAGE` runs headless, with no window.
     if (init.args.vector.len > 2 and std.mem.eql(u8, std.mem.span(init.args.vector[1]), "--selftest")) {
-        var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-        defer _ = debug_allocator.deinit();
+        var debug_allocator: common.perf.Gpa = .{};
+        defer debug_allocator.deinit();
         std.process.exit(selftest.run(debug_allocator.allocator(), std.mem.span(init.args.vector[2])));
     }
     try common.runapp.run("org.dkde.parted", Parted, init);

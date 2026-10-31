@@ -18,6 +18,7 @@ pub const log = @import("log.zig");
 pub const i18n = @import("i18n.zig");
 pub const icons = @import("icons.zig");
 pub const paths = @import("paths.zig");
+pub const perf = @import("perf.zig");
 pub const state = @import("state.zig");
 pub const user = @import("user.zig");
 pub const style = @import("style.zig");

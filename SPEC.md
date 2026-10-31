@@ -922,6 +922,16 @@ documented to this standard.
   the code it describes.
 - `zig build docs` generates Zig autodoc for the `common` module.
 
+### Low-resource operation
+
+dkde targets old, low-memory machines. Measured under WSLg (Mesa llvmpipe), an idle panel went from 228 MB RSS and 31 threads to 53 MB and 14, and a small app from about 270 MB to 43 MB, by:
+
+- **GTK renderer.** `common.perf.init()` runs first in every program and sets `GSK_RENDERER` from `[performance] renderer` in `dkde.conf` (default `cairo`: CPU only, no graphics-driver or GL context; `auto` lets GTK use OpenGL/Vulkan). An explicit `GSK_RENDERER` in the environment wins.
+- **malloc.** glibc arenas are capped at 2 (`M_ARENA_MAX`), since GTK and Mesa start many threads.
+- **Allocator.** Release builds use plain `malloc` through `common.perf.Gpa`; only Debug builds use `DebugAllocator`.
+- **No idle wake-ups.** Timers run only while there is something to update (the clock's 50 ms tick runs only while the stopwatch or timer is running).
+- **Release builds.** Plain `zig build` is a Debug build (about 60 times the size). Install with `zig build --release=small` (or `safe`).
+
 ## 7. Repository layout
 
 ```

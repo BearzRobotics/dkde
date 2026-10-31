@@ -162,8 +162,9 @@ const Idle = struct {
 };
 
 pub fn main(_: std.process.Init.Minimal) !void {
-    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = debug_allocator.deinit();
+    common.perf.init();
+    var debug_allocator: common.perf.Gpa = .{};
+    defer debug_allocator.deinit();
     const allocator = debug_allocator.allocator();
 
     const display = wl.Display.connect(null) catch {
