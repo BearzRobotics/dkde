@@ -247,13 +247,13 @@ For a package (Slackware `makepkg`, an LFS package user, or your own),
 install into a staging directory instead and archive that:
 `zig build -Doptimize=ReleaseSafe install --prefix "$PKG/usr"`.
 
-**3. Run the first-run check as your normal user.**
+**3. First-run check.** `dkde-session` runs `dkde-setup --once` at your first login, so this step happens by itself. To run it by hand as your normal user (or again later):
 
 ```
 dkde-setup
 ```
 
-It sets up your labwc autostart and keybindings, creates your Desktop,
+Run by hand it asks before changing anything; the automatic run happens only once (it leaves `~/.local/state/dkde/setup-done`), so it never puts back what you later change or remove. It sets up your labwc autostart and keybindings, creates your Desktop,
 Documents and other home folders, and prints the one command (needing root)
 that adds you to the groups some features need. Log out and in after any
 group change.

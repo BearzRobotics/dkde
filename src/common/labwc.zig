@@ -300,7 +300,9 @@ pub fn describeKey(buf: []u8, key: []const u8) []const u8 {
         w.writeAll(m[1]) catch return key;
         return w.buffered();
     };
-    if (std.mem.eql(u8, last, "Super_L") or std.mem.eql(u8, last, "Super_R")) {
+    if (std.mem.eql(u8, last, "<arrow>")) {
+        w.writeAll("Arrow keys") catch return key;
+    } else if (std.mem.eql(u8, last, "Super_L") or std.mem.eql(u8, last, "Super_R")) {
         w.writeAll("Super") catch return key;
     } else if (last.len == 1) {
         w.writeByte(std.ascii.toUpper(last[0])) catch return key;
@@ -308,7 +310,7 @@ pub fn describeKey(buf: []u8, key: []const u8) []const u8 {
     return w.buffered();
 }
 
-fn hasKey(xml: []const u8, key: []const u8) bool {
+pub fn hasKey(xml: []const u8, key: []const u8) bool {
     var needle_buf: [64]u8 = undefined;
     const needle = std.fmt.bufPrint(&needle_buf, "key=\"{s}\"", .{key}) catch return false;
     return std.mem.indexOf(u8, xml, needle) != null;
@@ -559,4 +561,183 @@ test "composing shortcuts from key presses" {
     try std.testing.expect(composeKey(&buf, .{ .ctrl = true }, "Control_L") == null);
     try std.testing.expect(composeKey(&buf, .{ .ctrl = true }, "Super_L") == null);
     try std.testing.expect(composeKey(&buf, .{}, "Fx") == null);
+}
+
+// ---- labwc's own shortcuts -----------------------------------------------------------------
+
+/// A shortcut labwc provides itself, or one the user has added to rc.xml.
+pub const Shortcut = struct { key: []const u8, what: []const u8 };
+
+/// labwc has no command that prints its effective keybinds, so these are what
+/// labwc-config(5) (0.9) documents, used when the man page cannot be read.
+pub const builtin_fallback = [_]Shortcut{
+    .{ .key = "A-Tab", .what = "next window" },
+    .{ .key = "A-S-Tab", .what = "previous window" },
+    .{ .key = "W-Return", .what = "lab-sensible-terminal" },
+    .{ .key = "A-F4", .what = "close window" },
+    .{ .key = "W-a", .what = "toggle maximize" },
+    .{ .key = "W-<arrow>", .what = "resize window to fill half or quarter of the output" },
+    .{ .key = "A-Space", .what = "show window menu" },
+};
+
+/// Keys labwc also binds, which the man page mentions only in prose.
+pub const builtin_media = [_]Shortcut{
+    .{ .key = "XF86AudioRaiseVolume", .what = "volume up (amixer)" },
+    .{ .key = "XF86AudioLowerVolume", .what = "volume down (amixer)" },
+    .{ .key = "XF86AudioMute", .what = "mute (amixer)" },
+    .{ .key = "XF86MonBrightnessUp", .what = "brightness up (brightnessctl)" },
+    .{ .key = "XF86MonBrightnessDown", .what = "brightness down (brightnessctl)" },
+};
+
+/// The man page with troff escapes removed, so its lines read as plain text.
+pub fn stripTroff(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var i: usize = 0;
+    while (i < text.len) : (i += 1) {
+        if (text[i] != '\\') {
+            try out.append(allocator, text[i]);
+            continue;
+        }
+        if (i + 1 >= text.len) break;
+        switch (text[i + 1]) {
+            '&' => i += 1,
+            '-' => {
+                try out.append(allocator, '-');
+                i += 1;
+            },
+            'f' => i += 2, // \fB \fR \fI: the font letter follows
+            else => i += 1,
+        }
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+/// The "KEY - description" lines after "keybinds listed below" in labwc-config(5).
+/// The returned slices point into `text`.
+pub fn parseManDefaults(allocator: std.mem.Allocator, text: []const u8) ![]Shortcut {
+    var list: std.ArrayList(Shortcut) = .empty;
+    errdefer list.deinit(allocator);
+    const marker = "keybinds listed below";
+    const start = std.mem.indexOf(u8, text, marker) orelse return list.toOwnedSlice(allocator);
+    var lines = std.mem.splitScalar(u8, text[start..], '\n');
+    _ = lines.next(); // the rest of the marker line
+    var in_block = false;
+    while (lines.next()) |raw| {
+        const line = std.mem.trim(u8, raw, " \t\r");
+        if (std.mem.eql(u8, line, ".nf")) {
+            in_block = true;
+            continue;
+        }
+        if (std.mem.eql(u8, line, ".fi")) break;
+        if (!in_block or line.len == 0 or line[0] == '.') continue;
+        const sep = std.mem.indexOf(u8, line, " - ") orelse continue;
+        try list.append(allocator, .{ .key = line[0..sep], .what = line[sep + 3 ..] });
+    }
+    return list.toOwnedSlice(allocator);
+}
+
+/// "W-<arrow>" stands for four keys; everything else is itself.
+pub fn expandArrows(key: []const u8, out: *[4][]const u8) usize {
+    if (std.mem.endsWith(u8, key, "<arrow>")) {
+        out[0] = "Left";
+        out[1] = "Right";
+        out[2] = "Up";
+        out[3] = "Down";
+        return 4;
+    }
+    return 0;
+}
+
+/// Is `key` one of `defaults` (after expanding "<arrow>")? Returns what it does.
+pub fn builtinFor(defaults: []const Shortcut, key: []const u8) ?[]const u8 {
+    for (defaults) |d| {
+        if (std.mem.eql(u8, d.key, key)) return d.what;
+        var arrows: [4][]const u8 = undefined;
+        const n = expandArrows(d.key, &arrows);
+        if (n > 0) {
+            const prefix = d.key[0 .. d.key.len - "<arrow>".len];
+            for (arrows[0..n]) |a| {
+                if (key.len == prefix.len + a.len and std.mem.startsWith(u8, key, prefix) and std.mem.eql(u8, key[prefix.len..], a)) return d.what;
+            }
+        }
+    }
+    return null;
+}
+
+/// Every `<keybind>` in rc.xml with a short summary of what it runs; borrows from `xml`.
+pub fn listKeybinds(allocator: std.mem.Allocator, xml: []const u8) ![]Shortcut {
+    var list: std.ArrayList(Shortcut) = .empty;
+    errdefer list.deinit(allocator);
+    const open = "<keybind key=\"";
+    var at: usize = 0;
+    while (std.mem.indexOfPos(u8, xml, at, open)) |start| {
+        const key_start = start + open.len;
+        const key_end = std.mem.indexOfScalarPos(u8, xml, key_start, '"') orelse break;
+        const close = std.mem.indexOfPos(u8, xml, key_end, "</keybind>") orelse break;
+        const body = xml[key_end..close];
+        var what: []const u8 = "";
+        if (std.mem.indexOf(u8, body, "command=\"")) |c| {
+            const v = c + "command=\"".len;
+            if (std.mem.indexOfScalarPos(u8, body, v, '"')) |e| what = body[v..e];
+        } else if (std.mem.indexOf(u8, body, "<action name=\"")) |a| {
+            const v = a + "<action name=\"".len;
+            if (std.mem.indexOfScalarPos(u8, body, v, '"')) |e| what = body[v..e];
+        }
+        try list.append(allocator, .{ .key = xml[key_start..key_end], .what = what });
+        at = close;
+    }
+    return list.toOwnedSlice(allocator);
+}
+
+test "the man page's default keybinds are read" {
+    const a = std.testing.allocator;
+    const page =
+        \\Load the default keybinds listed below.  This is an addition.
+        \\.nf
+        \\.RS 4
+        \\  A-Tab - next window
+        \\  A-S-Tab - previous window
+        \\  W-Return - lab-sensible-terminal
+        \\  W-<arrow> - resize window to fill half or quarter of the output
+        \\.fi
+        \\.RE
+        \\  Z-Z - after the block
+        \\
+    ;
+    const found = try parseManDefaults(a, page);
+    defer a.free(found);
+    try std.testing.expectEqual(@as(usize, 4), found.len);
+    try std.testing.expectEqualStrings("A-Tab", found[0].key);
+    try std.testing.expectEqualStrings("lab-sensible-terminal", found[2].what);
+    try std.testing.expectEqualStrings("resize window to fill half or quarter of the output", found[3].what);
+    const none = try parseManDefaults(a, "nothing here");
+    defer a.free(none);
+    try std.testing.expectEqual(@as(usize, 0), none.len);
+}
+
+test "troff escapes are removed" {
+    const a = std.testing.allocator;
+    const out = try stripTroff(a, "\\fBkey\\fR \\- text\\&.");
+    defer a.free(out);
+    try std.testing.expectEqualStrings("key - text.", out);
+}
+
+test "built-in keys, including the arrow family" {
+    try std.testing.expectEqualStrings("close window", builtinFor(&builtin_fallback, "A-F4").?);
+    try std.testing.expect(builtinFor(&builtin_fallback, "W-Left") != null);
+    try std.testing.expect(builtinFor(&builtin_fallback, "W-Down") != null);
+    try std.testing.expect(builtinFor(&builtin_fallback, "W-Leftx") == null);
+    try std.testing.expect(builtinFor(&builtin_fallback, "C-A-t") == null);
+}
+
+test "the user's own keybinds are listed" {
+    const a = std.testing.allocator;
+    const xml = "<keyboard><default /><keybind key=\"W-e\"><action name=\"Execute\" command=\"dkde-files\"/></keybind><keybind key=\"A-F2\"><action name=\"Exit\"/></keybind></keyboard>";
+    const found = try listKeybinds(a, xml);
+    defer a.free(found);
+    try std.testing.expectEqual(@as(usize, 2), found.len);
+    try std.testing.expectEqualStrings("W-e", found[0].key);
+    try std.testing.expectEqualStrings("dkde-files", found[0].what);
+    try std.testing.expectEqualStrings("Exit", found[1].what);
 }

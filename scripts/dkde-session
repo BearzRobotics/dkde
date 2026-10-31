@@ -27,6 +27,10 @@ fi
 [ -f /etc/profile ] && . /etc/profile
 [ -f "$HOME/.profile" ] && . "$HOME/.profile"
 
+# The first login only: put dkde's labwc config, folders and keybindings in
+# place. It never runs again by itself; run `dkde-setup` by hand to re-check.
+command -v dkde-setup >/dev/null 2>&1 && dkde-setup --once >/dev/null 2>&1
+
 # A session bus is optional (SPEC.md 2): notifications and the tray use it.
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
     exec dbus-run-session -- labwc "$@"

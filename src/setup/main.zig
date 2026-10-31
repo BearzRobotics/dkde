@@ -429,6 +429,27 @@ test "group membership by gid or member list" {
 
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
+/// Written once setup has run for this user; see `--once`.
+fn markerPath(allocator: std.mem.Allocator) ?[:0]u8 {
+    return common.paths.userStateFile(allocator, "setup-done") catch null;
+}
+
+fn markerExists(allocator: std.mem.Allocator) bool {
+    const path = markerPath(allocator) orelse return false;
+    defer allocator.free(path);
+    return glib.fileTest(path, .{ .exists = true }) != 0;
+}
+
+fn writeMarker(allocator: std.mem.Allocator) void {
+    const path = markerPath(allocator) orelse return;
+    defer allocator.free(path);
+    const dir = glib.pathGetDirname(path);
+    defer glib.free(dir);
+    _ = glib.mkdirWithParents(dir, 0o755);
+    const text = "dkde-setup has run for this user. Delete this file to let the first-login run repeat.\n";
+    _ = glib.fileSetContents(path, text.ptr, text.len, null);
+}
+
 pub fn main(init: std.process.Init.Minimal) !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     defer _ = debug_allocator.deinit();
@@ -436,19 +457,33 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     var check_only = false;
     var yes = false;
+    var once = false;
     for (init.args.vector[1..]) |arg| {
         const text = std.mem.span(arg);
         if (std.mem.eql(u8, text, "--check")) check_only = true;
+        if (std.mem.eql(u8, text, "--once")) once = true;
         if (std.mem.eql(u8, text, "--yes") or std.mem.eql(u8, text, "-y")) yes = true;
         if (std.mem.eql(u8, text, "--help") or std.mem.eql(u8, text, "-h")) {
-            out("usage: dkde-setup [--check] [--yes]\n  --check  only report; exit 1 if something is missing\n  --yes    apply user-level fixes without asking\n");
+            out("usage: dkde-setup [--check] [--yes] [--once]\n  --check  only report; exit 1 if something is missing\n  --yes    apply user-level fixes without asking\n  --once   the first-login run: apply the user-level fixes quietly, and only if\n           setup has never run for this user (dkde-session does this)\n");
             return;
         }
     }
 
+    // The automatic run happens once. After that, setup runs only when asked
+    // for by hand, so it never puts back what the user changed or removed.
+    if (once and markerExists(allocator)) return;
+
     var setup = Setup.init(allocator);
     defer setup.deinit();
     setup.run();
+
+    if (once) {
+        // Quiet and non-interactive: user-level fixes only, nothing that needs root.
+        setup.applyUserFixes();
+        writeMarker(allocator);
+        std.log.info("first-run setup done", .{});
+        return;
+    }
 
     out("dkde setup\n\n");
     const todo = setup.report();
@@ -457,6 +492,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
         if (todo > 0) std.process.exit(1);
         return;
     }
+    // A hand run counts as the setup, so the first login does not repeat it.
+    defer writeMarker(allocator);
     if (todo == 0) {
         out("Everything is in place.\n");
         return;

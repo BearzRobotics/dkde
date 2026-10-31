@@ -562,9 +562,16 @@ files and the components pick up the changes through their file monitors.
   records the next key press (modifiers C-, A-, S-, W-; a plain letter needs a
   modifier, while function, media and Print keys may stand alone; the bare Super
   key is allowed for the start menu only); Reset restores the default key. A key
-  already bound to another dkde entry is refused. labwc's built-in shortcuts are
-  not listed and not checked for clashes, and a shortcut cannot be switched off
-  here (`dkde-setup` would add it back).
+  already bound to another entry of rc.xml is refused. Below the editable list
+  the page shows what labwc binds itself, and the user's other keybinds from
+  rc.xml. labwc has no command that prints its effective keybinds, so the
+  built-in list is read from the `keybinds listed below` block of
+  labwc-config(5) (`zcat` of the installed man page), with a built-in copy of
+  the 0.9 list when the man page cannot be read, plus the volume and brightness
+  keys labwc also binds. Choosing a key that replaces a built-in one is allowed
+  and says so. A shortcut cannot be switched off here (rebinding or resetting
+  only), because `dkde-setup` would not add it back but the key would still be
+  listed as missing.
 
 **Editing labwc files:** only dkde's own sections and keys are changed, and
 the rest of the file is preserved. A backup is written before the first edit.
@@ -627,6 +634,15 @@ are never run silently: the command and reason are shown and each runs only
 on an explicit yes. `--check` reports only; `--yes` applies user-level fixes
 without asking.
 
+**One time only.** `dkde-setup --once` is what `dkde-session` runs before
+starting labwc: it applies the user-level fixes (labwc `autostart`, keybindings
+and `environment`, the home folders) without asking, never runs anything that
+needs root, and then writes `$XDG_STATE_HOME/dkde/setup-done`. While that file
+exists `--once` does nothing, so setup never puts back a line the user removed
+or a key they moved. A plain `dkde-setup` run is always allowed by hand, ignores
+the marker, and also leaves it in place; deleting the file lets the first-login
+run repeat.
+
 It also checks the groups that give a user without logind or polkit access
 to hardware and services: `audio`, `netdev` (NetworkManager and rfkill),
 `plugdev`, `bluetooth` and `lpadmin`, asking only for those that exist on the
@@ -680,7 +696,19 @@ a plain GTK4 program and already runs on either.
 | Screenshots | wlr-screencopy | `XGetImage` of the root window |
 
 It needs an EWMH-compliant window manager (openbox is the suggested pair) and
-no compositor is required. Not supported on X11: auto-hide. The X session is
+no compositor is required. Not supported on X11: auto-hide, and every feature in the list below.
+
+**What does not work on X11** (the apps themselves, being GTK, run under either
+backend): global shortcuts and Settings > Keyboard shortcuts (they edit labwc's
+`rc.xml`; an X window manager has its own bindings); the virtual-desktop
+indicator (`ext-workspace-v1`); desktop notifications (the toasts need
+layer-shell); the volume and brightness on-screen display; `dkde-idle` and so
+the idle lock, screen-off and sleep (`ext-idle-notify-v1`); the Display page
+(`wlr-randr`; there is no `xrandr` equivalent yet); scrolling screenshots
+(`wlr-virtual-pointer`); `dkde-pointer`; and the greetd login screen (the X
+session is started by `dkde-xsession` or an X display manager). Untested on X11:
+desktop icons, the quick-settings flyout and the system tray. Lock detection
+looks for Wayland lockers only (`swaylock`, `gtklock`, `waylock`). The X session is
 started by `scripts/dkde-xsession`, and `scripts/dkde-startx` runs it from a
 console with `startx`.
 

@@ -1426,6 +1426,12 @@ pub const ShortcutsPage = struct {
     window: *SettingsWindow,
     content: *gtk.Box,
     status: *gtk.Label,
+    /// A softer message than `status`: a shortcut was set, with something to know.
+    notice: *gtk.Label,
+    guard: *hw.Guard(ShortcutsPage) = undefined,
+    /// labwc's own shortcuts: from its man page when it can be read, else a built-in list.
+    man_text: ?[]u8 = null,
+    builtins: []labwc.Shortcut = &.{},
 
     const labwc = common.labwc;
 
@@ -1441,14 +1447,20 @@ pub const ShortcutsPage = struct {
     pub fn build(window: *SettingsWindow) *gtk.Box {
         const page = win.SettingsWindow.newPage(common.tr("Keyboard shortcuts"));
         const self = gpa.create(ShortcutsPage) catch @panic("OOM");
-        self.* = .{ .window = window, .content = gtk.Box.new(.vertical, 8), .status = gtk.Label.new("") };
-        _ = note(page, common.tr("Choose Change, then press the new shortcut. Changes apply at once. labwc's own built-in shortcuts (such as Alt+Tab) are not listed here and are not checked for clashes."));
+        self.* = .{ .window = window, .content = gtk.Box.new(.vertical, 8), .status = gtk.Label.new(""), .notice = gtk.Label.new("") };
+        self.guard = hw.Guard(ShortcutsPage).create(self);
+        _ = note(page, common.tr("Choose Change, then press the new shortcut. Changes apply at once. A shortcut already used by another entry is refused; one that replaces a built-in labwc shortcut is allowed, with a note."));
+        self.notice.setXalign(0);
+        self.notice.setWrap(1);
+        self.notice.as(gtk.Widget).addCssClass("dim-label");
+        page.append(self.notice.as(gtk.Widget));
         self.status.setXalign(0);
         self.status.setWrap(1);
         self.status.as(gtk.Widget).addCssClass("error");
         page.append(self.status.as(gtk.Widget));
         page.append(self.content.as(gtk.Widget));
         _ = gtk.Widget.signals.destroy.connect(page, *ShortcutsPage, &onDestroy, self, .{});
+        self.loadBuiltins();
         // Dev aid: "<entry number>:<key>" rebinds an entry as the page opens, for tests.
         if (glib.getenv("DKDE_DEBUG_SHORTCUT")) |spec| {
             const text = std.mem.span(spec);
@@ -1463,7 +1475,60 @@ pub const ShortcutsPage = struct {
     }
 
     fn onDestroy(_: *gtk.Box, self: *ShortcutsPage) callconv(.c) void {
+        self.guard.kill();
+        gpa.free(self.builtins);
+        if (self.man_text) |m| gpa.free(m);
         gpa.destroy(self);
+    }
+
+    // ---- labwc's own shortcuts ----------------------------------------------------------------
+
+    /// Reads labwc-config(5) for the default keybinds it documents.
+    fn loadBuiltins(self: *ShortcutsPage) void {
+        self.builtins = gpa.dupe(labwc.Shortcut, &labwc.builtin_fallback) catch &.{};
+        if (glib.fileTest("/usr/share/man/man5/labwc-config.5.gz", .{ .exists = true }) != 0) {
+            hw.run(ShortcutsPage, self.guard, &.{ "zcat", "/usr/share/man/man5/labwc-config.5.gz" }, onManPage);
+        } else if (glib.fileTest("/usr/share/man/man5/labwc-config.5", .{ .exists = true }) != 0) {
+            hw.run(ShortcutsPage, self.guard, &.{ "cat", "/usr/share/man/man5/labwc-config.5" }, onManPage);
+        }
+    }
+
+    fn onManPage(self: *ShortcutsPage, ok: bool, out: []const u8) void {
+        if (!ok) return;
+        const stripped = labwc.stripTroff(gpa, out) catch return;
+        const parsed = labwc.parseManDefaults(gpa, stripped) catch {
+            gpa.free(stripped);
+            return;
+        };
+        if (parsed.len == 0) {
+            // Not the format expected: keep the built-in list.
+            gpa.free(parsed);
+            gpa.free(stripped);
+            return;
+        }
+        gpa.free(self.builtins);
+        if (self.man_text) |m| gpa.free(m);
+        self.man_text = stripped;
+        self.builtins = parsed;
+        self.rebuild();
+    }
+
+    fn section(self: *ShortcutsPage, text: [:0]const u8) void {
+        const l = gtk.Label.new(text);
+        l.setXalign(0);
+        l.as(gtk.Widget).addCssClass("heading");
+        l.as(gtk.Widget).setMarginTop(12);
+        self.content.append(l.as(gtk.Widget));
+    }
+
+    fn readOnlyRow(self: *ShortcutsPage, key: []const u8, what: []const u8, note_text: []const u8) void {
+        var key_buf: [96]u8 = undefined;
+        var key_z: [128]u8 = undefined;
+        var what_z: [256]u8 = undefined;
+        const cap = gtk.Label.new(std.fmt.bufPrintSentinel(&key_z, "{s}", .{labwc.describeKey(&key_buf, key)}, 0) catch "");
+        cap.as(gtk.Widget).addCssClass("dkde-keycap");
+        const text = std.fmt.bufPrintSentinel(&what_z, "{s}{s}", .{ what, note_text }, 0) catch return;
+        win.SettingsWindow.addRow(self.content, text, cap.as(gtk.Widget));
     }
 
     fn rebuild(self: *ShortcutsPage) void {
@@ -1494,6 +1559,34 @@ pub const ShortcutsPage = struct {
             const name = std.fmt.bufPrintSentinel(&name_z, "{s}", .{kb.name}, 0) catch continue;
             win.SettingsWindow.addRow(self.content, name, controls.as(gtk.Widget));
         }
+
+        // What labwc provides itself. These are changed in rc.xml by hand.
+        self.section(common.tr("Built into labwc"));
+        for (self.builtins) |b| self.readOnlyRow(b.key, b.what, if (labwc.hasKey(xml, b.key)) " (replaced by your rc.xml)" else "");
+        for (labwc.builtin_media) |b| {
+            if (labwc.hasKey(xml, b.key)) continue; // dkde's own volume keys take over
+            self.readOnlyRow(b.key, b.what, "");
+        }
+
+        // Shortcuts in rc.xml that dkde did not put there.
+        const mine = labwc.listKeybinds(gpa, xml) catch return;
+        defer gpa.free(mine);
+        var shown_heading = false;
+        for (mine) |m| {
+            if (isDkdeEntry(m.what)) continue;
+            if (!shown_heading) {
+                self.section(common.tr("Your other shortcuts (from rc.xml)"));
+                shown_heading = true;
+            }
+            self.readOnlyRow(m.key, m.what, "");
+        }
+    }
+
+    /// Entries dkde manages show up above, not here.
+    fn isDkdeEntry(what: []const u8) bool {
+        if (std.mem.eql(u8, what, "GoToDesktop") or std.mem.eql(u8, what, "SendToDesktop")) return true;
+        for (labwc.dkde_keybinds) |k| if (k.command.len > 0 and std.mem.eql(u8, what, k.command)) return true;
+        return false;
     }
 
     fn apply(self: *ShortcutsPage, index: usize, key: []const u8) void {
@@ -1509,6 +1602,12 @@ pub const ShortcutsPage = struct {
         }
         self.window.editLabwcFile("rc.xml", KeyEdit, .{ .index = index, .key = key });
         self.rebuild();
+        // Replacing one of labwc's own shortcuts is allowed, but worth saying.
+        if (labwc.builtinFor(self.builtins, key)) |what| {
+            var buf: [64]u8 = undefined;
+            var z: [256]u8 = undefined;
+            self.notice.setText(std.fmt.bufPrintSentinel(&z, "{s} now runs \"{s}\" and replaces labwc's own shortcut ({s}).", .{ labwc.describeKey(&buf, key), kb.name, what }, 0) catch "");
+        } else self.notice.setText("");
     }
 
     fn onReset(self: *ShortcutsPage, idx: []const u8, _: []const u8) void {
