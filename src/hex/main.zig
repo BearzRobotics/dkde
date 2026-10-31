@@ -17,6 +17,9 @@ const structure = @import("structure.zig");
 const ksy_interp = @import("ksy/interp.zig");
 const strings = @import("strings.zig");
 const disk_mod = @import("disk.zig");
+const analyze = @import("analyze.zig");
+const bookmarks_mod = @import("bookmarks.zig");
+const cairo = @import("cairo1");
 const ksy_model = @import("ksy/model.zig");
 const hexpat = @import("hexpat/eval.zig");
 
@@ -77,6 +80,18 @@ const HexEditor = struct {
     /// does not answer by re-selecting in the panel.
     picking: bool = false,
     disk: ?DiskState = null,
+    /// A second file to compare with, and the differences found.
+    other: ?[]u8 = null,
+    diffs: []analyze.Diff = &.{},
+    diff_view: []view_mod.Range = &.{},
+    compared_revision: u64 = 0,
+    /// Offsets to return to (Alt+Left after a jump).
+    back_stack: std.ArrayList(usize) = .empty,
+    bookmarks: bookmarks_mod.List = .{},
+    mark_view: []view_mod.Range = &.{},
+    /// Last search pattern (text, hex with wildcards, or a number).
+    pattern: ?analyze.Pattern = null,
+    disasm_dir: ?[]u8 = null,
     pending_device: ?[]u8 = null,
     folder_kind: structure.Kind = .ksy,
     proc_guard: *common.proc.Guard(HexEditor) = undefined,
@@ -132,6 +147,36 @@ const HexEditor = struct {
                 mb.item("Find _Next", "find-next", "F3"),
                 mb.item("Find _Previous", "find-prev", "<Shift>F3"),
                 mb.item("_Go to…", "goto", "<Control>g"),
+                .separator,
+                mb.item("Copy as _C array", "copy-c", null),
+                mb.item("Copy as _Python bytes", "copy-py", null),
+                mb.item("Copy as _Base64", "copy-b64", null),
+                mb.item("Copy as escaped _string", "copy-esc", null),
+                .separator,
+                mb.item("_Fill selection…", "fill", null),
+                mb.item("_XOR selection…", "xor", null),
+                mb.item("Re_verse selection", "reverse", null),
+                mb.item("Swap _16-bit units", "swap2", null),
+                mb.item("Swap _32-bit units", "swap4", null),
+                mb.item("Swap _64-bit units", "swap8", null),
+            } },
+            .{ .label = "_Analyze", .entries = &.{
+                mb.item("_Checksums…", "checksums", null),
+                mb.item("_Entropy and histogram…", "entropy", null),
+                .separator,
+                mb.item("C_ompare with file…", "compare", null),
+                mb.item("_Next difference", "diff-next", "F7"),
+                mb.item("_Previous difference", "diff-prev", "<Shift>F7"),
+                mb.item("C_lear comparison", "diff-clear", null),
+                .separator,
+                mb.item("_Disassemble selection…", "disasm", null),
+                mb.item("Find _strings…", "strings", null),
+                .separator,
+                mb.item("_Follow value as offset", "follow", "<Control>j"),
+                mb.item("_Back", "back", "<Alt>Left"),
+                .separator,
+                mb.item("Add _bookmark…", "bookmark-add", "<Control>b"),
+                mb.item("_Bookmarks…", "bookmarks", null),
             } },
             .{ .label = "_View", .entries = &.{
                 mb.item("_8 bytes per row", "bpr-8", null),
@@ -244,6 +289,14 @@ const HexEditor = struct {
         self.buffer.deinit();
         if (self.path) |p| self.allocator.free(p);
         if (self.needle) |n| self.allocator.free(n);
+        if (self.pattern) |p| p.deinit(self.allocator);
+        if (self.other) |o| self.allocator.free(o);
+        self.allocator.free(self.diffs);
+        self.allocator.free(self.diff_view);
+        self.back_stack.deinit(self.allocator);
+        self.bookmarks.deinit(self.allocator);
+        self.allocator.free(self.mark_view);
+        if (self.disasm_dir) |d| self.allocator.free(d);
         self.allocator.destroy(self);
     }
 
@@ -369,6 +422,8 @@ const HexEditor = struct {
         self.view.adjustment.setValue(0);
         self.clearStructure();
         self.view.refresh();
+        self.loadBookmarks();
+        self.clearComparison();
     }
 
     fn fail(self: *HexEditor, message: [:0]const u8, e: *glib.Error) void {
@@ -510,7 +565,9 @@ const HexEditor = struct {
         editor: *HexEditor,
         dialog: *gtk.Window,
         entry: *gtk.Entry,
-        hex: ?*gtk.CheckButton,
+        mode: ?*gtk.DropDown,
+        num_kind: ?*gtk.DropDown,
+        big: ?*gtk.CheckButton,
         kind: enum { find, goto, sector },
 
         fn submit(self: *Ask) void {
@@ -543,10 +600,18 @@ const HexEditor = struct {
             if (std.unicode.utf8ValidateSlice(shown)) entry.as(gtk.Editable).setText(shown);
         };
         box.append(entry.as(gtk.Widget));
-        var hex: ?*gtk.CheckButton = null;
+        var mode: ?*gtk.DropDown = null;
+        var num_kind: ?*gtk.DropDown = null;
+        var big: ?*gtk.CheckButton = null;
         if (kind == .find) {
-            hex = gtk.CheckButton.newWithLabel(common.tr("Hex bytes (for example de ad be ef)"));
-            box.append(hex.?.as(gtk.Widget));
+            mode = gtk.DropDown.newFromStrings(@ptrCast(&[_]?[*:0]const u8{ "Text", "Hex bytes (de ad ?? ef, ?? is any byte)", "Number", null }));
+            box.append(mode.?.as(gtk.Widget));
+            const kinds = [_]?[*:0]const u8{ "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "float (f32)", "double (f64)", null };
+            num_kind = gtk.DropDown.newFromStrings(@ptrCast(&kinds));
+            num_kind.?.setSelected(2);
+            box.append(num_kind.?.as(gtk.Widget));
+            big = gtk.CheckButton.newWithLabel(common.tr("Big-endian number"));
+            box.append(big.?.as(gtk.Widget));
         }
         const buttons = gtk.Box.new(.horizontal, 8);
         buttons.as(gtk.Widget).setHalign(.end);
@@ -558,7 +623,7 @@ const HexEditor = struct {
         box.append(buttons.as(gtk.Widget));
 
         const ctx = self.allocator.create(Ask) catch return;
-        ctx.* = .{ .editor = self, .dialog = dialog, .entry = entry, .hex = hex, .kind = kind };
+        ctx.* = .{ .editor = self, .dialog = dialog, .entry = entry, .mode = mode, .num_kind = num_kind, .big = big, .kind = kind };
         _ = gtk.Button.signals.clicked.connect(cancel, *Ask, &onAskCancel, ctx, .{});
         _ = gtk.Button.signals.clicked.connect(ok, *Ask, &onAskOk, ctx, .{});
         _ = gtk.Entry.signals.activate.connect(entry, *Ask, &onAskActivate, ctx, .{});
@@ -608,27 +673,48 @@ const HexEditor = struct {
         return true;
     }
 
-    fn startSearch(self: *HexEditor, text: []const u8, as_hex: bool) bool {
-        const needle: []u8 = if (as_hex)
-            ((buffer_mod.parseHex(self.allocator, text) catch null) orelse return false)
-        else
-            (self.allocator.dupe(u8, text) catch return false);
-        if (needle.len == 0) {
-            self.allocator.free(needle);
-            return false;
+    /// `mode`: 0 text, 1 hex with `??` wildcards, 2 a number of `num_kind` (`big` for big-endian).
+    fn startSearch(self: *HexEditor, text: []const u8, mode: u32, num_kind: u32, big: bool) bool {
+        var pattern: analyze.Pattern = undefined;
+        switch (mode) {
+            1 => pattern = (analyze.parsePattern(self.allocator, text) catch null) orelse return false,
+            2 => {
+                const kinds = @typeInfo(analyze.NumberKind).@"enum".field_names;
+                if (num_kind >= kinds.len) return false;
+                const kind: analyze.NumberKind = @fromBackingInt(@intCast(num_kind));
+                const bytes = (analyze.numberBytes(self.allocator, text, kind, big) catch null) orelse return false;
+                const care = self.allocator.alloc(bool, bytes.len) catch {
+                    self.allocator.free(bytes);
+                    return false;
+                };
+                @memset(care, true);
+                pattern = .{ .bytes = bytes, .care = care };
+            },
+            else => {
+                if (text.len == 0) return false;
+                const bytes = self.allocator.dupe(u8, text) catch return false;
+                const care = self.allocator.alloc(bool, bytes.len) catch {
+                    self.allocator.free(bytes);
+                    return false;
+                };
+                @memset(care, true);
+                pattern = .{ .bytes = bytes, .care = care };
+            },
         }
+        if (self.pattern) |old| old.deinit(self.allocator);
+        self.pattern = pattern;
         if (self.needle) |old| self.allocator.free(old);
-        self.needle = needle;
+        self.needle = if (mode == 0) self.allocator.dupe(u8, text) catch null else null;
         self.findNext(true);
         return true;
     }
 
     fn findNext(self: *HexEditor, forward: bool) void {
-        const needle = self.needle orelse return self.ask(.find);
+        const pattern = self.pattern orelse return self.ask(.find);
         const sel = self.view.selection();
         const from = if (forward) (if (sel) |s| s[0] + 1 else self.view.cursor + 1) else (if (sel) |s| s[0] else self.view.cursor);
-        if (self.buffer.find(needle, from, forward)) |at| {
-            self.view.select(at, needle.len);
+        if (analyze.find(self.buffer.slice(), pattern, from, forward)) |at| {
+            self.view.select(at, pattern.bytes.len);
         } else {
             self.status.setText(common.tr("Not found."));
         }
@@ -1326,6 +1412,7 @@ const HexEditor = struct {
         if (self.path) |p| self.allocator.free(p);
         self.path = null;
         self.loadWindow(0);
+        self.loadBookmarks();
     }
 
     fn onAdminChoice(self: *HexEditor, index: c_int) void {
@@ -1584,6 +1671,732 @@ const HexEditor = struct {
         dlg.editor.allocator.destroy(dlg);
     }
 
+    // ---- reverse-engineering tools -------------------------------------------------------------
+
+    /// The selected bytes, or the whole buffer when nothing is selected.
+    fn selectedOrAll(self: *HexEditor) []const u8 {
+        const all = self.buffer.slice();
+        if (self.view.selection()) |s| return all[s[0]..@min(s[1], all.len)];
+        return all;
+    }
+
+    /// A read-only text window with a Copy button.
+    fn showText(self: *HexEditor, title: [:0]const u8, text: []const u8) void {
+        const z = self.allocator.dupeSentinel(u8, text, 0) catch return;
+        defer self.allocator.free(z);
+        const window = gtk.Window.new();
+        window.setTitle(title);
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setDefaultSize(640, 420);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        box.as(gtk.Widget).setMarginTop(12);
+        box.as(gtk.Widget).setMarginBottom(12);
+        box.as(gtk.Widget).setMarginStart(12);
+        box.as(gtk.Widget).setMarginEnd(12);
+        window.setChild(box.as(gtk.Widget));
+        const label = gtk.Label.new(z);
+        label.setSelectable(1);
+        label.setXalign(0);
+        label.setYalign(0);
+        label.as(gtk.Widget).addCssClass("monospace");
+        const scroller = gtk.ScrolledWindow.new();
+        scroller.setChild(label.as(gtk.Widget));
+        scroller.as(gtk.Widget).setVexpand(1);
+        box.append(scroller.as(gtk.Widget));
+        const copy = gtk.Button.newWithLabel(common.tr("Copy"));
+        copy.as(gtk.Widget).setHalign(.end);
+        box.append(copy.as(gtk.Widget));
+        const ctx = self.allocator.create(TextWindow) catch return;
+        ctx.* = .{ .editor = self, .text = self.allocator.dupeSentinel(u8, text, 0) catch {
+            self.allocator.destroy(ctx);
+            return;
+        } };
+        _ = gtk.Button.signals.clicked.connect(copy, *TextWindow, &onTextCopy, ctx, .{});
+        _ = gtk.Widget.signals.destroy.connect(window, *TextWindow, &onTextDestroy, ctx, .{});
+        window.present();
+    }
+
+    const TextWindow = struct { editor: *HexEditor, text: [:0]u8 };
+
+    fn onTextCopy(_: *gtk.Button, ctx: *TextWindow) callconv(.c) void {
+        ctx.editor.window.as(gtk.Widget).getClipboard().setText(ctx.text);
+    }
+
+    fn onTextDestroy(_: *gtk.Window, ctx: *TextWindow) callconv(.c) void {
+        ctx.editor.allocator.free(ctx.text);
+        ctx.editor.allocator.destroy(ctx);
+    }
+
+    // Checksums.
+
+    fn showChecksums(self: *HexEditor) void {
+        const data = self.selectedOrAll();
+        const s = analyze.sums(data);
+        var buf: [600]u8 = undefined;
+        const text = std.fmt.bufPrint(&buf, "{s} ({d} bytes)\n\nMD5     {s}\nSHA-1   {s}\nSHA-256 {s}\nCRC-32  {s}\n", .{
+            if (self.view.selection() != null) "Selection" else "Whole file",
+            data.len,
+            s.md5,
+            s.sha1,
+            s.sha256,
+            s.crc32,
+        }) catch return;
+        self.showText(common.tr("Checksums"), text);
+    }
+
+    // Entropy and histogram.
+
+    const GraphCtx = struct {
+        editor: *HexEditor,
+        window: *gtk.Window,
+        area: *gtk.DrawingArea,
+        values: []f64,
+        block: usize,
+        histogram: [256]u64,
+        max_count: u64,
+    };
+
+    fn showEntropy(self: *HexEditor) void {
+        const data = self.buffer.slice();
+        if (data.len == 0) return;
+        const map = analyze.entropyMap(self.allocator, data, 640) catch return;
+        const ctx = self.allocator.create(GraphCtx) catch {
+            self.allocator.free(map.values);
+            return;
+        };
+        const window = gtk.Window.new();
+        window.setTitle(common.tr("Entropy and byte histogram"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setDefaultSize(720, 460);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 6);
+        box.as(gtk.Widget).setMarginTop(12);
+        box.as(gtk.Widget).setMarginBottom(12);
+        box.as(gtk.Widget).setMarginStart(12);
+        box.as(gtk.Widget).setMarginEnd(12);
+        window.setChild(box.as(gtk.Widget));
+        var nb: [200]u8 = undefined;
+        const note = gtk.Label.new(std.fmt.bufPrintSentinel(&nb, "Top: entropy per {d}-byte block (0 to 8 bits per byte; near 8 is compressed or encrypted). Click to go there. Bottom: how often each byte value occurs.", .{map.block}, 0) catch "");
+        note.setWrap(1);
+        note.setXalign(0);
+        note.as(gtk.Widget).addCssClass("dim-label");
+        box.append(note.as(gtk.Widget));
+        const area = gtk.DrawingArea.new();
+        area.as(gtk.Widget).setVexpand(1);
+        area.as(gtk.Widget).setHexpand(1);
+        box.append(area.as(gtk.Widget));
+        const hist = analyze.histogram(data);
+        var max_count: u64 = 1;
+        for (hist) |c| max_count = @max(max_count, c);
+        ctx.* = .{ .editor = self, .window = window, .area = area, .values = map.values, .block = map.block, .histogram = hist, .max_count = max_count };
+        area.setDrawFunc(onGraphDraw, ctx, null);
+        const click = gtk.GestureClick.new();
+        _ = gtk.GestureClick.signals.pressed.connect(click, *GraphCtx, &onGraphClick, ctx, .{});
+        area.as(gtk.Widget).addController(click.as(gtk.EventController));
+        _ = gtk.Widget.signals.destroy.connect(window, *GraphCtx, &onGraphDestroy, ctx, .{});
+        window.present();
+    }
+
+    fn onGraphDraw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, data: ?*anyopaque) callconv(.c) void {
+        const ctx: *GraphCtx = @ptrCast(@alignCast(data.?));
+        const w: f64 = @floatFromInt(width);
+        const h: f64 = @floatFromInt(height);
+        const accent = common.style.accentOf(ctx.editor.view.probe);
+        const split = h * 0.58;
+        // Entropy.
+        cr.setSourceRgba(0.5, 0.5, 0.5, 0.15);
+        cr.rectangle(0, 0, w, split - 6);
+        cr.fill();
+        const n: f64 = @floatFromInt(ctx.values.len);
+        cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, 0.9);
+        for (ctx.values, 0..) |v, i| {
+            const x = @as(f64, @floatFromInt(i)) / n * w;
+            const bh = v / 8.0 * (split - 6);
+            cr.rectangle(x, split - 6 - bh, @max(1.0, w / n), bh);
+            cr.fill();
+        }
+        // Histogram.
+        const top = split + 6;
+        const bar_w = w / 256.0;
+        for (ctx.histogram, 0..) |c, i| {
+            const bh = @as(f64, @floatFromInt(c)) / @as(f64, @floatFromInt(ctx.max_count)) * (h - top);
+            cr.setSourceRgba(0.35, 0.6, 0.9, 0.9);
+            cr.rectangle(@as(f64, @floatFromInt(i)) * bar_w, h - bh, @max(1.0, bar_w - 0.5), bh);
+            cr.fill();
+        }
+    }
+
+    fn onGraphClick(_: *gtk.GestureClick, _: c_int, x: f64, y: f64, ctx: *GraphCtx) callconv(.c) void {
+        const w: f64 = @floatFromInt(ctx.area.as(gtk.Widget).getWidth());
+        const h: f64 = @floatFromInt(ctx.area.as(gtk.Widget).getHeight());
+        if (y > h * 0.58 or w <= 0) return;
+        const index: usize = @intFromFloat(@min(x / w * @as(f64, @floatFromInt(ctx.values.len)), @as(f64, @floatFromInt(ctx.values.len - 1))));
+        ctx.editor.pushBack();
+        ctx.editor.view.moveTo(index * ctx.block, false);
+    }
+
+    fn onGraphDestroy(_: *gtk.Window, ctx: *GraphCtx) callconv(.c) void {
+        ctx.editor.allocator.free(ctx.values);
+        ctx.editor.allocator.destroy(ctx);
+    }
+
+    // Comparing with another file.
+
+    fn compareDialog(self: *HexEditor) void {
+        const dialog = gtk.FileDialog.new();
+        defer dialog.as(gobject.Object).unref();
+        dialog.setTitle(common.tr("Compare with"));
+        dialog.open(self.window.as(gtk.Window), null, onCompareChosen, self);
+    }
+
+    fn onCompareChosen(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *HexEditor = @ptrCast(@alignCast(data.?));
+        const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
+        var err: ?*glib.Error = null;
+        const file = dialog.openFinish(result, &err) orelse {
+            if (err) |e| e.free();
+            return;
+        };
+        defer file.as(gobject.Object).unref();
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        var contents: [*]u8 = undefined;
+        var length: usize = 0;
+        if (glib.fileGetContents(path, &contents, &length, &err) == 0) {
+            if (err) |e| e.free();
+            return;
+        }
+        defer glib.free(contents);
+        if (length > 256 << 20) return self.status.setText(common.tr("That file is too large to compare."));
+        if (self.other) |o| self.allocator.free(o);
+        self.other = self.allocator.dupe(u8, contents[0..length]) catch return;
+        self.recompare();
+        self.nextDifference(true);
+    }
+
+    /// Recomputes the differences against the other file.
+    fn recompare(self: *HexEditor) void {
+        self.allocator.free(self.diff_view);
+        self.diff_view = &.{};
+        self.allocator.free(self.diffs);
+        self.diffs = &.{};
+        const other = self.other orelse return self.view.setOverlay(&.{});
+        const diffs = analyze.compare(self.allocator, self.buffer.slice(), other, 2) catch return;
+        self.diffs = diffs;
+        const ranges = self.allocator.alloc(view_mod.Range, diffs.len) catch return;
+        for (diffs, ranges) |d, *r| r.* = .{ .start = d.start, .len = d.len, .color = 0 };
+        self.diff_view = ranges;
+        self.view.setOverlay(ranges);
+        self.compared_revision = self.buffer.revision;
+        var buf: [96]u8 = undefined;
+        self.status.setText(std.fmt.bufPrintSentinel(&buf, "{d} difference{s} (F7 next, Shift+F7 previous)", .{ diffs.len, if (diffs.len == 1) "" else "s" }, 0) catch "");
+    }
+
+    fn nextDifference(self: *HexEditor, forward: bool) void {
+        if (self.other == null) return self.compareDialog();
+        if (self.compared_revision != self.buffer.revision) self.recompare();
+        if (self.diffs.len == 0) return self.status.setText(common.tr("The files are identical."));
+        const at = if (self.view.selection()) |s| s[0] else self.view.cursor;
+        var pick: ?analyze.Diff = null;
+        if (forward) {
+            for (self.diffs) |d| if (d.start > at) {
+                pick = d;
+                break;
+            };
+            if (pick == null) pick = self.diffs[0];
+        } else {
+            var i = self.diffs.len;
+            while (i > 0) {
+                i -= 1;
+                if (self.diffs[i].start < at) {
+                    pick = self.diffs[i];
+                    break;
+                }
+            }
+            if (pick == null) pick = self.diffs[self.diffs.len - 1];
+        }
+        const d = pick.?;
+        self.view.select(d.start, @min(d.len, self.buffer.len() - d.start));
+    }
+
+    fn clearComparison(self: *HexEditor) void {
+        if (self.other) |o| self.allocator.free(o);
+        self.other = null;
+        self.recompare();
+    }
+
+    // Copy as, transforms, following values.
+
+    fn copyAsKind(self: *HexEditor, kind: analyze.CopyAs) void {
+        const bytes = self.selectedOrAll();
+        if (bytes.len == 0) return;
+        const text = analyze.copyAs(self.allocator, bytes, kind) catch return;
+        defer self.allocator.free(text);
+        const z = self.allocator.dupeSentinel(u8, text, 0) catch return;
+        defer self.allocator.free(z);
+        self.window.as(gtk.Widget).getClipboard().setText(z);
+        self.status.setText(common.tr("Copied."));
+    }
+
+    /// Replaces the selection with `new` (same length).
+    fn replaceSelection(self: *HexEditor, new: []const u8) void {
+        const s = self.view.selection() orelse return;
+        self.buffer.replace(s[0], s[1] - s[0], new, false) catch return;
+        self.view.refresh();
+        self.view.select(s[0], s[1] - s[0]);
+    }
+
+    const Transform = enum { reverse, swap2, swap4, swap8 };
+
+    fn transformSelection(self: *HexEditor, t: Transform) void {
+        const s = self.view.selection() orelse return self.status.setText(common.tr("Select some bytes first."));
+        const copy = self.allocator.dupe(u8, self.buffer.slice()[s[0]..s[1]]) catch return;
+        defer self.allocator.free(copy);
+        switch (t) {
+            .reverse => analyze.reverse(copy),
+            .swap2 => analyze.swapUnits(copy, 2),
+            .swap4 => analyze.swapUnits(copy, 4),
+            .swap8 => analyze.swapUnits(copy, 8),
+        }
+        self.replaceSelection(copy);
+    }
+
+    const FillKind = enum { fill, xor };
+
+    fn fillDialog(self: *HexEditor, kind: FillKind) void {
+        if (self.view.selection() == null) return self.status.setText(common.tr("Select some bytes first."));
+        const dlg = self.allocator.create(FillCtx) catch return;
+        const window = gtk.Window.new();
+        window.setTitle(if (kind == .fill) common.tr("Fill selection") else common.tr("XOR selection"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setModal(1);
+        window.setDefaultSize(380, -1);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        box.as(gtk.Widget).setMarginTop(16);
+        box.as(gtk.Widget).setMarginBottom(16);
+        box.as(gtk.Widget).setMarginStart(16);
+        box.as(gtk.Widget).setMarginEnd(16);
+        window.setChild(box.as(gtk.Widget));
+        const label = gtk.Label.new(if (kind == .fill) common.tr("Bytes to repeat, in hex (for example 00 or de ad):") else common.tr("Key bytes in hex; they repeat over the selection (for example 5a or de ad be ef):"));
+        label.setWrap(1);
+        label.setXalign(0);
+        box.append(label.as(gtk.Widget));
+        const entry = gtk.Entry.new();
+        entry.as(gtk.Editable).setText("00");
+        box.append(entry.as(gtk.Widget));
+        const buttons = gtk.Box.new(.horizontal, 8);
+        buttons.as(gtk.Widget).setHalign(.end);
+        const cancel = gtk.Button.newWithLabel(common.tr("Cancel"));
+        const ok = gtk.Button.newWithLabel(common.tr("Apply"));
+        ok.as(gtk.Widget).addCssClass("suggested-action");
+        buttons.append(cancel.as(gtk.Widget));
+        buttons.append(ok.as(gtk.Widget));
+        box.append(buttons.as(gtk.Widget));
+        dlg.* = .{ .editor = self, .window = window, .entry = entry, .kind = kind };
+        _ = gtk.Button.signals.clicked.connect(cancel, *FillCtx, &onFillCancel, dlg, .{});
+        _ = gtk.Button.signals.clicked.connect(ok, *FillCtx, &onFillOk, dlg, .{});
+        _ = gtk.Widget.signals.destroy.connect(window, *FillCtx, &onFillDestroy, dlg, .{});
+        window.present();
+    }
+
+    const FillCtx = struct { editor: *HexEditor, window: *gtk.Window, entry: *gtk.Entry, kind: FillKind };
+
+    fn onFillCancel(_: *gtk.Button, ctx: *FillCtx) callconv(.c) void {
+        ctx.window.destroy();
+    }
+
+    fn onFillDestroy(_: *gtk.Window, ctx: *FillCtx) callconv(.c) void {
+        ctx.editor.allocator.destroy(ctx);
+    }
+
+    fn onFillOk(_: *gtk.Button, ctx: *FillCtx) callconv(.c) void {
+        const self = ctx.editor;
+        defer ctx.window.destroy();
+        const key = (buffer_mod.parseHex(self.allocator, std.mem.span(ctx.entry.as(gtk.Editable).getText())) catch null) orelse return;
+        defer self.allocator.free(key);
+        if (key.len == 0) return;
+        const s = self.view.selection() orelse return;
+        const copy = self.allocator.dupe(u8, self.buffer.slice()[s[0]..s[1]]) catch return;
+        defer self.allocator.free(copy);
+        if (ctx.kind == .fill) {
+            for (copy, 0..) |*b, i| b.* = key[i % key.len];
+        } else analyze.xorWith(copy, key);
+        self.replaceSelection(copy);
+    }
+
+    // Following a value as an offset, and going back.
+
+    fn pushBack(self: *HexEditor) void {
+        self.back_stack.append(self.allocator, self.view.cursor) catch return;
+        if (self.back_stack.items.len > 64) _ = self.back_stack.orderedRemove(0);
+    }
+
+    fn goBack(self: *HexEditor) void {
+        const at = self.back_stack.pop() orelse return;
+        self.view.moveTo(at, false);
+    }
+
+    /// Reads the number at the cursor (4 bytes, or 8 if the selection is 8) in
+    /// the inspector's byte order and jumps to that offset.
+    fn followValue(self: *HexEditor) void {
+        const bytes = self.buffer.slice();
+        const at = if (self.view.selection()) |s| s[0] else self.view.cursor;
+        var width: usize = 4;
+        if (self.view.selection()) |s| if (s[1] - s[0] == 8 or s[1] - s[0] == 2) {
+            width = s[1] - s[0];
+        };
+        if (at + width > bytes.len) return self.status.setText(common.tr("Not enough bytes here."));
+        var v: u64 = 0;
+        for (0..width) |i| {
+            const b: u64 = if (self.endian == .little) bytes[at + width - 1 - i] else bytes[at + i];
+            v = (v << 8) | b;
+        }
+        const target: u64 = v;
+        if (self.disk != null) {
+            self.pushBack();
+            return self.diskGoto(target);
+        }
+        if (target >= bytes.len) {
+            var buf: [96]u8 = undefined;
+            return self.status.setText(std.fmt.bufPrintSentinel(&buf, "0x{X} is past the end of the file.", .{target}, 0) catch "");
+        }
+        self.pushBack();
+        self.view.moveTo(@intCast(target), false);
+    }
+
+    // Disassembly through objdump, when it is installed.
+
+    const arches = [_][:0]const u8{ "i386:x86-64", "i386", "arm", "aarch64", "mips", "riscv:rv64", "powerpc" };
+
+    fn disassembleDialog(self: *HexEditor) void {
+        if (!common.proc.hasProgram("objdump")) return common.dialogs.showError(self.window.as(gtk.Window), common.tr("objdump is not installed"), common.tr("Install binutils (objdump) to disassemble. For other processors, binutils-multiarch."));
+        if (self.view.selection() == null) return self.status.setText(common.tr("Select the bytes to disassemble first."));
+        const dlg = self.allocator.create(DisasmCtx) catch return;
+        const window = gtk.Window.new();
+        window.setTitle(common.tr("Disassemble selection"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setModal(1);
+        window.setDefaultSize(360, -1);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        box.as(gtk.Widget).setMarginTop(16);
+        box.as(gtk.Widget).setMarginBottom(16);
+        box.as(gtk.Widget).setMarginStart(16);
+        box.as(gtk.Widget).setMarginEnd(16);
+        window.setChild(box.as(gtk.Widget));
+        box.append(gtk.Label.new(common.tr("Processor")).as(gtk.Widget));
+        var names: [arches.len + 1]?[*:0]const u8 = @splat(null);
+        for (arches, 0..) |a, i| names[i] = a.ptr;
+        const dd = gtk.DropDown.newFromStrings(@ptrCast(&names));
+        box.append(dd.as(gtk.Widget));
+        const buttons = gtk.Box.new(.horizontal, 8);
+        buttons.as(gtk.Widget).setHalign(.end);
+        const cancel = gtk.Button.newWithLabel(common.tr("Cancel"));
+        const ok = gtk.Button.newWithLabel(common.tr("Disassemble"));
+        ok.as(gtk.Widget).addCssClass("suggested-action");
+        buttons.append(cancel.as(gtk.Widget));
+        buttons.append(ok.as(gtk.Widget));
+        box.append(buttons.as(gtk.Widget));
+        dlg.* = .{ .editor = self, .window = window, .dropdown = dd };
+        _ = gtk.Button.signals.clicked.connect(cancel, *DisasmCtx, &onDisasmCancel, dlg, .{});
+        _ = gtk.Button.signals.clicked.connect(ok, *DisasmCtx, &onDisasmOk, dlg, .{});
+        _ = gtk.Widget.signals.destroy.connect(window, *DisasmCtx, &onDisasmDestroy, dlg, .{});
+        window.present();
+    }
+
+    const DisasmCtx = struct { editor: *HexEditor, window: *gtk.Window, dropdown: *gtk.DropDown };
+
+    fn onDisasmCancel(_: *gtk.Button, ctx: *DisasmCtx) callconv(.c) void {
+        ctx.window.destroy();
+    }
+
+    fn onDisasmDestroy(_: *gtk.Window, ctx: *DisasmCtx) callconv(.c) void {
+        ctx.editor.allocator.destroy(ctx);
+    }
+
+    fn onDisasmOk(_: *gtk.Button, ctx: *DisasmCtx) callconv(.c) void {
+        const self = ctx.editor;
+        defer ctx.window.destroy();
+        const s = self.view.selection() orelse return;
+        const idx: usize = @intCast(ctx.dropdown.getSelected());
+        if (idx >= arches.len) return;
+        // objdump reads a file: write the bytes to a temporary one.
+        const tmp_dir = glib.Dir.makeTmp("dkde-hex-XXXXXX", null) orelse return;
+        defer glib.free(tmp_dir);
+        const path = std.fmt.allocPrintSentinel(self.allocator, "{s}/code.bin", .{std.mem.span(tmp_dir)}, 0) catch return;
+        defer self.allocator.free(path);
+        const bytes = self.buffer.slice()[s[0]..s[1]];
+        if (glib.fileSetContents(path, bytes.ptr, @intCast(bytes.len), null) == 0) return;
+        const base = s[0] + @as(usize, @intCast(if (self.disk) |d| d.window_start else 0));
+        const vma = std.fmt.allocPrint(self.allocator, "--adjust-vma=0x{X}", .{base}) catch return;
+        defer self.allocator.free(vma);
+        if (self.disasm_dir) |old| self.allocator.free(old);
+        self.disasm_dir = self.allocator.dupe(u8, std.mem.span(tmp_dir)) catch null;
+        common.proc.run(HexEditor, self.proc_guard, &.{ "objdump", "-D", "-b", "binary", "-m", arches[idx], vma, path }, onDisasmDone);
+    }
+
+    fn onDisasmDone(self: *HexEditor, ok: bool, out: []const u8) void {
+        if (self.disasm_dir) |dir| {
+            // Remove the temporary file and folder.
+            const file = std.fmt.allocPrintSentinel(self.allocator, "{s}/code.bin", .{dir}, 0) catch null;
+            if (file) |f| {
+                _ = std.c.unlink(f);
+                self.allocator.free(f);
+            }
+            const dz = self.allocator.dupeSentinel(u8, dir, 0) catch null;
+            if (dz) |d| {
+                _ = std.c.rmdir(d);
+                self.allocator.free(d);
+            }
+            self.allocator.free(dir);
+            self.disasm_dir = null;
+        }
+        if (!ok) return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Disassembly failed"), common.tr("objdump could not read this as code for that processor."));
+        self.showText(common.tr("Disassembly"), out);
+    }
+
+    // Bookmarks.
+
+    fn bookmarkFile(self: *HexEditor) ?[:0]u8 {
+        const key_path: []const u8 = if (self.disk) |d| d.path else (self.path orelse return null);
+        var kb: [32]u8 = undefined;
+        const key = bookmarks_mod.fileKey(&kb, key_path);
+        var rel: [64]u8 = undefined;
+        const rel_path = std.fmt.bufPrint(&rel, "hex-bookmarks/{s}", .{key}) catch return null;
+        return common.paths.userStateFile(self.allocator, rel_path) catch null;
+    }
+
+    fn loadBookmarks(self: *HexEditor) void {
+        self.bookmarks.deinit(self.allocator);
+        self.bookmarks = .{};
+        if (self.bookmarkFile()) |path| {
+            defer self.allocator.free(path);
+            var contents: [*]u8 = undefined;
+            var length: usize = 0;
+            if (glib.fileGetContents(path, &contents, &length, null) != 0) {
+                defer glib.free(contents);
+                if (bookmarks_mod.fromJson(self.allocator, contents[0..length])) |l| self.bookmarks = l else |_| {}
+            }
+        }
+        self.refreshMarks();
+    }
+
+    /// Written only when a bookmark is added, edited or removed.
+    fn saveBookmarks(self: *HexEditor) void {
+        const path = self.bookmarkFile() orelse return;
+        defer self.allocator.free(path);
+        const dir = glib.pathGetDirname(path);
+        defer glib.free(dir);
+        _ = glib.mkdirWithParents(dir, 0o755);
+        if (self.bookmarks.items.items.len == 0) {
+            _ = std.c.unlink(path);
+            return;
+        }
+        const json = bookmarks_mod.toJson(self.allocator, &self.bookmarks) catch return;
+        defer self.allocator.free(json);
+        _ = glib.fileSetContents(path, json.ptr, @intCast(json.len), null);
+    }
+
+    fn refreshMarks(self: *HexEditor) void {
+        self.allocator.free(self.mark_view);
+        self.mark_view = &.{};
+        const base: u64 = if (self.disk) |d| d.window_start else 0;
+        var list: std.ArrayList(view_mod.Range) = .empty;
+        for (self.bookmarks.items.items) |b| {
+            if (b.start + b.len <= base or b.start >= base + self.buffer.len()) continue;
+            const start = if (b.start > base) b.start - base else 0;
+            list.append(self.allocator, .{ .start = @intCast(start), .len = @intCast(@max(b.len, 1)), .color = 0 }) catch {};
+        }
+        self.mark_view = list.toOwnedSlice(self.allocator) catch &.{};
+        self.view.setMarks(self.mark_view);
+    }
+
+    const BookmarkDlg = struct {
+        editor: *HexEditor,
+        window: *gtk.Window,
+        name: *gtk.Entry,
+        comment: *gtk.Entry,
+        start: u64,
+        len: u64,
+        /// Index being edited, else a new bookmark.
+        edit: ?usize,
+    };
+
+    fn bookmarkDialog(self: *HexEditor, edit: ?usize) void {
+        const base: u64 = if (self.disk) |d| d.window_start else 0;
+        var start: u64 = base + self.view.cursor;
+        var len: u64 = 1;
+        if (self.view.selection()) |s| {
+            start = base + s[0];
+            len = s[1] - s[0];
+        }
+        var name_text: []const u8 = "";
+        var comment_text: []const u8 = "";
+        if (edit) |i| {
+            const b = self.bookmarks.items.items[i];
+            start = b.start;
+            len = b.len;
+            name_text = b.name;
+            comment_text = b.comment;
+        } else if (self.bookmarks.at(start)) |i| return self.bookmarkDialog(i);
+        const dlg = self.allocator.create(BookmarkDlg) catch return;
+        const window = gtk.Window.new();
+        window.setTitle(common.tr("Bookmark"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setModal(1);
+        window.setDefaultSize(400, -1);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        box.as(gtk.Widget).setMarginTop(16);
+        box.as(gtk.Widget).setMarginBottom(16);
+        box.as(gtk.Widget).setMarginStart(16);
+        box.as(gtk.Widget).setMarginEnd(16);
+        window.setChild(box.as(gtk.Widget));
+        var rb: [96]u8 = undefined;
+        const range = gtk.Label.new(std.fmt.bufPrintSentinel(&rb, "0x{X}, {d} byte{s}", .{ start, len, if (len == 1) "" else "s" }, 0) catch "");
+        range.setXalign(0);
+        box.append(range.as(gtk.Widget));
+        const name = gtk.Entry.new();
+        name.setPlaceholderText(common.tr("Name"));
+        if (self.allocator.dupeSentinel(u8, name_text, 0)) |z| {
+            defer self.allocator.free(z);
+            name.as(gtk.Editable).setText(z);
+        } else |_| {}
+        box.append(name.as(gtk.Widget));
+        const comment = gtk.Entry.new();
+        comment.setPlaceholderText(common.tr("Comment (optional)"));
+        if (self.allocator.dupeSentinel(u8, comment_text, 0)) |z| {
+            defer self.allocator.free(z);
+            comment.as(gtk.Editable).setText(z);
+        } else |_| {}
+        box.append(comment.as(gtk.Widget));
+        const buttons = gtk.Box.new(.horizontal, 8);
+        buttons.as(gtk.Widget).setHalign(.end);
+        const cancel = gtk.Button.newWithLabel(common.tr("Cancel"));
+        const ok = gtk.Button.newWithLabel(common.tr("Save"));
+        ok.as(gtk.Widget).addCssClass("suggested-action");
+        buttons.append(cancel.as(gtk.Widget));
+        buttons.append(ok.as(gtk.Widget));
+        box.append(buttons.as(gtk.Widget));
+        dlg.* = .{ .editor = self, .window = window, .name = name, .comment = comment, .start = start, .len = len, .edit = edit };
+        _ = gtk.Button.signals.clicked.connect(cancel, *BookmarkDlg, &onBookmarkCancel, dlg, .{});
+        _ = gtk.Button.signals.clicked.connect(ok, *BookmarkDlg, &onBookmarkOk, dlg, .{});
+        _ = gtk.Widget.signals.destroy.connect(window, *BookmarkDlg, &onBookmarkDestroy, dlg, .{});
+        window.present();
+    }
+
+    fn onBookmarkCancel(_: *gtk.Button, ctx: *BookmarkDlg) callconv(.c) void {
+        ctx.window.destroy();
+    }
+
+    fn onBookmarkDestroy(_: *gtk.Window, ctx: *BookmarkDlg) callconv(.c) void {
+        ctx.editor.allocator.destroy(ctx);
+    }
+
+    fn onBookmarkOk(_: *gtk.Button, ctx: *BookmarkDlg) callconv(.c) void {
+        const self = ctx.editor;
+        defer ctx.window.destroy();
+        const name = std.mem.span(ctx.name.as(gtk.Editable).getText());
+        const comment = std.mem.span(ctx.comment.as(gtk.Editable).getText());
+        var fallback: [32]u8 = undefined;
+        const shown = if (name.len > 0) name else (std.fmt.bufPrint(&fallback, "0x{X}", .{ctx.start}) catch "bookmark");
+        if (ctx.edit) |i| {
+            self.bookmarks.edit(self.allocator, i, shown, comment) catch return;
+        } else self.bookmarks.add(self.allocator, ctx.start, ctx.len, shown, comment) catch return;
+        self.saveBookmarks();
+        self.refreshMarks();
+    }
+
+    const BookmarkList = struct {
+        editor: *HexEditor,
+        window: *gtk.Window,
+        list: *gtk.ListBox,
+
+        fn fill(self: *BookmarkList) void {
+            self.list.removeAll();
+            for (self.editor.bookmarks.items.items) |b| {
+                var buf: [400]u8 = undefined;
+                const text = std.fmt.bufPrintSentinel(&buf, "0x{X:0>8}  {d:>6} B   {s}{s}{s}", .{ b.start, b.len, b.name, if (b.comment.len > 0) "  \u{2014}  " else "", b.comment }, 0) catch continue;
+                const label = gtk.Label.new(text);
+                label.setXalign(0);
+                label.setEllipsize(.end);
+                label.as(gtk.Widget).addCssClass("monospace");
+                label.as(gtk.Widget).setMarginTop(4);
+                label.as(gtk.Widget).setMarginBottom(4);
+                label.as(gtk.Widget).setMarginStart(6);
+                self.list.append(label.as(gtk.Widget));
+            }
+        }
+    };
+
+    fn showBookmarks(self: *HexEditor) void {
+        const dlg = self.allocator.create(BookmarkList) catch return;
+        const window = gtk.Window.new();
+        window.setTitle(common.tr("Bookmarks"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setDefaultSize(520, 400);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        box.as(gtk.Widget).setMarginTop(12);
+        box.as(gtk.Widget).setMarginBottom(12);
+        box.as(gtk.Widget).setMarginStart(12);
+        box.as(gtk.Widget).setMarginEnd(12);
+        window.setChild(box.as(gtk.Widget));
+        const list = gtk.ListBox.new();
+        list.setActivateOnSingleClick(0);
+        const scroller = gtk.ScrolledWindow.new();
+        scroller.setChild(list.as(gtk.Widget));
+        scroller.as(gtk.Widget).setVexpand(1);
+        box.append(scroller.as(gtk.Widget));
+        const buttons = gtk.Box.new(.horizontal, 8);
+        buttons.as(gtk.Widget).setHalign(.end);
+        const edit = gtk.Button.newWithLabel(common.tr("Edit\u{2026}"));
+        const del = gtk.Button.newWithLabel(common.tr("Delete"));
+        buttons.append(edit.as(gtk.Widget));
+        buttons.append(del.as(gtk.Widget));
+        box.append(buttons.as(gtk.Widget));
+        dlg.* = .{ .editor = self, .window = window, .list = list };
+        dlg.fill();
+        _ = gtk.ListBox.signals.row_activated.connect(list, *BookmarkList, &onBookmarkJump, dlg, .{});
+        _ = gtk.Button.signals.clicked.connect(edit, *BookmarkList, &onBookmarkEdit, dlg, .{});
+        _ = gtk.Button.signals.clicked.connect(del, *BookmarkList, &onBookmarkDelete, dlg, .{});
+        _ = gtk.Widget.signals.destroy.connect(window, *BookmarkList, &onBookmarkListDestroy, dlg, .{});
+        window.present();
+    }
+
+    fn onBookmarkListDestroy(_: *gtk.Window, ctx: *BookmarkList) callconv(.c) void {
+        ctx.editor.allocator.destroy(ctx);
+    }
+
+    fn onBookmarkJump(_: *gtk.ListBox, row: *gtk.ListBoxRow, ctx: *BookmarkList) callconv(.c) void {
+        const i: usize = @intCast(row.getIndex());
+        const items = ctx.editor.bookmarks.items.items;
+        if (i >= items.len) return;
+        const b = items[i];
+        ctx.editor.pushBack();
+        if (ctx.editor.disk != null) {
+            ctx.editor.diskGoto(b.start);
+        } else ctx.editor.view.select(@intCast(b.start), @intCast(@max(b.len, 1)));
+    }
+
+    fn onBookmarkEdit(_: *gtk.Button, ctx: *BookmarkList) callconv(.c) void {
+        const row = ctx.list.getSelectedRow() orelse return;
+        ctx.editor.bookmarkDialog(@intCast(row.getIndex()));
+        ctx.window.destroy();
+    }
+
+    fn onBookmarkDelete(_: *gtk.Button, ctx: *BookmarkList) callconv(.c) void {
+        const row = ctx.list.getSelectedRow() orelse return;
+        const i: usize = @intCast(row.getIndex());
+        if (i >= ctx.editor.bookmarks.items.items.len) return;
+        ctx.editor.bookmarks.remove(ctx.editor.allocator, i);
+        ctx.editor.saveBookmarks();
+        ctx.editor.refreshMarks();
+        ctx.fill();
+    }
+
     // ---- menu --------------------------------------------------------------------------------
 
     fn onMenubarAction(self: *HexEditor, action: []const u8) void {
@@ -1630,6 +2443,27 @@ const HexEditor = struct {
             return self.updateAll();
         }
         if (eql(u8, action, "strings")) return self.showStrings();
+        if (eql(u8, action, "copy-c")) return self.copyAsKind(.c_array);
+        if (eql(u8, action, "copy-py")) return self.copyAsKind(.python);
+        if (eql(u8, action, "copy-b64")) return self.copyAsKind(.base64);
+        if (eql(u8, action, "copy-esc")) return self.copyAsKind(.escaped);
+        if (eql(u8, action, "fill")) return self.fillDialog(.fill);
+        if (eql(u8, action, "xor")) return self.fillDialog(.xor);
+        if (eql(u8, action, "reverse")) return self.transformSelection(.reverse);
+        if (eql(u8, action, "swap2")) return self.transformSelection(.swap2);
+        if (eql(u8, action, "swap4")) return self.transformSelection(.swap4);
+        if (eql(u8, action, "swap8")) return self.transformSelection(.swap8);
+        if (eql(u8, action, "checksums")) return self.showChecksums();
+        if (eql(u8, action, "entropy")) return self.showEntropy();
+        if (eql(u8, action, "compare")) return self.compareDialog();
+        if (eql(u8, action, "diff-next")) return self.nextDifference(true);
+        if (eql(u8, action, "diff-prev")) return self.nextDifference(false);
+        if (eql(u8, action, "diff-clear")) return self.clearComparison();
+        if (eql(u8, action, "disasm")) return self.disassembleDialog();
+        if (eql(u8, action, "follow")) return self.followValue();
+        if (eql(u8, action, "back")) return self.goBack();
+        if (eql(u8, action, "bookmark-add")) return self.bookmarkDialog(null);
+        if (eql(u8, action, "bookmarks")) return self.showBookmarks();
         if (eql(u8, action, "choose-format")) return self.chooseFormat();
         if (eql(u8, action, "load-ksy")) return self.loadDefinitionDialog();
         if (eql(u8, action, "reparse")) return self.reparse();
@@ -1654,7 +2488,7 @@ fn submitAsk(ctx: *HexEditor.Ask) void {
     const editor = ctx.editor;
     const text = std.mem.span(ctx.entry.as(gtk.Editable).getText());
     const ok = switch (ctx.kind) {
-        .find => editor.startSearch(text, if (ctx.hex) |h| h.getActive() != 0 else false),
+        .find => editor.startSearch(text, if (ctx.mode) |m| m.getSelected() else 0, if (ctx.num_kind) |k| k.getSelected() else 0, if (ctx.big) |b| b.getActive() != 0 else false),
         .goto => editor.gotoOffset(text),
         .sector => editor.gotoSector(text),
     };

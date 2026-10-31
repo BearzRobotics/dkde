@@ -1256,7 +1256,6 @@ pub const Pragmas = struct {
 pub fn pragmas(arena: Allocator, source: []const u8) Allocator.Error!Pragmas {
     var out: Pragmas = .{};
     var mimes: std.ArrayList([]const u8) = .empty;
-    defer out.mimes = mimes.items;
     var lines = std.mem.splitScalar(u8, source, '\n');
     while (lines.next()) |raw| {
         const line = std.mem.trim(u8, raw, " \t\r");
@@ -1290,6 +1289,7 @@ pub fn pragmas(arena: Allocator, source: []const u8) Allocator.Error!Pragmas {
             }
         }
     }
+    out.mimes = mimes.items;
     return out;
 }
 
@@ -1301,6 +1301,10 @@ test "pragmas" {
     try std.testing.expectEqual(@as(usize, 4), p.magic.len);
     try std.testing.expectEqual(@as(u8, 0x89), p.magic[0]);
     try std.testing.expectEqualStrings("image/png", p.mime);
+    try std.testing.expectEqual(@as(usize, 1), p.mimes.len);
+    const two = try pragmas(arena.allocator(), "#pragma MIME a/b\n#pragma MIME c/d\n");
+    try std.testing.expectEqual(@as(usize, 2), two.mimes.len);
+    try std.testing.expectEqualStrings("c/d", two.mimes[1]);
 }
 
 test "parses a struct, enum and placement" {

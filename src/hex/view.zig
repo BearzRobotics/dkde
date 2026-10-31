@@ -65,6 +65,10 @@ pub const View = struct {
     drag_origin: usize = 0,
     /// Sorted by start; not owned.
     highlights: []const Range = &.{},
+    /// Ranges drawn over the structure colours (the differences of a comparison); sorted by start.
+    overlay: []const Range = &.{},
+    /// Bookmarked ranges, underlined; sorted by start.
+    marks: []const Range = &.{},
     /// Added to the offsets shown in the left column (disk mode shows a window
     /// of a device, whose first byte is not at 0).
     base_offset: u64 = 0,
@@ -281,6 +285,20 @@ pub const View = struct {
                 if (off > bytes.len) break;
                 const selected = if (sel) |s| off >= s[0] and off < s[1] else false;
                 const is_cursor = off == self.cursor;
+                if (off < bytes.len) if (findIn(self.overlay, off)) |_| {
+                    cr.setSourceRgba(0.95, 0.25, 0.25, 0.40);
+                    cr.rectangle(pad + self.hexColumn(col) * self.cell_w, y, 2 * self.cell_w, self.cell_h);
+                    cr.fill();
+                    cr.rectangle(pad + (self.textStart() + @as(f64, @floatFromInt(col))) * self.cell_w, y, self.cell_w, self.cell_h);
+                    cr.fill();
+                };
+                if (off < bytes.len) if (findIn(self.marks, off)) |_| {
+                    cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, 0.95);
+                    cr.rectangle(pad + self.hexColumn(col) * self.cell_w, y + self.cell_h - 2, 2 * self.cell_w, 2);
+                    cr.fill();
+                    cr.rectangle(pad + (self.textStart() + @as(f64, @floatFromInt(col))) * self.cell_w, y + self.cell_h - 2, self.cell_w, 2);
+                    cr.fill();
+                };
                 if (off < bytes.len) if (self.rangeAt(off)) |range| {
                     const c = if (range.rgb) |rgb|
                         [3]f64{ @as(f64, @floatFromInt((rgb >> 16) & 0xFF)) / 255.0, @as(f64, @floatFromInt((rgb >> 8) & 0xFF)) / 255.0, @as(f64, @floatFromInt(rgb & 0xFF)) / 255.0 }
@@ -401,6 +419,33 @@ pub const View = struct {
     pub fn setHighlights(self: *View, ranges: []const Range) void {
         self.highlights = ranges;
         self.area.as(gtk.Widget).queueDraw();
+    }
+
+    pub fn setOverlay(self: *View, ranges: []const Range) void {
+        self.overlay = ranges;
+        self.area.as(gtk.Widget).queueDraw();
+    }
+
+    pub fn setMarks(self: *View, ranges: []const Range) void {
+        self.marks = ranges;
+        self.area.as(gtk.Widget).queueDraw();
+    }
+
+    fn findIn(r: []const Range, off: usize) ?Range {
+        var lo: usize = 0;
+        var hi: usize = r.len;
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+            if (r[mid].start <= off) lo = mid + 1 else hi = mid;
+        }
+        if (lo == 0) return null;
+        // Earlier, longer ranges may still cover `off`.
+        var i = lo;
+        while (i > 0 and lo - i < 8) {
+            i -= 1;
+            if (off < r[i].start + r[i].len) return r[i];
+        }
+        return null;
     }
 
     fn rangeAt(self: *const View, off: usize) ?Range {
