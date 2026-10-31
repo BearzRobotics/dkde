@@ -19,7 +19,13 @@ const Buffer = buffer_mod.Buffer;
 pub const Pane = enum { hex, text };
 
 /// A stretch of bytes the structure view knows about, drawn in a soft colour.
-pub const Range = struct { start: usize, len: usize, color: u8 };
+pub const Range = struct {
+    start: usize,
+    len: usize,
+    color: u8,
+    /// 0xRRGGBB when the format asks for a colour.
+    rgb: ?u32 = null,
+};
 
 /// Fill colours for `Range.color` (taken modulo the length), chosen to read on
 /// both light and dark backgrounds at low opacity.
@@ -270,7 +276,10 @@ pub const View = struct {
                 const selected = if (sel) |s| off >= s[0] and off < s[1] else false;
                 const is_cursor = off == self.cursor;
                 if (off < bytes.len) if (self.rangeAt(off)) |range| {
-                    const c = palette[range.color % palette.len];
+                    const c = if (range.rgb) |rgb|
+                        [3]f64{ @as(f64, @floatFromInt((rgb >> 16) & 0xFF)) / 255.0, @as(f64, @floatFromInt((rgb >> 8) & 0xFF)) / 255.0, @as(f64, @floatFromInt(rgb & 0xFF)) / 255.0 }
+                    else
+                        palette[range.color % palette.len];
                     cr.setSourceRgba(c[0], c[1], c[2], 0.30);
                     // Join with the next byte of the same field so a field reads as one strip.
                     const joined = off + 1 < range.start + range.len and col + 1 < bpr and col % 8 != 7;

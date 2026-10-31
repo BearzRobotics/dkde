@@ -26,7 +26,7 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 
 ## Reverse engineering with the hex editor
 
-`dkde-hex` can parse a file with a [Kaitai Struct](https://kaitai.io) description and show its fields as a tree, coloured in the hex view. Formats are not bundled; see [docs/hex-structure.md](docs/hex-structure.md). The YAML parser is [zig-yaml](https://codeberg.org/kubkon/zig-yaml) by Jakub Konka (MIT), vendored in `third_party/zig-yaml/`.
+`dkde-hex` can parse a file with a [Kaitai Struct](https://kaitai.io) description or an [ImHex](https://imhex.werwolv.net) pattern and show its fields as a tree, coloured in the hex view. Formats and patterns are not bundled; see [docs/hex-structure.md](docs/hex-structure.md). The YAML parser is [zig-yaml](https://codeberg.org/kubkon/zig-yaml) by Jakub Konka (MIT), vendored in `third_party/zig-yaml/`.
 
 ## Theming
 

@@ -66,3 +66,27 @@ of kaitai_struct_formats load; run
     KSY_FORMATS_DIR=/path/to/kaitai_struct_formats zig build test
 
 to check that, and to run every format over a sample file without crashing.
+
+## ImHex patterns
+
+`.hexpat` files from [ImHex-Patterns](https://github.com/WerWolv/ImHex-Patterns)
+work as well. They are licensed under the GPL, so dkde does not include them.
+**Structure ▸ Get ImHex patterns…** downloads the collection (git, or curl/wget
+with tar) into `~/.local/share/dkde/patterns`, or set `[hex] patterns-dir` in
+`hex.conf` to a clone (the folder with `patterns/` and `includes/` inside).
+
+They appear in **Choose format…** together with the Kaitai formats. A pattern is
+chosen automatically from its `#pragma magic` (when it is at offset 0) or when
+the file name stem matches the extension and no Kaitai format competes. Pattern
+colours (`[[color("RRGGBB")]]`) are used in the hex view.
+
+About 80% of the patterns in the collection parse; the rest use things that are
+not supported yet (`try`/`catch`, sections, array initialisers, function-like
+`#define`s). A pattern that fails to parse shows its line and the reason. One
+that fails while running keeps the fields found so far and shows an `error` row.
+Only a subset of ImHex's `std::` library exists, so some patterns stop at a
+function that is missing; the message names it.
+
+To check the parser against a clone:
+
+    HEXPAT_DIR=/path/to/ImHex-Patterns zig build test

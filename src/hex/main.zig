@@ -17,6 +17,7 @@ const structure = @import("structure.zig");
 const ksy_interp = @import("ksy/interp.zig");
 const strings = @import("strings.zig");
 const ksy_model = @import("ksy/model.zig");
+const hexpat = @import("hexpat/eval.zig");
 
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
@@ -72,6 +73,7 @@ const HexEditor = struct {
     /// True while a click in the structure panel moves the view, so the view
     /// does not answer by re-selecting in the panel.
     picking: bool = false,
+    folder_kind: structure.Kind = .ksy,
     proc_guard: *common.proc.Guard(HexEditor) = undefined,
 
     const Pending = enum { open, close, revert, new };
@@ -146,8 +148,10 @@ const HexEditor = struct {
                 mb.check("Show _colours", "colours", true),
                 mb.check("Structure _panel", "structure-panel", true),
                 .separator,
-                mb.item("_Get formats…", "get-formats", null),
-                mb.item("Formats _folder…", "formats-folder", null),
+                mb.item("_Get Kaitai formats…", "get-formats", null),
+                mb.item("Get _ImHex patterns…", "get-patterns", null),
+                mb.item("Kaitai formats _folder…", "formats-folder", null),
+                mb.item("ImHex patterns f_older…", "patterns-folder", null),
                 .separator,
                 mb.item("Find _strings…", "strings", null),
             } },
@@ -595,12 +599,23 @@ const HexEditor = struct {
         return std.fmt.allocPrint(self.allocator, "{s}/dkde/formats", .{std.mem.span(glib.getUserDataDir())});
     }
 
+    /// The ImHex-Patterns folder: `[hex] patterns-dir`, else
+    /// `~/.local/share/dkde/patterns`.
+    fn patternsDir(self: *HexEditor) ![]u8 {
+        const configured = try self.config.getString(self.allocator, "hex", "patterns-dir", "");
+        if (configured.len > 0) return configured;
+        self.allocator.free(configured);
+        return std.fmt.allocPrint(self.allocator, "{s}/dkde/patterns", .{std.mem.span(glib.getUserDataDir())});
+    }
+
     /// Scans the formats folder the first time it is needed.
     fn ensureLibrary(self: *HexEditor) ?*structure.Library {
         if (self.library) |l| return l;
         const dir = self.formatsDir() catch return null;
         defer self.allocator.free(dir);
-        self.library = structure.Library.scan(self.allocator, dir) catch null;
+        const pdir = self.patternsDir() catch return null;
+        defer self.allocator.free(pdir);
+        self.library = structure.Library.scan(self.allocator, dir, pdir) catch null;
         return self.library;
     }
 
@@ -633,22 +648,32 @@ const HexEditor = struct {
     /// Loads the `.ksy` at `path` and shows what it finds in the buffer.
     fn applyPath(self: *HexEditor, path: []const u8) void {
         const lib = self.ensureLibrary() orelse blk: {
-            self.library = structure.Library.scan(self.allocator, "") catch return;
+            self.library = structure.Library.scan(self.allocator, "", "") catch return;
             break :blk self.library.?;
         };
+        if (std.mem.endsWith(u8, path, ".hexpat")) {
+            var failure: ?hexpat.LoadFailure = null;
+            const pattern = lib.loadPattern(path, &failure) catch null orelse {
+                var buf: [768]u8 = undefined;
+                const detail = if (failure) |fl| std.fmt.bufPrintSentinel(&buf, "Line {d}: {s}", .{ fl.line, fl.message }, 0) catch "" else "The file could not be read.";
+                if (failure) |fl| self.allocator.free(fl.message);
+                return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot use this pattern"), detail);
+            };
+            return self.showEngine(.{ .hexpat = pattern });
+        }
         const format = lib.load(path) catch {
             return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot use this format"), common.tr("The file is not a readable Kaitai Struct description."));
         };
-        self.showFormat(format);
+        self.showEngine(.{ .ksy = format });
     }
 
-    /// Parses the buffer with `format` (taking ownership of it) and shows the result.
-    fn showFormat(self: *HexEditor, format: *ksy_model.Format) void {
-        const result = ksy_interp.run(self.allocator, format, self.buffer.slice()) catch {
-            format.deinit();
+    /// Parses the buffer with `engine` (taking ownership of it) and shows the result.
+    fn showEngine(self: *HexEditor, engine: structure.Engine) void {
+        const result = engine.run(self.allocator, self.buffer.slice()) catch {
+            engine.deinit();
             return;
         };
-        self.panel.show(format, result);
+        self.panel.show(engine, result);
         self.parsed_revision = self.buffer.revision;
         self.panel.box.as(gtk.Widget).setVisible(1);
         self.applyHighlights();
@@ -666,16 +691,16 @@ const HexEditor = struct {
 
     /// Parses again after edits (the buffer changed under the structure).
     fn reparse(self: *HexEditor) void {
-        const format = self.panel.format orelse return;
-        // The panel hands the format back so it can be shown again with a new result.
-        self.panel.format = null;
-        self.showFormat(format);
+        const engine = self.panel.engine orelse return;
+        // The panel hands the engine back so it can be shown again with a new result.
+        self.panel.engine = null;
+        self.showEngine(engine);
     }
 
     fn onReparseTick(data: ?*anyopaque) callconv(.c) c_int {
         const self: *HexEditor = @ptrCast(@alignCast(data.?));
         self.reparse_source = 0;
-        if (self.panel.format != null and self.parsed_revision != self.buffer.revision) self.reparse();
+        if (self.panel.engine != null and self.parsed_revision != self.buffer.revision) self.reparse();
         return 0;
     }
 
@@ -719,10 +744,11 @@ const HexEditor = struct {
         self.applyPath(std.mem.span(path));
     }
 
-    fn formatsFolderDialog(self: *HexEditor) void {
+    fn formatsFolderDialog(self: *HexEditor, kind: structure.Kind) void {
+        self.folder_kind = kind;
         const dialog = gtk.FileDialog.new();
         defer dialog.as(gobject.Object).unref();
-        dialog.setTitle(common.tr("Folder of Kaitai .ksy files"));
+        dialog.setTitle(if (kind == .ksy) common.tr("Folder of Kaitai .ksy files") else common.tr("ImHex-Patterns folder"));
         dialog.selectFolder(self.window.as(gtk.Window), null, onFolderChosen, self);
     }
 
@@ -737,7 +763,7 @@ const HexEditor = struct {
         defer file.as(gobject.Object).unref();
         const path = file.getPath() orelse return;
         defer glib.free(path);
-        self.config.setString("hex", "formats-dir", std.mem.span(path)) catch {};
+        self.config.setString("hex", if (self.folder_kind == .ksy) "formats-dir" else "patterns-dir", std.mem.span(path)) catch {};
         self.rescanLibrary();
         const count = if (self.library) |l| l.entries.items.len else 0;
         var buf: [96]u8 = undefined;
@@ -796,7 +822,7 @@ const HexEditor = struct {
     fn chooseFormat(self: *HexEditor) void {
         const lib = self.ensureLibrary();
         if (lib == null or lib.?.entries.items.len == 0) {
-            return self.getFormats();
+            return self.getFormats(.ksy);
         }
         const picker = self.allocator.create(Picker) catch return;
         const window = gtk.Window.new();
@@ -942,11 +968,35 @@ const HexEditor = struct {
 
     // ---- getting formats ----------------------------------------------------------------------
 
-    const formats_url = "https://github.com/kaitai-io/kaitai_struct_formats";
-    const formats_git = "https://github.com/kaitai-io/kaitai_struct_formats.git";
-    const formats_tarball = "https://github.com/kaitai-io/kaitai_struct_formats/archive/refs/heads/master.tar.gz";
+    const Source = struct {
+        url: [:0]const u8,
+        git: []const u8,
+        tarball: []const u8,
+        intro: [:0]const u8,
+        title: [:0]const u8,
+    };
+
+    fn sourceFor(kind: structure.Kind) Source {
+        return switch (kind) {
+            .ksy => .{
+                .url = "https://github.com/kaitai-io/kaitai_struct_formats",
+                .git = "https://github.com/kaitai-io/kaitai_struct_formats.git",
+                .tarball = "https://github.com/kaitai-io/kaitai_struct_formats/archive/refs/heads/master.tar.gz",
+                .intro = "Structure views need Kaitai Struct format files, which are free but not included with dkde. They come from this project (the formats have their own licences):",
+                .title = "Get Kaitai formats",
+            },
+            .hexpat => .{
+                .url = "https://github.com/WerWolv/ImHex-Patterns",
+                .git = "https://github.com/WerWolv/ImHex-Patterns.git",
+                .tarball = "https://github.com/WerWolv/ImHex-Patterns/archive/refs/heads/master.tar.gz",
+                .intro = "ImHex pattern files (.hexpat) are free but not included with dkde. They come from this project, which is licensed under the GPL:",
+                .title = "Get ImHex patterns",
+            },
+        };
+    }
 
     const GetFormats = struct {
+        kind: structure.Kind,
         editor: *HexEditor,
         window: *gtk.Window,
         note: *gtk.Label,
@@ -963,12 +1013,13 @@ const HexEditor = struct {
         return .none;
     }
 
-    fn getFormats(self: *HexEditor) void {
-        const dir = self.formatsDir() catch return;
+    fn getFormats(self: *HexEditor, kind: structure.Kind) void {
+        const dir = (if (kind == .ksy) self.formatsDir() else self.patternsDir()) catch return;
         defer self.allocator.free(dir);
+        const src = sourceFor(kind);
         const dlg = self.allocator.create(GetFormats) catch return;
         const window = gtk.Window.new();
-        window.setTitle(common.tr("Get formats"));
+        window.setTitle(src.title);
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
         window.setDefaultSize(480, -1);
@@ -980,11 +1031,11 @@ const HexEditor = struct {
         box.as(gtk.Widget).setMarginEnd(16);
         window.setChild(box.as(gtk.Widget));
 
-        const intro = gtk.Label.new(common.tr("Structure views need Kaitai Struct format files, which are free but not included with dkde. They come from this project (the formats have their own licences):"));
+        const intro = gtk.Label.new(src.intro);
         intro.setWrap(1);
         intro.setXalign(0);
         box.append(intro.as(gtk.Widget));
-        const link = gtk.LinkButton.newWithLabel(formats_url, formats_url);
+        const link = gtk.LinkButton.newWithLabel(src.url, src.url);
         link.as(gtk.Widget).setHalign(.start);
         box.append(link.as(gtk.Widget));
 
@@ -1017,7 +1068,7 @@ const HexEditor = struct {
         buttons.append(download.as(gtk.Widget));
         box.append(buttons.as(gtk.Widget));
 
-        dlg.* = .{ .editor = self, .window = window, .note = note, .download = download };
+        dlg.* = .{ .kind = kind, .editor = self, .window = window, .note = note, .download = download };
         _ = gtk.Button.signals.clicked.connect(folder, *GetFormats, &onGetFolder, dlg, .{});
         _ = gtk.Button.signals.clicked.connect(close, *GetFormats, &onGetClose, dlg, .{});
         _ = gtk.Button.signals.clicked.connect(download, *GetFormats, &onGetDownload, dlg, .{});
@@ -1027,7 +1078,7 @@ const HexEditor = struct {
 
     fn onGetFolder(_: *gtk.Button, dlg: *GetFormats) callconv(.c) void {
         dlg.window.destroy();
-        dlg.editor.formatsFolderDialog();
+        dlg.editor.formatsFolderDialog(dlg.kind);
     }
 
     fn onGetClose(_: *gtk.Button, dlg: *GetFormats) callconv(.c) void {
@@ -1041,7 +1092,8 @@ const HexEditor = struct {
 
     fn onGetDownload(_: *gtk.Button, dlg: *GetFormats) callconv(.c) void {
         const self = dlg.editor;
-        const dir = self.formatsDir() catch return;
+        const src = sourceFor(dlg.kind);
+        const dir = (if (dlg.kind == .ksy) self.formatsDir() else self.patternsDir()) catch return;
         defer self.allocator.free(dir);
         // Refuse to mix into a folder that already has something in it.
         if (std.fs.path.dirname(dir)) |parent| {
@@ -1049,17 +1101,23 @@ const HexEditor = struct {
             defer self.allocator.free(z);
             _ = glib.mkdirWithParents(z, 0o755);
         }
-        if (self.library) |l| if (l.entries.items.len > 0) {
-            dlg.note.setText(common.tr("There are already formats in that folder. Remove it first, or choose another folder."));
-            return;
-        };
+        if (self.library) |l| {
+            var have: usize = 0;
+            for (l.entries.items) |e| if (e.kind == dlg.kind) {
+                have += 1;
+            };
+            if (have > 0) {
+                dlg.note.setText(common.tr("There are already files in that folder. Remove it first, or choose another folder."));
+                return;
+            }
+        }
         const argv: []const []const u8 = switch (downloadTool()) {
-            .git => &.{ "git", "clone", "--depth", "1", formats_git, dir },
-            .curl => &.{ "sh", "-c", "mkdir -p \"$1\" && curl -fsSL \"$2\" | tar -xz -C \"$1\" --strip-components=1", "sh", dir, formats_tarball },
-            .wget => &.{ "sh", "-c", "mkdir -p \"$1\" && wget -qO- \"$2\" | tar -xz -C \"$1\" --strip-components=1", "sh", dir, formats_tarball },
+            .git => &.{ "git", "clone", "--depth", "1", src.git, dir },
+            .curl => &.{ "sh", "-c", "mkdir -p \"$1\" && curl -fsSL \"$2\" | tar -xz -C \"$1\" --strip-components=1", "sh", dir, src.tarball },
+            .wget => &.{ "sh", "-c", "mkdir -p \"$1\" && wget -qO- \"$2\" | tar -xz -C \"$1\" --strip-components=1", "sh", dir, src.tarball },
             .none => return,
         };
-        self.status.setText(common.tr("Downloading formats\u{2026}"));
+        self.status.setText(common.tr("Downloading\u{2026}"));
         common.proc.run(HexEditor, self.proc_guard, argv, onDownloadDone);
         dlg.window.destroy();
     }
@@ -1072,7 +1130,7 @@ const HexEditor = struct {
         self.rescanLibrary();
         const count = if (self.library) |l| l.entries.items.len else 0;
         var buf: [96]u8 = undefined;
-        self.status.setText(std.fmt.bufPrintSentinel(&buf, "Downloaded: {d} formats found.", .{count}, 0) catch "");
+        self.status.setText(std.fmt.bufPrintSentinel(&buf, "Downloaded: {d} formats and patterns found.", .{count}, 0) catch "");
         self.autoDetect();
     }
 
@@ -1106,13 +1164,15 @@ const HexEditor = struct {
             const w = self.inspector.as(gtk.Widget);
             return w.setVisible(@intFromBool(w.getVisible() == 0));
         }
-        if (eql(u8, action, "get-formats")) return self.getFormats();
+        if (eql(u8, action, "get-formats")) return self.getFormats(.ksy);
+        if (eql(u8, action, "get-patterns")) return self.getFormats(.hexpat);
+        if (eql(u8, action, "patterns-folder")) return self.formatsFolderDialog(.hexpat);
         if (eql(u8, action, "strings")) return self.showStrings();
         if (eql(u8, action, "choose-format")) return self.chooseFormat();
         if (eql(u8, action, "load-ksy")) return self.loadDefinitionDialog();
         if (eql(u8, action, "reparse")) return self.reparse();
         if (eql(u8, action, "clear-structure")) return self.clearStructure();
-        if (eql(u8, action, "formats-folder")) return self.formatsFolderDialog();
+        if (eql(u8, action, "formats-folder")) return self.formatsFolderDialog(.ksy);
         if (eql(u8, action, "colours")) {
             self.show_colours = !self.show_colours;
             return self.applyHighlights();
@@ -1163,6 +1223,9 @@ test {
     _ = @import("ksy/model.zig");
     _ = @import("ksy/interp.zig");
     _ = @import("structure.zig");
+    _ = @import("hexpat/parse.zig");
+    _ = @import("hexpat/eval.zig");
+    _ = @import("hexpat/coverage_test.zig");
     _ = @import("strings.zig");
     _ = @import("structure.zig");
     _ = @import("strings.zig");

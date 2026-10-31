@@ -10,6 +10,8 @@ const gtk = @import("gtk4");
 const common = @import("common");
 
 const model = @import("ksy/model.zig");
+const hexpat = @import("hexpat/eval.zig");
+const hexpat_parse = @import("hexpat/parse.zig");
 const interp = @import("ksy/interp.zig");
 const view_mod = @import("view.zig");
 
@@ -17,7 +19,10 @@ pub const Node = interp.Node;
 
 /// What the picker and detection need to know about one `.ksy`, without
 /// keeping the whole format around.
+pub const Kind = enum { ksy, hexpat };
+
 pub const Entry = struct {
+    kind: Kind = .ksy,
     path: [:0]u8,
     id: []u8,
     title: []u8,
@@ -31,16 +36,26 @@ const max_entries = 4000;
 pub const Library = struct {
     allocator: std.mem.Allocator,
     dir: []u8,
+    /// The ImHex-Patterns folder (with `patterns/` and `includes/` inside).
+    pattern_dir: []u8,
     entries: std.ArrayList(Entry) = .empty,
     /// Where imports of a hand-picked file are also looked for.
     extra_dir: ?[]u8 = null,
 
-    pub fn scan(allocator: std.mem.Allocator, dir: []const u8) !*Library {
+    pub fn scan(allocator: std.mem.Allocator, dir: []const u8, pattern_dir: []const u8) !*Library {
         const self = try allocator.create(Library);
         errdefer allocator.destroy(self);
-        self.* = .{ .allocator = allocator, .dir = try allocator.dupe(u8, dir) };
+        self.* = .{ .allocator = allocator, .dir = try allocator.dupe(u8, dir), .pattern_dir = try allocator.dupe(u8, pattern_dir) };
         errdefer self.deinit();
         try self.walk(self.dir, 0);
+        if (self.pattern_dir.len > 0) {
+            // Clone layout first (patterns/ inside), else the folder itself.
+            const inner = try std.fs.path.join(allocator, &.{ self.pattern_dir, "patterns" });
+            defer allocator.free(inner);
+            const z = try allocator.dupeSentinel(u8, inner, 0);
+            defer allocator.free(z);
+            try self.walk(if (glib.fileTest(z, .{ .is_dir = true }) != 0) inner else self.pattern_dir, 0);
+        }
         std.mem.sort(Entry, self.entries.items, {}, entryLess);
         return self;
     }
@@ -62,6 +77,7 @@ pub const Library = struct {
         self.entries.deinit(a);
         if (self.extra_dir) |d| a.free(d);
         a.free(self.dir);
+        a.free(self.pattern_dir);
         a.destroy(self);
     }
 
@@ -85,6 +101,11 @@ pub const Library = struct {
                 try self.walk(full, depth + 1);
             } else if (std.mem.endsWith(u8, name, ".ksy")) {
                 self.addFile(full) catch |e| switch (e) {
+                    error.OutOfMemory => return e,
+                    else => {},
+                };
+            } else if (std.mem.endsWith(u8, name, ".hexpat")) {
+                self.addPattern(full, name) catch |e| switch (e) {
                     error.OutOfMemory => return e,
                     else => {},
                 };
@@ -125,13 +146,44 @@ pub const Library = struct {
         try self.entries.append(a, entry);
     }
 
+    fn addPattern(self: *Library, path: [:0]const u8, name: []const u8) !void {
+        const a = self.allocator;
+        const src = try readFile(a, path);
+        defer a.free(src);
+        var arena = std.heap.ArenaAllocator.init(a);
+        defer arena.deinit();
+        const info = try hexpat_parse.pragmas(arena.allocator(), src);
+        const stem = name[0 .. name.len - ".hexpat".len];
+        const exts = try a.alloc([]u8, 1);
+        errdefer a.free(exts);
+        exts[0] = try std.ascii.allocLowerString(a, stem);
+        errdefer a.free(exts[0]);
+        const entry: Entry = .{
+            .kind = .hexpat,
+            .path = try a.dupeSentinel(u8, path, 0),
+            .id = try a.dupe(u8, stem),
+            .title = try a.dupe(u8, if (info.description.len > 0) info.description else stem),
+            .extensions = exts,
+            // Only a magic at the start of the file can be matched cheaply.
+            .magic = try a.dupe(u8, if (info.magic_offset == 0) info.magic else ""),
+        };
+        errdefer {
+            a.free(entry.path);
+            a.free(entry.id);
+            a.free(entry.title);
+            a.free(entry.magic);
+        }
+        try self.entries.append(a, entry);
+    }
+
     /// The best format for `data` (and the file's `path`, for its extension):
     /// the longest matching magic, else a unique extension match.
     pub fn detect(self: *const Library, data: []const u8, path: ?[]const u8) ?*const Entry {
         var best: ?*const Entry = null;
         for (self.entries.items) |*e| {
             if (e.magic.len < 2 or !std.mem.startsWith(u8, data, e.magic)) continue;
-            if (best == null or e.magic.len > best.?.magic.len) best = e;
+            // A longer magic wins; on a tie a Kaitai format beats a pattern.
+            if (best == null or e.magic.len > best.?.magic.len or (e.magic.len == best.?.magic.len and e.kind == .ksy and best.?.kind == .hexpat)) best = e;
         }
         if (best != null) return best;
         const p = path orelse return null;
@@ -140,14 +192,25 @@ pub const Library = struct {
         var buf: [32]u8 = undefined;
         if (ext_raw.len - 1 > buf.len) return null;
         const ext = std.ascii.lowerString(&buf, ext_raw[1..]);
-        var found: ?*const Entry = null;
+        var ksy_hit: ?*const Entry = null;
+        var ksy_count: usize = 0;
+        var pat_hit: ?*const Entry = null;
+        var pat_count: usize = 0;
         for (self.entries.items) |*e| {
             for (e.extensions) |x| if (std.mem.eql(u8, x, ext)) {
-                if (found != null) return null; // ambiguous: let the user choose
-                found = e;
+                if (e.kind == .ksy) {
+                    ksy_hit = e;
+                    ksy_count += 1;
+                } else {
+                    pat_hit = e;
+                    pat_count += 1;
+                }
             };
         }
-        return found;
+        // Several candidates are ambiguous: let the user choose.
+        if (ksy_count == 1) return ksy_hit;
+        if (ksy_count == 0 and pat_count == 1) return pat_hit;
+        return null;
     }
 
     /// Loads and parses the format at `path`, resolving its imports here.
@@ -160,6 +223,35 @@ pub const Library = struct {
         if (self.extra_dir) |d| a.free(d);
         self.extra_dir = try a.dupe(u8, std.fs.path.dirname(path) orelse ".");
         return model.load(a, src, .{ .ctx = self, .read = readImport });
+    }
+
+    /// Loads the `.hexpat` at `path`; imports come from `<pattern folder>/includes`.
+    pub fn loadPattern(self: *Library, path: []const u8, failure: *?hexpat.LoadFailure) !?*hexpat.Pattern {
+        const a = self.allocator;
+        const z = try a.dupeSentinel(u8, path, 0);
+        defer a.free(z);
+        const src = try readFile(a, z);
+        defer a.free(src);
+        if (self.extra_dir) |d| a.free(d);
+        self.extra_dir = try a.dupe(u8, std.fs.path.dirname(path) orelse ".");
+        return hexpat.load(a, src, .{ .ctx = self, .read = readPatternImport }, failure);
+    }
+
+    fn readPatternImport(ctx: *anyopaque, gpa: std.mem.Allocator, name: []const u8) ?[]u8 {
+        const self: *Library = @ptrCast(@alignCast(ctx));
+        const rel = std.mem.trimStart(u8, name, "/");
+        const bases = [_]?[]const u8{ self.pattern_dir, self.extra_dir };
+        for (bases) |base| {
+            const b = base orelse continue;
+            for ([_][]const u8{ ".pat", ".hexpat" }) |ext| {
+                for ([_][]const u8{ "includes/", "../includes/", "" }) |prefix| {
+                    const full = std.fmt.allocPrintSentinel(gpa, "{s}/{s}{s}{s}", .{ b, prefix, rel, ext }, 0) catch return null;
+                    defer gpa.free(full);
+                    if (readFile(gpa, full)) |bytes| return bytes else |_| {}
+                }
+            }
+        }
+        return null;
     }
 
     fn readImport(ctx: *anyopaque, gpa: std.mem.Allocator, name: []const u8) ?[]u8 {
@@ -215,10 +307,11 @@ pub fn collectRanges(allocator: std.mem.Allocator, root: *const Node) ![]view_mo
 fn collect(allocator: std.mem.Allocator, node: *const Node, list: *std.ArrayList(view_mod.Range), counter: *u8) !void {
     for (node.children.items) |c| {
         if (c.kind == .err or c.kind == .virtual or c.len == 0) continue;
-        if (c.children.items.len > 0) {
+        // A bit field is one value (kind int) even though it lists its bits.
+        if (c.children.items.len > 0 and c.kind != .int) {
             try collect(allocator, c, list, counter);
         } else {
-            try list.append(allocator, .{ .start = c.start, .len = c.len, .color = counter.* });
+            try list.append(allocator, .{ .start = c.start, .len = c.len, .color = counter.*, .rgb = c.color });
             counter.* +%= 1;
         }
     }
@@ -271,6 +364,41 @@ pub fn pathOf(node: *const Node, buf: []u8) []const u8 {
 
 // -- the panel ------------------------------------------------------------------------
 
+/// What turned the bytes into the tree: a Kaitai format or an ImHex pattern.
+pub const Engine = union(enum) {
+    ksy: *model.Format,
+    hexpat: *hexpat.Pattern,
+
+    pub fn deinit(self: Engine) void {
+        switch (self) {
+            .ksy => |f| f.deinit(),
+            .hexpat => |p| p.deinit(),
+        }
+    }
+
+    pub fn title(self: Engine) []const u8 {
+        return switch (self) {
+            .ksy => |f| if (f.title.len > 0) f.title else f.id,
+            .hexpat => |p| if (p.description.len > 0) p.description else "ImHex pattern",
+        };
+    }
+
+    pub fn warning(self: Engine) ?[]const u8 {
+        return switch (self) {
+            .ksy => |f| if (f.warnings.len > 0) f.warnings[0] else null,
+            .hexpat => |p| if (p.warnings.len > 0) p.warnings[0] else null,
+        };
+    }
+
+    /// Runs it over `data`.
+    pub fn run(self: Engine, allocator: std.mem.Allocator, data: []const u8) std.mem.Allocator.Error!*interp.Result {
+        return switch (self) {
+            .ksy => |f| interp.run(allocator, f, data),
+            .hexpat => |p| hexpat.run(allocator, p, data),
+        };
+    }
+};
+
 pub const Panel = struct {
     allocator: std.mem.Allocator,
     box: *gtk.Box,
@@ -280,7 +408,7 @@ pub const Panel = struct {
     scroller: *gtk.ScrolledWindow,
     scroll_source: c_uint = 0,
     scroll_to: ?*Node = null,
-    format: ?*model.Format = null,
+    engine: ?Engine = null,
     result: ?*interp.Result = null,
     rows: std.ArrayList(*Node) = .empty,
     expanded: std.AutoHashMapUnmanaged(*Node, void) = .empty,
@@ -351,26 +479,26 @@ pub const Panel = struct {
         self.expanded.clearRetainingCapacity();
         self.scroll_to = null;
         if (self.result) |r| r.deinit();
-        if (self.format) |f| f.deinit();
+        if (self.engine) |e| e.deinit();
         self.result = null;
-        self.format = null;
+        self.engine = null;
         self.heading.setText(common.tr("Structure"));
     }
 
-    /// Takes over `format` and `result`.
-    pub fn show(self: *Panel, format: *model.Format, result: *interp.Result) void {
+    /// Takes over `engine` and `result`.
+    pub fn show(self: *Panel, engine: Engine, result: *interp.Result) void {
         self.clear();
-        self.format = format;
+        self.engine = engine;
         self.result = result;
         self.expanded.put(self.allocator, result.root, {}) catch {};
         var buf: [256]u8 = undefined;
-        self.heading.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{if (format.title.len > 0) format.title else format.id}, 0) catch "Structure");
+        self.heading.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{engine.title()}, 0) catch "Structure");
         if (result.message) |m| {
             var hb: [512]u8 = undefined;
             self.setHint(std.fmt.bufPrintSentinel(&hb, "Stopped: {s}", .{m}, 0) catch "Parsing stopped early.");
-        } else if (format.warnings.len > 0) {
+        } else if (engine.warning()) |w| {
             var hb: [512]u8 = undefined;
-            self.setHint(std.fmt.bufPrintSentinel(&hb, "Note: {s}", .{format.warnings[0]}, 0) catch "");
+            self.setHint(std.fmt.bufPrintSentinel(&hb, "Note: {s}", .{w}, 0) catch "");
         } else {
             self.setHint("");
         }

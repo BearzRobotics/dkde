@@ -28,6 +28,8 @@ pub const Node = struct {
     children: std.ArrayList(*Node) = .empty,
     /// Array elements parsed but not recorded.
     omitted: usize = 0,
+    /// 0xRRGGBB asked for by the format (ImHex `color`), else the view picks one.
+    color: ?u32 = null,
 };
 
 pub const Result = struct {
