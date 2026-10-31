@@ -5,6 +5,7 @@
 //! first visit and refreshed when shown again.
 
 const std = @import("std");
+const gdk = @import("gdk4");
 const gio = @import("gio2");
 const glib = @import("glib2");
 const gobject = @import("gobject2");
@@ -1414,5 +1415,193 @@ pub const PowerPage = struct {
         const sleep_desc = std.fmt.bufPrintSentinel(&sleep_buf, "Detected: {s}. Leave empty to use it.", .{sleep_found orelse "none found"}, 0) catch "";
         win.SettingsWindow.addRowDesc(page, common.tr("Sleep command"), sleep_desc, window.textEntry(&window.panel, "menu", "sleep-command", "").as(gtk.Widget));
         return page;
+    }
+};
+
+// ============================================================================================
+// Keyboard shortcuts
+// ============================================================================================
+
+pub const ShortcutsPage = struct {
+    window: *SettingsWindow,
+    content: *gtk.Box,
+    status: *gtk.Label,
+
+    const labwc = common.labwc;
+
+    /// Rebinds one entry of `dkde_keybinds`; handed to `editLabwcFile`.
+    const KeyEdit = struct {
+        index: usize,
+        key: []const u8,
+        pub fn apply(self: @This(), allocator: std.mem.Allocator, content: []const u8) ![]u8 {
+            return labwc.setKey(allocator, content, labwc.dkde_keybinds[self.index], self.key);
+        }
+    };
+
+    pub fn build(window: *SettingsWindow) *gtk.Box {
+        const page = win.SettingsWindow.newPage(common.tr("Keyboard shortcuts"));
+        const self = gpa.create(ShortcutsPage) catch @panic("OOM");
+        self.* = .{ .window = window, .content = gtk.Box.new(.vertical, 8), .status = gtk.Label.new("") };
+        _ = note(page, common.tr("Choose Change, then press the new shortcut. Changes apply at once. labwc's own built-in shortcuts (such as Alt+Tab) are not listed here and are not checked for clashes."));
+        self.status.setXalign(0);
+        self.status.setWrap(1);
+        self.status.as(gtk.Widget).addCssClass("error");
+        page.append(self.status.as(gtk.Widget));
+        page.append(self.content.as(gtk.Widget));
+        _ = gtk.Widget.signals.destroy.connect(page, *ShortcutsPage, &onDestroy, self, .{});
+        // Dev aid: "<entry number>:<key>" rebinds an entry as the page opens, for tests.
+        if (glib.getenv("DKDE_DEBUG_SHORTCUT")) |spec| {
+            const text = std.mem.span(spec);
+            if (std.mem.indexOfScalar(u8, text, ':')) |colon| {
+                if (std.fmt.parseInt(usize, text[0..colon], 10)) |index| {
+                    if (index < labwc.dkde_keybinds.len) self.apply(index, text[colon + 1 ..]);
+                } else |_| {}
+            }
+        }
+        self.rebuild();
+        return page;
+    }
+
+    fn onDestroy(_: *gtk.Box, self: *ShortcutsPage) callconv(.c) void {
+        gpa.destroy(self);
+    }
+
+    fn rebuild(self: *ShortcutsPage) void {
+        clear(self.content);
+        const xml = self.window.readLabwcFile("rc.xml") catch return;
+        defer self.window.allocator.free(xml);
+        for (labwc.dkde_keybinds, 0..) |kb, i| {
+            var key_buf: [96]u8 = undefined;
+            const bound = labwc.currentKey(xml, kb);
+            const shown = if (bound) |k| labwc.describeKey(&key_buf, k) else "Not set";
+            var z: [128]u8 = undefined;
+            const cap = gtk.Label.new(std.fmt.bufPrintSentinel(&z, "{s}", .{shown}, 0) catch "");
+            cap.as(gtk.Widget).addCssClass("dkde-keycap");
+            if (bound == null) cap.as(gtk.Widget).addCssClass("dim-label");
+
+            var idx_buf: [8]u8 = undefined;
+            const idx = std.fmt.bufPrint(&idx_buf, "{d}", .{i}) catch continue;
+            const change = button(ShortcutsPage, self, common.tr("Change\u{2026}"), onChange, idx, "");
+            const reset = button(ShortcutsPage, self, common.tr("Reset"), onReset, idx, "");
+            const is_default = bound != null and std.mem.eql(u8, bound.?, kb.key);
+            reset.as(gtk.Widget).setSensitive(@intFromBool(!is_default));
+
+            const controls = gtk.Box.new(.horizontal, 8);
+            controls.append(cap.as(gtk.Widget));
+            controls.append(change.as(gtk.Widget));
+            controls.append(reset.as(gtk.Widget));
+            var name_z: [96]u8 = undefined;
+            const name = std.fmt.bufPrintSentinel(&name_z, "{s}", .{kb.name}, 0) catch continue;
+            win.SettingsWindow.addRow(self.content, name, controls.as(gtk.Widget));
+        }
+    }
+
+    fn apply(self: *ShortcutsPage, index: usize, key: []const u8) void {
+        self.status.setText("");
+        const kb = labwc.dkde_keybinds[index];
+        const xml = self.window.readLabwcFile("rc.xml") catch return;
+        defer self.window.allocator.free(xml);
+        if (labwc.keyTakenByOther(xml, key, kb)) {
+            var buf: [64]u8 = undefined;
+            var z: [160]u8 = undefined;
+            self.status.setText(std.fmt.bufPrintSentinel(&z, "{s} is already used by another shortcut.", .{labwc.describeKey(&buf, key)}, 0) catch "That shortcut is already used.");
+            return;
+        }
+        self.window.editLabwcFile("rc.xml", KeyEdit, .{ .index = index, .key = key });
+        self.rebuild();
+    }
+
+    fn onReset(self: *ShortcutsPage, idx: []const u8, _: []const u8) void {
+        const index = std.fmt.parseInt(usize, idx, 10) catch return;
+        if (index >= labwc.dkde_keybinds.len) return;
+        self.apply(index, labwc.dkde_keybinds[index].key);
+    }
+
+    // ---- capturing a new shortcut ------------------------------------------------------------
+
+    const Capture = struct {
+        page: *ShortcutsPage,
+        dialog: *gtk.Window,
+        index: usize,
+        /// Super went down and nothing else has been pressed since.
+        super_pending: bool = false,
+    };
+
+    fn onChange(self: *ShortcutsPage, idx: []const u8, _: []const u8) void {
+        const index = std.fmt.parseInt(usize, idx, 10) catch return;
+        if (index >= labwc.dkde_keybinds.len) return;
+        const dialog = gtk.Window.new();
+        dialog.setTitle(common.tr("New shortcut"));
+        dialog.setTransientFor(self.window.window.as(gtk.Window));
+        dialog.setModal(1);
+        dialog.setDefaultSize(380, 150);
+        dialog.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 10);
+        box.as(gtk.Widget).setMarginTop(20);
+        box.as(gtk.Widget).setMarginBottom(20);
+        box.as(gtk.Widget).setMarginStart(20);
+        box.as(gtk.Widget).setMarginEnd(20);
+        dialog.setChild(box.as(gtk.Widget));
+        var z: [128]u8 = undefined;
+        const heading = gtk.Label.new(std.fmt.bufPrintSentinel(&z, "Press the new shortcut for \"{s}\"", .{labwc.dkde_keybinds[index].name}, 0) catch "");
+        heading.as(gtk.Widget).addCssClass("heading");
+        heading.setWrap(1);
+        box.append(heading.as(gtk.Widget));
+        const hint = gtk.Label.new(if (index == 0) common.tr("Hold the modifiers and press a key. Press Super alone to use the Super key by itself. Esc cancels.") else common.tr("Hold the modifiers and press a key, for example Ctrl+Alt+T. Esc cancels."));
+        hint.setWrap(1);
+        hint.as(gtk.Widget).addCssClass("dim-label");
+        box.append(hint.as(gtk.Widget));
+
+        const cap = gpa.create(Capture) catch return;
+        cap.* = .{ .page = self, .dialog = dialog, .index = index };
+        const keys = gtk.EventControllerKey.new();
+        keys.as(gtk.EventController).setPropagationPhase(.capture);
+        _ = gtk.EventControllerKey.signals.key_pressed.connect(keys, *Capture, &onCapturePressed, cap, .{});
+        _ = gtk.EventControllerKey.signals.key_released.connect(keys, *Capture, &onCaptureReleased, cap, .{});
+        dialog.as(gtk.Widget).addController(keys.as(gtk.EventController));
+        _ = gtk.Widget.signals.destroy.connect(dialog, *Capture, &onCaptureDestroy, cap, .{});
+        dialog.present();
+    }
+
+    fn onCaptureDestroy(_: *gtk.Window, cap: *Capture) callconv(.c) void {
+        gpa.destroy(cap);
+    }
+
+    fn keyName(keyval: c_uint) ?[]const u8 {
+        const name = gdk.keyvalName(gdk.keyvalToLower(keyval)) orelse return null;
+        return std.mem.span(name);
+    }
+
+    fn onCapturePressed(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, state: gdk.ModifierType, cap: *Capture) callconv(.c) c_int {
+        const name = keyName(keyval) orelse return 1;
+        const mods: labwc.Mods = .{ .ctrl = state.control_mask, .alt = state.alt_mask, .shift = state.shift_mask, .super = state.super_mask };
+        if (std.mem.eql(u8, name, "Escape") and !mods.ctrl and !mods.alt and !mods.super) {
+            cap.dialog.destroy();
+            return 1;
+        }
+        if (std.mem.startsWith(u8, name, "Super_")) {
+            cap.super_pending = true;
+            return 1;
+        }
+        cap.super_pending = false;
+        var buf: [96]u8 = undefined;
+        const key = labwc.composeKey(&buf, mods, name) orelse return 1;
+        // The dialog goes first: applying rebuilds the list behind it.
+        const page = cap.page;
+        const index = cap.index;
+        cap.dialog.destroy();
+        page.apply(index, key);
+        return 1;
+    }
+
+    fn onCaptureReleased(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, cap: *Capture) callconv(.c) void {
+        const name = keyName(keyval) orelse return;
+        if (!std.mem.startsWith(u8, name, "Super_") or !cap.super_pending) return;
+        cap.super_pending = false;
+        // Only the Start menu can sit on the bare Super key.
+        if (cap.index != 0) return;
+        const page = cap.page;
+        cap.dialog.destroy();
+        page.apply(0, "Super_L");
     }
 };

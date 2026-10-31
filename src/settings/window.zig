@@ -29,6 +29,7 @@ const pages = [_]Page{
     .{ .id = "datetime", .title = "Date & time", .icon = "preferences-system-time-symbolic" },
     .{ .id = "power", .title = "Power & lock", .icon = "system-shutdown-symbolic" },
     .{ .id = "keyboard", .title = "Keyboard", .icon = "input-keyboard-symbolic" },
+    .{ .id = "shortcuts", .title = "Keyboard shortcuts", .icon = "preferences-desktop-keyboard-shortcuts-symbolic" },
     .{ .id = "audio", .title = "Sound", .icon = "audio-volume-high-symbolic" },
     .{ .id = "network", .title = "Network", .icon = "network-wireless-symbolic" },
     .{ .id = "bluetooth", .title = "Bluetooth", .icon = "bluetooth-symbolic" },
@@ -242,6 +243,8 @@ pub const SettingsWindow = struct {
                 hwpages.NetworkPage.build(self)
             else if (std.mem.eql(u8, id, "bluetooth"))
                 hwpages.BluetoothPage.build(self)
+            else if (std.mem.eql(u8, id, "shortcuts"))
+                hwpages.ShortcutsPage.build(self)
             else if (std.mem.eql(u8, id, "power"))
                 hwpages.PowerPage.build(self)
             else if (std.mem.eql(u8, id, "datetime"))
@@ -1591,7 +1594,7 @@ pub const SettingsWindow = struct {
         return std.fmt.allocPrintSentinel(self.allocator, "{s}/labwc/{s}", .{ std.mem.span(glib.getUserConfigDir()), name }, 0);
     }
 
-    fn readLabwcFile(self: *SettingsWindow, name: []const u8) ![]u8 {
+    pub fn readLabwcFile(self: *SettingsWindow, name: []const u8) ![]u8 {
         const path = try self.labwcPath(name);
         defer self.allocator.free(path);
         var contents: [*]u8 = undefined;
@@ -1603,7 +1606,7 @@ pub const SettingsWindow = struct {
 
     /// Applies `edit` to the labwc file `name`, keeping a one-time backup of
     /// the original, then asks labwc to reload (SPEC.md 5.5).
-    fn editLabwcFile(self: *SettingsWindow, name: []const u8, comptime Edit: type, edit: Edit) void {
+    pub fn editLabwcFile(self: *SettingsWindow, name: []const u8, comptime Edit: type, edit: Edit) void {
         const path = self.labwcPath(name) catch return;
         defer self.allocator.free(path);
         const dir = glib.pathGetDirname(path);

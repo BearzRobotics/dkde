@@ -237,6 +237,39 @@ pub fn setKey(allocator: std.mem.Allocator, xml_in: []const u8, k: Keybind, new_
     return merged orelse allocator.dupe(u8, xml_in);
 }
 
+pub const Mods = struct { ctrl: bool = false, alt: bool = false, shift: bool = false, super: bool = false };
+
+fn isModifierKey(name: []const u8) bool {
+    const prefixes = [_][]const u8{ "Shift_", "Control_", "Alt_", "Super_", "Meta_", "Hyper_", "ISO_Level", "Caps_Lock", "Num_Lock", "Scroll_Lock" };
+    for (prefixes) |pre| if (std.mem.startsWith(u8, name, pre)) return true;
+    return false;
+}
+
+/// Keys that make a shortcut on their own: function keys, media keys, Print.
+fn standsAlone(name: []const u8) bool {
+    if (std.mem.startsWith(u8, name, "XF86") or std.mem.eql(u8, name, "Print")) return true;
+    if (name.len >= 2 and name[0] == 'F') {
+        for (name[1..]) |c| if (!std.ascii.isDigit(c)) return false;
+        return true;
+    }
+    return false;
+}
+
+/// Builds labwc's key string ("C-A-t") from what was pressed, or null when it
+/// is not a usable shortcut: a lone modifier, or a plain letter with nothing
+/// but Shift held (that is just typing).
+pub fn composeKey(buf: []u8, m: Mods, name: []const u8) ?[]const u8 {
+    if (isModifierKey(name) or name.len == 0) return null;
+    if (!m.ctrl and !m.alt and !m.super and !standsAlone(name)) return null;
+    var w: std.Io.Writer = .fixed(buf);
+    if (m.ctrl) w.writeAll("C-") catch return null;
+    if (m.alt) w.writeAll("A-") catch return null;
+    if (m.shift) w.writeAll("S-") catch return null;
+    if (m.super) w.writeAll("W-") catch return null;
+    w.writeAll(name) catch return null;
+    return w.buffered();
+}
+
 /// "C-A-t" as "Ctrl+Alt+T", for showing to people.
 pub fn describeKey(buf: []u8, key: []const u8) []const u8 {
     var w: std.Io.Writer = .fixed(buf);
@@ -256,6 +289,17 @@ pub fn describeKey(buf: []u8, key: []const u8) []const u8 {
         w.print("{s}+", .{label}) catch return key;
     }
     const last = pieces[n - 1];
+    const media = [_][2][]const u8{
+        .{ "XF86AudioRaiseVolume", "Volume Up" },
+        .{ "XF86AudioLowerVolume", "Volume Down" },
+        .{ "XF86AudioMute", "Mute" },
+        .{ "XF86MonBrightnessUp", "Brightness Up" },
+        .{ "XF86MonBrightnessDown", "Brightness Down" },
+    };
+    for (media) |m| if (std.mem.eql(u8, last, m[0])) {
+        w.writeAll(m[1]) catch return key;
+        return w.buffered();
+    };
     if (std.mem.eql(u8, last, "Super_L") or std.mem.eql(u8, last, "Super_R")) {
         w.writeAll("Super") catch return key;
     } else if (last.len == 1) {
@@ -499,4 +543,20 @@ test "keys read well" {
     try std.testing.expectEqualStrings("Print", describeKey(&buf, "Print"));
     try std.testing.expectEqualStrings("Ctrl+Shift+Escape", describeKey(&buf, "C-S-Escape"));
     try std.testing.expectEqualStrings("Super+E", describeKey(&buf, "W-e"));
+    try std.testing.expectEqualStrings("Volume Up", describeKey(&buf, "XF86AudioRaiseVolume"));
+}
+
+test "composing shortcuts from key presses" {
+    var buf: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("C-A-t", composeKey(&buf, .{ .ctrl = true, .alt = true }, "t").?);
+    try std.testing.expectEqualStrings("C-S-Escape", composeKey(&buf, .{ .ctrl = true, .shift = true }, "Escape").?);
+    try std.testing.expectEqualStrings("W-e", composeKey(&buf, .{ .super = true }, "e").?);
+    try std.testing.expectEqualStrings("Print", composeKey(&buf, .{}, "Print").?);
+    try std.testing.expectEqualStrings("F5", composeKey(&buf, .{}, "F5").?);
+    try std.testing.expectEqualStrings("XF86AudioMute", composeKey(&buf, .{}, "XF86AudioMute").?);
+    try std.testing.expect(composeKey(&buf, .{}, "t") == null); // typing
+    try std.testing.expect(composeKey(&buf, .{ .shift = true }, "t") == null);
+    try std.testing.expect(composeKey(&buf, .{ .ctrl = true }, "Control_L") == null);
+    try std.testing.expect(composeKey(&buf, .{ .ctrl = true }, "Super_L") == null);
+    try std.testing.expect(composeKey(&buf, .{}, "Fx") == null);
 }

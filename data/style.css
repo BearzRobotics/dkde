@@ -660,3 +660,13 @@ popover.dkde-desktops-popover button.dkde-desktop.active {
   background-color: @dkde_accent;
   color: white;
 }
+
+/* A shortcut shown as a key cap in Settings. */
+label.dkde-keycap {
+  background-color: alpha(@dkde_fg, 0.08);
+  border: 1px solid alpha(@dkde_fg, 0.2);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 3px 10px;
+  font-weight: 600;
+}

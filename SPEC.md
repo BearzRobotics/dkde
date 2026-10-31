@@ -246,9 +246,9 @@ installed, otherwise by writing sysfs, which needs permission). Icons refresh
 every 20 seconds and whenever the flyout changes something. Not done: choosing
 a Wi-Fi network or sound device from the flyout, and ordering the items.
 
-**Virtual desktops:** the panel shows a numbered button per desktop after the
-start button (hidden when there is only one) and switches with a click or the
-mouse wheel. It reads and drives labwc's workspaces through `ext-workspace-v1`
+**Virtual desktops:** the panel shows one icon in the system area (a grid and the
+current desktop's number; hidden when there is only one desktop). A click opens
+a chooser with a button per desktop, and the mouse wheel over the icon switches. It reads and drives labwc's workspaces through `ext-workspace-v1`
 (vendored in `protocols/`). The number of desktops is labwc's
 `<desktops><number>` in `rc.xml`, set on the Settings Taskbar page (1 to 9)
 and applied by a labwc reconfigure. Default keybindings, added by `dkde-setup`:
@@ -484,6 +484,7 @@ files and the components pick up the changes through their file monitors.
 | Start menu | Pinned apps, recent-apps count, power commands | dkde config |
 | Terminal | Default profile, editing profiles | dkde-term config |
 | Keyboard | Layout | labwc `environment`, then `labwc --reconfigure` |
+| Keyboard shortcuts | Rebind dkde's own shortcuts | labwc `rc.xml` `<keybind>` blocks, then reconfigure |
 | Mouse & touchpad | Pointer speed, natural scrolling, tap to click | labwc `rc.xml` `<libinput>` section, then reconfigure |
 | Default apps | Browser, file manager, terminal, text editor | `mimeapps.list` |
 
@@ -552,6 +553,18 @@ files and the components pick up the changes through their file monitors.
   - *Date & time* offers presets or any strftime pattern; the zone list comes
     from `/usr/share/zoneinfo/zone1970.tab`. Zone and clock changes are
     administrator actions. There is no network time sync.
+
+- **Keyboard shortcuts** lists the entries of `common.labwc.dkde_keybinds`
+  (start menu, terminal Ctrl+Alt+T, lock Ctrl+Alt+L, Task Manager, screenshots,
+  volume and brightness keys, desktop switching) with their current key read
+  from `rc.xml`, found by the command or action each block runs rather than by
+  its key, so a rebound entry is still recognised. Change opens a dialog that
+  records the next key press (modifiers C-, A-, S-, W-; a plain letter needs a
+  modifier, while function, media and Print keys may stand alone; the bare Super
+  key is allowed for the start menu only); Reset restores the default key. A key
+  already bound to another dkde entry is refused. labwc's built-in shortcuts are
+  not listed and not checked for clashes, and a shortcut cannot be switched off
+  here (`dkde-setup` would add it back).
 
 **Editing labwc files:** only dkde's own sections and keys are changed, and
 the rest of the file is preserved. A backup is written before the first edit.
