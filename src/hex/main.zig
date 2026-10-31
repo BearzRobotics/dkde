@@ -30,6 +30,26 @@ pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = 
 /// Files larger than this are refused: the whole file is held in memory.
 const max_file_bytes: u64 = 1 << 30;
 
+/// The whole file is held in memory, so on a small machine the limit follows
+/// the memory that is free rather than a fixed 1 GiB.
+fn fileLimit() u64 {
+    const avail = availableMemory() orelse return max_file_bytes;
+    return @min(max_file_bytes, avail / 2);
+}
+
+fn availableMemory() ?u64 {
+    var buf: [2048]u8 = undefined;
+    const f = std.c.fopen("/proc/meminfo", "r") orelse return null;
+    defer _ = std.c.fclose(f);
+    const n = std.c.fread(&buf, 1, buf.len, f);
+    const text = buf[0..n];
+    const key = "MemAvailable:";
+    const at = std.mem.indexOf(u8, text, key) orelse return null;
+    var it = std.mem.tokenizeAny(u8, text[at + key.len ..], " \n");
+    const kb = std.fmt.parseInt(u64, it.next() orelse return null, 10) catch return null;
+    return kb * 1024;
+}
+
 const App = struct {
     allocator: std.mem.Allocator,
     appearance: ?*common.style.Appearance = null,
@@ -558,24 +578,38 @@ const HexEditor = struct {
         var err: ?*glib.Error = null;
         if (file.queryInfo("standard::size", .{}, null, &err)) |info| {
             defer info.as(gobject.Object).unref();
-            if (@as(u64, @intCast(info.getSize())) > max_file_bytes) {
-                return common.dialogs.showError(self.window.as(gtk.Window), common.tr("The file is too large"), common.tr("dkde-hex holds the whole file in memory and opens files up to 1 GiB."));
+            if (@as(u64, @intCast(info.getSize())) > fileLimit()) {
+                return common.dialogs.showError(self.window.as(gtk.Window), common.tr("The file is too large"), common.tr("dkde-hex holds the whole file in memory and opens files up to 1 GiB, fewer when memory is short."));
             }
         } else if (err) |e| {
             defer e.free();
             return self.fail(common.tr("Cannot open the file"), e);
         }
-        var contents: [*]u8 = undefined;
-        var length: usize = 0;
-        if (glib.fileGetContents(path_z, &contents, &length, &err) == 0) {
+        // Read straight into the buffer: no second copy of a large file.
+        const stream = file.read(null, &err) orelse {
+            if (err) |e| {
+                defer e.free();
+                return self.fail(common.tr("Cannot open the file"), e);
+            }
+            return;
+        };
+        defer stream.as(gobject.Object).unref();
+        const info = file.queryInfo("standard::size", .{}, null, null) orelse return;
+        defer info.as(gobject.Object).unref();
+        const size: usize = @intCast(info.getSize());
+        const dest = self.buffer.beginLoad(size) catch {
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("The file is too large"), common.tr("There is not enough memory to hold this file."));
+        };
+        var got: usize = 0;
+        if (stream.as(gio.InputStream).readAll(dest.ptr, dest.len, &got, null, &err) == 0) {
+            self.buffer.endLoad(got);
             if (err) |e| {
                 defer e.free();
                 return self.fail(common.tr("Cannot open the file"), e);
             }
             return;
         }
-        defer glib.free(contents);
-        self.buffer.load(contents[0..length]) catch return;
+        self.buffer.endLoad(got);
         const owned = self.allocator.dupeSentinel(u8, path_z, 0) catch return;
         if (self.path) |old| self.allocator.free(old);
         self.path = owned;

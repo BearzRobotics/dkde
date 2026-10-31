@@ -222,7 +222,10 @@ pub const Quick = struct {
         self.* = .{ .allocator = allocator, .config = config };
         self.guard = proc.Guard(Quick).create(self);
         self.reload();
-        self.poll_source = glib.timeoutAdd(20_000, onPoll, self);
+        // Each poll can start nmcli, rfkill and wpctl; once a minute (on a coarse
+        // timer the CPU can batch with other wake-ups) is plenty, and opening the
+        // flyout polls at once.
+        self.poll_source = glib.timeoutAddSeconds(60, onPoll, self);
         return self;
     }
 
@@ -556,6 +559,7 @@ const Flyout = struct {
         box.append(more.as(gtk.Widget));
 
         _ = gtk.Popover.signals.closed.connect(popover, *Flyout, &onClosed, self, .{});
+        quick.poll();
         self.refresh();
         popover.popup();
     }

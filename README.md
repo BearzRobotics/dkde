@@ -234,7 +234,7 @@ zig build test            # unit tests
 zig build install --prefix /usr
 ```
 
-(For everyday use, build with `-Doptimize=ReleaseSafe`; see "Install" below.)
+(For everyday use, build with `-Doptimize=ReleaseSafe`, or `-Doptimize=ReleaseSmall` for the smallest binaries on very old machines; see "Install" below.)
 
 **PDF viewer (optional).** `dkde-pdf` needs poppler's GLib bindings, so it is
 built only on request: install `libpoppler-glib-dev` (Ubuntu; at run time

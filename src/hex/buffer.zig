@@ -56,6 +56,21 @@ pub const Buffer = struct {
         self.revision += 1;
     }
 
+    /// Loading without a second copy: returns `size` bytes to fill in place,
+    /// then `endLoad(got)` says how many were really read.
+    pub fn beginLoad(self: *Buffer, size: usize) ![]u8 {
+        self.clearHistory();
+        self.data.clearRetainingCapacity();
+        try self.data.resize(self.allocator, size);
+        return self.data.items;
+    }
+
+    pub fn endLoad(self: *Buffer, got: usize) void {
+        self.data.shrinkRetainingCapacity(got);
+        self.saved_at = 0;
+        self.revision += 1;
+    }
+
     pub fn len(self: *const Buffer) usize {
         return self.data.items.len;
     }
