@@ -206,9 +206,13 @@ extern fn pread(fd: c_int, buf: [*]u8, count: usize, offset: i64) isize;
 extern fn pwrite(fd: c_int, buf: [*]const u8, count: usize, offset: i64) isize;
 extern fn lseek(fd: c_int, offset: i64, whence: c_int) i64;
 extern fn fsync(fd: c_int) c_int;
+extern fn readlink(path: [*:0]const u8, buf: [*]u8, n: usize) isize;
+extern fn ftruncate(fd: c_int, length: i64) c_int;
 
 const O_RDONLY: c_int = 0;
 const O_RDWR: c_int = 2;
+const O_WRONLY: c_int = 1;
+const O_CREAT: c_int = 0o100;
 const O_CLOEXEC: c_int = 0o2000000;
 
 pub const Handle = struct {
@@ -247,6 +251,43 @@ pub const Handle = struct {
             };
         }
         return .{ .fd = fd, .writable = false, .size = size };
+    }
+
+    pub const CreateError = error{ AccessDenied, SameFile, NotAFile, Failed };
+
+    /// Creates (or empties) a regular file to write an image into. Refuses the
+    /// file `source` is reading and anything that is not a regular file, such
+    /// as a device, so imaging can never write over a disk.
+    pub fn createFile(path: [:0]const u8, source: Handle) CreateError!Handle {
+        // No truncation yet: the file might be the source.
+        const fd = open(path.ptr, O_WRONLY | O_CREAT | O_CLOEXEC, @as(c_uint, 0o600));
+        if (fd < 0) return if (std.c._errno().* == 13 or std.c._errno().* == 1) error.AccessDenied else error.Failed;
+        // Where each descriptor really points, so the same file under two names is caught.
+        var l1: [std.fs.max_path_bytes]u8 = undefined;
+        var l2: [std.fs.max_path_bytes]u8 = undefined;
+        var n1: [32]u8 = undefined;
+        var n2: [32]u8 = undefined;
+        const p1 = std.fmt.bufPrintSentinel(&n1, "/proc/self/fd/{d}", .{fd}, 0) catch unreachable;
+        const p2 = std.fmt.bufPrintSentinel(&n2, "/proc/self/fd/{d}", .{source.fd}, 0) catch unreachable;
+        const r1 = readlink(p1.ptr, &l1, l1.len);
+        const r2 = readlink(p2.ptr, &l2, l2.len);
+        if (r1 > 0 and r2 > 0 and std.mem.eql(u8, l1[0..@intCast(r1)], l2[0..@intCast(r2)])) {
+            _ = close(fd);
+            return error.SameFile;
+        }
+        if (r1 > 0) {
+            l1[@intCast(r1)] = 0;
+            const resolved: [*:0]const u8 = @ptrCast(&l1);
+            if (glib.fileTest(resolved, .{ .is_regular = true }) == 0) {
+                _ = close(fd);
+                return error.NotAFile;
+            }
+        }
+        if (ftruncate(fd, 0) != 0) {
+            _ = close(fd);
+            return error.Failed;
+        }
+        return .{ .fd = fd, .writable = true, .size = 0 };
     }
 
     pub fn closeHandle(self: *Handle) void {

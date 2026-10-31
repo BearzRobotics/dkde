@@ -18,6 +18,7 @@ const ksy_interp = @import("ksy/interp.zig");
 const strings = @import("strings.zig");
 const disk_mod = @import("disk.zig");
 const devsearch = @import("devsearch.zig");
+const image = @import("image.zig");
 const analyze = @import("analyze.zig");
 const bookmarks_mod = @import("bookmarks.zig");
 const cairo = @import("cairo1");
@@ -151,6 +152,9 @@ const Host = struct {
                 .separator,
                 mb.check("_Enable writing", "disk-writing", false),
                 mb.item("_Write changes…", "disk-write", null),
+                .separator,
+                mb.item("Save as _image…", "disk-image", null),
+                mb.item("Cancel _imaging", "disk-image-cancel", null),
                 .separator,
                 mb.item("_Close disk or process", "disk-close", null),
             } },
@@ -311,6 +315,9 @@ const HexEditor = struct {
     /// A search through the whole device, running one chunk per idle tick.
     scan: ?devsearch.Scan = null,
     scan_source: c_uint = 0,
+    /// Copying the whole device into an image file.
+    copier: ?image.Copier = null,
+    copier_source: c_uint = 0,
     /// True while a click in the structure panel moves the view, so the view
     /// does not answer by re-selecting in the panel.
     picking: bool = false,
@@ -415,6 +422,7 @@ const HexEditor = struct {
     fn onDestroy(_: *gtk.Box, self: *HexEditor) callconv(.c) void {
         if (self.reparse_source != 0) _ = glib.Source.remove(self.reparse_source);
         self.cancelScan();
+        self.stopImaging();
         self.closeDisk();
         if (self.pending_device) |p| self.allocator.free(p);
         self.proc_guard.kill();
@@ -872,6 +880,78 @@ const HexEditor = struct {
         } else {
             self.status.setText(common.tr("Not found."));
         }
+    }
+
+    // ---- imaging ------------------------------------------------------------------------------
+
+    fn stopImaging(self: *HexEditor) void {
+        if (self.copier_source != 0) _ = glib.Source.remove(self.copier_source);
+        self.copier_source = 0;
+        if (self.copier) |*c| c.deinit(self.allocator);
+        self.copier = null;
+    }
+
+    fn imageDialog(self: *HexEditor) void {
+        if (self.disk == null) return self.status.setText(common.tr("Open a disk, partition or process first."));
+        if (self.copier != null) return self.status.setText(common.tr("An image is already being written."));
+        const dialog = gtk.FileDialog.new();
+        defer dialog.as(gobject.Object).unref();
+        dialog.setTitle(common.tr("Save image as"));
+        dialog.save(self.window.as(gtk.Window), null, onImageChosen, self);
+    }
+
+    fn onImageChosen(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *HexEditor = @ptrCast(@alignCast(data.?));
+        const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
+        var err: ?*glib.Error = null;
+        const file = dialog.saveFinish(result, &err) orelse {
+            if (err) |e| e.free();
+            return;
+        };
+        defer file.as(gobject.Object).unref();
+        const d = self.disk orelse return;
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        const dest = disk_mod.Handle.createFile(std.mem.span(path), d.handle) catch |e| {
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot write the image"), switch (e) {
+                error.SameFile => common.tr("That is the file being read. Choose another name."),
+                error.NotAFile => common.tr("An image can only be written to a regular file, never to a device."),
+                error.AccessDenied => common.tr("You may not write there."),
+                error.Failed => common.tr("The file could not be created."),
+            });
+        };
+        self.stopImaging();
+        self.copier = image.Copier.init(self.allocator, d.handle, d.origin, dest) catch {
+            var dd = dest;
+            dd.closeHandle();
+            return;
+        };
+        self.copier_source = glib.idleAdd(onImageTick, self);
+    }
+
+    fn onImageTick(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *HexEditor = @ptrCast(@alignCast(data.?));
+        var c = &(self.copier orelse return 0);
+        var buf: [160]u8 = undefined;
+        switch (c.step()) {
+            .more => {
+                self.status.setText(std.fmt.bufPrintSentinel(&buf, "Writing image\u{2026} {d}%  (Disk \u{25B8} Cancel imaging to stop)", .{c.percent()}, 0) catch "");
+                return 1;
+            },
+            .done => {
+                const bad = c.unreadable;
+                const total = c.total;
+                self.copier_source = 0;
+                self.stopImaging();
+                self.status.setText(std.fmt.bufPrintSentinel(&buf, "Image written: {d} bytes, {d} unreadable (stored as zeros).", .{ total, bad }, 0) catch "");
+            },
+            .write_failed => {
+                self.copier_source = 0;
+                self.stopImaging();
+                common.dialogs.showError(self.window.as(gtk.Window), common.tr("Image not finished"), common.tr("Writing failed, probably because the disk is full."));
+            },
+        }
+        return 0;
     }
 
     fn cancelScan(self: *HexEditor) void {
@@ -1542,7 +1622,12 @@ const HexEditor = struct {
 
     // ---- disk mode ----------------------------------------------------------------------------
 
-    const window_bytes: u64 = 4 << 20;
+    /// How much of a device is held in memory at once: `[hex] disk-window-mib`
+    /// (1 to 512, default 4).
+    fn windowBytes(self: *const HexEditor) u64 {
+        const mib = std.math.clamp(self.config.getInt("hex", "disk-window-mib", 4), 1, 512);
+        return @as(u64, @intCast(mib)) << 20;
+    }
 
     const DiskState = struct {
         handle: disk_mod.Handle,
@@ -1570,6 +1655,7 @@ const HexEditor = struct {
 
     fn closeDisk(self: *HexEditor) void {
         self.cancelScan();
+        self.stopImaging();
         const d = self.disk orelse return;
         var h = d.handle;
         h.closeHandle();
@@ -1665,6 +1751,7 @@ const HexEditor = struct {
         if (self.buffer.isModified()) {
             return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Unsaved changes"), common.tr("Write or discard your changes before moving to another part of the disk."));
         }
+        const window_bytes = self.windowBytes();
         const start = (@min(at, d.handle.size -| 1) / window_bytes) * window_bytes;
         const len: usize = @intCast(@min(window_bytes, d.handle.size - start));
         const bytes = self.allocator.alloc(u8, len) catch return;
@@ -1698,6 +1785,7 @@ const HexEditor = struct {
 
     fn diskStep(self: *HexEditor, forward: bool) void {
         const d = self.disk orelse return;
+        const window_bytes = self.windowBytes();
         if (forward) {
             if (d.window_start + window_bytes < d.handle.size) self.loadWindow(d.window_start + window_bytes);
         } else if (d.window_start >= window_bytes) {
@@ -2815,6 +2903,12 @@ const HexEditor = struct {
         if (eql(u8, action, "disk-next")) return self.diskStep(true);
         if (eql(u8, action, "disk-writing")) return self.enableWriting();
         if (eql(u8, action, "disk-write")) return self.diskWrite();
+        if (eql(u8, action, "disk-image")) return self.imageDialog();
+        if (eql(u8, action, "disk-image-cancel")) {
+            if (self.copier == null) return;
+            self.stopImaging();
+            return self.status.setText(common.tr("Imaging cancelled. The partial file was kept."));
+        }
         if (eql(u8, action, "disk-close")) {
             self.closeDisk();
             self.buffer.load("") catch return;
@@ -2897,6 +2991,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 test {
     _ = @import("fuzz_test.zig");
     _ = @import("devsearch.zig");
+    _ = @import("image.zig");
     _ = @import("ksy/coverage_test.zig");
     _ = @import("ksy/prep.zig");
     _ = @import("ksy/expr.zig");
