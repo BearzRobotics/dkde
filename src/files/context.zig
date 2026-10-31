@@ -5,7 +5,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 pub const default_quick = "cut;copy;paste;rename;trash";
-pub const default_item = "open;open-tab;open-window;open-with;run;run-admin;exec;--;extract;compress-zip;compress-targz;restore;delete-permanent;--;properties";
+pub const default_item = "open;open-tab;open-window;open-with-choose;run;run-admin;exec;--;extract;compress-zip;compress-targz;restore;delete-permanent;--;properties";
 pub const default_folder = "new-folder;open-window;terminal-here;open-admin;toggle-hidden;bookmark;empty-trash;--;properties";
 
 pub const separator = "--";
@@ -35,6 +35,7 @@ pub fn emoji(id: []const u8) []const u8 {
         .{ "restore", "\u{21A9}\u{FE0F}" },
         .{ "open", "\u{1F4C2}" },
         .{ "open-tab", "\u{1F5C2}\u{FE0F}" },
+        .{ "open-with-choose", "\u{1F9E9}" },
         .{ "open-window", "\u{1FA9F}" },
         .{ "properties", "\u{2139}\u{FE0F}" },
         .{ "new-folder", "\u{1F4C1}" },

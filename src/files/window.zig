@@ -213,6 +213,7 @@ pub const FilesWindow = struct {
         bg_click.as(gtk.GestureSingle).setButton(3);
         _ = gtk.GestureClick.signals.pressed.connect(bg_click, *FilesWindow, &onBackgroundRightClick, self, .{});
         self.view_stack.as(gtk.Widget).addController(bg_click.as(gtk.EventController));
+        self.attachDrop(self.view_stack.as(gtk.Widget), .current);
     }
 
     fn buildModels(self: *FilesWindow) void {
@@ -339,6 +340,7 @@ pub const FilesWindow = struct {
                 mb.item("New _Tab", "new-tab", "<Control>t"),
                 mb.item("New _Folder", "new-folder", "<Control><Shift>n"),
                 mb.item("_Open", "open", null),
+                mb.item("Open _With…", "open-with-choose", null),
                 mb.item("Open in New _Window", "open-window", null),
                 mb.item("Open _Terminal Here", "terminal-here", null),
                 mb.item("Open Folder as _Administrator", "open-admin", null),
@@ -668,6 +670,7 @@ pub const FilesWindow = struct {
             defer self.allocator.free(label);
             const button = gtk.Button.newWithLabel(label);
             _ = gtk.Button.signals.clicked.connect(button, *CrumbCtx, &onCrumbClicked, ctx, .{});
+            if (self.allocator.dupeSentinel(u8, crumb.path, 0)) |p| self.attachDrop(button.as(gtk.Widget), .{ .path = p }) else |_| {}
             self.crumbs.append(button.as(gtk.Widget));
         }
     }
@@ -746,6 +749,7 @@ pub const FilesWindow = struct {
         text.setXalign(0);
         row.append(text.as(gtk.Widget));
         self.sidebar.append(row.as(gtk.Widget));
+        if (self.allocator.dupeSentinel(u8, path, 0)) |p| self.attachDrop(row.as(gtk.Widget), .{ .path = p }) else |_| {}
     }
 
     fn addSidebarHeading(self: *FilesWindow, label: [:0]const u8) void {
@@ -814,6 +818,8 @@ pub const FilesWindow = struct {
         box.append(label.as(gtk.Widget));
         item.setChild(box.as(gtk.Widget));
         self.attachItemMenu(box.as(gtk.Widget), item);
+        self.attachDrag(box.as(gtk.Widget), item);
+        self.attachDrop(box.as(gtk.Widget), .{ .item = item });
     }
 
     fn onCellBind(_: *gtk.SignalListItemFactory, item_obj: *gobject.Object, column: *Column) callconv(.c) void {
@@ -894,6 +900,8 @@ pub const FilesWindow = struct {
         box.append(label.as(gtk.Widget));
         item.setChild(box.as(gtk.Widget));
         self.attachItemMenu(box.as(gtk.Widget), item);
+        self.attachDrag(box.as(gtk.Widget), item);
+        self.attachDrop(box.as(gtk.Widget), .{ .item = item });
     }
 
     fn onGridBind(_: *gtk.SignalListItemFactory, item_obj: *gobject.Object, _: *FilesWindow) callconv(.c) void {
@@ -1576,6 +1584,7 @@ pub const FilesWindow = struct {
         const item = sel.on_item;
         const t = common.tr;
         if (eql(u8, id, "open")) return if (item) .{ .label = t("Open") } else null;
+        if (eql(u8, id, "open-with-choose")) return if (item and !sel.in_trash and !sel.is_dir) .{ .label = t("Open With\u{2026}") } else null;
         if (eql(u8, id, "open-tab")) return if (item and sel.is_dir) .{ .label = t("Open in New Tab") } else null;
         if (eql(u8, id, "open-window")) return if (!item or sel.is_dir) .{ .label = t("Open in New Window") } else null;
         if (eql(u8, id, "run")) return if (item and sel.is_regular and sel.is_exec and !sel.in_trash) .{ .label = t("Run") } else null;
@@ -1833,6 +1842,7 @@ pub const FilesWindow = struct {
         if (eql(u8, action, "up")) return self.goUp();
         if (std.mem.startsWith(u8, action, "view-")) return self.setViewMode(ViewMode.parse(action[5..]));
         if (eql(u8, action, "open-window")) return self.openInNewWindow();
+        if (eql(u8, action, "open-with-choose")) return self.openWithDialog();
         if (eql(u8, action, "run")) return self.runSelected(false);
         if (eql(u8, action, "run-admin")) return self.runSelected(true);
         if (eql(u8, action, "exec")) return self.toggleExecutable();
@@ -1877,6 +1887,328 @@ pub const FilesWindow = struct {
             defer freeFiles(self.allocator, &files);
             if (files.items.len > 0 and app != null) self.openWith(files.items[0], app.?);
         }
+    }
+
+    // ---- drag and drop ---------------------------------------------------
+
+    const Dest = union(enum) {
+        /// The folder being shown.
+        current,
+        /// A fixed place: a sidebar entry or a path-bar button.
+        path: [:0]u8,
+        /// The folder shown in this list row, if it is one.
+        item: *gtk.ListItem,
+    };
+
+    const DropCtx = struct { window: *FilesWindow, dest: Dest };
+
+    fn newDropCtx(self: *FilesWindow, dest: Dest) ?*DropCtx {
+        const ctx = self.allocator.create(DropCtx) catch return null;
+        ctx.* = .{ .window = self, .dest = dest };
+        return ctx;
+    }
+
+    fn onDropCtxDestroy(_: *gtk.Widget, ctx: *DropCtx) callconv(.c) void {
+        if (ctx.dest == .path) ctx.window.allocator.free(ctx.dest.path);
+        ctx.window.allocator.destroy(ctx);
+    }
+
+    /// Makes `widget` accept files dropped on it.
+    fn attachDrop(self: *FilesWindow, widget: *gtk.Widget, dest: Dest) void {
+        const ctx = self.newDropCtx(dest) orelse return;
+        const target = gtk.DropTarget.new(gdk.FileList.getGObjectType(), .{ .copy = true, .move = true });
+        _ = gtk.DropTarget.signals.accept.connect(target, *DropCtx, &onDropAccept, ctx, .{});
+        _ = gtk.DropTarget.signals.drop.connect(target, *DropCtx, &onDropFiles, ctx, .{});
+        _ = gtk.Widget.signals.destroy.connect(widget, *DropCtx, &onDropCtxDestroy, ctx, .{});
+        widget.addController(target.as(gtk.EventController));
+    }
+
+    /// The folder a drop would go into; the caller unrefs it.
+    fn dropFolder(self: *FilesWindow, dest: Dest) ?*gio.File {
+        switch (dest) {
+            .current => return @ptrCast(self.current.as(gobject.Object).ref()),
+            .path => |p| return gio.File.newForPath(p),
+            .item => |item| {
+                const info: *gio.FileInfo = @ptrCast(item.getItem() orelse return null);
+                if (info.getFileType() != .directory) return null;
+                const file = fileOf(info) orelse return null;
+                return @ptrCast(file.as(gobject.Object).ref());
+            },
+        }
+    }
+
+    /// A list row that is not a folder passes the drop on to the view behind it.
+    fn onDropAccept(_: *gtk.DropTarget, _: *gdk.Drop, ctx: *DropCtx) callconv(.c) c_int {
+        if (ctx.dest != .item) return 1;
+        const folder = ctx.window.dropFolder(ctx.dest) orelse return 0;
+        folder.as(gobject.Object).unref();
+        return 1;
+    }
+
+    fn onDropFiles(target: *gtk.DropTarget, value: *gobject.Value, _: f64, _: f64, ctx: *DropCtx) callconv(.c) c_int {
+        const self = ctx.window;
+        const dest = self.dropFolder(ctx.dest) orelse return 0;
+        defer dest.as(gobject.Object).unref();
+        const boxed = value.getBoxed() orelse return 0;
+        const list: *gdk.FileList = @ptrCast(@alignCast(boxed));
+
+        var files: std.ArrayList(*gio.File) = .empty;
+        defer files.deinit(self.allocator);
+        var node: ?*glib.SList = list.getFiles();
+        while (node) |n| : (node = n.f_next) {
+            const f: *gio.File = @ptrCast(@alignCast(n.f_data orelse continue));
+            files.append(self.allocator, f) catch return 0;
+        }
+        if (files.items.len == 0) return 0;
+
+        // Inside dkde a drag is a move, and a copy with Ctrl held. GTK reports a
+        // copy for both, so the keyboard is asked. From other programs it is a
+        // copy unless only a move is offered.
+        const drop = target.getCurrentDrop();
+        var mode: ops.Mode = .copy;
+        if (drop) |d| {
+            if (d.getDrag() != null) {
+                var ctrl = false;
+                if (self.window.as(gtk.Widget).getDisplay().getDefaultSeat()) |seat| {
+                    if (seat.getKeyboard()) |kb| ctrl = kb.getModifierState().control_mask;
+                }
+                mode = if (ctrl) .copy else .move;
+            } else {
+                const actions = d.getActions();
+                if (actions.move and !actions.copy) mode = .move;
+            }
+        }
+        return @intFromBool(self.dropInto(files.items, dest, mode));
+    }
+
+    fn dropInto(self: *FilesWindow, files: []const *gio.File, dest: *gio.File, mode: ops.Mode) bool {
+        if (self.job != null) return false;
+        // Into the Trash means trash them.
+        if (self.isTrashFolder(dest)) {
+            for (files) |f| {
+                var err: ?*glib.Error = null;
+                if (f.trash(null, &err) == 0) {
+                    const message = if (err) |e| e.f_message orelse "unknown error" else "unknown error";
+                    common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot move to Trash"), std.mem.span(message));
+                    if (err) |e| e.free();
+                    return false;
+                }
+            }
+            return true;
+        }
+        // Dropping a folder into itself, or a move onto where the files already are, does nothing.
+        var all_here = true;
+        for (files) |f| {
+            if (f.equal(dest) != 0) return false;
+            if (f.hasPrefix(dest) != 0 and mode == .move) {} // still check the parent below
+            if (f.getParent()) |p| {
+                defer p.as(gobject.Object).unref();
+                if (p.equal(dest) == 0) all_here = false;
+            } else all_here = false;
+            // A folder cannot go inside itself.
+            if (dest.hasPrefix(f) != 0) return false;
+        }
+        if (all_here and mode == .move) return false;
+        self.startJob(mode, files, dest);
+        return true;
+    }
+
+    fn isTrashFolder(self: *FilesWindow, dir: *gio.File) bool {
+        const trash = trashFilesDir(self.allocator) catch return false;
+        defer self.allocator.free(trash);
+        const path = dir.getPath() orelse return false;
+        defer glib.free(path);
+        return std.mem.eql(u8, std.mem.span(path), trash);
+    }
+
+    // Dragging items out.
+
+    fn attachDrag(self: *FilesWindow, widget: *gtk.Widget, item: *gtk.ListItem) void {
+        const ctx = self.allocator.create(ItemMenuCtx) catch return;
+        ctx.* = .{ .window = self, .item = item };
+        const source = gtk.DragSource.new();
+        source.setActions(.{ .copy = true, .move = true });
+        _ = gtk.DragSource.signals.prepare.connect(source, *ItemMenuCtx, &onDragPrepare, ctx, .{});
+        _ = gtk.DragSource.signals.drag_begin.connect(source, *ItemMenuCtx, &onDragBegin, ctx, .{});
+        _ = gtk.Widget.signals.destroy.connect(widget, *ItemMenuCtx, &onItemMenuDestroy, ctx, .{});
+        widget.addController(source.as(gtk.EventController));
+    }
+
+    fn onDragPrepare(_: *gtk.DragSource, _: f64, _: f64, ctx: *ItemMenuCtx) callconv(.c) ?*gdk.ContentProvider {
+        const self = ctx.window;
+        // Dragging an unselected item selects just it; a selected one drags the whole selection.
+        const position = ctx.item.getPosition();
+        const model = self.selection.as(gtk.SelectionModel);
+        if (model.isSelected(position) == 0) _ = model.selectItem(position, 1);
+        var files = self.selectedFiles() catch return null;
+        defer freeFiles(self.allocator, &files);
+        if (files.items.len == 0) return null;
+        const list = gdk.FileList.newFromArray(files.items.ptr, files.items.len);
+        var value = std.mem.zeroes(gobject.Value);
+        _ = value.init(gdk.FileList.getGObjectType());
+        value.setBoxedTakeOwnership(list);
+        defer value.unset();
+        return gdk.ContentProvider.newForValue(&value);
+    }
+
+    fn onDragBegin(source: *gtk.DragSource, _: *gdk.Drag, ctx: *ItemMenuCtx) callconv(.c) void {
+        const child = ctx.item.getChild() orelse return;
+        const paintable = gtk.WidgetPaintable.new(child);
+        defer paintable.as(gobject.Object).unref();
+        source.setIcon(paintable.as(gdk.Paintable), 0, 0);
+    }
+
+    // ---- open with -------------------------------------------------------
+
+    const OpenWithDlg = struct {
+        window: *FilesWindow,
+        dialog: *gtk.Window,
+        list: *gtk.ListBox,
+        always: *gtk.CheckButton,
+        content_type: [:0]u8,
+        files: std.ArrayList(*gio.File) = .empty,
+        apps: std.ArrayList(*gio.AppInfo) = .empty,
+
+        fn chosen(self: *OpenWithDlg, index: c_int) void {
+            if (index < 0 or index >= self.apps.items.len) return;
+            const app = self.apps.items[@intCast(index)];
+            if (self.always.getActive() != 0) {
+                var err: ?*glib.Error = null;
+                _ = app.setAsDefaultForType(self.content_type, &err);
+                if (err) |e| e.free();
+            }
+            self.window.launchWith(app, self.files.items);
+            self.dialog.destroy();
+        }
+
+        fn fill(self: *OpenWithDlg, show_all: bool) void {
+            const a = self.window.allocator;
+            self.list.removeAll();
+            for (self.apps.items) |app| app.as(gobject.Object).unref();
+            self.apps.clearRetainingCapacity();
+            var apps: *glib.List = if (show_all) gio.AppInfo.getAll() else gio.AppInfo.getAllForType(self.content_type);
+            defer apps.free();
+            var node: ?*glib.List = apps;
+            while (node) |n| : (node = n.f_next) {
+                const app: *gio.AppInfo = @ptrCast(@alignCast(n.f_data orelse continue));
+                if (app.shouldShow() == 0) continue;
+                self.apps.append(a, @ptrCast(app.as(gobject.Object).ref())) catch return;
+                const row = gtk.Box.new(.horizontal, 10);
+                row.as(gtk.Widget).setMarginTop(4);
+                row.as(gtk.Widget).setMarginBottom(4);
+                row.as(gtk.Widget).setMarginStart(6);
+                const image = gtk.Image.new();
+                image.setPixelSize(24);
+                if (app.getIcon()) |icon| image.setFromGicon(icon) else image.setFromIconName("application-x-executable");
+                row.append(image.as(gtk.Widget));
+                const label = gtk.Label.new(app.getDisplayName());
+                label.setXalign(0);
+                row.append(label.as(gtk.Widget));
+                self.list.append(row.as(gtk.Widget));
+            }
+        }
+    };
+
+    /// Asks which program should open the selected files.
+    fn openWithDialog(self: *FilesWindow) void {
+        var selected = self.selectedFiles() catch return;
+        defer freeFiles(self.allocator, &selected);
+        if (selected.items.len == 0) return;
+        const info = selected.items[0].queryInfo("standard::content-type", .{}, null, null) orelse return;
+        defer info.as(gobject.Object).unref();
+        const content_type = info.getContentType() orelse "application/octet-stream";
+
+        const dlg = self.allocator.create(OpenWithDlg) catch return;
+        const window = gtk.Window.new();
+        window.setTitle(common.tr("Open With"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setModal(1);
+        window.setDefaultSize(380, 460);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        box.as(gtk.Widget).setMarginTop(12);
+        box.as(gtk.Widget).setMarginBottom(12);
+        box.as(gtk.Widget).setMarginStart(12);
+        box.as(gtk.Widget).setMarginEnd(12);
+        window.setChild(box.as(gtk.Widget));
+
+        const heading = gtk.Label.new(common.tr("Choose a program to open the selected files:"));
+        heading.setXalign(0);
+        heading.setWrap(1);
+        box.append(heading.as(gtk.Widget));
+        const list = gtk.ListBox.new();
+        list.setActivateOnSingleClick(0);
+        const scroller = gtk.ScrolledWindow.new();
+        scroller.setChild(list.as(gtk.Widget));
+        scroller.as(gtk.Widget).setVexpand(1);
+        box.append(scroller.as(gtk.Widget));
+        const all = gtk.CheckButton.newWithLabel(common.tr("Show all applications"));
+        box.append(all.as(gtk.Widget));
+        const always = gtk.CheckButton.newWithLabel(common.tr("Always use this application for this type of file"));
+        box.append(always.as(gtk.Widget));
+        const buttons = gtk.Box.new(.horizontal, 8);
+        buttons.as(gtk.Widget).setHalign(.end);
+        const cancel = gtk.Button.newWithLabel(common.tr("Cancel"));
+        const open = gtk.Button.newWithLabel(common.tr("Open"));
+        open.as(gtk.Widget).addCssClass("suggested-action");
+        buttons.append(cancel.as(gtk.Widget));
+        buttons.append(open.as(gtk.Widget));
+        box.append(buttons.as(gtk.Widget));
+
+        dlg.* = .{ .window = self, .dialog = window, .list = list, .always = always, .content_type = self.allocator.dupeSentinel(u8, std.mem.span(content_type), 0) catch return };
+        for (selected.items) |f| dlg.files.append(self.allocator, @ptrCast(f.as(gobject.Object).ref())) catch {};
+        dlg.fill(false);
+        // A type nobody claims: show everything.
+        if (dlg.apps.items.len == 0) {
+            all.setActive(1);
+            dlg.fill(true);
+        }
+        _ = gtk.CheckButton.signals.toggled.connect(all, *OpenWithDlg, &onOpenWithAll, dlg, .{});
+        _ = gtk.ListBox.signals.row_activated.connect(list, *OpenWithDlg, &onOpenWithActivated, dlg, .{});
+        _ = gtk.Button.signals.clicked.connect(open, *OpenWithDlg, &onOpenWithOk, dlg, .{});
+        _ = gtk.Button.signals.clicked.connect(cancel, *OpenWithDlg, &onOpenWithCancel, dlg, .{});
+        _ = gtk.Widget.signals.destroy.connect(window, *OpenWithDlg, &onOpenWithDestroy, dlg, .{});
+        window.present();
+    }
+
+    fn onOpenWithAll(button: *gtk.CheckButton, dlg: *OpenWithDlg) callconv(.c) void {
+        dlg.fill(button.getActive() != 0);
+    }
+
+    fn onOpenWithCancel(_: *gtk.Button, dlg: *OpenWithDlg) callconv(.c) void {
+        dlg.dialog.destroy();
+    }
+
+    fn onOpenWithOk(_: *gtk.Button, dlg: *OpenWithDlg) callconv(.c) void {
+        const row = dlg.list.getSelectedRow() orelse return;
+        dlg.chosen(row.getIndex());
+    }
+
+    fn onOpenWithActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, dlg: *OpenWithDlg) callconv(.c) void {
+        dlg.chosen(row.getIndex());
+    }
+
+    fn onOpenWithDestroy(_: *gtk.Window, dlg: *OpenWithDlg) callconv(.c) void {
+        const a = dlg.window.allocator;
+        for (dlg.apps.items) |app| app.as(gobject.Object).unref();
+        dlg.apps.deinit(a);
+        for (dlg.files.items) |f| f.as(gobject.Object).unref();
+        dlg.files.deinit(a);
+        a.free(dlg.content_type);
+        a.destroy(dlg);
+    }
+
+    /// Launches `app` with all of `files`.
+    fn launchWith(self: *FilesWindow, app: *gio.AppInfo, files: []const *gio.File) void {
+        const nodes = self.allocator.alloc(glib.List, files.len) catch return;
+        defer self.allocator.free(nodes);
+        for (files, 0..) |f, i| nodes[i] = .{ .f_data = f, .f_next = if (i + 1 < files.len) &nodes[i + 1] else null, .f_prev = if (i > 0) &nodes[i - 1] else null };
+        var err: ?*glib.Error = null;
+        if (app.launch(&nodes[0], null, &err) == 0) {
+            const message = if (err) |e| e.f_message orelse "unknown error" else "unknown error";
+            common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot start the program"), std.mem.span(message));
+        }
+        if (err) |e| e.free();
     }
 
     // ---- run, new window, executable bit, custom commands ----------------

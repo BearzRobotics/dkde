@@ -3,7 +3,8 @@
 //! without hands. Not part of the desktop; it is installed with the rest only
 //! because the build treats every component alike.
 //!
-//!     dkde-pointer [--size WxH] move X Y | click [left|right|middle] | scroll N | sleep MS
+//!     dkde-pointer [--size WxH] move X Y | click [left|right|middle] | press|release [button]
+//!                  | scroll N | sleep MS
 //!                  | chord ctrl+shift+escape | tap super ...
 //!
 //! `chord` holds the modifiers, taps the last key and lets go; `tap` presses and
@@ -236,6 +237,18 @@ pub fn main(init: std.process.Init.Minimal) !void {
             _ = usleep(60_000);
             pointer.button(now(), button, .released);
             pointer.frame();
+        } else if (std.mem.eql(u8, word, "press") or std.mem.eql(u8, word, "release")) {
+            // Holds or lets go of a button, so a drag can be made in steps.
+            var button: u32 = 0x110;
+            if (i + 1 < args.len) {
+                const which = std.mem.span(args[i + 1]);
+                if (std.mem.eql(u8, which, "right")) button = 0x111;
+                if (std.mem.eql(u8, which, "middle")) button = 0x112;
+                if (std.mem.eql(u8, which, "left") or std.mem.eql(u8, which, "right") or std.mem.eql(u8, which, "middle")) i += 1;
+            }
+            pointer.button(now(), button, if (std.mem.eql(u8, word, "press")) .pressed else .released);
+            pointer.frame();
+            _ = display.roundtrip();
         } else if (std.mem.eql(u8, word, "scroll") and i + 1 < args.len) {
             const steps = std.fmt.parseInt(i32, std.mem.span(args[i + 1]), 10) catch fail("bad scroll", .{});
             i += 1;

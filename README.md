@@ -94,6 +94,16 @@ Many more optional programs unlock features (network, Bluetooth, printers,
 display settings, notifications, login screen); see "Recommended software"
 below for the full list and one install command.
 
+### Optional features at a glance
+
+| Feature | What you need |
+|---|---|
+| PDF viewer `dkde-pdf` | `libpoppler-glib-dev` to build, `zig build -Dpdf=true` |
+| Xorg session and X11 taskbar/screenshots | `libx11-dev` to build, `zig build -Dx11=true` (see "Xorg") |
+| Hex editor structure view | Kaitai `.ksy` files and/or ImHex `.hexpat` patterns, not bundled: Structure ▸ Get Kaitai formats… / Get ImHex patterns… (needs `git`, or `curl`/`wget` with `tar`) |
+| File manager archives | `zip`, `unzip`, `tar`, `7zip` |
+| Run as administrator (file manager, Settings) | `sudo` |
+
 ### Fetched by `zig build` (pinned by hash in `build.zig.zon`)
 
 | Package | Source |
@@ -130,8 +140,12 @@ sudo apt install \
     network-manager bluez rfkill brightnessctl wlr-randr \
     cups cups-client cups-filters \
     gvfs udisks2 zip unzip 7zip chrony sudo passwd \
+    git curl tar \
     tmux vim htop
 ```
+
+`git` (or `curl` with `tar`, or `wget` with `tar`) lets the hex editor download
+Kaitai formats and ImHex patterns when you ask it to.
 
 | Feature | Packages | Without them |
 |---|---|---|

@@ -445,6 +445,16 @@ reference screenshots under `docs/reference/`.
   asks for the password in a dialog) for executable files; "Mark as
   Executable" / "Unmark as Executable" toggles the three execute bits.
 - "Open in New Window" starts another `dkde-files` on a folder.
+- **Drag and drop:** items can be dragged (as `GdkFileList`, so other
+  programs get `text/uri-list`) onto a folder in the list, onto the empty space
+  of a view, onto a sidebar entry (Trash trashes them) or a path-bar button.
+  The default is a move; when only a copy is offered (Ctrl held) it is a copy.
+  Files dropped from other programs are copied or moved the same way. Drops
+  use the same background job as paste, with the same conflict questions.
+- **Open With…** (context menu and File menu) opens a chooser of the programs
+  that handle the file's type, with "Show all applications" and "Always use
+  this application" (sets the default for the type). `open-with` in the
+  context-menu lists still gives the first six programs inline.
 
 **Other:**
 
@@ -471,11 +481,11 @@ reference screenshots under `docs/reference/`.
   in `files.conf`, group `[context]`, as `;` separated action ids, where `--`
   is a separator: `quick` (the emoji row; default
   `cut;copy;paste;rename;trash`), `item` (on files and folders) and `folder`
-  (on empty space). Defaults: `item` = `open;open-tab;open-window;open-with;run;
+  (on empty space). Defaults: `item` = `open;open-tab;open-window;open-with-choose;run;
   run-admin;exec;--;extract;compress-zip;compress-targz;restore;
   delete-permanent;--;properties`, `folder` = `new-folder;open-window;
   terminal-here;open-admin;toggle-hidden;bookmark;empty-trash;--;properties`.
-  Ids: `open open-tab open-window open-with run run-admin exec extract
+  Ids: `open open-tab open-window open-with open-with-choose run run-admin exec extract
   compress-zip compress-targz restore delete-permanent empty-trash cut copy
   paste rename trash new-folder terminal-here open-admin toggle-hidden
   bookmark properties`. An id that does not apply to the selection (for
