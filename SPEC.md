@@ -456,8 +456,11 @@ reference screenshots under `docs/reference/`.
 **Implementation notes (M5):**
 
 - `dkde-files [folder]` opens `folder`, or the home directory.
-- Cut, copy and paste are internal to one window; they do not use the system
-  clipboard in v1.
+- Cut and copy put the files on the system clipboard as
+  `x-special/gnome-copied-files` (`copy` or `cut`, then URIs),
+  `text/uri-list` and `text/plain` (the paths), so files can be pasted into
+  another dkde-files window or another file manager, and files copied there
+  paste here. A cut is pasted once, then the clipboard is cleared.
 - The Trash entry browses `$XDG_DATA_HOME/Trash/files` directly. Restore
   reads the matching `.trashinfo` file. This is why gvfs is not needed.
 - `files.conf` keys: `[files] show-hidden`, `[files] view` (`details`, `list`,

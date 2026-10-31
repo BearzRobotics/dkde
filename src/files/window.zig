@@ -10,6 +10,7 @@ const common = @import("common");
 
 const archive = @import("archive.zig");
 const context = @import("context.zig");
+const clipboard = @import("clipboard.zig");
 const ops = @import("ops.zig");
 const props = @import("props.zig");
 const pure = @import("pure.zig");
@@ -106,8 +107,6 @@ pub const FilesWindow = struct {
     /// True while code (not the user) changes the notebook's page.
     switching: bool = false,
 
-    clip_files: std.ArrayList(*gio.File) = .empty,
-    clip_cut: bool = false,
     job: ?*ops.Job = null,
     /// Set by a cell's right-click so the background handler skips it.
     menu_handled: bool = false,
@@ -184,8 +183,6 @@ pub const FilesWindow = struct {
             self.allocator.destroy(tab);
         }
         self.tabs.deinit(self.allocator);
-        for (self.clip_files.items) |f| f.as(gobject.Object).unref();
-        self.clip_files.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 
@@ -1022,27 +1019,96 @@ pub const FilesWindow = struct {
         if (err) |e| e.free();
     }
 
+    /// Puts the selected files on the system clipboard, so they can be pasted
+    /// into another window or another program.
     fn copySelection(self: *FilesWindow, cut: bool) void {
         var files = self.selectedFiles() catch return;
-        if (files.items.len == 0) {
-            freeFiles(self.allocator, &files);
-            return;
+        defer freeFiles(self.allocator, &files);
+        if (files.items.len == 0) return;
+
+        var uris: std.ArrayList([]const u8) = .empty;
+        defer {
+            for (uris.items) |u| glib.free(@constCast(u.ptr));
+            uris.deinit(self.allocator);
         }
-        for (self.clip_files.items) |f| f.as(gobject.Object).unref();
-        self.clip_files.deinit(self.allocator);
-        self.clip_files = files;
-        self.clip_cut = cut;
+        var paths: std.ArrayList(u8) = .empty;
+        defer paths.deinit(self.allocator);
+        for (files.items) |f| {
+            uris.append(self.allocator, std.mem.span(f.getUri())) catch return;
+            if (paths.items.len > 0) paths.append(self.allocator, '\n') catch return;
+            if (f.getPath()) |p| {
+                defer glib.free(p);
+                paths.appendSlice(self.allocator, std.mem.span(p)) catch return;
+            } else paths.appendSlice(self.allocator, std.mem.span(f.getUri())) catch return;
+        }
+        const gnome = clipboard.gnomeText(self.allocator, cut, uris.items) catch return;
+        defer self.allocator.free(gnome);
+        const list = clipboard.uriListText(self.allocator, uris.items) catch return;
+        defer self.allocator.free(list);
+
+        var providers = [_]*gdk.ContentProvider{
+            gdk.ContentProvider.newForBytes(clipboard.gnome_mime, glib.Bytes.new(gnome.ptr, gnome.len)),
+            gdk.ContentProvider.newForBytes(clipboard.uri_list_mime, glib.Bytes.new(list.ptr, list.len)),
+            // Pasting into a text field gives the paths.
+            gdk.ContentProvider.newForBytes("text/plain;charset=utf-8", glib.Bytes.new(paths.items.ptr, paths.items.len)),
+        };
+        const union_provider = gdk.ContentProvider.newUnion(&providers, providers.len);
+        _ = self.window.as(gtk.Widget).getClipboard().setContent(union_provider);
+    }
+
+    /// True when the clipboard holds files.
+    fn clipboardHasFiles(self: *FilesWindow) bool {
+        const formats = self.window.as(gtk.Widget).getClipboard().getFormats();
+        return formats.containMimeType(clipboard.gnome_mime) != 0 or formats.containMimeType(clipboard.uri_list_mime) != 0;
     }
 
     fn paste(self: *FilesWindow) void {
-        if (self.clip_files.items.len == 0 or self.job != null) return;
-        const mode: ops.Mode = if (self.clip_cut) .move else .copy;
-        self.startJob(mode, self.clip_files.items, self.current);
-        if (self.clip_cut) {
-            // A cut can be pasted once.
-            for (self.clip_files.items) |f| f.as(gobject.Object).unref();
-            self.clip_files.clearRetainingCapacity();
+        if (self.job != null or !self.clipboardHasFiles()) return;
+        const mimes = [_]?[*:0]const u8{ clipboard.gnome_mime, clipboard.uri_list_mime, null };
+        self.window.as(gtk.Widget).getClipboard().readAsync(@ptrCast(@constCast(&mimes)), glib.PRIORITY_DEFAULT, null, onClipboardRead, self);
+    }
+
+    fn onClipboardRead(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *FilesWindow = @ptrCast(@alignCast(data.?));
+        const cb: *gdk.Clipboard = @ptrCast(@alignCast(source.?));
+        var err: ?*glib.Error = null;
+        var mime: [*:0]const u8 = undefined;
+        const stream = cb.readFinish(result, &mime, &err) orelse {
+            if (err) |e| e.free();
+            return;
+        };
+        defer stream.as(gobject.Object).unref();
+
+        var text: std.ArrayList(u8) = .empty;
+        defer text.deinit(self.allocator);
+        while (text.items.len < 1 << 22) {
+            const chunk = stream.readBytes(65536, null, &err) orelse {
+                if (err) |e| e.free();
+                return;
+            };
+            defer chunk.unref();
+            const n = chunk.getSize();
+            if (n == 0) break;
+            const ptr: [*]const u8 = @ptrCast(chunk.getData(null) orelse break);
+            text.appendSlice(self.allocator, ptr[0..n]) catch return;
         }
+
+        const parsed = clipboard.parse(self.allocator, text.items) catch return;
+        defer parsed.deinit(self.allocator);
+        var sources: std.ArrayList(*gio.File) = .empty;
+        defer {
+            for (sources.items) |f| f.as(gobject.Object).unref();
+            sources.deinit(self.allocator);
+        }
+        for (parsed.uris) |uri| {
+            const z = self.allocator.dupeSentinel(u8, uri, 0) catch return;
+            defer self.allocator.free(z);
+            sources.append(self.allocator, gio.File.newForUri(z)) catch return;
+        }
+        if (sources.items.len == 0 or self.job != null) return;
+        self.startJob(if (parsed.cut) .move else .copy, sources.items, self.current);
+        // A cut can be pasted once.
+        if (parsed.cut) _ = cb.setContent(null);
     }
 
     fn startJob(self: *FilesWindow, mode: ops.Mode, sources: []const *gio.File, dest: *gio.File) void {
@@ -1530,7 +1596,7 @@ pub const FilesWindow = struct {
         if (eql(u8, id, "empty-trash")) return if (!item and sel.in_trash) .{ .label = t("Empty Trash") } else null;
         if (eql(u8, id, "cut")) return if (item and !sel.in_trash) .{ .label = t("Cut") } else null;
         if (eql(u8, id, "copy")) return if (item) .{ .label = t("Copy") } else null;
-        if (eql(u8, id, "paste")) return if (!sel.in_trash) .{ .label = t("Paste"), .enabled = self.clip_files.items.len > 0 } else null;
+        if (eql(u8, id, "paste")) return if (!sel.in_trash) .{ .label = t("Paste"), .enabled = self.clipboardHasFiles() } else null;
         if (eql(u8, id, "rename")) return if (item and !sel.in_trash) .{ .label = t("Rename\u{2026}"), .enabled = sel.count == 1 } else null;
         if (eql(u8, id, "trash")) return if (item and !sel.in_trash) .{ .label = t("Move to Trash") } else null;
         if (eql(u8, id, "new-folder")) return if (!item and !sel.in_trash) .{ .label = t("New Folder") } else null;
