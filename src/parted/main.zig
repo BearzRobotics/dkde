@@ -15,6 +15,7 @@ const common = @import("common");
 const model = @import("model.zig");
 const fs = @import("fs.zig");
 const ops_mod = @import("ops.zig");
+const selftest = @import("selftest.zig");
 
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
@@ -1373,6 +1374,12 @@ fn formatSize(buf: *[32]u8, bytes: u64) []const u8 {
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    // `--selftest IMAGE` runs headless, with no window.
+    if (init.args.vector.len > 2 and std.mem.eql(u8, std.mem.span(init.args.vector[1]), "--selftest")) {
+        var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+        defer _ = debug_allocator.deinit();
+        std.process.exit(selftest.run(debug_allocator.allocator(), std.mem.span(init.args.vector[2])));
+    }
     try common.runapp.run("org.dkde.parted", Parted, init);
 }
 

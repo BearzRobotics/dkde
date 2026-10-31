@@ -29,6 +29,13 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 
 `dkde-hex` also has a Disk mode for raw sectors of disks, partitions and images (read-only until you enable writing; see SPEC §5.6). `dkde-hex` can parse a file with a [Kaitai Struct](https://kaitai.io) description or an [ImHex](https://imhex.werwolv.net) pattern and show its fields as a tree, coloured in the hex view. Formats and patterns are not bundled; see [docs/hex-structure.md](docs/hex-structure.md). The YAML parser is [zig-yaml](https://codeberg.org/kubkon/zig-yaml) by Jakub Konka (MIT), vendored in `third_party/zig-yaml/`.
 
+## Trying the partition tool safely
+
+`dkde-parted` changes disks, so test it first on a machine you do not care about.
+Run `sudo dkde-parted --selftest /tmp/test.img`: it exercises every filesystem
+whose tools are installed on a scratch image file (no disk is touched) and prints
+pass or FAIL per step. Every apply is also written to `~/.local/state/dkde/parted.log`.
+
 ## Theming
 
 One stylesheet and `dkde.conf` (dark mode, accent colour, font) style every program; you can override anything in `~/.config/dkde/style.css`. See [docs/theming.md](docs/theming.md).
