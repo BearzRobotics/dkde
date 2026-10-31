@@ -52,6 +52,9 @@ pub fn build(b: *std.Build) void {
     pdfrender.addImport("zpdf", zpdf_mod);
     pdfrender.addImport("cairo1", gobject.module("cairo1"));
     pdfrender.linkSystemLibrary("cairo", .{});
+    // JPEG decoding for image streams: stb_image, vendored, built by Zig's own C compiler.
+    pdfrender.addCSourceFile(.{ .file = b.path("third_party/stb/stb_impl.c"), .flags = &.{"-O2"} });
+    pdfrender.addIncludePath(b.path("third_party/stb"));
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = pdfrender })).step);
 
     inline for (components) |name| {
