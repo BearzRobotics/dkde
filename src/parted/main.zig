@@ -14,6 +14,7 @@ const common = @import("common");
 
 const model = @import("model.zig");
 const fs = @import("fs.zig");
+const ops_mod = @import("ops.zig");
 
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
@@ -24,6 +25,8 @@ const lsblk_columns_usage = lsblk_columns ++ ",FSUSED,FSAVAIL";
 const Action = enum { new_table, new_partition, format, mount, new_image, resize, label, flag };
 
 const Row = union(enum) { part: usize, gap: usize };
+
+const PendingOp = struct { disk_path: []const u8, op: ops_mod.Op, text: []const u8 };
 
 const Dlg = struct {
     app: *Parted,
@@ -49,7 +52,7 @@ const Parted = struct {
     bar: *gtk.DrawingArea,
     status: *gtk.Label,
     probe: *gtk.Widget,
-    buttons: [15]*gtk.Button = undefined,
+    buttons: [16]*gtk.Button = undefined,
     /// Image files opened or created in this session.
     images: std.ArrayList([]u8) = .empty,
     /// Index of the image being read during a rescan.
@@ -62,6 +65,17 @@ const Parted = struct {
     selected_disk: ?usize = null,
     selected_row: ?usize = null,
     busy: bool = false,
+    /// What is on the disks; `disks` is that with the pending operations applied on paper.
+    real: []const model.Disk = &.{},
+    pending: std.ArrayList(PendingOp) = .empty,
+    /// Strings of the pending operations live here; `sim_arena` holds the predicted layout.
+    pending_arena: std.heap.ArenaAllocator = undefined,
+    sim_arena: std.heap.ArenaAllocator = undefined,
+    pending_list: *gtk.ListBox = undefined,
+    pending_box: *gtk.Box = undefined,
+    apply_button: *gtk.Button = undefined,
+    /// The administrator commands, run after any that need no password.
+    apply_root: ?[]const []const u8 = null,
     scanning: bool = false,
     rescan_again: bool = false,
     /// A just-created image to add after it exists.
@@ -88,6 +102,7 @@ const Parted = struct {
     const b_flag = 12;
     const b_wipe = 13;
     const b_support = 14;
+    const b_log = 15;
 
     pub fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*Parted {
         const self = try allocator.create(Parted);
@@ -101,6 +116,8 @@ const Parted = struct {
             .status = gtk.Label.new(""),
             .probe = undefined,
             .arena = std.heap.ArenaAllocator.init(allocator),
+            .pending_arena = std.heap.ArenaAllocator.init(allocator),
+            .sim_arena = std.heap.ArenaAllocator.init(allocator),
         };
         self.proc_guard = common.proc.Guard(Parted).create(self);
         // parted, mkfs.* and friends live in sbin, which a user's PATH often lacks.
@@ -129,7 +146,7 @@ const Parted = struct {
         bar.as(gtk.Widget).setMarginBottom(4);
         bar.as(gtk.Widget).setMarginStart(12);
         bar.as(gtk.Widget).setMarginEnd(12);
-        const labels = [_][:0]const u8{ "Rescan", "New image", "Open image", "New table", "New partition", "Delete", "Resize", "Format", "Mount", "Unmount", "Check", "Label", "Flag", "Erase", "Filesystems" };
+        const labels = [_][:0]const u8{ "Rescan", "New image", "Open image", "New table", "New partition", "Delete", "Resize", "Format", "Mount", "Unmount", "Check", "Label", "Flag", "Erase", "Filesystems", "Log" };
         inline for (labels, 0..) |text, i| {
             const b = gtk.Button.newWithLabel(common.tr(text));
             _ = gtk.Button.signals.clicked.connect(b, *Parted, &onButton(i), self, .{});
@@ -183,6 +200,41 @@ const Parted = struct {
         top.append(bar.as(gtk.Widget));
         top.append(self.disk_drop.as(gtk.Widget));
 
+        // Pending operations, as in GParted: shown here until applied.
+        self.pending_list = gtk.ListBox.new();
+        self.pending_list.setSelectionMode(.none);
+        const pending_scroller = gtk.ScrolledWindow.new();
+        pending_scroller.setChild(self.pending_list.as(gtk.Widget));
+        pending_scroller.setMinContentHeight(70);
+        pending_scroller.setMaxContentHeight(110);
+        pending_scroller.setPropagateNaturalHeight(1);
+        self.pending_box = gtk.Box.new(.vertical, 4);
+        self.pending_box.as(gtk.Widget).setMarginStart(12);
+        self.pending_box.as(gtk.Widget).setMarginEnd(12);
+        self.pending_box.as(gtk.Widget).setMarginBottom(4);
+        const pending_title = gtk.Label.new(common.tr("Pending operations (nothing changes until you Apply)"));
+        pending_title.setXalign(0);
+        pending_title.as(gtk.Widget).addCssClass("heading");
+        self.pending_box.append(pending_title.as(gtk.Widget));
+        self.pending_box.append(pending_scroller.as(gtk.Widget));
+        const pending_buttons = gtk.Box.new(.horizontal, 6);
+        pending_buttons.as(gtk.Widget).setHalign(.end);
+        const undo = gtk.Button.newWithLabel(common.tr("Undo last"));
+        const clear = gtk.Button.newWithLabel(common.tr("Clear all"));
+        const show = gtk.Button.newWithLabel(common.tr("Show commands"));
+        self.apply_button = gtk.Button.newWithLabel(common.tr("Apply"));
+        self.apply_button.as(gtk.Widget).addCssClass("suggested-action");
+        _ = gtk.Button.signals.clicked.connect(undo, *Parted, &onUndo, self, .{});
+        _ = gtk.Button.signals.clicked.connect(clear, *Parted, &onClear, self, .{});
+        _ = gtk.Button.signals.clicked.connect(show, *Parted, &onShowCommands, self, .{});
+        _ = gtk.Button.signals.clicked.connect(self.apply_button, *Parted, &onApply, self, .{});
+        pending_buttons.append(undo.as(gtk.Widget));
+        pending_buttons.append(clear.as(gtk.Widget));
+        pending_buttons.append(show.as(gtk.Widget));
+        pending_buttons.append(self.apply_button.as(gtk.Widget));
+        self.pending_box.append(pending_buttons.as(gtk.Widget));
+        self.pending_box.as(gtk.Widget).setVisible(0);
+
         self.status.setXalign(0);
         self.status.as(gtk.Widget).setMarginStart(12);
         self.status.as(gtk.Widget).setMarginTop(4);
@@ -194,6 +246,7 @@ const Parted = struct {
         root.append(self.bar.as(gtk.Widget));
         root.append(header.as(gtk.Widget));
         root.append(part_scroller.as(gtk.Widget));
+        root.append(self.pending_box.as(gtk.Widget));
         root.append(self.status.as(gtk.Widget));
         window.setChild(root.as(gtk.Widget));
         _ = gtk.Widget.signals.destroy.connect(self.window, *Parted, &onDestroy, self, .{});
@@ -215,6 +268,9 @@ const Parted = struct {
     fn onDestroy(_: *gtk.ApplicationWindow, self: *Parted) callconv(.c) void {
         self.proc_guard.kill();
         self.rows.deinit(self.allocator);
+        self.pending.deinit(self.allocator);
+        self.pending_arena.deinit();
+        self.sim_arena.deinit();
         if (self.pending_image) |p| self.allocator.free(p);
         if (self.select_path) |p| self.allocator.free(p);
         for (self.images.items) |p| self.allocator.free(p);
@@ -236,6 +292,7 @@ const Parted = struct {
                     b_flag => self.openDialog(.flag),
                     b_wipe => self.askWipe(),
                     b_support => self.showSupport(),
+                    b_log => self.showLog(),
                     b_table => self.openDialog(.new_table),
                     b_new => self.openDialog(.new_partition),
                     b_delete => self.askDelete(),
@@ -332,7 +389,13 @@ const Parted = struct {
         defer self.endScan();
         const keep = self.selected_disk;
         const disks = self.arena.allocator().dupe(model.Disk, self.scan_disks.items) catch &.{};
+        // What is on the disks now replaces any prediction.
+        self.real = disks;
+        self.pending.clearRetainingCapacity();
+        _ = self.pending_arena.reset(.free_all);
+        _ = self.sim_arena.reset(.free_all);
         self.disks = disks;
+        self.refreshPending();
         self.selected_disk = null;
         self.selected_row = null;
         self.fillDisks();
@@ -528,13 +591,15 @@ const Parted = struct {
         set(self.buttons[b_delete], writable and part != null and common.proc.hasProgram("parted"));
         set(self.buttons[b_format], writable and part != null);
         // Mounting does not rewrite a disk, so only the busy state matters.
-        set(self.buttons[b_mount], !self.busy and part != null and !d.?.image and part.?.mounts.len == 0 and part.?.fstype.len > 0);
-        set(self.buttons[b_unmount], !self.busy and part != null and part.?.mounts.len > 0 and !(d != null and model.isSystemDisk(d.?)));
-        set(self.buttons[b_check], !self.busy and part != null and part.?.mounts.len == 0 and part.?.fstype.len > 0 and fs.byId(part.?.fstype) != null and fs.byId(part.?.fstype).?.check.len > 0);
+        const dirty = self.pending.items.len > 0;
+        set(self.buttons[b_mount], !dirty and !self.busy and part != null and !d.?.image and part.?.mounts.len == 0 and part.?.fstype.len > 0);
+        set(self.buttons[b_unmount], !dirty and !self.busy and part != null and part.?.mounts.len > 0 and !(d != null and model.isSystemDisk(d.?)));
+        set(self.buttons[b_check], !dirty and !self.busy and part != null and part.?.mounts.len == 0 and part.?.fstype.len > 0 and fs.byId(part.?.fstype) != null and fs.byId(part.?.fstype).?.check.len > 0);
         set(self.buttons[b_label], writable and part != null and part.?.fstype.len > 0 and fs.byId(part.?.fstype) != null and fs.byId(part.?.fstype).?.relabel != null);
         set(self.buttons[b_flag], writable and part != null and common.proc.hasProgram("parted") and d.?.table.len > 0);
         set(self.buttons[b_wipe], writable and part != null);
         set(self.buttons[b_support], true);
+        set(self.buttons[b_log], true);
         if (d) |disk| if (model.refuseReason(disk)) |why| {
             var buf: [200]u8 = undefined;
             self.status.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{why}, 0) catch "");
@@ -841,44 +906,38 @@ const Parted = struct {
         switch (dlg.action) {
             .new_table => {
                 const kind: []const u8 = if (dlg.dropdown.?.getSelected() == 0) "gpt" else "msdos";
-                const argv = fs.newTable(a, d.path, kind) catch return;
-                self.run(!d.image, "Create a partition table", argv, "Partition table created.");
+                self.queueOp(d.path, .{ .new_table = .{ .kind = kind } });
             },
             .new_partition => {
                 const gap = self.selectedGap() orelse return;
                 const start_mib = gap.start * d.sector / model.mib;
                 const size: u64 = @intCast(dlg.spin.?.getValueAsInt());
                 const choice = dlg.dropdown.?.getSelected();
+                const number = fs.nextNumber(d);
+                self.queueOp(d.path, .{ .create = .{ .start_mib = start_mib, .end_mib = start_mib + size } });
                 if (choice > 0 and choice <= dlg.n_kinds) {
                     const label = std.mem.span(dlg.entry.?.as(gtk.Editable).getText());
-                    const argv = fs.createAndFormat(a, d, start_mib, start_mib + size, dlg.kinds[choice - 1], label) catch return;
-                    return self.run(true, "Create and format a partition", argv, "Partition created and formatted.");
+                    self.queueOp(d.path, .{ .format = .{ .number = number, .fs = dlg.kinds[choice - 1], .label = label } });
                 }
-                const argv = fs.newPartition(a, d.path, start_mib, start_mib + size) catch return;
-                self.run(!d.image, "Create a partition", argv, "Partition created. Format it to use it.");
             },
             .format => {
                 const p = self.selectedPart() orelse return;
                 const idx: usize = @intCast(dlg.dropdown.?.getSelected());
                 if (idx >= dlg.n_kinds) return;
                 const label = std.mem.span(dlg.entry.?.as(gtk.Editable).getText());
-                const argv = fs.formatScript(a, if (d.image) d.path else null, p.number, p.path, dlg.kinds[idx], label) catch return;
-                self.run(true, "Format a partition", argv, "Formatted.");
+                self.queueOp(d.path, .{ .format = .{ .number = p.number, .fs = dlg.kinds[idx], .label = label } });
             },
             .label => {
                 const p = self.selectedPart() orelse return;
-                const f = fs.byId(p.fstype) orelse return;
                 const label = std.mem.span(dlg.entry.?.as(gtk.Editable).getText());
-                const argv = (fs.relabelScript(a, if (d.image) d.path else null, p.number, p.path, f, label) catch return) orelse return;
-                self.run(true, "Change a filesystem label", argv, "Label changed.");
+                self.queueOp(d.path, .{ .label = .{ .number = p.number, .label = label } });
             },
             .flag => {
                 const p = self.selectedPart() orelse return;
                 const idx: usize = @intCast(dlg.dropdown.?.getSelected());
                 if (idx >= fs.flags.len) return;
                 const on = dlg.dropdown2.?.getSelected() == 0;
-                const argv = fs.setFlag(a, d.path, p.number, fs.flags[idx], on) catch return;
-                self.run(!d.image, "Change a partition flag", argv, "Flag changed.");
+                self.queueOp(d.path, .{ .flag = .{ .number = p.number, .flag = fs.flags[idx], .on = on } });
             },
             .new_image => {
                 const path = std.mem.span(dlg.entry.?.as(gtk.Editable).getText());
@@ -903,9 +962,7 @@ const Parted = struct {
                     return self.status.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{why}, 0) catch "");
                 }
                 const start_mib = p.start * d.sector / model.mib;
-                const script = (fs.resizeScript(a, if (d.image) d.path else null, d.path, p.number, p.path, p.fstype, start_mib, start_mib + new_mib, shrink) catch return) orelse
-                    return self.status.setText(common.tr("This filesystem cannot be resized here."));
-                self.run(!d.image or p.fstype.len > 0, "Resize a partition", script, "Resized.");
+                self.queueOp(d.path, .{ .resize = .{ .number = p.number, .new_end_mib = start_mib + new_mib } });
             },
             .mount => {
                 const p = self.selectedPart() orelse return;
@@ -918,33 +975,15 @@ const Parted = struct {
     }
 
     fn askDelete(self: *Parted) void {
-        const p = self.selectedPart() orelse return;
-        var buf: [300]u8 = undefined;
-        const text = std.fmt.bufPrintSentinel(&buf, "Delete {s}? Its data becomes inaccessible. This cannot be undone.", .{p.path}, 0) catch return;
-        common.dialogs.choose(self.window.as(gtk.Window), common.tr("Delete partition?"), text, &.{ "Cancel", "Delete" }, 0, Parted, onDeleteAnswer, self);
-    }
-
-    fn onDeleteAnswer(self: *Parted, index: c_int) void {
-        if (index != 1) return;
         const d = self.selectedDisk() orelse return;
         const p = self.selectedPart() orelse return;
-        const argv = fs.deletePartition(self.arena.allocator(), d.path, p.number) catch return;
-        self.run(!d.image, "Delete a partition", argv, "Deleted.");
+        self.queueOp(d.path, .{ .delete = .{ .number = p.number } });
     }
 
     fn askWipe(self: *Parted) void {
-        const p = self.selectedPart() orelse return;
-        var buf: [300]u8 = undefined;
-        const text = std.fmt.bufPrintSentinel(&buf, "Erase the filesystem signatures on {s}? The partition stays, but it will look empty and unformatted.", .{if (self.selectedDisk().?.image) "this partition" else p.path}, 0) catch return;
-        common.dialogs.choose(self.window.as(gtk.Window), common.tr("Erase signatures?"), text, &.{ "Cancel", "Erase" }, 0, Parted, onWipeAnswer, self);
-    }
-
-    fn onWipeAnswer(self: *Parted, index: c_int) void {
-        if (index != 1) return;
         const d = self.selectedDisk() orelse return;
         const p = self.selectedPart() orelse return;
-        const argv = fs.wipeScript(self.arena.allocator(), if (d.image) d.path else null, p.number, p.path) catch return;
-        self.run(true, "Erase filesystem signatures", argv, "Erased.");
+        self.queueOp(d.path, .{ .wipe = .{ .number = p.number } });
     }
 
     /// Which filesystems can be made, and what to install for the rest.
@@ -986,6 +1025,256 @@ const Parted = struct {
         const argv = (fs.checkScript(self.arena.allocator(), if (d.image) d.path else null, p.number, p.path, f) catch return) orelse
             return self.status.setText(common.tr("There is no checker for this filesystem."));
         self.run(true, "Check a filesystem (read-only)", argv, "The check found no problems.");
+    }
+
+    // ---- pending operations ------------------------------------------------------------------
+
+    fn realDisk(self: *const Parted, path: []const u8) ?model.Disk {
+        for (self.real) |d| if (std.mem.eql(u8, d.path, path)) return d;
+        return null;
+    }
+
+    /// Adds `op` for the disk at `disk_path` and shows the predicted layout.
+    fn queueOp(self: *Parted, disk_path: []const u8, op_in: ops_mod.Op) void {
+        const pa = self.pending_arena.allocator();
+        // Own the strings (they come from dialogs).
+        var op = op_in;
+        switch (op) {
+            .new_table => |*o| o.kind = pa.dupe(u8, o.kind) catch return,
+            .format => |*o| o.label = pa.dupe(u8, o.label) catch return,
+            .label => |*o| o.label = pa.dupe(u8, o.label) catch return,
+            .flag => |*o| o.flag = pa.dupe(u8, o.flag) catch return,
+            else => {},
+        }
+        // The layout this operation will see: everything before it, applied.
+        const before = self.predicted(disk_path, self.pending.items.len) orelse return;
+        if (op == .resize) {
+            const o = op.resize;
+            for (before.parts) |p| if (p.number == o.number) {
+                const start_mib = p.start * before.sector / model.mib;
+                const shrink = o.new_end_mib - start_mib < p.size / model.mib;
+                if (fs.resizeRefusal(p.fstype, shrink)) |why| {
+                    var buf: [200]u8 = undefined;
+                    return self.status.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{why}, 0) catch "");
+                }
+            };
+        }
+        const text = ops_mod.describe(pa, before, op) catch return;
+        self.pending.append(self.allocator, .{ .disk_path = pa.dupe(u8, disk_path) catch return, .op = op, .text = text }) catch return;
+        self.recompute();
+    }
+
+    /// `disk_path` as it will be after the first `count` pending operations.
+    fn predicted(self: *Parted, disk_path: []const u8, count: usize) ?model.Disk {
+        var d = self.realDisk(disk_path) orelse return null;
+        const a = self.sim_arena.allocator();
+        for (self.pending.items[0..count]) |p| {
+            if (!std.mem.eql(u8, p.disk_path, disk_path)) continue;
+            d = ops_mod.simulate(a, d, p.op) catch return null;
+        }
+        return d;
+    }
+
+    /// Rebuilds `disks` from `real` plus the queue, and refreshes the screen.
+    fn recompute(self: *Parted) void {
+        _ = self.sim_arena.reset(.retain_capacity);
+        const a = self.sim_arena.allocator();
+        const out = a.alloc(model.Disk, self.real.len) catch return;
+        for (self.real, 0..) |d, i| out[i] = self.predicted(d.path, self.pending.items.len) orelse d;
+        self.disks = out;
+        self.refreshPending();
+        if (self.selected_disk != null) self.fillParts();
+        self.updateButtons();
+    }
+
+    fn refreshPending(self: *Parted) void {
+        self.pending_list.removeAll();
+        for (self.pending.items) |p| {
+            var buf: [300]u8 = undefined;
+            const l = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{p.text}, 0) catch "");
+            l.setXalign(0);
+            l.as(gtk.Widget).setMarginTop(3);
+            l.as(gtk.Widget).setMarginBottom(3);
+            l.as(gtk.Widget).setMarginStart(6);
+            self.pending_list.append(l.as(gtk.Widget));
+        }
+        var b: [48]u8 = undefined;
+        self.apply_button.setLabel(std.fmt.bufPrintSentinel(&b, "Apply {d} operation{s}", .{ self.pending.items.len, if (self.pending.items.len == 1) "" else "s" }, 0) catch "Apply");
+        self.pending_box.as(gtk.Widget).setVisible(@intFromBool(self.pending.items.len > 0));
+    }
+
+    fn onUndo(_: *gtk.Button, self: *Parted) callconv(.c) void {
+        if (self.pending.items.len == 0) return;
+        _ = self.pending.pop();
+        self.recompute();
+    }
+
+    fn onClear(_: *gtk.Button, self: *Parted) callconv(.c) void {
+        self.pending.clearRetainingCapacity();
+        self.recompute();
+    }
+
+    /// The commands the queue would run, grouped by whether they need root.
+    const Plan = struct { plain: []const ops_mod.Cmd, root: []const ops_mod.Cmd };
+
+    fn plan(self: *Parted) ?Plan {
+        const a = self.sim_arena.allocator();
+        var plain: std.ArrayList(ops_mod.Cmd) = .empty;
+        var root: std.ArrayList(ops_mod.Cmd) = .empty;
+        // The layout of each disk as the queue is walked.
+        const state = a.alloc(model.Disk, self.real.len) catch return null;
+        @memcpy(state, self.real);
+        for (self.pending.items) |p| {
+            var di: usize = 0;
+            while (di < state.len and !std.mem.eql(u8, state[di].path, p.disk_path)) di += 1;
+            if (di == state.len) continue;
+            const cmd = (ops_mod.commands(a, state[di], p.op) catch return null) orelse return null;
+            (if (cmd.root) &root else &plain).append(a, cmd) catch return null;
+            state[di] = ops_mod.simulate(a, state[di], p.op) catch return null;
+        }
+        return .{ .plain = plain.items, .root = root.items };
+    }
+
+    fn onShowCommands(_: *gtk.Button, self: *Parted) callconv(.c) void {
+        const p = self.plan() orelse return self.status.setText(common.tr("Some operation cannot be turned into commands."));
+        const a = self.sim_arena.allocator();
+        const both = std.mem.concat(a, ops_mod.Cmd, &.{ p.plain, p.root }) catch return;
+        const text = ops_mod.preview(a, both) catch return;
+        self.showText(common.tr("Commands that will run"), text);
+    }
+
+    fn onApply(_: *gtk.Button, self: *Parted) callconv(.c) void {
+        if (self.pending.items.len == 0 or self.busy) return;
+        var buf: [600]u8 = undefined;
+        var w: usize = 0;
+        for (self.pending.items, 0..) |p, i| {
+            if (i >= 8) {
+                const more = std.fmt.bufPrint(buf[w..], "\u{2026} and {d} more\n", .{self.pending.items.len - 8}) catch break;
+                w += more.len;
+                break;
+            }
+            const line = std.fmt.bufPrint(buf[w..], "\u{2022} {s}\n", .{p.text}) catch break;
+            w += line.len;
+        }
+        const text = std.fmt.allocPrintSentinel(self.allocator, "{s}\nThese changes cannot be undone. Make sure you have a backup of anything important on these disks.", .{buf[0..w]}, 0) catch return;
+        defer self.allocator.free(text);
+        common.dialogs.choose(self.window.as(gtk.Window), common.tr("Apply the pending operations?"), text, &.{ "Cancel", "Apply" }, 0, Parted, onApplyAnswer, self);
+    }
+
+    fn onApplyAnswer(self: *Parted, index: c_int) void {
+        if (index != 1) return;
+        const p = self.plan() orelse return self.status.setText(common.tr("Some operation cannot be turned into commands."));
+        const a = self.sim_arena.allocator();
+        self.busy = true;
+        self.updateButtons();
+        // Commands as you first (images), then the administrator ones in one go.
+        self.apply_root = if (p.root.len > 0) (ops_mod.master(a, p.root) catch null) else null;
+        const log_text = ops_mod.preview(a, std.mem.concat(a, ops_mod.Cmd, &.{ p.plain, p.root }) catch &.{}) catch "";
+        self.logText("APPLY", log_text);
+        self.status.setText(common.tr("Working\u{2026} (this cannot be cancelled once started)"));
+        if (p.plain.len > 0) {
+            const master = ops_mod.master(a, p.plain) catch return;
+            common.proc.run(Parted, self.proc_guard, master, onPlainStage);
+        } else self.runRootStage();
+    }
+
+    fn onPlainStage(self: *Parted, ok: bool, _: []const u8) void {
+        if (!ok) return self.applyFinished(false, "A command failed while changing an image file.");
+        self.runRootStage();
+    }
+
+    fn runRootStage(self: *Parted) void {
+        const master = self.apply_root orelse return self.applyFinished(true, "");
+        common.elevate.run(self.window.as(gtk.Window), "Apply partition changes", master, "", Parted, onRootStage, self);
+    }
+
+    fn onRootStage(self: *Parted, outcome: common.elevate.Outcome, message: []const u8) void {
+        switch (outcome) {
+            .ok => self.applyFinished(true, ""),
+            .cancelled => {
+                self.busy = false;
+                self.status.setText(common.tr("Cancelled. Nothing was applied."));
+                self.logText("CANCELLED", "");
+                self.updateButtons();
+            },
+            .failed => self.applyFinished(false, message),
+        }
+    }
+
+    fn applyFinished(self: *Parted, ok: bool, message: []const u8) void {
+        self.busy = false;
+        self.apply_root = null;
+        self.logText(if (ok) "DONE" else "FAILED", message);
+        if (ok) {
+            self.status.setText(common.tr("Applied."));
+        } else {
+            var buf: [900]u8 = undefined;
+            common.dialogs.showError(self.window.as(gtk.Window), common.tr("The operations failed"), std.fmt.bufPrintSentinel(&buf, "{s}\n\nEarlier steps may already have been applied. The layout shown has been re-read from the disks.", .{message[0..@min(message.len, 700)]}, 0) catch "");
+        }
+        self.pending.clearRetainingCapacity();
+        self.rescan();
+    }
+
+    // The log of what was run, in the state folder.
+
+    fn logPath(self: *Parted) ?[:0]u8 {
+        return common.paths.userStateFile(self.allocator, "parted.log") catch null;
+    }
+
+    fn logText(self: *Parted, tag: []const u8, text: []const u8) void {
+        const path = self.logPath() orelse return;
+        defer self.allocator.free(path);
+        var old: []u8 = &.{};
+        var contents: [*]u8 = undefined;
+        var length: usize = 0;
+        if (glib.fileGetContents(path, &contents, &length, null) != 0) {
+            defer glib.free(contents);
+            // Keep the file from growing without end: the last 200 KiB.
+            const keep = @min(length, 200 * 1024);
+            old = self.allocator.dupe(u8, contents[length - keep .. length]) catch &.{};
+        }
+        defer if (old.len > 0) self.allocator.free(old);
+        const now = glib.DateTime.newNowLocal() orelse return;
+        defer now.unref();
+        const stamp = now.format("%Y-%m-%d %H:%M:%S") orelse return;
+        defer glib.free(stamp);
+        const entry = std.fmt.allocPrint(self.allocator, "{s}[{s}] {s}\n{s}{s}", .{ old, std.mem.span(stamp), tag, text, if (text.len > 0 and text[text.len - 1] != '\n') "\n" else "" }) catch return;
+        defer self.allocator.free(entry);
+        const dir = glib.pathGetDirname(path);
+        defer glib.free(dir);
+        _ = glib.mkdirWithParents(dir, 0o755);
+        _ = glib.fileSetContents(path, entry.ptr, @intCast(entry.len), null);
+    }
+
+    fn showLog(self: *Parted) void {
+        const path = self.logPath() orelse return;
+        defer self.allocator.free(path);
+        var contents: [*]u8 = undefined;
+        var length: usize = 0;
+        if (glib.fileGetContents(path, &contents, &length, null) == 0) return self.showText(common.tr("Operation log"), "Nothing has been run yet.");
+        defer glib.free(contents);
+        self.showText(common.tr("Operation log"), contents[0..length]);
+    }
+
+    fn showText(self: *Parted, title: [:0]const u8, text: []const u8) void {
+        const z = self.allocator.dupeSentinel(u8, text, 0) catch return;
+        defer self.allocator.free(z);
+        const window = gtk.Window.new();
+        window.setTitle(title);
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setDefaultSize(720, 460);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const label = gtk.Label.new(z);
+        label.setSelectable(1);
+        label.setXalign(0);
+        label.setYalign(0);
+        label.as(gtk.Widget).addCssClass("monospace");
+        label.as(gtk.Widget).setMarginTop(12);
+        label.as(gtk.Widget).setMarginStart(12);
+        const scroller = gtk.ScrolledWindow.new();
+        scroller.setChild(label.as(gtk.Widget));
+        window.setChild(scroller.as(gtk.Widget));
+        window.present();
     }
 
     // ---- running commands --------------------------------------------------------------------
@@ -1090,4 +1379,5 @@ pub fn main(init: std.process.Init.Minimal) !void {
 test {
     _ = @import("model.zig");
     _ = @import("fs.zig");
+    _ = @import("ops.zig");
 }

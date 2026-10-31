@@ -110,7 +110,8 @@ pub fn partScript(arena: Allocator, image: ?[]const u8, number: u32, dev: []cons
     if (image) |img| {
         try s.print(arena, "set -e; L=$(losetup --show -fP {s}); trap 'losetup -d \"$L\"' EXIT; i=0; while [ ! -b \"${{L}}p{d}\" ] && [ $i -lt 25 ]; do sleep 0.2; i=$((i+1)); done; DEV=\"${{L}}p{d}\"; {s}", .{ try quote(arena, img), number, number, body });
     } else {
-        try s.print(arena, "set -e; DEV={s}; {s}", .{ try quote(arena, dev), body });
+        // A partition created a moment ago may need a moment to appear.
+        try s.print(arena, "set -e; DEV={s}; udevadm settle 2>/dev/null || true; i=0; while [ ! -b \"$DEV\" ] && [ $i -lt 25 ]; do sleep 0.2; i=$((i+1)); done; {s}", .{ try quote(arena, dev), body });
     }
     return arena.dupe([]const u8, &.{ "sh", "-c", s.items });
 }
