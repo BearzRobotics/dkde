@@ -593,6 +593,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
 test {
     _ = @import("ksy/coverage_test.zig");
     _ = @import("ksy/prep.zig");
+    _ = @import("ksy/expr.zig");
+    _ = @import("ksy/model.zig");
+    _ = @import("ksy/interp.zig");
     _ = @import("buffer.zig");
     _ = @import("inspect.zig");
 }

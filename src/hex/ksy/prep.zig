@@ -70,14 +70,31 @@ pub fn prepare(gpa: Allocator, source: []const u8) Allocator.Error![]u8 {
         if (std.mem.lastIndexOfScalar(u8, code, ' ')) |sp| {
             if (isBlockIndicator(code[sp + 1 ..])) {
                 var ind = indentOf(code);
-                var body = code[ind..];
-                if (std.mem.startsWith(u8, body, "- ")) {
-                    ind += 2;
-                    body = body[2..];
-                }
+                if (std.mem.startsWith(u8, code[ind..], "- ")) ind += 2;
                 try out.appendSlice(gpa, code[0..sp]);
-                try out.appendSlice(gpa, " \"\"\n");
-                skip_above = ind;
+                var key = std.mem.trimEnd(u8, code[0..sp], ": ");
+                if (std.mem.lastIndexOfScalar(u8, key, ' ')) |k| key = key[k + 1 ..];
+                if (isNoise(key)) {
+                    try out.appendSlice(gpa, " \"\"\n");
+                    skip_above = ind;
+                    continue;
+                }
+                // Expressions are sometimes written as block scalars: fold them.
+                try out.appendSlice(gpa, " '");
+                while (lines.peek()) |next| {
+                    const nl = std.mem.trimEnd(u8, next, "\r");
+                    const blank = std.mem.trim(u8, nl, " \t").len == 0;
+                    if (!blank and indentOf(nl) <= ind) break;
+                    _ = lines.next();
+                    const piece = std.mem.trim(u8, nl, " \t");
+                    if (piece.len == 0) continue;
+                    if (out.items[out.items.len - 1] != '\'') try out.append(gpa, ' ');
+                    for (piece) |c| {
+                        if (c == '\'') try out.append(gpa, '\'');
+                        try out.append(gpa, c);
+                    }
+                }
+                try out.appendSlice(gpa, "'\n");
                 continue;
             }
         }
@@ -251,4 +268,11 @@ test "odd keys and values are made safe" {
     const k = try unescapeKey(a, "codes%3A%3Abig");
     defer a.free(k);
     try std.testing.expectEqualStrings("codes::big", k);
+}
+
+test "expression block scalars are folded, docs are dropped" {
+    const a = std.testing.allocator;
+    const out = try prepare(a, "x:\n  value: |\n    a != 0 and (\n      b == 1 or\n      c == 2)\n  doc: |\n    prose\n  next: 1\n");
+    defer a.free(out);
+    try std.testing.expectEqualStrings("x:\n  value: 'a != 0 and ( b == 1 or c == 2)'\n  doc: \"\"\n  next: '1'\n", out);
 }
