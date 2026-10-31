@@ -11,6 +11,7 @@ const std = @import("std");
 const cairo = @import("cairo1");
 const zpdf = @import("zpdf");
 const image = @import("image.zig");
+const truetype = @import("truetype.zig");
 const imgcodec = @import("imgcodec");
 pub const Diag = @import("diag.zig").Diag;
 
@@ -48,6 +49,9 @@ const Font = struct {
     enc: ?*FontEncoding = null,
     /// A Type0 font: codes are CIDs and widths come from /W. (zpdf also marks some simple TrueType fonts with a ToUnicode map as CID.)
     composite: bool = false,
+    /// The embedded TrueType program, when there is one we can read.
+    tt: ?truetype.Font = null,
+    symbolic: bool = false,
 
     fn width(self: Font, code: u8) f64 {
         const i = @as(i64, code) - self.first_char;
@@ -116,6 +120,35 @@ const Ctx = struct {
         };
     }
 
+    /// Reads the embedded font program, if it is TrueType (or OpenType with TrueType outlines).
+    fn loadProgram(self: *Ctx, f: *Font, fd: Object.Dict, name: []const u8) void {
+        var desc_obj = fd.get("FontDescriptor");
+        // A composite font keeps its descriptor on the descendant CIDFont.
+        if (desc_obj == null) if (fd.get("DescendantFonts")) |df| {
+            const arr = self.resolve(df);
+            if (arr == .array and arr.array.len > 0) if (self.dictOf(arr.array[0])) |cf| {
+                desc_obj = cf.get("FontDescriptor");
+            };
+        };
+        const dd = self.dictOf(desc_obj orelse return) orelse return;
+        if (dd.get("Flags")) |fl| f.symbolic = (intOf(self, fl, 0) & 4) != 0;
+        const file = dd.get("FontFile2") orelse dd.get("FontFile3") orelse {
+            if (dd.get("FontFile") != null) self.diag.note("font-type1-not-read", name);
+            return;
+        };
+        const st = switch (self.resolve(file)) {
+            .stream => |x| x,
+            else => return,
+        };
+        const raw = decoded(self, st) orelse return;
+        defer self.gpa.free(raw);
+        const kept = self.arena.dupe(u8, raw) catch return;
+        f.tt = truetype.Font.parse(kept) catch |e| {
+            self.diag.note(if (e == error.Unsupported) "font-cff-not-read" else "font-truetype-damaged", name);
+            return;
+        };
+    }
+
     fn resolveThunk(ctx: *const anyopaque, o: Object) Object {
         const self: *Ctx = @ptrCast(@alignCast(@constCast(ctx)));
         return self.resolve(o);
@@ -161,9 +194,7 @@ const Ctx = struct {
         if (fd.get("FontDescriptor")) |desc| if (self.dictOf(desc)) |dd| {
             if (dd.get("MissingWidth")) |mw| f.missing_width = number(self.resolve(mw)) orelse 500;
         };
-        if (fd.get("FontDescriptor")) |desc| if (self.dictOf(desc)) |dd| {
-            if (dd.get("FontFile") != null or dd.get("FontFile2") != null or dd.get("FontFile3") != null) self.diag.note("font-embedded-not-read", name);
-        };
+        self.loadProgram(f, fd, name);
         if (self.resolve(fd.get("Subtype") orelse .null) == .name and std.mem.eql(u8, self.resolve(fd.get("Subtype").?).name, "Type0")) self.diag.note("font-type0-composite", name);
         // The 14 standard fonts come without widths: Courier is fixed, the rest use an average.
         if (f.widths.len == 0 and f.family == .mono) f.missing_width = 600;
@@ -272,6 +303,55 @@ const OneChar = struct {
     pub fn print(_: *OneChar, comptime _: []const u8, _: anytype) !void {}
 };
 
+/// Receives a glyph outline and draws it into cairo's current path.
+const CairoSink = struct {
+    cr: *cairo.Context,
+    x: f64 = 0,
+    y: f64 = 0,
+
+    pub fn moveTo(self: *CairoSink, x: f64, y: f64) void {
+        self.cr.moveTo(x, y);
+        self.x = x;
+        self.y = y;
+    }
+    pub fn lineTo(self: *CairoSink, x: f64, y: f64) void {
+        self.cr.lineTo(x, y);
+        self.x = x;
+        self.y = y;
+    }
+    pub fn quadTo(self: *CairoSink, cx: f64, cy: f64, x: f64, y: f64) void {
+        // A quadratic curve as the equivalent cubic.
+        self.cr.curveTo(self.x + 2.0 / 3.0 * (cx - self.x), self.y + 2.0 / 3.0 * (cy - self.y), x + 2.0 / 3.0 * (cx - x), y + 2.0 / 3.0 * (cy - y), x, y);
+        self.x = x;
+        self.y = y;
+    }
+    pub fn close(self: *CairoSink) void {
+        self.cr.closePath();
+    }
+};
+
+/// Which glyph of the embedded program draws character `code` (whose Unicode, as UTF-8, is `utf8`).
+fn glyphFor(f: *const Font, tt: truetype.Font, code: u32, utf8: []const u8) ?u16 {
+    if (f.composite) {
+        const e = f.enc orelse return @intCast(@min(code, 0xFFFF));
+        return @intCast(@min(e.cid_to_gid_map.getGID(code), 0xFFFF));
+    }
+    var cp: u32 = 0;
+    if (utf8.len > 0) {
+        if (std.unicode.utf8Decode(utf8[0..std.unicode.utf8ByteSequenceLength(utf8[0]) catch 1])) |v| cp = v else |_| {}
+    }
+    if (f.symbolic or cp == 0) {
+        if (tt.glyphForCode(code)) |g| return g;
+        if (cp != 0) if (tt.glyphForUnicode(cp)) |g| return g;
+    } else {
+        if (tt.glyphForUnicode(cp)) |g| return g;
+        if (tt.glyphForCode(code)) |g| return g;
+    }
+    // A subset with no usable cmap usually numbers its glyphs by character code.
+    if (!tt.hasCmap() and code < tt.num_glyphs) return @intCast(code);
+    return null;
+}
+
 fn showString(c: *Ctx, s: []const u8) void {
     const f = c.state.font orelse return;
     const fs = c.state.font_size;
@@ -314,6 +394,26 @@ fn showString(c: *Ctx, s: []const u8) void {
         }, if (f.italic) .italic else .normal, if (f.bold) .bold else .normal);
         cr.setFontSize(fs);
 
+        // The embedded font's own outline, when we can read it.
+        var drewOutline = false;
+        var program_advance: f64 = -1;
+        if (f.tt) |tt| {
+            if (glyphFor(f, tt, code, one.buf[0..one.len])) |gid| {
+                program_advance = @as(f64, @floatFromInt(tt.advance(gid))) / @as(f64, @floatFromInt(tt.units_per_em));
+                if (c.state.render_mode != 3 and c.state.render_mode != 7) {
+                    // Undo the y flip used for substitute glyphs: outlines are y up like text space.
+                    cr.scale(1, -1);
+                    cr.scale(fs / @as(f64, @floatFromInt(tt.units_per_em)), fs / @as(f64, @floatFromInt(tt.units_per_em)));
+                    var sink: CairoSink = .{ .cr = cr };
+                    cr.newPath();
+                    tt.outline(gid, &sink) catch {};
+                    setFill(c);
+                    cr.fill();
+                }
+                drewOutline = true;
+            }
+        }
+
         // The advance: the PDF's widths when it has them, else the substitute font's own.
         const is_cid = f.composite and f.enc != null;
         var w0: f64 = -1; // negative: measure the substitute glyph
@@ -322,6 +422,7 @@ fn showString(c: *Ctx, s: []const u8) void {
         } else if (f.widths.len > 0) {
             w0 = f.width(@truncate(code)) / 1000.0;
         }
+        if (w0 < 0 and program_advance >= 0) w0 = program_advance;
         if (w0 < 0) {
             w0 = 0.5;
             if (one.len > 0 and one.buf[0] != 0) {
@@ -334,7 +435,7 @@ fn showString(c: *Ctx, s: []const u8) void {
             }
         }
 
-        if (one.len > 0 and one.buf[0] > 0x20 and c.state.render_mode != 3 and c.state.render_mode != 7) {
+        if (one.len > 0 and one.buf[0] > 0x20 and c.state.render_mode != 3 and c.state.render_mode != 7 and !drewOutline) {
             setFill(c);
             cr.moveTo(0, 0);
             cr.showText(@ptrCast(&one.buf));
@@ -1091,6 +1192,7 @@ test "a JPEG image is decoded, and unsupported image types are counted" {
 }
 
 test {
+    _ = @import("truetype.zig");
     _ = @import("image.zig");
     _ = @import("diag.zig");
 }
