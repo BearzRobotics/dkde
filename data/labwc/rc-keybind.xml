@@ -27,3 +27,18 @@
 <keybind key="C-A-S-Right">
   <action name="SendToDesktop" to="right"/>
 </keybind>
+<keybind key="XF86AudioRaiseVolume">
+  <action name="Execute" command="dkde-panel msg volume-up"/>
+</keybind>
+<keybind key="XF86AudioLowerVolume">
+  <action name="Execute" command="dkde-panel msg volume-down"/>
+</keybind>
+<keybind key="XF86AudioMute">
+  <action name="Execute" command="dkde-panel msg volume-mute"/>
+</keybind>
+<keybind key="XF86MonBrightnessUp">
+  <action name="Execute" command="dkde-panel msg brightness-up"/>
+</keybind>
+<keybind key="XF86MonBrightnessDown">
+  <action name="Execute" command="dkde-panel msg brightness-down"/>
+</keybind>

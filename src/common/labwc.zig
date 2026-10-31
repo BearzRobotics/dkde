@@ -155,6 +155,12 @@ pub const dkde_keybinds = [_]Keybind{
     .{ .key = "C-S-Escape", .command = "dkde-tasks" },
     .{ .key = "Print", .command = "dkde-snip --full" },
     .{ .key = "S-Print", .command = "dkde-snip --region" },
+    // Volume and brightness keys; the panel shows an on-screen display.
+    .{ .key = "XF86AudioRaiseVolume", .command = "dkde-panel msg volume-up" },
+    .{ .key = "XF86AudioLowerVolume", .command = "dkde-panel msg volume-down" },
+    .{ .key = "XF86AudioMute", .command = "dkde-panel msg volume-mute" },
+    .{ .key = "XF86MonBrightnessUp", .command = "dkde-panel msg brightness-up" },
+    .{ .key = "XF86MonBrightnessDown", .command = "dkde-panel msg brightness-down" },
     // Virtual desktops: switch, or carry the active window along.
     .{ .key = "C-A-Left", .action = "GoToDesktop", .to = "left" },
     .{ .key = "C-A-Right", .action = "GoToDesktop", .to = "right" },

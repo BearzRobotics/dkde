@@ -15,6 +15,7 @@ const Wallpaper = @import("wallpaper.zig").Wallpaper;
 const Notifications = @import("notifications.zig").Notifications;
 const Tray = @import("tray.zig").Tray;
 const Quick = @import("quick.zig").Quick;
+const Osd = @import("osd.zig").Osd;
 const Workspaces = @import("workspaces.zig").Workspaces;
 const ipc = @import("ipc.zig");
 const slideshow = @import("slideshow.zig");
@@ -39,6 +40,7 @@ const App = struct {
     notifications: ?*Notifications = null,
     tray: ?*Tray = null,
     quick: ?*Quick = null,
+    osd: ?*Osd = null,
     workspaces: ?*Workspaces = null,
     manager: ?*toplevels.Manager = null,
     menu: ?*StartMenu = null,
@@ -75,6 +77,8 @@ const App = struct {
         // The tray exists before the bars so they can show its icons at once.
         self.tray = Tray.create(self.allocator);
         self.quick = Quick.create(self.allocator, &self.config);
+        self.osd = Osd.create(self.allocator);
+        if (self.quick) |q| q.osd = self.osd;
         self.workspaces = Workspaces.create(self.allocator, onWorkspacesChanged, self);
         if (glib.getenv("DKDE_DEBUG_QUICK") != null) _ = glib.timeoutAdd(4000, debugQuick, self);
         self.rebuildSurfaces();
@@ -97,12 +101,24 @@ const App = struct {
             self.toggleMenu();
             return "ok";
         }
+        // The keyboard's volume and brightness keys (see the labwc keybindings).
+        if (self.quick) |q| {
+            if (std.mem.eql(u8, command, "volume-up")) return reply(q.nudgeVolume(5));
+            if (std.mem.eql(u8, command, "volume-down")) return reply(q.nudgeVolume(-5));
+            if (std.mem.eql(u8, command, "volume-mute")) return reply(q.toggleMute());
+            if (std.mem.eql(u8, command, "brightness-up")) return reply(q.nudgeBrightness(10));
+            if (std.mem.eql(u8, command, "brightness-down")) return reply(q.nudgeBrightness(-10));
+        }
         if (std.mem.eql(u8, command, "reload")) {
             self.config.reload() catch return "error: reload failed";
             onConfigChanged(self);
             return "ok";
         }
         return "error: unknown command";
+    }
+
+    fn reply(_: void) []const u8 {
+        return "ok";
     }
 
     fn toggleMenu(self: *App) void {
@@ -360,6 +376,7 @@ const App = struct {
         if (self.notifications) |n| n.destroy();
         if (self.tray) |tray| tray.destroy();
         if (self.quick) |q| q.destroy();
+        if (self.osd) |o| o.destroy();
         if (self.workspaces) |w| w.destroy();
         self.bars.deinit(self.allocator);
         self.wallpapers.deinit(self.allocator);

@@ -259,6 +259,17 @@ window is on; activating a window on another desktop switches to it. Not done:
 a per-desktop taskbar, "move to desktop" in the window menu, naming desktops
 and an overview with thumbnails.
 
+**Media keys and on-screen display:** the volume, mute and brightness keys
+(`XF86AudioRaiseVolume`, `XF86AudioLowerVolume`, `XF86AudioMute`,
+`XF86MonBrightnessUp`, `XF86MonBrightnessDown`) are bound by `dkde-setup` in
+labwc to `dkde-panel msg volume-up|volume-down|volume-mute|brightness-up|
+brightness-down`. Volume moves 5 points per press (raising it unmutes) and
+brightness 10, through the same tools as quick settings (`wpctl`/`pactl`,
+`brightnessctl` or sysfs). Each press shows a pill at the bottom centre of the
+screen on the overlay layer (icon, level bar, percentage) for 1.5 s; it takes no
+pointer input. Wayland only. Not done: microphone mute, keyboard backlight,
+holding the key down repeats only as fast as labwc repeats the binding.
+
 **Start button:** opens and closes the start menu. Super is bound in labwc to
 `dkde-panel msg toggle-menu`. labwc can bind a lone modifier released by
 itself; labwc 0.9.3 documents this (`<keybind key="Super_L" onRelease="yes">` in

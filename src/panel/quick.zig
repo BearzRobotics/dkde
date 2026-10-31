@@ -16,6 +16,7 @@ const gtk = @import("gtk4");
 const common = @import("common");
 const proc = common.proc;
 const audio = common.audio;
+const Osd = @import("osd.zig").Osd;
 
 pub const Kind = enum { network, bluetooth, airplane, sound, brightness, battery };
 pub const kinds = std.enums.values(Kind);
@@ -71,7 +72,7 @@ pub fn batteryIcon(buf: []u8, b: Battery) []const u8 {
     return std.fmt.bufPrint(buf, "battery-level-{d}{s}-symbolic", .{ @min(level, 100), if (b.charging) "-charging" else "" }) catch "battery-symbolic";
 }
 
-pub fn volumeIcon(state: audio.State) []const u8 {
+pub fn volumeIcon(state: audio.State) [:0]const u8 {
     if (state.muted or state.volume_percent == 0) return "audio-volume-muted-symbolic";
     if (state.volume_percent < 34) return "audio-volume-low-symbolic";
     if (state.volume_percent < 67) return "audio-volume-medium-symbolic";
@@ -213,6 +214,8 @@ pub const Quick = struct {
     backend: ?audio.Backend = null,
     /// Partial pactl answer while its two commands are in flight.
     pactl_volume: ?u32 = null,
+    /// Shows level changes made with the keyboard; null where there is no layer-shell.
+    osd: ?*Osd = null,
 
     pub fn create(allocator: std.mem.Allocator, config: *const common.Config) *Quick {
         const self = allocator.create(Quick) catch @panic("OOM");
@@ -280,6 +283,68 @@ pub const Quick = struct {
     fn onRfkill(self: *Quick, ok: bool, out: []const u8) void {
         if (ok) self.airplane = parseRfkill(out);
         for (self.bars.items) |bar| self.updateBar(bar);
+    }
+
+    fn soundBackend() ?audio.Backend {
+        if (proc.hasProgram("wpctl")) return .wpctl;
+        if (proc.hasProgram("pactl")) return .pactl;
+        return null;
+    }
+
+    fn setSink(self: *Quick, backend: audio.Backend, percent: u32, muted: ?bool) void {
+        var arg_buf: [16]u8 = undefined;
+        const arg = audio.volumeArg(&arg_buf, backend, percent);
+        switch (backend) {
+            .wpctl => common.appinfo.spawn(self.allocator, &.{ "wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", arg }),
+            .pactl => common.appinfo.spawn(self.allocator, &.{ "pactl", "set-sink-volume", "@DEFAULT_SINK@", arg }),
+        }
+        if (muted) |m| {
+            const flag: []const u8 = if (m) "1" else "0";
+            switch (backend) {
+                .wpctl => common.appinfo.spawn(self.allocator, &.{ "wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", flag }),
+                .pactl => common.appinfo.spawn(self.allocator, &.{ "pactl", "set-sink-mute", "@DEFAULT_SINK@", flag }),
+            }
+        }
+    }
+
+    /// The volume keys: change the default output by `delta` percent points.
+    pub fn nudgeVolume(self: *Quick, delta: i32) void {
+        const backend = soundBackend() orelse return;
+        self.backend = backend;
+        const cur = self.volume orelse audio.State{ .volume_percent = 50, .muted = false };
+        const next: u32 = @intCast(std.math.clamp(@as(i32, @intCast(cur.volume_percent)) + delta, 0, 100));
+        // Raising the volume of a muted output unmutes it, as on other desktops.
+        const unmute: ?bool = if (delta > 0 and cur.muted) false else null;
+        self.setSink(backend, next, unmute);
+        self.volume = .{ .volume_percent = next, .muted = if (unmute != null) false else cur.muted };
+        for (self.bars.items) |bar| self.updateBar(bar);
+        if (self.osd) |o| {
+            var buf: [8]u8 = undefined;
+            o.show(volumeIcon(self.volume.?), @as(f64, @floatFromInt(next)) / 100.0, std.fmt.bufPrint(&buf, "{d}%", .{next}) catch "");
+        }
+    }
+
+    pub fn toggleMute(self: *Quick) void {
+        const backend = soundBackend() orelse return;
+        self.backend = backend;
+        const cur = self.volume orelse audio.State{ .volume_percent = 50, .muted = false };
+        const muted = !cur.muted;
+        self.setSink(backend, cur.volume_percent, muted);
+        self.volume = .{ .volume_percent = cur.volume_percent, .muted = muted };
+        for (self.bars.items) |bar| self.updateBar(bar);
+        if (self.osd) |o| o.show(volumeIcon(self.volume.?), if (muted) 0 else @as(f64, @floatFromInt(cur.volume_percent)) / 100.0, if (muted) "Muted" else "On");
+    }
+
+    /// The brightness keys; does nothing on a machine with no backlight.
+    pub fn nudgeBrightness(self: *Quick, delta: i32) void {
+        const light = readBacklight(self.allocator) orelse return;
+        defer self.allocator.free(light.dir);
+        const next: u32 = @intCast(std.math.clamp(@as(i32, @intCast(light.percent)) + delta, 1, 100));
+        if (!setBacklight(self.allocator, light.dir, next)) return;
+        if (self.osd) |o| {
+            var buf: [8]u8 = undefined;
+            o.show("display-brightness-symbolic", @as(f64, @floatFromInt(next)) / 100.0, std.fmt.bufPrint(&buf, "{d}%", .{next}) catch "");
+        }
     }
 
     pub fn fetchSound(self: *Quick) void {
@@ -647,28 +712,9 @@ const Flyout = struct {
         const self: *Flyout = @ptrCast(@alignCast(data.?));
         self.brightness_source = 0;
         const scale = self.brightness orelse return 0;
-        var arg_buf: [16]u8 = undefined;
         const percent: u32 = @intFromFloat(@max(1, scale.as(gtk.Range).getValue()));
-        // brightnessctl handles permissions (a udev rule); plain sysfs only
-        // works when the user may write the file.
-        if (proc.hasProgram("brightnessctl")) {
-            const arg = std.fmt.bufPrint(&arg_buf, "{d}%", .{percent}) catch return 0;
-            common.appinfo.spawn(self.quick.allocator, &.{ "brightnessctl", "set", arg });
-            return 0;
-        }
         const dir = self.backlight_dir orelse return 0;
-        const a = self.quick.allocator;
-        const max_path = std.fmt.allocPrint(a, "{s}/max_brightness", .{dir}) catch return 0;
-        defer a.free(max_path);
-        const max_text = readSmall(a, max_path) orelse return 0;
-        defer a.free(max_text);
-        const max = std.fmt.parseInt(u32, std.mem.trim(u8, max_text, " \r\n"), 10) catch return 0;
-        const value = @max(1, max * percent / 100);
-        const path = std.fmt.allocPrintSentinel(a, "{s}/brightness", .{dir}, 0) catch return 0;
-        defer a.free(path);
-        var text_buf: [16]u8 = undefined;
-        const text = std.fmt.bufPrint(&text_buf, "{d}", .{value}) catch return 0;
-        if (!writeFile(path, text)) {
+        if (!setBacklight(self.quick.allocator, dir, percent)) {
             self.status.setText(common.tr("Brightness needs brightnessctl, or permission to write the backlight."));
         }
         return 0;
@@ -679,6 +725,27 @@ const Flyout = struct {
         common.appinfo.spawn(self.quick.allocator, &.{ "dkde-settings", "--page", "network" });
     }
 };
+
+/// Sets the backlight to `percent`: `brightnessctl` handles permissions (a udev
+/// rule); plain sysfs only works when the user may write the file.
+fn setBacklight(allocator: std.mem.Allocator, dir: []const u8, percent: u32) bool {
+    var arg_buf: [16]u8 = undefined;
+    if (proc.hasProgram("brightnessctl")) {
+        const arg = std.fmt.bufPrint(&arg_buf, "{d}%", .{percent}) catch return false;
+        common.appinfo.spawn(allocator, &.{ "brightnessctl", "set", arg });
+        return true;
+    }
+    const max_path = std.fmt.allocPrint(allocator, "{s}/max_brightness", .{dir}) catch return false;
+    defer allocator.free(max_path);
+    const max_text = readSmall(allocator, max_path) orelse return false;
+    defer allocator.free(max_text);
+    const max = std.fmt.parseInt(u32, std.mem.trim(u8, max_text, " \r\n"), 10) catch return false;
+    const path = std.fmt.allocPrintSentinel(allocator, "{s}/brightness", .{dir}, 0) catch return false;
+    defer allocator.free(path);
+    var text_buf: [16]u8 = undefined;
+    const text = std.fmt.bufPrint(&text_buf, "{d}", .{@max(1, max * percent / 100)}) catch return false;
+    return writeFile(path, text);
+}
 
 extern fn open(path: [*:0]const u8, flags: c_int, ...) c_int;
 extern fn write(fd: c_int, buf: [*]const u8, count: usize) isize;

@@ -616,3 +616,23 @@ button.dkde-charmap-cell:hover {
 progressbar.dkde-bar-full progress {
   background-color: #e01b24;
 }
+
+/* On-screen display for volume and brightness keys. */
+window.dkde-osd-window {
+  background: transparent;
+}
+.dkde-osd {
+  background-color: alpha(#1e1e1e, 0.92);
+  color: white;
+  border-radius: 28px;
+  padding: 12px 20px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+.dkde-osd progressbar trough {
+  background-color: alpha(white, 0.22);
+  min-height: 6px;
+}
+.dkde-osd progressbar progress {
+  background-color: white;
+  min-height: 6px;
+}
