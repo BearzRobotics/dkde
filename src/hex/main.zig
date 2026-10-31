@@ -2841,6 +2841,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 }
 
 test {
+    _ = @import("fuzz_test.zig");
     _ = @import("ksy/coverage_test.zig");
     _ = @import("ksy/prep.zig");
     _ = @import("ksy/expr.zig");

@@ -381,3 +381,20 @@ pub fn plainImage(d: Disk) bool {
     const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{d.path}, 0) catch return false;
     return access(z, 2) == 0; // W_OK
 }
+
+fn fuzzParted(_: void, smith: *std.testing.Smith) anyerror!void {
+    var buf: [2048]u8 = undefined;
+    const n = smith.slice(&buf);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    _ = parseLsblk(arena.allocator(), buf[0..n]) catch {};
+    _ = try parsePartedMachine(arena.allocator(), "/tmp/x.img", buf[0..n], 1 << 20);
+}
+
+test "fuzz: lsblk and parted output" {
+    try std.testing.fuzz({}, fuzzParted, .{ .corpus = &.{
+        sample,
+        "BYT;\n/tmp/x.img:268435456B:file:512:512:gpt:;\n1:1048576B:105906175B:104857600B:ext4:name:boot, esp;\n",
+        "BYT;\n/tmp/x.img:1B:file:0:0:unknown:;\n9:xB:yB:zB:;\n",
+    } });
+}

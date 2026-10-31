@@ -407,6 +407,8 @@ fn parseAttr(ctx: *Ctx, id: []const u8, v: Value) LoadError!Attr {
     }
     if (a.repeat == .count) a.repeat_expr = exprOf(ctx, get(v, "repeat-expr"));
     if (a.repeat == .until) a.repeat_expr = exprOf(ctx, get(v, "repeat-until"));
+    // A repeat without its expression cannot run.
+    if ((a.repeat == .count or a.repeat == .until) and a.repeat_expr == null) return error.BadFormat;
 
     if (get(v, "contents")) |c| a.contents = try contentsBytes(ctx, c);
     if (get(v, "type")) |t| a.ty = try typeRef(ctx, t);
