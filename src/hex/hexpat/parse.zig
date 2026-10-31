@@ -1248,11 +1248,15 @@ pub const Pragmas = struct {
     magic: []const u8 = &.{},
     magic_offset: usize = 0,
     mime: []const u8 = "",
+    /// Every `#pragma MIME` line (a pattern may claim several types).
+    mimes: []const []const u8 = &.{},
 };
 
 /// Allocates the magic bytes from `arena`; the other fields point into `source`.
 pub fn pragmas(arena: Allocator, source: []const u8) Allocator.Error!Pragmas {
     var out: Pragmas = .{};
+    var mimes: std.ArrayList([]const u8) = .empty;
+    defer out.mimes = mimes.items;
     var lines = std.mem.splitScalar(u8, source, '\n');
     while (lines.next()) |raw| {
         const line = std.mem.trim(u8, raw, " \t\r");
@@ -1261,7 +1265,9 @@ pub fn pragmas(arena: Allocator, source: []const u8) Allocator.Error!Pragmas {
         if (std.mem.startsWith(u8, rest, "description")) {
             if (out.description.len == 0) out.description = std.mem.trim(u8, rest["description".len..], " \t");
         } else if (std.mem.startsWith(u8, rest, "MIME")) {
-            if (out.mime.len == 0) out.mime = std.mem.trim(u8, rest["MIME".len..], " \t");
+            const m = std.mem.trim(u8, rest["MIME".len..], " \t");
+            if (out.mime.len == 0) out.mime = m;
+            if (m.len > 0) try mimes.append(arena, m);
         } else if (std.mem.startsWith(u8, rest, "magic") and out.magic.len == 0) {
             const open = std.mem.indexOfScalar(u8, rest, '[') orelse continue;
             const close = std.mem.indexOfScalarPos(u8, rest, open, ']') orelse continue;

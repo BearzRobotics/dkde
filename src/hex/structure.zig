@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const gdk = @import("gdk4");
+const gio = @import("gio2");
 const glib = @import("glib2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
@@ -29,6 +30,10 @@ pub const Entry = struct {
     /// Lower case, without the dot.
     extensions: [][]u8,
     magic: []u8,
+    /// Where the magic bytes sit in the file (ImHex patterns may say not 0).
+    magic_offset: usize = 0,
+    /// Content types the pattern claims (`#pragma MIME`).
+    mimes: [][]u8 = &.{},
 };
 
 const max_entries = 4000;
@@ -73,6 +78,8 @@ pub const Library = struct {
             for (e.extensions) |x| a.free(x);
             a.free(e.extensions);
             a.free(e.magic);
+            for (e.mimes) |x| a.free(x);
+            a.free(e.mimes);
         }
         self.entries.deinit(a);
         if (self.extra_dir) |d| a.free(d);
@@ -154,6 +161,16 @@ pub const Library = struct {
         defer arena.deinit();
         const info = try hexpat_parse.pragmas(arena.allocator(), src);
         const stem = name[0 .. name.len - ".hexpat".len];
+        const mimes = try a.alloc([]u8, info.mimes.len);
+        var made: usize = 0;
+        errdefer {
+            for (mimes[0..made]) |m| a.free(m);
+            a.free(mimes);
+        }
+        for (info.mimes) |m| {
+            mimes[made] = try std.ascii.allocLowerString(a, m);
+            made += 1;
+        }
         const exts = try a.alloc([]u8, 1);
         errdefer a.free(exts);
         exts[0] = try std.ascii.allocLowerString(a, stem);
@@ -164,8 +181,9 @@ pub const Library = struct {
             .id = try a.dupe(u8, stem),
             .title = try a.dupe(u8, if (info.description.len > 0) info.description else stem),
             .extensions = exts,
-            // Only a magic at the start of the file can be matched cheaply.
-            .magic = try a.dupe(u8, if (info.magic_offset == 0) info.magic else ""),
+            .magic = try a.dupe(u8, info.magic),
+            .magic_offset = info.magic_offset,
+            .mimes = mimes,
         };
         errdefer {
             a.free(entry.path);
@@ -181,11 +199,14 @@ pub const Library = struct {
     pub fn detect(self: *const Library, data: []const u8, path: ?[]const u8) ?*const Entry {
         var best: ?*const Entry = null;
         for (self.entries.items) |*e| {
-            if (e.magic.len < 2 or !std.mem.startsWith(u8, data, e.magic)) continue;
+            if (e.magic.len < 2 or e.magic_offset + e.magic.len > data.len) continue;
+            if (!std.mem.eql(u8, data[e.magic_offset..][0..e.magic.len], e.magic)) continue;
             // A longer magic wins; on a tie a Kaitai format beats a pattern.
             if (best == null or e.magic.len > best.?.magic.len or (e.magic.len == best.?.magic.len and e.kind == .ksy and best.?.kind == .hexpat)) best = e;
         }
         if (best != null) return best;
+        // The content type GIO guesses, against what patterns say they handle.
+        if (self.byMime(data, path)) |e| return e;
         const p = path orelse return null;
         const ext_raw = std.fs.path.extension(p);
         if (ext_raw.len < 2) return null;
@@ -211,6 +232,27 @@ pub const Library = struct {
         if (ksy_count == 1) return ksy_hit;
         if (ksy_count == 0 and pat_count == 1) return pat_hit;
         return null;
+    }
+
+    fn byMime(self: *const Library, data: []const u8, path: ?[]const u8) ?*const Entry {
+        var name_buf: [512]u8 = undefined;
+        const name: ?[*:0]const u8 = if (path) |p| (std.fmt.bufPrintSentinel(&name_buf, "{s}", .{std.fs.path.basename(p)}, 0) catch null) else null;
+        const head = data[0..@min(data.len, 4096)];
+        var uncertain: c_int = 0;
+        const ct = gio.contentTypeGuess(name, head.ptr, head.len, &uncertain);
+        defer glib.free(ct);
+        const mime_c = gio.contentTypeGetMimeType(ct) orelse return null;
+        defer glib.free(mime_c);
+        var lower: [96]u8 = undefined;
+        const mime = std.ascii.lowerString(&lower, std.mem.span(mime_c)[0..@min(std.mem.span(mime_c).len, lower.len)]);
+        var found: ?*const Entry = null;
+        for (self.entries.items) |*e| {
+            if (e.kind != .hexpat) continue;
+            for (e.mimes) |m| if (std.mem.eql(u8, m, mime)) {
+                if (found == null or e.magic.len > found.?.magic.len) found = e;
+            };
+        }
+        return found;
     }
 
     /// Loads and parses the format at `path`, resolving its imports here.

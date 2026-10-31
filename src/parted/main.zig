@@ -62,6 +62,8 @@ const Parted = struct {
     selected_disk: ?usize = null,
     selected_row: ?usize = null,
     busy: bool = false,
+    scanning: bool = false,
+    rescan_again: bool = false,
     /// A just-created image to add after it exists.
     pending_image: ?[]u8 = null,
     /// A disk to select after the next rescan.
@@ -250,6 +252,13 @@ const Parted = struct {
     // ---- reading the disks -------------------------------------------------------------------
 
     fn rescan(self: *Parted) void {
+        // A scan reads the images one after another; a second one started now
+        // would interleave with it, so it waits for the first to finish.
+        if (self.scanning) {
+            self.rescan_again = true;
+            return;
+        }
+        self.scanning = true;
         self.status.setText(common.tr("Reading the disks\u{2026}"));
         common.proc.run(Parted, self.proc_guard, &.{ "lsblk", "-J", "-b", "-o", lsblk_columns_usage }, onLsblkUsage);
     }
@@ -269,6 +278,7 @@ const Parted = struct {
         } else if (self.images.items.len == 0) {
             fresh.deinit();
             self.status.setText(common.tr("lsblk is missing or failed, so the disks cannot be listed."));
+            self.endScan();
             return;
         }
         // Keep the new arena for the whole rescan; images are read into it too.
@@ -286,6 +296,7 @@ const Parted = struct {
     }
 
     fn onImage(self: *Parted, ok: bool, out: []const u8) void {
+        if (self.scan_image >= self.images.items.len) return self.finishScan();
         const path = self.images.items[self.scan_image];
         var size: u64 = 0;
         const file = gio.File.newForPath(self.arenaZ(path));
@@ -295,7 +306,10 @@ const Parted = struct {
             size = @intCast(info.getSize());
         }
         const text = if (ok) out else "";
-        const disk = model.parsePartedMachine(self.arena.allocator(), path, text, size) catch return;
+        const disk = model.parsePartedMachine(self.arena.allocator(), path, text, size) catch {
+            self.scan_image += 1;
+            return self.scanNextImage();
+        };
         self.scan_disks.append(self.allocator, disk) catch {};
         self.scan_image += 1;
         self.scanNextImage();
@@ -305,7 +319,17 @@ const Parted = struct {
         return self.arena.allocator().dupeSentinel(u8, s, 0) catch "";
     }
 
+    /// Ends a scan and starts another one if one was asked for meanwhile.
+    fn endScan(self: *Parted) void {
+        self.scanning = false;
+        if (self.rescan_again) {
+            self.rescan_again = false;
+            self.rescan();
+        }
+    }
+
     fn finishScan(self: *Parted) void {
+        defer self.endScan();
         const keep = self.selected_disk;
         const disks = self.arena.allocator().dupe(model.Disk, self.scan_disks.items) catch &.{};
         self.disks = disks;

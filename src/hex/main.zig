@@ -675,7 +675,17 @@ const HexEditor = struct {
     fn autoDetect(self: *HexEditor) void {
         if (self.buffer.len() == 0) return;
         const lib = self.ensureLibrary() orelse return;
-        const entry = lib.detect(self.buffer.slice(), if (self.path) |p| p else null) orelse return;
+        const entry = lib.detect(self.buffer.slice(), if (self.path) |p| p else null) orelse {
+            // Say what was looked at, so a missing match can be told from a missing library.
+            var ksy_n: usize = 0;
+            var pat_n: usize = 0;
+            for (lib.entries.items) |e| {
+                if (e.kind == .ksy) ksy_n += 1 else pat_n += 1;
+            }
+            var buf: [160]u8 = undefined;
+            self.status.setText(std.fmt.bufPrintSentinel(&buf, "No format matched this file ({d} Kaitai formats, {d} ImHex patterns loaded). Try Structure \u{25B8} Choose format.", .{ ksy_n, pat_n }, 0) catch "");
+            return;
+        };
         const copy = self.allocator.dupe(u8, entry.path) catch return;
         defer self.allocator.free(copy);
         self.applyPath(copy);
@@ -908,7 +918,7 @@ const HexEditor = struct {
 
         fn appendLabel(self: *Picker, e: *const structure.Entry, suggested: bool) void {
             var buf: [400]u8 = undefined;
-            const text = std.fmt.bufPrintSentinel(&buf, "{s}{s}  \u{2014}  {s}", .{ if (suggested) "\u{2605} " else "", e.title, e.id }, 0) catch return;
+            const text = std.fmt.bufPrintSentinel(&buf, "{s}{s}  \u{2014}  {s}   [{s}]", .{ if (suggested) "\u{2605} " else "", e.title, e.id, if (e.kind == .ksy) "Kaitai" else "ImHex" }, 0) catch return;
             const label = gtk.Label.new(text);
             label.setXalign(0);
             label.setEllipsize(.end);
@@ -940,6 +950,18 @@ const HexEditor = struct {
         picker.* = .{ .editor = self, .window = window, .search = gtk.SearchEntry.new(), .list = gtk.ListBox.new() };
         picker.search.setPlaceholderText(common.tr("Search formats"));
         box.append(picker.search.as(gtk.Widget));
+        {
+            var ksy_n: usize = 0;
+            var pat_n: usize = 0;
+            for (lib.?.entries.items) |e| {
+                if (e.kind == .ksy) ksy_n += 1 else pat_n += 1;
+            }
+            var cb: [160]u8 = undefined;
+            const counts = gtk.Label.new(std.fmt.bufPrintSentinel(&cb, "{d} Kaitai formats and {d} ImHex patterns loaded", .{ ksy_n, pat_n }, 0) catch "");
+            counts.setXalign(0);
+            counts.as(gtk.Widget).addCssClass("dim-label");
+            box.append(counts.as(gtk.Widget));
+        }
         const scroller = gtk.ScrolledWindow.new();
         scroller.setChild(picker.list.as(gtk.Widget));
         scroller.as(gtk.Widget).setVexpand(1);
