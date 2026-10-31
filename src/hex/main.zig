@@ -17,6 +17,7 @@ const structure = @import("structure.zig");
 const ksy_interp = @import("ksy/interp.zig");
 const strings = @import("strings.zig");
 const disk_mod = @import("disk.zig");
+const devsearch = @import("devsearch.zig");
 const analyze = @import("analyze.zig");
 const bookmarks_mod = @import("bookmarks.zig");
 const cairo = @import("cairo1");
@@ -307,6 +308,9 @@ const HexEditor = struct {
     /// The buffer revision the structure was parsed from.
     parsed_revision: u64 = 0,
     reparse_source: c_uint = 0,
+    /// A search through the whole device, running one chunk per idle tick.
+    scan: ?devsearch.Scan = null,
+    scan_source: c_uint = 0,
     /// True while a click in the structure panel moves the view, so the view
     /// does not answer by re-selecting in the panel.
     picking: bool = false,
@@ -410,6 +414,7 @@ const HexEditor = struct {
 
     fn onDestroy(_: *gtk.Box, self: *HexEditor) callconv(.c) void {
         if (self.reparse_source != 0) _ = glib.Source.remove(self.reparse_source);
+        self.cancelScan();
         self.closeDisk();
         if (self.pending_device) |p| self.allocator.free(p);
         self.proc_guard.kill();
@@ -846,6 +851,7 @@ const HexEditor = struct {
                 pattern = .{ .bytes = bytes, .care = care };
             },
         }
+        self.cancelScan(); // it borrows the old pattern
         if (self.pattern) |old| old.deinit(self.allocator);
         self.pattern = pattern;
         if (self.needle) |old| self.allocator.free(old);
@@ -858,11 +864,58 @@ const HexEditor = struct {
         const pattern = self.pattern orelse return self.ask(.find);
         const sel = self.view.selection();
         const from = if (forward) (if (sel) |s| s[0] + 1 else self.view.cursor + 1) else (if (sel) |s| s[0] else self.view.cursor);
+        // A disk is bigger than the window, so search all of it (unless edits are pending,
+        // which exist only in the window).
+        if (self.disk != null and !self.buffer.isModified()) return self.startScan(pattern, from, forward);
         if (analyze.find(self.buffer.slice(), pattern, from, forward)) |at| {
             self.view.select(at, pattern.bytes.len);
         } else {
             self.status.setText(common.tr("Not found."));
         }
+    }
+
+    fn cancelScan(self: *HexEditor) void {
+        if (self.scan_source != 0) _ = glib.Source.remove(self.scan_source);
+        self.scan_source = 0;
+        if (self.scan) |*sc| sc.deinit(self.allocator);
+        self.scan = null;
+    }
+
+    /// Searches the whole device from window offset `from`; the result arrives from `onScanTick`.
+    fn startScan(self: *HexEditor, pattern: analyze.Pattern, from: usize, forward: bool) void {
+        const d = self.disk orelse return;
+        self.cancelScan();
+        const start = d.window_start + from;
+        self.scan = devsearch.Scan.init(self.allocator, d.handle, d.origin, pattern, start, forward) catch return;
+        self.scan_source = glib.idleAdd(onScanTick, self);
+    }
+
+    fn onScanTick(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *HexEditor = @ptrCast(@alignCast(data.?));
+        var sc = &(self.scan orelse return 0);
+        switch (sc.step()) {
+            .more => {
+                var buf: [64]u8 = undefined;
+                self.status.setText(std.fmt.bufPrintSentinel(&buf, "Searching the whole device\u{2026} {d}%", .{sc.percent()}, 0) catch "");
+                return 1;
+            },
+            .found => |at| {
+                const len = sc.pattern.bytes.len;
+                self.scan_source = 0;
+                self.cancelScan();
+                const d = self.disk orelse return 0;
+                self.diskGoto(d.origin + at);
+                if (self.disk) |nd| {
+                    if (at >= nd.window_start) self.view.select(@intCast(at - nd.window_start), len);
+                }
+            },
+            .none => {
+                self.scan_source = 0;
+                self.cancelScan();
+                self.status.setText(common.tr("Not found."));
+            },
+        }
+        return 0;
     }
 
     // ---- structure ----------------------------------------------------------------------------
@@ -1516,6 +1569,7 @@ const HexEditor = struct {
     }
 
     fn closeDisk(self: *HexEditor) void {
+        self.cancelScan();
         const d = self.disk orelse return;
         var h = d.handle;
         h.closeHandle();
@@ -2842,6 +2896,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
 test {
     _ = @import("fuzz_test.zig");
+    _ = @import("devsearch.zig");
     _ = @import("ksy/coverage_test.zig");
     _ = @import("ksy/prep.zig");
     _ = @import("ksy/expr.zig");

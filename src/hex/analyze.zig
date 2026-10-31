@@ -125,7 +125,7 @@ pub fn parsePattern(a: Allocator, text: []const u8) Allocator.Error!?Pattern {
     return .{ .bytes = try bytes.toOwnedSlice(a), .care = try care.toOwnedSlice(a) };
 }
 
-fn matchesAt(data: []const u8, at: usize, p: Pattern) bool {
+pub fn matchesAt(data: []const u8, at: usize, p: Pattern) bool {
     if (at + p.bytes.len > data.len) return false;
     for (p.bytes, p.care, 0..) |b, c, k| {
         if (c and data[at + k] != b) return false;
