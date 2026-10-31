@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PDF Viewer
+Comment=Read PDF documents
+Exec=dkde-pdf %f
+Icon=application-pdf
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/pdf;

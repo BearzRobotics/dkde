@@ -35,6 +35,8 @@ pub fn run(comptime app_id: [:0]const u8, comptime Window: type, init: std.proce
     const gtk_app = gtk.Application.new(app_id, .{ .non_unique = true });
     defer gtk_app.as(gobject.Object).unref();
     _ = gio.Application.signals.activate.connect(gtk_app, *State, &State.activate, &state, .{});
-    const status = gio.Application.run(gtk_app.as(gio.Application), @intCast(init.args.vector.len), @ptrCast(@constCast(init.args.vector.ptr)));
+    // Apps read their own arguments; GTK must not reject them as unknown options.
+    var argv = [_]?[*:0]const u8{ init.args.vector[0], null };
+    const status = gio.Application.run(gtk_app.as(gio.Application), 1, @ptrCast(&argv));
     if (status != 0) std.process.exit(@intCast(status));
 }

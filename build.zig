@@ -1,12 +1,13 @@
 const std = @import("std");
 const Scanner = @import("wayland").Scanner;
 
-const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks" };
+const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks", "pdf" };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const pdf = b.option(bool, "pdf", "Build dkde-pdf (needs libpoppler-glib-dev)") orelse false;
     const x11 = b.option(bool, "x11", "Build the optional X11 backend (needs libx11-dev)") orelse false;
     const build_options = b.addOptions();
     build_options.addOption(bool, "x11", x11);
@@ -41,47 +42,52 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&b.addRunArtifact(common_tests).step);
 
     inline for (components) |name| {
-        const mod = b.createModule(.{
-            .root_source_file = b.path("src/" ++ name ++ "/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-        });
-        mod.addImport("common", common);
-        // gtk4-layer-shell must be linked before libwayland, so before GTK.
-        if (std.mem.eql(u8, name, "panel")) mod.linkSystemLibrary("gtk4-layer-shell-0", .{});
-        addGtk(mod, gobject);
-        if (std.mem.eql(u8, name, "term")) {
-            // Debug builds of libghostty-vt run integrity checks on every linefeed,
-            // which makes a screenful of output take seconds. Always build it fast.
-            const ghostty = b.dependency("ghostty", .{ .target = target, .optimize = .ReleaseFast });
-            mod.addImport("ghostty-vt", ghostty.module("ghostty-vt"));
-            mod.addImport("cairo1", gobject.module("cairo1"));
-            mod.addImport("pangocairo1", gobject.module("pangocairo1"));
-        }
-        mod.addOptions("build_options", build_options);
-        if (x11 and (std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "snip"))) {
-            mod.linkSystemLibrary("x11", .{});
-            mod.addImport("gdkx114", gobject.module("gdkx114"));
-        }
-        if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "hex") or std.mem.eql(u8, name, "color")) mod.addImport("cairo1", gobject.module("cairo1"));
-        if (std.mem.eql(u8, name, "hex")) mod.addImport("pangocairo1", gobject.module("pangocairo1"));
-        if (std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "pointer")) {
-            mod.addImport("gdkwayland4", gobject.module("gdkwayland4"));
-            mod.addImport("wayland", wayland_module);
-            mod.linkSystemLibrary("wayland-client", .{});
-        }
+        // dkde-pdf needs poppler, so it is only built when asked for.
+        const is_pdf = comptime std.mem.eql(u8, name, "pdf");
+        if (!is_pdf or pdf) {
+            const mod = b.createModule(.{
+                .root_source_file = b.path("src/" ++ name ++ "/main.zig"),
+                .target = target,
+                .optimize = optimize,
+                .link_libc = true,
+            });
+            mod.addImport("common", common);
+            // gtk4-layer-shell must be linked before libwayland, so before GTK.
+            if (std.mem.eql(u8, name, "panel")) mod.linkSystemLibrary("gtk4-layer-shell-0", .{});
+            addGtk(mod, gobject);
+            if (std.mem.eql(u8, name, "term")) {
+                // Debug builds of libghostty-vt run integrity checks on every linefeed,
+                // which makes a screenful of output take seconds. Always build it fast.
+                const ghostty = b.dependency("ghostty", .{ .target = target, .optimize = .ReleaseFast });
+                mod.addImport("ghostty-vt", ghostty.module("ghostty-vt"));
+                mod.addImport("cairo1", gobject.module("cairo1"));
+                mod.addImport("pangocairo1", gobject.module("pangocairo1"));
+            }
+            mod.addOptions("build_options", build_options);
+            if (x11 and (std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "snip"))) {
+                mod.linkSystemLibrary("x11", .{});
+                mod.addImport("gdkx114", gobject.module("gdkx114"));
+            }
+            if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "hex") or std.mem.eql(u8, name, "color") or std.mem.eql(u8, name, "pdf")) mod.addImport("cairo1", gobject.module("cairo1"));
+            if (std.mem.eql(u8, name, "pdf")) mod.linkSystemLibrary("poppler-glib", .{});
+            if (std.mem.eql(u8, name, "hex")) mod.addImport("pangocairo1", gobject.module("pangocairo1"));
+            if (std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "pointer")) {
+                mod.addImport("gdkwayland4", gobject.module("gdkwayland4"));
+                mod.addImport("wayland", wayland_module);
+                mod.linkSystemLibrary("wayland-client", .{});
+            }
 
-        const exe = b.addExecutable(.{ .name = "dkde-" ++ name, .root_module = mod });
-        b.installArtifact(exe);
+            const exe = b.addExecutable(.{ .name = "dkde-" ++ name, .root_module = mod });
+            b.installArtifact(exe);
 
-        const run = b.addRunArtifact(exe);
-        // Dev runs read data files straight from the source tree.
-        run.setCwd(b.path("."));
-        run.setEnvironmentVariable("DKDE_DATA_DIR", "data");
-        b.step("run-" ++ name, "Build and run dkde-" ++ name).dependOn(&run.step);
+            const run = b.addRunArtifact(exe);
+            // Dev runs read data files straight from the source tree.
+            run.setCwd(b.path("."));
+            run.setEnvironmentVariable("DKDE_DATA_DIR", "data");
+            b.step("run-" ++ name, "Build and run dkde-" ++ name).dependOn(&run.step);
 
-        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
+            test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
+        }
     }
 
     for ([_][]const u8{ "dkde-files", "dkde-term", "dkde-settings", "dkde-calc", "dkde-edit", "dkde-view", "dkde-tasks", "dkde-snip", "dkde-hex", "dkde-charmap", "dkde-clock", "dkde-calendar", "dkde-color", "dkde-disks" }) |name| {
@@ -90,6 +96,10 @@ pub fn build(b: *std.Build) void {
             .prefix,
             b.fmt("share/applications/{s}.desktop", .{name}),
         ).step);
+    }
+
+    if (pdf) {
+        b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path("data/dkde-pdf.desktop"), .prefix, "share/applications/dkde-pdf.desktop").step);
     }
 
     // The X11 session: scripts and the login-manager entry. Harmless on a

@@ -12,6 +12,7 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 | `dkde-settings` | Settings |
 | `dkde-edit` | Text editor |
 | `dkde-hex` | Hex editor |
+| `dkde-pdf` | PDF viewer (optional, see below) |
 | `dkde-charmap` | Character map |
 | `dkde-clock` | Stopwatch, timer, alarm |
 | `dkde-calendar` | Calendar with notes |
@@ -197,6 +198,11 @@ zig build install --prefix /usr
 ```
 
 (For everyday use, build with `-Doptimize=ReleaseSafe`; see "Install" below.)
+
+**PDF viewer (optional).** `dkde-pdf` needs poppler's GLib bindings, so it is
+built only on request: install `libpoppler-glib-dev` (Ubuntu; at run time
+`libpoppler-glib8`) and build with `zig build -Dpdf=true`. Without the flag the
+build has no poppler dependency.
 
 Debug builds still compile libghostty-vt with `ReleaseFast`; in Debug mode it
 checks itself on every linefeed and is far too slow.
