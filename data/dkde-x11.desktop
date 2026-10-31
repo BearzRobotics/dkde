@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=dkde (X11)
+Comment=dkde desktop on Xorg with an EWMH window manager
+Exec=dkde-xsession
+Type=XSession
+DesktopNames=dkde

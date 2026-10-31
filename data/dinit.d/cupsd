@@ -1,0 +1,4 @@
+# CUPS, for the Printers page of Settings.
+type    = process
+command = /usr/sbin/cupsd -f
+restart = true

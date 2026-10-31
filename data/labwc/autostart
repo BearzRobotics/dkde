@@ -1,0 +1,5 @@
+# Example labwc autostart for dkde. Copy to ~/.config/labwc/autostart.
+# The loop restarts the panel if it exits unexpectedly (SPEC.md 4.1).
+(while true; do dkde-panel; sleep 1; done) &
+# Display layout saved by Settings > Display (needs wlr-randr).
+[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/dkde/display.sh" ] && sh "${XDG_CONFIG_HOME:-$HOME/.config}/dkde/display.sh" &

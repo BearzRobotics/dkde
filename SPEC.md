@@ -1,0 +1,873 @@
+# dkde — Specification
+
+> **Working name.** `dkde` is a placeholder. It appears in binary names, the
+> config directory, Zig namespaces and GObject type prefixes (`Dkde`). Pick
+> the real name before the first commit and replace it everywhere.
+
+Status: **Draft v0.1**. Anything marked **OPEN** is an undecided question.
+Resolve it here before writing code that depends on it.
+
+---
+
+## 1. Vision
+
+A small, cohesive Wayland desktop shell with the layout of classic Windows: a
+bottom taskbar, an Open-Shell "Windows 7 style" start menu, and a matching set
+of core applications. It should feel like one product, not a collection of
+unrelated tools.
+
+Cohesion comes from three things, and this spec exists to enforce them:
+
+1. **One toolkit and one stylesheet** for every component.
+2. **One configuration mechanism** shared by every component.
+3. **Freedesktop standards** for everything that crosses component boundaries
+   (desktop entries, icons, MIME types, user directories).
+
+The reference platform is **dkrescue**: musl libc, LLVM/Clang, dinit, no
+systemd. dkde must run there. It must also run on ordinary glibc
+distributions.
+
+## 2. Goals and non-goals
+
+### Goals (v1)
+
+- Taskbar with running windows, a clock, and a start button, System tray (StatusNotifierItem)
+- Windows 7-style start menu: pinned and recent apps, "All Programs", search,
+  and places on the right-hand side.
+- Terminal emulator in the style of Windows Terminal, built on libghostty-vt,
+  with modern terminal extensions.
+- File manager with Nautilus-level everyday functionality on local
+  filesystems, Removable media mounting.
+- Settings app covering appearance, the taskbar, the start menu, input, and
+  default applications, Display configuration
+- Runs on labwc with **no systemd and no logind**. A session D-Bus is allowed
+  but optional: the shell works without one, and the features that need it
+  (desktop notifications, the system tray) start only when the session was
+  started under a bus (`DBUS_SESSION_BUS_ADDRESS` is set, for example through
+  `dbus-run-session`). dkde talks to it through GIO's built-in GDBus, so there
+  is no new library dependency.
+
+### Non-goals (v1)
+
+These are explicitly out of scope. Adding any of them requires changing this
+spec first.
+
+- **Writing a compositor.** labwc is the compositor.
+- **libadwaita** or any GNOME platform library beyond GTK4/GLib/GIO.
+- **Accessibility via AT-SPI.**
+- **X11 as the primary target.** dkde is Wayland-first and the default build
+  has no X11 code or X11 library dependency. An optional X11 backend exists
+  behind `zig build -Dx11=true` (see 5.9).
+- **Translations.** Strings go through one helper so i18n can be added later.
+
+## 3. Stack
+
+| Layer | Choice | Notes |
+|---|---|---|
+| Language | **Zig** | Pin an exact version (see 3.1). |
+| Toolkit | **GTK4**, without libadwaita | Styled entirely by our own CSS. |
+| GTK bindings | **zig-gobject** | Same bindings Ghostty uses. **OPEN:** upstream or Ghostty's fork. |
+| Layer shell | **gtk4-layer-shell** | Panel, start menu, wallpaper surfaces, desktop icons, snap corners (win 11), alt tab |
+| Wayland protocols | **zig-wayland** scanner | For protocols GTK doesn't expose (taskbar). |
+| Terminal core | **libghostty-vt** (Zig API) | Pre-1.0: pin a commit. |
+| Text rendering (terminal) | **Pango** into a GTK drawing area (v1) | A GPU renderer can replace it later behind the same interface. |
+| Compositor | **labwc** | Needs `wlr-layer-shell` and `wlr-foreign-toplevel-management`. |
+| Build | `zig build` | No meson, cmake or make in this repo. |
+
+### 3.1 Version pinning
+
+- **Zig:** 0.17, set in `build.zig.zon` as
+  `.minimum_zig_version` and stated here. **OPEN:** which version. Zig is
+  pre-1.0; upgrading is a deliberate, separate change, never incidental.
+- **libghostty-vt and zig-gobject:** pinned by hash in `build.zig.zon`.
+- **labwc:** state the minimum version the panel is tested against.
+
+### 3.2 Dependency budget
+
+Runtime libraries allowed in v1:
+
+- GTK4 and its own dependency chain (GLib, GIO, Pango, Cairo, HarfBuzz,
+  FreeType, Fontconfig, gdk-pixbuf, Graphene, libepoxy)
+- gtk4-layer-shell
+- wayland-client
+- libghostty-vt
+- Debus
+- gvfs/udisks2
+- shared-mime-info (data, needed for GIO content types)
+- An icon theme (https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)
+
+Anything not on this list needs a spec change explaining why.
+
+## 4. Architecture
+
+Each component is a separate program. They share one Zig module, `common`,
+and never link to each other.
+
+| Binary | Purpose |
+|---|---|
+| `dkde-panel` | Taskbar, start menu, clock, wallpaper. The shell. |
+| `dkde-term` | Terminal emulator |
+| `dkde-files` | File manager |
+| `dkde-settings` | Settings | 
+
+### 4.1 Process model
+
+- dkde has no init-system dependency: nothing in it starts, stops or queries
+  a service manager. Service files for the optional daemons are provided for
+  dinit, systemd and SysV init (see 5.10).
+- labwc starts `dkde-panel` from its `autostart` file. If the panel exits
+  unexpectedly, the autostart wrapper restarts it.
+- Apps are normal Wayland clients. They use
+  `G_APPLICATION_NON_UNIQUE`, because GApplication uniqueness requires a
+  session D-Bus.
+- **IPC:** the panel listens on a Unix socket at
+  `$XDG_RUNTIME_DIR/dkde/panel.sock`. The protocol is one line of text per
+  command. v1 commands: `toggle-menu`, `reload`. `dkde-panel msg <command>`
+  is the client. This is what the labwc keybinding for the Super key calls.
+- **Settings changes need no IPC.** Every component watches its config files
+  with `GFileMonitor` and reapplies changes as they happen.
+
+### 4.2 Shared module (`common`)
+
+- Config loading, saving and watching (see 6.1)
+- Stylesheet loading (see 6.2)
+- XDG directories, including `user-dirs.dirs`
+- Desktop entry lookup and launching, wrapping `GDesktopAppInfo`
+- `app_id` → desktop entry matching (used by the taskbar and start menu)
+- Error dialog helper
+- String helper for future i18n
+
+## 5. Components
+
+### 5.1 Panel (`dkde-panel`)
+
+**Surface:** a `wlr-layer-shell` surface on the `top` layer, anchored to the
+bottom, left and right edges, reserving an exclusive zone equal to its height.
+One per output.
+
+**Layout, left to right:** start button, taskbar buttons (fill the remaining
+space), clock.
+
+**Taskbar** (`wlr-foreign-toplevel-management-unstable-v1`, accessed through
+the `wl_display` that GDK exposes):
+
+- One button per toplevel window, showing its icon and title. The icon comes
+  from matching the window's `app_id` to a desktop entry; a generic icon is
+  used if there's no match.
+- The active window's button is visibly highlighted.
+- Left click: activate the window. If it's already active, minimize it.
+- Middle click: close the window.
+- Right click: a menu with Restore/Minimize, Maximize, and Close.
+- Grouping by application (on by default): windows with the same `app_id`
+  share one button with a count. Clicking a stack lists its windows; the
+  right-click menu gains "Close all windows". `panel.conf`:
+  `[panel] group-windows` (default true) and `show-labels` (default true;
+  false shows icons only). Both are on the Settings Taskbar page and apply
+  live.
+- Add option to hide the task bar
+- Add option to move the taskbar to other edges of screen
+
+**Clock:** time and date 12hr default, in a format set in the config. Updates on the
+minute boundary, not by polling every second. Noramal date options
+
+**Wallpaper:** a separate layer surface on the `background` layer of each
+output, showing an image or a solid colour from the config.
+
+**`panel.conf` keys (M1):** `[panel] height` (pixels, default 40) and
+`clock-format` (strftime-style, default `%-I:%M %p` over `%-m/%-d/%Y`); `[wallpaper] image` (path,
+empty for none) and `color` (any CSS colour, default `#3a6ea5`). The panel
+creates the config directory at startup so it can watch for the file
+appearing.
+
+**Wallpaper options (post-M1):** `[wallpaper] fit` (`cover`, `contain`,
+`fill`, `center`), `slideshow-dir` (a folder of images that replaces `image`)
+and `slideshow-minutes` (default 10; 0 keeps the first picture).
+
+**Position and auto-hide:** `[panel] position` (`bottom`, `top`, `left` or
+`right`; default `bottom`) and `autohide` (default false). A side panel is
+vertical and shows icons only. An auto-hidden bar keeps its surface at full size, transparent, and slides in
+over 150 ms when the pointer touches an 8-pixel strip at its edge (only that
+strip takes pointer input while hidden, and it is painted at 1% opacity,
+because a fully transparent surface receives no input). It hides again
+500 ms after the pointer leaves, floats over windows instead
+of reserving space, and stays out while the start menu is open. `height` is
+the panel's thickness. Changing position or auto-hide rebuilds the bars live.
+
+**Clock menu:** left click shows a month calendar; right click offers
+"Adjust date/time" and "Clock format", both of which open Settings > Date &
+time. The default format is two lines, `%I:%M %p` over `%m/%d/%Y`.
+
+**Desktop icons:** the contents of the Desktop folder (`XDG_DESKTOP_DIR`) are
+drawn on the primary output's wallpaper surface: folders first, `.desktop`
+launchers shown with their own name and icon, hidden files skipped. Double
+click opens (folders in dkde-files, launchers start the app, files in their
+default app). Right click on an icon offers Open and Move to Trash; right
+click on empty space is the wallpaper menu. Icons are placed freely: drag one
+and it is remembered in `desktop.conf` (`[icons] <file name> = x,y`); new files
+take the next free cell, filling a column top to bottom. `[desktop] icons`
+(default true) turns them off and `[desktop] snap-to-grid` (default true) makes
+a dropped icon settle in the nearest 96x104 cell; both are on the Settings
+Taskbar page. Not done: multi-select drag, creating items from the desktop menu.
+
+**System tray:** the panel hosts StatusNotifierItem icons, left of the clock,
+when a session bus exists. It owns `org.kde.StatusNotifierWatcher` (nothing
+else does in a dkde session), so apps that look for it register themselves.
+Each item shows its `IconName` (or `IconPixmap`), its title as a tooltip, and
+follows `NewIcon`/`NewTitle`/`NewStatus`; `Passive` items are hidden and
+`NeedsAttention` ones are highlighted. Left click calls `Activate`, middle
+click `SecondaryActivate`, right click shows the app's `com.canonical.dbusmenu`
+(flat list: submenu entries indented under their parent, separators skipped,
+mnemonic underscores removed) or calls `ContextMenu` for items without a menu.
+An item disappears when its bus name does. Coordinates sent to the app are
+zero, because Wayland gives a client no screen position. Not done: submenus as
+real cascading menus, menu icons, check and radio state, tooltips with bodies,
+the older XEmbed tray, and a tray on vertical bars laid out differently.
+
+**Notifications:** when the session has a D-Bus session bus, the panel owns
+`org.freedesktop.Notifications` and shows toasts at the top right on the
+`overlay` layer (Desktop Notifications Specification 1.2, through GDBus).
+Supported: summary, body (markup reduced to text), icon, replacing, expiry
+(default 6 s, 0 never), click to dismiss, `NotificationClosed`. At most five
+are shown. Not supported: actions, hints, sounds, a history or do-not-disturb.
+Wayland only; with no session bus the panel logs that notifications are off.
+
+**Quick settings:** status icons between the tray and the clock (network,
+sound, battery, and airplane mode while it is on) open a flyout with Wi-Fi,
+Bluetooth and Airplane mode toggles, volume with mute, a brightness slider and
+the battery level. `[panel] quick-settings` is the comma-separated list of
+items to show (`network,bluetooth,airplane,sound,brightness,battery`; unset
+means all), set by switches on the Settings Taskbar page and applied live. Each
+control needs its tool and appears only when it works: `nmcli` (Wi-Fi radio and
+connection state), `bluetoothctl`, `rfkill` (airplane mode blocks or unblocks
+all radios and needs access to `/dev/rfkill`), `wpctl` or `pactl`, and sysfs
+for the battery (`/sys/class/power_supply/BAT*`) and the backlight
+(`/sys/class/backlight/*`; brightness is set with `brightnessctl` when
+installed, otherwise by writing sysfs, which needs permission). Icons refresh
+every 20 seconds and whenever the flyout changes something. Not done: choosing
+a Wi-Fi network or sound device from the flyout, and ordering the items.
+
+**Virtual desktops:** the panel shows a numbered button per desktop after the
+start button (hidden when there is only one) and switches with a click or the
+mouse wheel. It reads and drives labwc's workspaces through `ext-workspace-v1`
+(vendored in `protocols/`). The number of desktops is labwc's
+`<desktops><number>` in `rc.xml`, set on the Settings Taskbar page (1 to 9)
+and applied by a labwc reconfigure. Default keybindings, added by `dkde-setup`:
+Ctrl+Alt+Left/Right switch (`GoToDesktop`) and Ctrl+Alt+Shift+Left/Right
+carry the active window along (`SendToDesktop`). The taskbar lists windows of
+all desktops, because `wlr-foreign-toplevel` does not say which desktop a
+window is on; activating a window on another desktop switches to it. Not done:
+a per-desktop taskbar, "move to desktop" in the window menu, naming desktops
+and an overview with thumbnails.
+
+**Start button:** opens and closes the start menu. Super is bound in labwc to
+`dkde-panel msg toggle-menu`. labwc can bind a lone modifier released by
+itself; labwc 0.9.3 documents this (`<keybind key="Super_L" onRelease="yes">` in
+labwc-config(5)). See `data/labwc/rc-keybind.xml`.
+
+
+
+### 5.2 Start menu (inside `dkde-panel`)
+
+**Surface:** a layer surface on the `overlay` layer, anchored bottom-left,
+with exclusive keyboard focus while it's open. It closes on Escape, on
+clicking outside it, or after launching something.
+
+**Layout (Open-Shell "Windows 7 style"):** add reference screenshots under
+`docs/reference/` and treat them as the visual target.
+
+- **Left column:**
+  - Pinned apps (user-ordered; drag to reorder is post-v1)
+  - Separator
+  - Recently used apps (most recent first; length set in the config)
+  - "All Programs", which swaps the left column to a category tree built
+    from desktop entry `Categories`, following the XDG menu spec's main
+    categories
+  - A search box at the bottom
+- **Right column:** user name, then links to Home, Documents, Pictures,
+  Music, Downloads (from `user-dirs.dirs`, opened in `dkde-files`), then
+  Terminal and Settings.
+- **Bottom right:** a Shut Down button with a menu for Restart and Log Off.
+
+**Profile picture:** the right column shows the user's picture beside their
+name: `[user] picture` in `dkde.conf`, else `~/.face`, else a default icon.
+
+**Search:**
+
+- Typing while the menu is open goes straight to the search box; no click
+  needed.
+- Matches app `Name`, `GenericName` and `Keywords`. Prefix matches rank above
+  substring matches. Results update as you type.
+- Enter launches the first result. Arrow keys move through the results.
+
+**Data sources:** desktop entries from `$XDG_DATA_DIRS/applications` and
+`$XDG_DATA_HOME/applications`, honouring `NoDisplay`, `Hidden`, `OnlyShowIn`
+and `NotShowIn`. The directories are watched, so newly installed apps appear
+without restarting the panel.
+
+**Launching:** always through `GDesktopAppInfo`, which handles `Exec` field
+codes and `Terminal=true` (configured to use `dkde-term`).
+
+**Power actions:** there is no logind, so the commands for Shut Down, Restart
+and Log Off are set in the config. The defaults are `poweroff`, `reboot`, and
+exiting labwc.
+
+**`panel.conf` keys (M3), `[menu]`:** `pinned` (desktop file IDs, `;`
+separated; unset pins Files, Terminal and Settings), `recent-count` (default
+5), `shutdown-command`, `restart-command`, `logoff-command`. Recent apps are
+stored in `$XDG_STATE_HOME/dkde/recent.conf`. The menu is built each time it
+opens, so installed apps are always current. `Terminal=true` entries run as
+`dkde-term -e <command>` (the `-e` flag arrives with M4).
+
+### 5.3 Terminal (`dkde-term`)
+
+**Model:** Windows Terminal. Tabs, profiles, and a settings file.
+
+**Window:**
+
+- Client-side decorations, with the tab strip in the title bar.
+- A "+" button opens a new tab with the default profile. The dropdown next to
+  it lists all profiles.
+- **OPEN:** whether the CSD title bar should imitate the labwc theme or the
+  two should share one look defined in dkde's stylesheet.
+
+**Profiles:** name, command (default: the user's login shell), starting
+directory, font, colour scheme, and cursor style.
+
+**Terminal features required in v1.** libghostty-vt handles the parsing and
+state; dkde-term must wire each one through to the UI:
+
+- 24-bit colour
+- Kitty keyboard protocol (via libghostty-vt's key encoding)
+- Mouse reporting, including SGR mode
+- Bracketed paste
+- Focus in/out events
+- Synchronized output
+- OSC 0/2 window and tab titles
+- OSC 7 current directory: new tabs open in the same directory
+- OSC 8 hyperlinks: Ctrl+click opens them
+- OSC 52 clipboard writes, with a per-profile on/off setting
+- Scrollback with a configurable length, and search within it
+- Copy and paste: Ctrl+Shift+C and Ctrl+Shift+V, plus Wayland primary
+  selection
+
+Images (kitty graphics protocol): **post-v1**, depending on what
+libghostty-vt exposes.
+
+**PTY:** `openpty` and `fork`/`exec`, both available in musl and glibc.
+Resize is forwarded with `TIOCSWINSZ`.
+
+**Implementation notes (M4):**
+
+- Pinned to libghostty-vt from Ghostty tag `v1.4.0` (needs Zig 0.17.0); the
+  dependency hash is in `build.zig.zon`.
+- `dkde-term -e <command> [args...]` runs the command in the first tab
+  instead of the shell. The start menu uses it for `Terminal=true` entries.
+- Terminal shortcuts use Ctrl+Shift so plain Ctrl+letters reach the program
+  running inside (readline's Ctrl+W, vim, tmux): Ctrl+Shift+T new tab,
+  Ctrl+Shift+W close tab, Ctrl+PageUp/PageDown switch tabs, Ctrl+Shift+F
+  find, Ctrl+Shift+C/V copy and paste, Shift+PageUp/PageDown scroll. This
+  refines the Ctrl+T / Ctrl+W rows of 6.3 for this app.
+- `term.conf` also takes `[terminal] scrollback-lines` (default 10000), and
+  profiles take `opacity` (percent, 20 to 100; below 100 the background is
+  see-through).
+- A scroll bar shows when there is scrollback. F11 toggles fullscreen.
+- Ctrl+click opens an OSC 8 link with the default handler for its scheme
+  and reports an error if there is none.
+- Input method (IME) composition is not wired up in v1.
+- Colour schemes: `campbell` (default), `one-half-dark`, `solarized-dark`,
+  `solarized-light`.
+
+**Rendering:** Pango into a GTK drawing area, with a monospace grid and
+font fallback through Fontconfig. Damage is tracked per row; there's no
+full redraw on every update.
+
+### 5.4 File manager (`dkde-files`)
+
+**Model:** Nautilus-level everyday functionality, styled to match dkde. Add
+reference screenshots under `docs/reference/`.
+
+**Window layout:**
+
+- Sidebar: Home, the XDG user directories, Trash, bookmarks, and mounted
+  filesystems read from `/proc/self/mountinfo` (no gvfs).
+- Path bar: breadcrumb buttons that switch to a text entry on Ctrl+L.
+- Main view: switchable between an icon grid and a detailed list (name, size,
+  type, modified). Sortable columns.
+
+**Operations (all through GIO):**
+
+- Open with the default app; "Open With" lists other apps that handle the
+  MIME type.
+- Copy, cut, paste, rename (F2), new folder.
+- Move to Trash (Delete) using GIO's local trash, which needs no gvfs.
+  Permanent delete is Shift+Delete, with a confirmation.
+- Long operations show progress and can be cancelled. Name conflicts ask the
+  user what to do.
+- Properties dialog: name, type, size, location, timestamps, and
+  permissions.
+
+**Other:**
+
+- Live refresh with `GFileMonitor`.
+- Type-to-search within the current folder.
+- Hidden files toggled with Ctrl+H.
+- Bookmarks stored in dkde's own config.
+
+**Implementation notes (M5):**
+
+- `dkde-files [folder]` opens `folder`, or the home directory.
+- Cut, copy and paste are internal to one window; they do not use the system
+  clipboard in v1.
+- The Trash entry browses `$XDG_DATA_HOME/Trash/files` directly. Restore
+  reads the matching `.trashinfo` file. This is why gvfs is not needed.
+- `files.conf` keys: `[files] show-hidden`, `[files] view` (`list` or
+  `grid`), and `[bookmarks] paths` (`;` separated folders). Ctrl+D bookmarks
+  the current folder; right-clicking a bookmark in the sidebar removes it.
+- Copy and move run as an asynchronous job: nothing is scanned up front,
+  progress and Cancel appear under the file list, and name conflicts ask
+  (Skip, Keep Both, Replace, Replace All, Skip All, Cancel).
+
+**Thumbnails:** **post-v1**.
+
+### 5.5 Settings (`dkde-settings`)
+
+**Window:** a category list on the left and a page on the right. Changes take
+effect immediately; there is no Apply button. The settings app writes config
+files and the components pick up the changes through their file monitors.
+
+**v1 pages:**
+
+| Page | Settings | Writes to |
+|---|---|---|
+| Appearance | Wallpaper, light/dark, accent colour, UI font | dkde config |
+| Taskbar | Height, position, auto-hide, grouping, labels | dkde config |
+| Date & time | Clock style or custom format, time zone, set the clock | dkde config; `/etc/localtime`, `date` (administrator) |
+| Display | Resolution, refresh rate, scale per output | `wlr-randr`, then `display.sh` |
+| Network | Wi-Fi on/off, list, connect, disconnect | `nmcli` |
+| Bluetooth | Power, scan, pair, connect, remove | `bluetoothctl` |
+| Printers | List, default, test page, add, remove | CUPS (`lpstat`, `lpoptions`, `lpadmin`) |
+| Start menu | Pinned apps, recent-apps count, power commands | dkde config |
+| Terminal | Default profile, editing profiles | dkde-term config |
+| Keyboard | Layout | labwc `environment`, then `labwc --reconfigure` |
+| Mouse & touchpad | Pointer speed, natural scrolling, tap to click | labwc `rc.xml` `<libinput>` section, then reconfigure |
+| Default apps | Browser, file manager, terminal, text editor | `mimeapps.list` |
+
+**Implementation notes (M6):**
+
+- Appearance writes `[appearance] dark`, `accent` and `font` to `dkde.conf`.
+  Every component applies them live through `common.style.Appearance`.
+  The wallpaper settings are the `[wallpaper]` keys of `panel.conf`.
+- The User page sets the profile picture (`[user] picture` in `dkde.conf`)
+  and lists the accounts (uid 1000 and up, with a real shell). It can add
+  and delete accounts, change a password or full name, grant or remove
+  administrator rights (membership of `sudo`, `wheel` or `admin`), edit any
+  account's group memberships, and create or delete groups with a group id of
+  1000 or more. Every privileged step asks for the user's password through
+  `common.elevate`. Guard rails: the signed-in account and root cannot be
+  deleted, and your own administrator rights cannot be removed.
+- `common.elevate` (a dkde-owned password dialog, because there is no polkit
+  agent or D-Bus) runs a command through `sudo -S -k` and feeds it the
+  password on stdin; the password is never on a command line or in the
+  environment. User-supplied values reach the privileged scripts only as
+  positional parameters, never as script text. "Run as administrator" is in
+  the start menu's item menu and "Open Folder as Administrator" in Files.
+- The Sound page sets the default output's volume and mute through `wpctl`
+  (PipeWire) or `pactl` (PulseAudio). It tries `wpctl` first and uses the
+  first tool that is installed and can reach a running sound server (so WSL,
+  which only has a PulseAudio socket, ends up on `pactl`); if none works it
+  names the packages to install. dkde has no D-Bus, so there is no direct connection to
+  the sound server. Only the default output is controlled.
+- Default apps use GIO's `mimeapps.list` writer. "Terminal" has no MIME
+  type, so it is stored as `[default-apps] terminal` in `dkde.conf`.
+- `term.conf` holds `[terminal] default-profile` and one `[profile:<name>]`
+  group per profile with `command` (empty means the login shell),
+  `directory`, `font`, `color-scheme`, `cursor-style` (`block`, `bar` or
+  `underline`) and `osc52` (boolean). Further profile keys: `title` (fixed
+  tab title), `icon` (icon name or image path), `tab-color` (CSS colour for the
+  tab's top edge), `environment` (`NAME=value;NAME=value`), `columns` and
+  `rows` (size of a new window in cells; 0 keeps the default), `startup`
+  (`windowed`, `maximized`, `fullscreen`), `close-on-exit` (`always`,
+  `success` or `never`; a tab that stays open prints the exit code),
+  `padding` (pixels, 0 to 40, default 4), `copy-on-select` (default true) and
+  `opacity`. `command` is split like a shell command line, so it may carry
+  arguments. The terminal reloads `term.conf` while running: open tabs follow
+  opacity changes; other settings apply to new tabs.
+- labwc reloads its `environment` file on reconfigure (labwc-config(5)), so
+  the keyboard page writes `XKB_DEFAULT_LAYOUT` there and runs
+  `labwc --reconfigure`.
+
+- **Hardware pages** (Display, Network, Bluetooth, Printers, Date & time and the
+  Sound device pickers) drive command-line tools and never link a library, so
+  each page says which package to install when its tool is missing. Pages are
+  built on first visit and refresh when shown. Commands run asynchronously.
+  - *Display* needs `wlr-randr` 0.4 or newer (`--json`). A changed mode
+    reverts by itself after 15 seconds unless the user keeps it. Keeping it
+    writes `$XDG_CONFIG_HOME/dkde/display.sh`, which the labwc autostart runs
+    at login. Arranging several outputs and turning one off are not done yet.
+  - *Network* needs NetworkManager (`nmcli`). A new secured network asks for
+    its password; `nmcli` takes it as an argument, so it is briefly visible in
+    the process list.
+  - *Bluetooth* needs BlueZ (`bluetoothctl`) with `bluetoothd` on the system
+    bus. Pairing uses a no-input agent, so devices that ask for a PIN fail.
+  - *Printers* need CUPS. Removing or adding a printer asks for the
+    administrator password through `common.elevate`. Adding is by name and
+    address with the driverless (`everywhere`) driver; there is no discovery.
+  - *Sound* also lists output and input devices, sets the default, and plays a
+    generated test tone (left, right or both) through `pw-play` or `paplay`.
+  - *Date & time* offers presets or any strftime pattern; the zone list comes
+    from `/usr/share/zoneinfo/zone1970.tab`. Zone and clock changes are
+    administrator actions. There is no network time sync.
+
+**Editing labwc files:** only dkde's own sections and keys are changed, and
+the rest of the file is preserved. A backup is written before the first edit.
+
+### 5.6 Accessories (v1.1)
+
+Small apps that share `common`, the stylesheet and the config conventions.
+Each ships a `.desktop` file with its `MimeType=` list so Open With,
+default apps and the start menu find it.
+
+| Binary | Purpose | Notes |
+|---|---|---|
+| `dkde-edit` | Text editor (Notepad) | Open/save, find/replace, word wrap, font. Default `text/plain` handler. |
+| `dkde-calc` | Calculator | Standard and scientific modes, full keyboard entry. Evaluation logic unit-tested. |
+| `dkde-view` | Image viewer | Zoom, fit, rotate, previous/next in folder, set as wallpaper. |
+| `dkde-tasks` | Task Manager | Processes from `/proc`, CPU and memory, end process. Opened with Ctrl+Shift+Esc. |
+| `dkde-snip` | Screenshots | `wlr-screencopy-unstable-v1`. Full screen, window, or region. Print Screen. (if possible a scroll option for webpage) |
+
+**Implementation notes (accessories):**
+
+- `dkde-calc`: expressions are parsed by a recursive-descent evaluator
+  (`+ - × ÷ ^ ! % mod`, parentheses, `sin cos tan asin acos atan ln log
+  sqrt abs exp`, `π`, `e`); degrees or radians; Enter evaluates.
+- `dkde-edit`: UTF-8 text only. Keys in `edit.conf`: `[edit] word-wrap`,
+  `font`. Ctrl+N/O/S, Ctrl+Shift+S, Ctrl+F or Ctrl+H for find and replace.
+- `dkde-view`: loads through gdk-pixbuf, so it opens whatever the installed
+  pixbuf loaders support (WebP needs `webp-pixbuf-loader`, SVG needs
+  `librsvg2-common`). No new library beyond the GTK chain. "Set as
+  wallpaper" writes `[wallpaper] image` and clears `slideshow-dir`.
+- `dkde-tasks`: processes from `/proc`, refreshed every 1.5 s. Two summary
+  cards (CPU, memory) show the current value and a 60-sample history graph;
+  a search box filters by name; busy CPU and memory cells are tinted. End Task
+  sends SIGTERM, Force Quit SIGKILL after confirmation.
+- `dkde-snip`: full screen and region, for the first output. The picture is
+  saved to `<Pictures>/Screenshots/` and copied to the clipboard. **Window
+  capture and scrolling capture are not offered:** wlr-screencopy and
+  wlr-foreign-toplevel give no window geometry and no way to drive another
+  program's scrolling. `dkde-snip --full` and `--region` capture at once.
+- labwc bindings (`data/labwc/rc-keybind.xml`): Print and Shift+Print for
+  screenshots, Ctrl+Shift+Esc for the Task Manager.
+- Added protocol: `wlr-screencopy-unstable-v1` (vendored in `protocols/`).
+- Taskbar buttons have a capped width and sit left to right; they only
+  shrink (labels ellipsize) when the bar is full.
+
+### 5.8 First-run setup (`dkde-setup`)
+
+A command-line tool that checks what a working session needs and fixes what
+it can. User-level fixes (labwc `autostart`, `rc.xml` keybindings,
+`environment`) are applied after one confirmation, only add to existing
+files, and back them up once. System-level fixes (the WSL `.X11-unix` sticky
+bit, `video`/`input` groups without logind, a login-manager session entry)
+are never run silently: the command and reason are shown and each runs only
+on an explicit yes. `--check` reports only; `--yes` applies user-level fixes
+without asking.
+
+It also checks the groups that give a user without logind or polkit access
+to hardware and services: `audio`, `netdev` (NetworkManager and rfkill),
+`plugdev`, `bluetooth` and `lpadmin`, asking only for those that exist on the
+system, plus `video` and `input` for the session. The fix is one `usermod -aG`
+command that runs only after an explicit yes.
+
+It also creates the standard home folders (Desktop, Documents, Downloads,
+Music, Pictures, Videos, Templates, Public) when missing, and writes
+`user-dirs.dirs` naming them if the file does not exist. An existing
+`user-dirs.dirs` is never changed. The labwc autostart check also adds the line
+that restores the saved display layout.
+
+### 5.10 Login (`dkde-greeter`, greetd)
+
+dkde does not write a display manager. The login screen is a greeter for
+**greetd**, which works without systemd or logind.
+
+- `dkde-greeter` is a fullscreen GTK window: account picker (uid 1000 and up
+  with a real shell), password, Sign in. It speaks the greetd IPC protocol
+  (length-prefixed JSON on `$GREETD_SOCK`): `create_session`, answers the
+  password prompt, then `start_session` with `dkde-session`, and exits.
+  Wrong passwords are cancelled and reported. There are no power buttons, user
+  pictures or session choice yet.
+- `dkde-greeter-session` (what greetd runs) starts a kiosk labwc that shows
+  only the greeter and exits with it. `/etc/greetd/config.toml` is in
+  `data/greetd/`; greetd runs the greeter as `_greetd`.
+- `dkde-session` is the real session: it sets the environment, makes an
+  `XDG_RUNTIME_DIR` when logind did not, reads the user's profile, and starts
+  labwc under `dbus-run-session` when that exists (so notifications work).
+  `data/dkde.desktop` installs to `share/wayland-sessions`.
+- **Init systems:** dkde needs none (SPEC 4.1); the login screen and the
+  optional services can be started by any of them. `data/dinit.d/` (dinit),
+  `data/systemd/` (systemd) and `data/sysvinit/` (SysV init: Slackware, LFS)
+  hold service files, and `data/pam/greetd` an example PAM service. The dinit
+  files, for `greetd`, `seatd`, `dbus`,
+  `networkmanager`, `bluetooth` and `cupsd`. Copy those you want to
+  `/etc/dinit.d/` and enable them with `dinitctl enable`.
+
+### 5.9 X11 backend (optional, `-Dx11=true`)
+
+For people who run Xorg. Off by default: without the flag nothing X11 is
+compiled or linked. With it, `dkde-panel` and `dkde-snip` choose their
+backend at start-up from the GDK display (Wayland or X11); every other app is
+a plain GTK4 program and already runs on either.
+
+| Part | Wayland | X11 |
+|---|---|---|
+| Placing the bar and wallpaper | layer-shell | `_NET_WM_WINDOW_TYPE_DOCK` / `DESKTOP`, `_NET_WM_STRUT_PARTIAL` |
+| Window list and actions | wlr-foreign-toplevel | EWMH: `_NET_CLIENT_LIST`, `_NET_ACTIVE_WINDOW`, client messages |
+| Start menu | full-output overlay | a popup window next to the bar, closed on focus loss |
+| Screenshots | wlr-screencopy | `XGetImage` of the root window |
+
+It needs an EWMH-compliant window manager (openbox is the suggested pair) and
+no compositor is required. Not supported on X11: auto-hide. The X session is
+started by `scripts/dkde-xsession`, and `scripts/dkde-startx` runs it from a
+console with `startx`.
+
+### 5.7 Context menus
+
+| Where | Items |
+|---|---|
+| Desktop (wallpaper) | Personalize, Open Terminal, Open Files |
+| Taskbar, empty area | Task Manager, Settings |
+| Start menu item | Pin/Unpin, Open file location |
+| Files, item | Open, Open With, Cut, Copy, Paste, Rename, Move to Trash, Properties |
+| Files, empty area | New Folder, Paste, Open Terminal Here |
+
+The taskbar-button and start-menu-item menus also open from the keyboard
+(Menu key or Shift+F10).
+
+## 6. Shared conventions
+
+### 6.1 Configuration
+
+- **Format:** INI-style, read and written with GLib's `GKeyFile`. No
+  additional parser dependency.
+- **Location:** `$XDG_CONFIG_HOME/dkde/`. One file per component:
+  `panel.conf`, `term.conf`, `files.conf`. Shared settings like accent
+  colour and font live in `dkde.conf`.
+- **System defaults:** `$PREFIX/share/dkde/*.conf`. The user's files only
+  hold what they changed.
+- **State:** recent apps and window sizes go in `$XDG_STATE_HOME/dkde/`,
+  never mixed into config.
+- Missing or invalid values fall back to the default and log a warning; they
+  never crash a component.
+
+### 6.2 Styling
+
+- One stylesheet, `$PREFIX/share/dkde/style.css`, loaded by every component
+  at `GTK_STYLE_PROVIDER_PRIORITY_APPLICATION`.
+- User overrides go in `$XDG_CONFIG_HOME/dkde/style.css`, loaded at a higher
+  priority.
+- Dev override: if `DKDE_DATA_DIR` is set, the system stylesheet and system
+  default `*.conf` files are read from that directory instead of
+  `$XDG_DATA_DIRS/dkde`. `zig build run-<component>` sets it to `data/`.
+- Every app has a classic menu bar (File, Edit, View, ...) under the header,
+  built from plain data by `common.menubar`; items show their shortcuts and
+  call the same `perform(name)` as keyboard shortcuts. There are no
+  hamburger menus. Settings has none: it is a page list, not a document app.
+- The header (`common.header`) puts the app icon and title at the left,
+  like Windows; windows with their own middle widget (the file manager's
+  path bar, the terminal's tabs) show only the icon.
+- Window headers are flat with Windows-style caption buttons on the right
+  (`gtk-decoration-layout` is set to `:minimize,maximize,close`); the close
+  button turns red on hover. All styling is in `style.css`.
+- The accent colour and light/dark choice are applied through CSS variables
+  defined in that one stylesheet. No component hard-codes a colour.
+- Default icon theme: **OPEN**, with `hicolor` as the fallback.
+
+### 6.3 Keyboard
+
+Every action reachable by mouse must also be reachable by keyboard. Shared
+shortcuts:
+
+| Shortcut | Action |
+|---|---|
+| Super | Toggle start menu |
+| Ctrl+Q | Quit app |
+| Ctrl+W | Close tab/window |
+| Ctrl+T | New tab (terminal) |
+| Ctrl+L | Path entry (files) |
+| F2 | Rename (files) |
+
+### 6.4 Code conventions
+
+- `zig fmt` is mandatory, and CI-equivalent checks run it.
+- Naming follows the official Zig style guide: `TitleCase` types,
+  `camelCase` functions, `snake_case` variables and fields. **OPEN:** confirm
+  this, or record a project-specific rule here. Whatever is decided applies
+  everywhere, with no exceptions per file.
+- Binaries are `dkde-<component>` (kebab-case). GObject subclasses use the
+  `Dkde` type-name prefix.
+- No global mutable state outside each component's top-level `App` struct.
+- Every allocation path has an owner and a matching free. Debug builds use
+  `std.heap.DebugAllocator` (or the pinned Zig version's equivalent), and
+  leaks are treated as bugs.
+- Errors propagate with Zig error unions. They're only shown to the user at
+  the UI boundary.
+- **Logging.** Every program sets `std_options.logFn = common.log.logFn`.
+  `DKDE_LOG=debug|info|warn|error` picks the level (default `warn`),
+  `DKDE_LOG_FILE=<path>` also appends to a file and `DKDE_LOG_FILE=auto` uses
+  `$XDG_STATE_HOME/dkde/<program>.log` (default `~/.local/state/dkde/`).
+  `dkde-session` turns the file on, so a session keeps its warnings and errors.
+  Each line is `HH:MM:SS level(scope) program[pid]: message` (UTC). GLib and
+  GTK are switched separately with `G_MESSAGES_DEBUG=all`.
+- **`dkde-pointer`** is a development aid, not part of the desktop: it moves,
+  clicks and scrolls through `wlr-virtual-pointer` (`dkde-pointer move X Y
+  click sleep MS ...`, with `--size WxH` for the output size) so hover and click
+  behaviour can be tested in a nested compositor.
+
+### 6.5 Licence
+
+dkde is MIT-licensed (`LICENSE`). New source files need no header. Do not copy
+code from GPL or LGPL projects into the tree; link such libraries dynamically
+instead.
+
+### 6.6 Documentation
+
+Code is written to be read. A milestone is not done until its code is
+documented to this standard.
+
+- Every source file starts with a `//!` module comment: what the file is
+  for, which spec section it implements, and how it fits with the files
+  around it.
+- Every `pub` declaration has a `///` doc comment that says what it does,
+  what its parameters mean, who owns returned memory, and which errors it
+  can return.
+- Comments inside functions explain *why*, not *what*: protocol quirks,
+  ordering requirements, workarounds and the upstream issue they work
+  around. A comment that restates the code is removed.
+- Anything driven by a Wayland protocol, a freedesktop spec or a GTK
+  behaviour links to the relevant spec or documentation.
+- `docs/ARCHITECTURE.md` describes the components, the shared module, the
+  config files and the IPC socket, and is updated in the same change as
+  the code it describes.
+- `zig build docs` generates Zig autodoc for the `common` module.
+
+## 7. Repository layout
+
+```
+build.zig
+build.zig.zon
+SPEC.md
+docs/
+  reference/         screenshots: Open-Shell, Nautilus, Windows Terminal
+protocols/            vendored wayland protocol XML not in wayland-protocols
+data/
+  style.css
+  *.conf             system defaults
+  *.desktop          desktop entries for the apps
+  labwc/             example autostart and keybinding snippets
+src/
+  common/
+  panel/
+  term/
+  files/
+  settings/
+```
+
+**Build steps:**
+
+| Command | Does |
+|---|---|
+| `zig build` | Builds all four binaries |
+| `zig build test` | Runs unit tests |
+| `zig build run-<component>` | Builds and runs one component |
+| `zig build install --prefix /usr` | Installs binaries and data |
+
+## 8. Testing
+
+- **Unit tests** cover all pure logic: desktop entry parsing and filtering,
+  search ranking, config read/write and defaults, `app_id` matching, and
+  labwc `rc.xml` editing (round-trip without losing other content).
+- **Development loop:** labwc runs nested inside an existing Wayland session
+  in a window, so the shell can be tested without logging out.
+- **Platform check:** each milestone is also verified in a dkrescue QEMU
+  image before it's marked done.
+- **Manual checklist:** each milestone's acceptance criteria are its manual
+  test list.
+
+## 9. Milestones
+
+Each milestone is merged only when all its acceptance criteria pass.
+
+### M0 — Skeleton
+
+- `zig build` produces all four binaries, each opening an empty window.
+- zig-gobject and GTK4 linked; `common` loads the stylesheet and config.
+- **Done when:** builds on a glibc host and natively inside dkrescue.
+
+### M1 — Panel bar
+
+- Bottom layer-shell bar with exclusive zone, a start button (no menu yet)
+  and a clock.
+- Height and clock format come from `panel.conf`, and editing the file
+  updates the running panel.
+- Wallpaper surface.
+- **Done when:** maximized windows stop at the top of the bar; config edits
+  apply without a restart.
+
+### M2 — Taskbar
+
+- Buttons for all toplevels with icon and title; the active one is
+  highlighted.
+- Click to activate/minimize, middle click to close, right-click menu.
+- **Done when:** opening, closing, retitling and switching windows are all
+  reflected correctly, including windows opened before the panel started.
+
+### M3 — Start menu
+
+- Full layout from 5.2: pinned, recent, All Programs, search, places, power.
+- IPC socket and `dkde-panel msg toggle-menu`; Super bound in labwc.
+- **Done when:** a newly installed `.desktop` file shows up without a
+  restart, and type-then-Enter launches the top search result.
+
+### M4 — Terminal
+
+- Tabs, profiles and the full v1 feature list from 5.3.
+- **Done when:** `vim`, `htop` and `tmux` run correctly, and kitty keyboard
+  protocol mode works in an app that requests it.
+
+### M5 — File manager
+
+- Everything in 5.4.
+- **Done when:** copying a large directory shows progress and can be
+  cancelled, and Trash works and restores.
+
+### M6 — Settings
+
+- All v1 pages from 5.5.
+- **Done when:** every page's changes reach the running component without a
+  restart, and labwc files keep their other content.
+
+### M7 — Polish
+
+- A consistent look across all components and a full keyboard-navigation
+  pass.
+- **Done when:** a dkrescue image boots into a complete dkde session.
+
+## 10. Working agreement (AI-assisted development)
+
+- One milestone (or part of one) per branch. Every change is reviewed
+  before merge.
+- No new dependency, protocol, or config key without updating this spec in
+  the same change.
+- If something in this spec turns out to be wrong or impossible, fix the
+  spec first, then the code.
+- Unit tests ship with the logic they test.
+
+## 11. Open questions
+
+1. dkde
+2. 0.17.0 curl https://www.zvm.app/install.sh | bash
+3. zig-gobject: Ghostty's fork.
+4. Default icon theme. https://github.com/PapirusDevelopmentTeam/papirus-icon-theme
+5. Terminal title bar: imitate the labwc theme, or share a dkde-defined
+   look.
+6. Naming convention: Zig's official style
+7. Minimum labwc version:  0.9.3-1

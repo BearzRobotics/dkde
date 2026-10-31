@@ -1,0 +1,6 @@
+# The system message bus: NetworkManager, BlueZ and (optionally) the session
+# bus helpers need it. /run/dbus must exist; most dinit setups create it at
+# boot (mkdir -p /run/dbus).
+type    = process
+command = /usr/bin/dbus-daemon --system --nofork --nopidfile
+restart = true

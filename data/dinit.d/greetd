@@ -1,0 +1,12 @@
+# dinit service for the login manager. Copy to /etc/dinit.d/greetd and enable
+# it with:  dinitctl enable greetd
+#
+# greetd takes over the virtual terminal named in /etc/greetd/config.toml
+# (vt = 1), so do not also run a getty on that terminal.
+type            = process
+command         = /usr/sbin/greetd
+restart         = true
+smooth-recovery = true
+# greetd itself needs no other service. Start seatd (without logind) and dbus
+# (for notifications' own session bus nothing is needed here) before it by
+# listing them in your boot service's waits-for.

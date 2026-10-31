@@ -1,0 +1,58 @@
+#!/bin/sh
+# The dkde session for Xorg. A display manager or `startx` runs this; it
+# starts an EWMH window manager, then the panel, and ends when the window
+# manager does (so logging out of the window manager ends the session).
+#
+# The panel needs a dkde built with `zig build -Dx11=true`.
+#
+#   DKDE_WM          window manager command (default: openbox)
+#   DKDE_COMPOSITOR  optional compositor command, e.g. picom
+#
+# Any EWMH-compliant window manager works: openbox, icewm, fluxbox, xfwm4...
+# dkde does not need a compositor; it only makes shadows and transparency
+# (the terminal's background opacity) possible.
+
+export GDK_BACKEND=x11
+export XDG_SESSION_TYPE=x11
+export XDG_CURRENT_DESKTOP=dkde
+# dkde has no D-Bus, so there is no accessibility bus to talk to.
+export NO_AT_BRIDGE=1
+
+wm=${DKDE_WM:-openbox}
+if ! command -v "$wm" >/dev/null 2>&1; then
+    cat >&2 <<MSG
+dkde-xsession: window manager "$wm" not found.
+Install one (for example: sudo apt install openbox) or set DKDE_WM to the
+command of one you already have.
+MSG
+    exit 1
+fi
+if ! command -v dkde-panel >/dev/null 2>&1; then
+    echo "dkde-xsession: dkde-panel is not on PATH (build with 'zig build -Dx11=true' and install it)." >&2
+    exit 1
+fi
+
+# Keep the shell away from a stale gdk backend setting in the environment of
+# programs it launches: they run on X11 here.
+"$wm" &
+wm_pid=$!
+
+# Wait (up to five seconds) for the window manager to announce itself, so
+# the panel's dock hints are honoured from the first frame.
+if command -v xprop >/dev/null 2>&1; then
+    i=0
+    while [ $i -lt 50 ]; do
+        xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q "window id" && break
+        i=$((i + 1))
+        sleep 0.1
+    done
+fi
+
+if [ -n "$DKDE_COMPOSITOR" ]; then
+    $DKDE_COMPOSITOR &
+fi
+
+# The panel is restarted if it exits, as in the labwc example.
+(while kill -0 "$wm_pid" 2>/dev/null; do dkde-panel; sleep 1; done) &
+
+wait "$wm_pid"

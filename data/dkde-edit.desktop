@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Editor
+GenericName=Text Editor
+Comment=Edit plain text files
+Exec=dkde-edit %f
+Icon=accessories-text-editor
+Categories=Utility;TextEditor;
+MimeType=text/plain;
+Keywords=notepad;text;
+StartupWMClass=org.dkde.edit

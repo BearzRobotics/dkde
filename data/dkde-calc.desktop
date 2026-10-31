@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Calculator
+GenericName=Calculator
+Comment=Perform calculations
+Exec=dkde-calc
+Icon=accessories-calculator
+Categories=Utility;Calculator;
+Keywords=math;arithmetic;
+StartupWMClass=org.dkde.calc

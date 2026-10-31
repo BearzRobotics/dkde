@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+GenericName=Terminal Emulator
+Comment=Run commands in a shell
+Exec=dkde-term
+Icon=utilities-terminal
+Categories=System;TerminalEmulator;
+Keywords=shell;console;command;
+StartupWMClass=org.dkde.term

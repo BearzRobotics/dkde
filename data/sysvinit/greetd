@@ -1,0 +1,53 @@
+#!/bin/sh
+# SysV-style start script for greetd, the dkde login manager.
+#
+#   Slackware:  install as /etc/rc.d/rc.greetd (chmod +x) and start it from
+#               /etc/rc.d/rc.4 in place of the display-manager block.
+#   LFS/BLFS:   install as /etc/rc.d/init.d/greetd and link it into the
+#               runlevel directory you use, e.g. /etc/rc.d/rc5.d/S99greetd.
+#
+# greetd runs in the foreground, so this script backgrounds it and keeps a
+# pid file. Set "vt = 7" in /etc/greetd/config.toml if a getty already runs on
+# tty1. A PAM service named greetd is required (see data/pam/greetd).
+
+GREETD=${GREETD:-/usr/sbin/greetd}
+PIDFILE=/run/greetd.pid
+LOG=/var/log/greetd.log
+
+running() {
+    [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+}
+
+case "$1" in
+start)
+    if running; then
+        echo "greetd is already running"
+        exit 0
+    fi
+    [ -x "$GREETD" ] || { echo "greetd: $GREETD not found" >&2; exit 1; }
+    echo "Starting greetd"
+    "$GREETD" >>"$LOG" 2>&1 &
+    echo $! >"$PIDFILE"
+    ;;
+stop)
+    if running; then
+        echo "Stopping greetd"
+        kill "$(cat "$PIDFILE")"
+        rm -f "$PIDFILE"
+    else
+        echo "greetd is not running"
+    fi
+    ;;
+restart)
+    "$0" stop
+    sleep 1
+    "$0" start
+    ;;
+status)
+    if running; then echo "greetd is running (pid $(cat "$PIDFILE"))"; else echo "greetd is not running"; exit 3; fi
+    ;;
+*)
+    echo "usage: $0 {start|stop|restart|status}" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,22 @@
+#!/bin/sh
+# Starts a dkde session on Xorg from a text console:
+#
+#   dkde-startx            # on the next free display
+#   dkde-startx :1         # on a specific display
+#
+# For a graphical login screen, install data/dkde-x11.desktop into
+# /usr/share/xsessions instead (`dkde-setup` can do it).
+here=$(cd "$(dirname "$0")" && pwd)
+session="$here/dkde-xsession"
+[ -x "$session" ] || session=$(command -v dkde-xsession) || {
+    echo "dkde-startx: dkde-xsession not found" >&2
+    exit 1
+}
+command -v startx >/dev/null 2>&1 || {
+    echo "dkde-startx: startx not found (sudo apt install xinit)" >&2
+    exit 1
+}
+if [ -n "$1" ]; then
+    exec startx "$session" -- "$1"
+fi
+exec startx "$session"

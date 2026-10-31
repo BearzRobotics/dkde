@@ -1,0 +1,34 @@
+#!/bin/sh
+# The dkde Wayland session: greetd (or any login manager, or a tty) runs this.
+# It prepares the environment a systemd-less system does not provide, then
+# starts labwc under a private session D-Bus when one can be had. The labwc
+# autostart (see data/labwc/autostart) starts the panel.
+
+export XDG_SESSION_TYPE=wayland
+# Keep each program's warnings and errors in ~/.local/state/dkde/<program>.log
+# (set DKDE_LOG=debug for more, or DKDE_LOG_FILE to somewhere else).
+export DKDE_LOG_FILE="${DKDE_LOG_FILE:-auto}"
+export XDG_CURRENT_DESKTOP=dkde
+export XDG_SESSION_DESKTOP=dkde
+
+# Without logind nobody creates /run/user/$UID. Use it if it exists and is
+# ours, otherwise make a private directory.
+if [ -z "$XDG_RUNTIME_DIR" ]; then
+    if [ -d "/run/user/$(id -u)" ] && [ -w "/run/user/$(id -u)" ]; then
+        XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    else
+        XDG_RUNTIME_DIR="${TMPDIR:-/tmp}/dkde-runtime-$(id -u)"
+        mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+    fi
+    export XDG_RUNTIME_DIR
+fi
+
+# A login shell's profile (PATH and so on) is not read by greetd; do it here.
+[ -f /etc/profile ] && . /etc/profile
+[ -f "$HOME/.profile" ] && . "$HOME/.profile"
+
+# A session bus is optional (SPEC.md 2): notifications and the tray use it.
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
+    exec dbus-run-session -- labwc "$@"
+fi
+exec labwc "$@"

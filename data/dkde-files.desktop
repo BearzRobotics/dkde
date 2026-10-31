@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+GenericName=File Manager
+Comment=Browse the file system
+Exec=dkde-files %U
+Icon=system-file-manager
+Categories=Utility;FileManager;
+Keywords=folder;explorer;
+StartupWMClass=org.dkde.files

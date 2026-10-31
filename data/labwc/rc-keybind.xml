@@ -1,0 +1,29 @@
+<!-- Example labwc keybinding for dkde. Merge this <keybind> into the
+     <keyboard> section of ~/.config/labwc/rc.xml.
+     A lone Super press-and-release toggles the start menu; onRelease keeps
+     Super+<key> shortcuts working (documented in labwc-config(5), 0.9.3). -->
+<keybind key="Super_L" onRelease="yes">
+  <action name="Execute" command="dkde-panel msg toggle-menu"/>
+</keybind>
+<keybind key="C-S-Escape">
+  <action name="Execute" command="dkde-tasks"/>
+</keybind>
+<keybind key="Print">
+  <action name="Execute" command="dkde-snip --full"/>
+</keybind>
+<keybind key="S-Print">
+  <action name="Execute" command="dkde-snip --region"/>
+</keybind>
+<!-- Virtual desktops (the number of desktops is <desktops><number> in rc.xml). -->
+<keybind key="C-A-Left">
+  <action name="GoToDesktop" to="left"/>
+</keybind>
+<keybind key="C-A-Right">
+  <action name="GoToDesktop" to="right"/>
+</keybind>
+<keybind key="C-A-S-Left">
+  <action name="SendToDesktop" to="left"/>
+</keybind>
+<keybind key="C-A-S-Right">
+  <action name="SendToDesktop" to="right"/>
+</keybind>

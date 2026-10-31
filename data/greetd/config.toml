@@ -1,0 +1,9 @@
+# /etc/greetd/config.toml for dkde. greetd runs the greeter as an
+# unprivileged user; the package creates it (_greetd on Debian and Ubuntu).
+[terminal]
+# Use 7 (or another free terminal) if a getty already runs on tty1.
+vt = 1
+
+[default_session]
+command = "dkde-greeter-session"
+user = "_greetd"

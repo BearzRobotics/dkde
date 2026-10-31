@@ -1,0 +1,5 @@
+# BlueZ, for the Bluetooth page of Settings (bluetoothctl).
+type       = process
+command    = /usr/libexec/bluetooth/bluetoothd --nodetach
+restart    = true
+depends-on = dbus

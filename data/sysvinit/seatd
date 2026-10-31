@@ -1,0 +1,47 @@
+#!/bin/sh
+# SysV-style start script for seatd, which hands the session its display and
+# input devices on a system with no logind. Skip it if you run elogind or
+# systemd-logind. Install like data/sysvinit/greetd (Slackware: rc.seatd).
+# The user needs to be in the group named below (dkde-setup checks this).
+
+SEATD=${SEATD:-/usr/bin/seatd}
+GROUP=${SEATD_GROUP:-video}
+PIDFILE=/run/seatd.pid
+
+running() {
+    [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+}
+
+case "$1" in
+start)
+    if running; then
+        echo "seatd is already running"
+        exit 0
+    fi
+    [ -x "$SEATD" ] || { echo "seatd: $SEATD not found" >&2; exit 1; }
+    echo "Starting seatd"
+    "$SEATD" -g "$GROUP" &
+    echo $! >"$PIDFILE"
+    ;;
+stop)
+    if running; then
+        echo "Stopping seatd"
+        kill "$(cat "$PIDFILE")"
+        rm -f "$PIDFILE"
+    else
+        echo "seatd is not running"
+    fi
+    ;;
+restart)
+    "$0" stop
+    sleep 1
+    "$0" start
+    ;;
+status)
+    if running; then echo "seatd is running (pid $(cat "$PIDFILE"))"; else echo "seatd is not running"; exit 3; fi
+    ;;
+*)
+    echo "usage: $0 {start|stop|restart|status}" >&2
+    exit 2
+    ;;
+esac

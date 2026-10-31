@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+GenericName=Desktop Settings
+Comment=Configure the desktop
+Exec=dkde-settings
+Icon=preferences-system
+Categories=Settings;
+Keywords=preferences;configuration;
+StartupWMClass=org.dkde.settings

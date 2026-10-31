@@ -1,0 +1,600 @@
+/* dkde stylesheet. Every component loads this file; no component hard-codes
+ * a colour. The accent and the light/dark choice are applied through the
+ * variables below. */
+
+@define-color dkde_accent #3584e4;
+@define-color dkde_bg #f6f5f4;
+@define-color dkde_fg #1e1e1e;
+
+window.dkde {
+  background-color: @dkde_bg;
+  color: @dkde_fg;
+}
+
+window.dkde-panel {
+  background-color: transparent;
+  color: @dkde_fg;
+}
+
+window.dkde-panel .dkde-panel-body {
+  background-color: @dkde_bg;
+}
+
+window.dkde-panel button.dkde-start {
+  background-image: none;
+  background-color: @dkde_accent;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  box-shadow: none;
+  margin: 5px 6px 5px 6px;
+  padding: 0 14px;
+  font-weight: 600;
+}
+
+window.dkde-panel button.dkde-start:hover {
+  background-color: shade(@dkde_accent, 1.1);
+}
+
+window.dkde-panel.pos-bottom .dkde-panel-body {
+  border-top: 1px solid alpha(@dkde_fg, 0.14);
+}
+window.dkde-panel.pos-top .dkde-panel-body {
+  border-bottom: 1px solid alpha(@dkde_fg, 0.14);
+}
+window.dkde-panel.pos-left .dkde-panel-body {
+  border-right: 1px solid alpha(@dkde_fg, 0.14);
+}
+window.dkde-panel.pos-right .dkde-panel-body {
+  border-left: 1px solid alpha(@dkde_fg, 0.14);
+}
+
+window.dkde-panel label.dkde-clock {
+  padding: 0 12px;
+  font-size: 90%;
+}
+
+/* Taskbar buttons: flat, rounded, with a small bar underneath for each open
+   app that grows and turns accent-coloured for the active one. */
+window.dkde-panel button.dkde-task {
+  background-color: transparent;
+  background-image: linear-gradient(alpha(@dkde_fg, 0.35), alpha(@dkde_fg, 0.35));
+  background-size: 8px 3px;
+  background-position: center calc(100% - 1px);
+  background-repeat: no-repeat;
+  border: none;
+  border-radius: 6px;
+  box-shadow: none;
+  padding: 0 12px;
+  margin: 4px 2px;
+  font-weight: 400;
+  transition: background-color 120ms ease, background-size 120ms ease;
+}
+
+window.dkde-panel button.dkde-task:hover {
+  background-color: alpha(@dkde_fg, 0.1);
+}
+
+window.dkde-panel button.dkde-task.active {
+  background-color: alpha(@dkde_fg, 0.12);
+  background-image: linear-gradient(@dkde_accent, @dkde_accent);
+  background-size: 20px 3px;
+  color: @dkde_fg;
+  font-weight: 600;
+}
+
+window.dkde-panel button.dkde-task.active:hover {
+  background-color: alpha(@dkde_fg, 0.18);
+}
+
+window.dkde-panel button.dkde-task.icon-only {
+  padding: 0 9px;
+}
+
+window.dkde-panel button.dkde-task.stacked {
+  box-shadow: none;
+  background-size: 14px 3px;
+}
+
+window.dkde-panel label.dkde-task-count {
+  font-size: 75%;
+  font-weight: 700;
+  background-color: alpha(@dkde_accent, 0.9);
+  color: white;
+  border-radius: 8px;
+  padding: 0 6px;
+  margin-left: 4px;
+}
+
+window.dkde-panel button.dkde-task.minimized {
+  opacity: 0.65;
+  background-image: none;
+}
+
+window.dkde-menu-backdrop {
+  background-color: transparent;
+}
+
+box.dkde-menu {
+  background-color: @dkde_bg;
+  color: @dkde_fg;
+  border: 1px solid alpha(@dkde_fg, 0.3);
+  box-shadow: 0 4px 16px alpha(black, 0.4);
+}
+
+box.dkde-menu-left {
+  padding: 6px;
+}
+
+box.dkde-menu-right {
+  padding: 6px;
+  background-color: @dkde_accent;
+  color: white;
+}
+
+box.dkde-menu button.dkde-menu-app,
+box.dkde-menu button.dkde-menu-link {
+  border-radius: 0;
+  padding: 4px 8px;
+}
+
+box.dkde-menu-right button {
+  background-image: none;
+  background-color: alpha(white, 0.12);
+  border: none;
+  box-shadow: none;
+  color: white;
+}
+
+box.dkde-menu-right button:hover {
+  background-color: alpha(white, 0.25);
+}
+
+box.dkde-menu label.dkde-menu-user {
+  font-weight: bold;
+  padding: 8px;
+}
+
+box.dkde-menu .dkde-menu-search {
+  margin-top: 6px;
+}
+
+/* ---- Window headers: flat, Windows-style caption buttons ---- */
+
+window.dkde headerbar {
+  background-color: @dkde_bg;
+  background-image: none;
+  color: @dkde_fg;
+  border: none;
+  border-bottom: 1px solid alpha(@dkde_fg, 0.12);
+  box-shadow: none;
+  min-height: 30px;
+  padding: 0 0 0 8px;
+}
+
+window.dkde headerbar .title {
+  font-weight: 600;
+}
+
+window.dkde headerbar windowcontrols {
+  margin: 0;
+}
+
+window.dkde headerbar windowcontrols button {
+  min-width: 42px;
+  min-height: 30px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: @dkde_fg;
+}
+
+window.dkde headerbar windowcontrols button:hover {
+  background-color: alpha(@dkde_fg, 0.1);
+}
+
+window.dkde headerbar windowcontrols button:active {
+  background-color: alpha(@dkde_fg, 0.18);
+}
+
+window.dkde headerbar windowcontrols button.close:hover {
+  background-color: #c42b1c;
+  color: white;
+}
+
+window.dkde headerbar button {
+  border-radius: 4px;
+}
+
+window.dkde.maximized headerbar,
+window.dkde.fullscreen headerbar {
+  border-radius: 0;
+}
+
+/* Terminal tabs */
+headerbar .dkde-tabs button.dkde-tab {
+  border-radius: 6px 6px 0 0;
+  min-height: 26px;
+  padding: 0 4px 0 12px;
+  margin-top: 4px;
+  background: alpha(@dkde_fg, 0.06);
+  box-shadow: none;
+}
+
+headerbar .dkde-tabs button.dkde-tab:checked {
+  background: alpha(@dkde_accent, 0.25);
+  border-bottom: 2px solid @dkde_accent;
+}
+
+headerbar .dkde-tabs button.dkde-tab button {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 4px;
+}
+
+/* A terminal profile with opacity < 1 makes the window see-through. */
+window.dkde.dkde-transparent {
+  background-color: transparent;
+}
+
+box.dkde-menu picture.dkde-avatar,
+image.dkde-avatar {
+  border-radius: 999px;
+  min-width: 48px;
+  min-height: 48px;
+}
+
+/* ---- Classic menu bars ---- */
+
+window.dkde menubar.dkde-menubar {
+  background-color: @dkde_bg;
+  color: @dkde_fg;
+  border-bottom: 1px solid alpha(@dkde_fg, 0.12);
+  padding: 0 4px;
+  min-height: 26px;
+}
+
+window.dkde menubar.dkde-menubar > item {
+  padding: 2px 10px;
+  border-radius: 3px;
+}
+
+window.dkde menubar.dkde-menubar > item:hover,
+window.dkde menubar.dkde-menubar > item:checked {
+  background-color: alpha(@dkde_accent, 0.2);
+}
+
+window.dkde headerbar .dkde-header-icon {
+  margin-right: 8px;
+}
+
+window.dkde headerbar .dkde-header-title {
+  font-weight: 400;
+  font-size: 95%;
+}
+
+/* Popovers opened from the start menu's blue column keep normal colours. */
+box.dkde-menu-right popover.background contents,
+box.dkde-menu popover.background contents {
+  background-color: @dkde_bg;
+  color: @dkde_fg;
+}
+
+box.dkde-menu-right popover button,
+box.dkde-menu popover button {
+  background-image: none;
+  background-color: transparent;
+  color: @dkde_fg;
+  border: none;
+  box-shadow: none;
+  border-radius: 3px;
+  padding: 4px 12px;
+}
+
+box.dkde-menu-right popover button:hover,
+box.dkde-menu popover button:hover {
+  background-color: alpha(@dkde_accent, 0.25);
+  color: @dkde_fg;
+}
+
+/* Settings: each option is a card. */
+box.dkde-setting-row {
+  background-color: alpha(@dkde_fg, 0.05);
+  border: 1px solid alpha(@dkde_fg, 0.08);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+/* Slimmer header contents so the bar stays thin. */
+window.dkde headerbar button {
+  min-height: 22px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+window.dkde headerbar entry,
+window.dkde headerbar searchentry {
+  min-height: 22px;
+}
+
+/* Terminal header: compact tabs and the new-tab buttons. */
+window.dkde headerbar .linked button {
+  min-height: 22px;
+  min-width: 28px;
+  padding: 0 4px;
+  margin: 3px 0;
+}
+
+headerbar .dkde-tabs button.dkde-tab {
+  min-height: 22px;
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+/* The bar's height comes from the setting, not from its widgets. */
+window.dkde-panel button.dkde-start,
+window.dkde-panel button.dkde-task,
+window.dkde-panel label.dkde-clock {
+  min-height: 0;
+}
+
+/* No client-side shadow on the shell's own windows: on X11 it would add an
+   invisible margin to their size. */
+window.dkde-panel,
+window.dkde-panel decoration,
+window.dkde-wallpaper,
+window.dkde-wallpaper decoration,
+window.dkde-menu-backdrop,
+window.dkde-menu-backdrop decoration {
+  box-shadow: none;
+  margin: 0;
+  border-radius: 0;
+}
+
+/* ---- Popover menus in every dkde window (context menus, dropdowns) ---- */
+
+window.dkde popover.background contents,
+window.dkde-panel popover.background contents {
+  background-color: @dkde_bg;
+  color: @dkde_fg;
+  border: 1px solid alpha(@dkde_fg, 0.2);
+  border-radius: 6px;
+  box-shadow: 0 3px 12px alpha(black, 0.3);
+  padding: 4px;
+}
+
+window.dkde popover button,
+window.dkde-panel popover button {
+  background-image: none;
+  background-color: transparent;
+  color: @dkde_fg;
+  border: none;
+  box-shadow: none;
+  border-radius: 4px;
+  padding: 5px 12px;
+  min-height: 0;
+}
+
+window.dkde popover button:hover,
+window.dkde popover button:focus,
+window.dkde-panel popover button:hover,
+window.dkde-panel popover button:focus {
+  background-color: alpha(@dkde_accent, 0.25);
+  color: @dkde_fg;
+}
+
+window.dkde popover button:disabled,
+window.dkde-panel popover button:disabled {
+  color: alpha(@dkde_fg, 0.4);
+}
+
+window.dkde popover label,
+window.dkde-panel popover label {
+  color: inherit;
+}
+
+/* ---- Settings in the style of Windows 11 ---- */
+
+window.dkde .dkde-settings-side {
+  padding: 8px 4px;
+}
+
+window.dkde .dkde-profile-card {
+  padding: 8px 12px;
+}
+
+window.dkde label.dkde-profile-name {
+  font-weight: 600;
+}
+
+window.dkde .dkde-settings-side .navigation-sidebar {
+  background: transparent;
+  padding: 2px 8px;
+}
+
+window.dkde .dkde-settings-side .navigation-sidebar row {
+  border-radius: 6px;
+  margin: 2px 0;
+  padding: 0 6px;
+  min-height: 38px;
+}
+
+window.dkde .dkde-settings-side .navigation-sidebar row:hover {
+  background-color: alpha(@dkde_fg, 0.06);
+}
+
+window.dkde .dkde-settings-side .navigation-sidebar row:selected {
+  background-color: alpha(@dkde_fg, 0.09);
+  color: @dkde_fg;
+  box-shadow: inset 3px 0 0 @dkde_accent;
+}
+
+window.dkde .dkde-settings-content {
+  background-color: alpha(@dkde_fg, 0.03);
+}
+
+window.dkde label.dkde-page-title {
+  font-size: 26px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+box.dkde-setting-row {
+  border-radius: 8px;
+  padding: 14px 18px;
+  background-color: @dkde_bg;
+  border: 1px solid alpha(@dkde_fg, 0.1);
+}
+
+label.dkde-setting-desc {
+  font-size: 85%;
+  opacity: 0.7;
+}
+
+/* Desktop icons sit on the wallpaper, so they need to read on any picture. */
+.dkde-desktop-item {
+  border-radius: 6px;
+  padding: 6px 4px;
+}
+.dkde-desktop-item:hover {
+  background: alpha(white, 0.12);
+}
+.dkde-desktop-item.selected {
+  background: alpha(@dkde_accent, 0.45);
+}
+.dkde-desktop-item label {
+  color: white;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+/* Notification toasts (top-right of the screen). */
+window.dkde-toasts {
+  background: transparent;
+}
+.dkde-toast {
+  background: @dkde_bg;
+  color: @dkde_fg;
+  border: 1px solid alpha(black, 0.18);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* System tray icons in the bar. */
+.dkde-tray {
+  margin: 0 6px;
+}
+.dkde-tray-item {
+  padding: 4px;
+  border-radius: 4px;
+}
+.dkde-tray-item:hover {
+  background: alpha(@dkde_fg, 0.12);
+}
+.dkde-tray-item.attention {
+  background: alpha(@dkde_accent, 0.35);
+}
+
+/* Quick settings: status icons and the flyout. */
+.dkde-quick-button {
+  padding: 4px 8px;
+  border-radius: 4px;
+  min-height: 0;
+}
+.dkde-quick-button:hover {
+  background: alpha(@dkde_fg, 0.12);
+}
+.dkde-quick-tile {
+  padding: 10px 6px;
+  border-radius: 8px;
+}
+.dkde-quick-tile:checked {
+  background: @dkde_accent;
+  color: white;
+}
+
+/* Virtual desktop switcher. */
+.dkde-desktops {
+  margin: 0 4px;
+}
+button.dkde-desktop {
+  min-width: 26px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+button.dkde-desktop.active {
+  background: @dkde_accent;
+  color: white;
+}
+button.dkde-desktop.urgent {
+  border-bottom: 2px solid @dkde_accent;
+}
+
+/* The invisible edge strip of an auto-hidden bar: nearly transparent, so the
+   compositor still counts the surface as something the pointer can touch. */
+.dkde-panel-edge {
+  background-color: alpha(black, 0.01);
+}
+
+/* ---- Task Manager ---- */
+
+.dkde-card {
+  background-color: alpha(@dkde_fg, 0.05);
+  border: 1px solid alpha(@dkde_fg, 0.1);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.dkde-card-title {
+  font-weight: 600;
+  opacity: 0.8;
+}
+.dkde-card-value {
+  font-size: 26pt;
+  font-weight: 300;
+}
+.dkde-card-detail {
+  font-size: 90%;
+  opacity: 0.65;
+  margin-bottom: 6px;
+}
+.dkde-card-graph {
+  border-radius: 4px;
+  border: 1px solid alpha(@dkde_accent, 0.35);
+}
+columnview.dkde-process-table > listview > row > cell {
+  padding: 5px 10px;
+}
+columnview.dkde-process-table label.dkde-heat-1 { background-color: alpha(#f5c211, 0.18); }
+columnview.dkde-process-table label.dkde-heat-2 { background-color: alpha(#ff7800, 0.30); }
+columnview.dkde-process-table label.dkde-heat-3 { background-color: alpha(#e01b24, 0.38); }
+
+/* Flat desktop switcher and quick-settings button to match the taskbar. */
+window.dkde-panel button.dkde-desktop {
+  background-image: none;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 6px;
+  min-height: 0;
+  margin: 8px 1px;
+  padding: 0 8px;
+}
+window.dkde-panel button.dkde-desktop:hover {
+  background-color: alpha(@dkde_fg, 0.1);
+}
+window.dkde-panel button.dkde-desktop.active {
+  background-color: alpha(@dkde_accent, 0.9);
+  color: white;
+}
+window.dkde-panel button.dkde-quick-button {
+  background-image: none;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 6px;
+  margin: 5px 2px;
+}

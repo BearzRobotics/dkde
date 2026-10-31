@@ -1,0 +1,12 @@
+#!/bin/sh
+# What greetd runs for the login screen: a kiosk labwc that shows only
+# dkde-greeter and exits with it.
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP=dkde-greeter
+export NO_AT_BRIDGE=1
+if [ -z "$XDG_RUNTIME_DIR" ]; then
+    XDG_RUNTIME_DIR="${TMPDIR:-/tmp}/dkde-greeter-$(id -u)"
+    mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+    export XDG_RUNTIME_DIR
+fi
+exec labwc -s dkde-greeter-start

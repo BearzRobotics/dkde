@@ -1,0 +1,19 @@
+# /etc/pam.d/greetd: greetd authenticates through the PAM service named
+# "greetd". Pick the form your distribution uses; the files it includes are
+# the ones its own login program uses.
+#
+# Debian and Ubuntu:
+#   auth     include  common-auth
+#   account  include  common-account
+#   password include  common-password
+#   session  include  common-session
+#
+# Slackware, LFS/BLFS (Linux-PAM with system-* files) -- uncommented below:
+auth       include    system-auth
+account    include    system-account
+password   include    system-password
+session    include    system-session
+#
+# With elogind, also add the elogind session module so seats and
+# XDG_RUNTIME_DIR are created:
+#   session  optional  pam_elogind.so

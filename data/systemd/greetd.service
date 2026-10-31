@@ -1,0 +1,21 @@
+# systemd unit for the dkde login screen. Copy to /etc/systemd/system/greetd.service,
+# then:  systemctl enable greetd   (and disable your current display manager).
+# Most distributions already ship a greetd.service; use theirs if you have one.
+# On systemd, logind provides seats and XDG_RUNTIME_DIR, so seatd is not needed.
+[Unit]
+Description=Greeter daemon (dkde login screen)
+After=systemd-user-sessions.service plymouth-quit-wait.service getty@tty1.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=idle
+ExecStart=/usr/sbin/greetd
+IgnoreSIGPIPE=no
+SendSIGHUP=yes
+TimeoutStopSec=30s
+KeyringMode=shared
+Restart=on-success
+
+[Install]
+Alias=display-manager.service
+WantedBy=graphical.target

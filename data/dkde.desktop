@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=dkde
+Comment=The dkde desktop on labwc
+Exec=dkde-session
+Type=Application
+DesktopNames=dkde

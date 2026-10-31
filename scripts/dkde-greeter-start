@@ -1,0 +1,4 @@
+#!/bin/sh
+# Started by the greeter's labwc: run the greeter, then end that labwc.
+dkde-greeter
+labwc --exit

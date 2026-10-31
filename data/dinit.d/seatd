@@ -1,0 +1,5 @@
+# seatd gives the session its display and input devices when there is no
+# logind (SPEC.md 4.1). Skip it under elogind or systemd.
+type    = process
+command = /usr/bin/seatd -g video
+restart = true

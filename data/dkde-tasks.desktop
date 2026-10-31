@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Task Manager
+GenericName=Task Manager
+Comment=See and end running programs
+Exec=dkde-tasks
+Icon=utilities-system-monitor
+Categories=System;Monitor;
+Keywords=processes;cpu;memory;kill;
+StartupWMClass=org.dkde.tasks

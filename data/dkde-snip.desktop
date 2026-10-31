@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Screenshot
+GenericName=Screenshot Tool
+Comment=Capture the screen or a region
+Exec=dkde-snip
+Icon=applets-screenshooter
+Categories=Utility;Graphics;
+Keywords=screenshot;capture;snip;
+StartupWMClass=org.dkde.snip

@@ -1,0 +1,5 @@
+# NetworkManager, for the Network page of Settings (nmcli).
+type       = process
+command    = /usr/sbin/NetworkManager --no-daemon
+restart    = true
+depends-on = dbus
