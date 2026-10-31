@@ -9,7 +9,9 @@ const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const common = @import("common");
 
+const giounix = @import("giounix2");
 const toplevels = @import("toplevels.zig");
+const pins = @import("taskbar_pins.zig");
 const Toplevel = toplevels.Toplevel;
 
 pub const Options = struct {
@@ -17,6 +19,8 @@ pub const Options = struct {
     group: bool = true,
     /// Show window titles next to the icons.
     labels: bool = true,
+    /// Desktop file IDs pinned to the taskbar, in order.
+    pinned: []const []const u8 = &.{},
 };
 
 pub const Taskbar = struct {
@@ -32,8 +36,13 @@ pub const Taskbar = struct {
         key: []u8,
         /// The windows this button stands for.
         members: std.ArrayList(*Toplevel) = .empty,
-        /// The window that clicks and the menu act on.
-        toplevel: *Toplevel,
+        /// The window that clicks and the menu act on; null for a pinned app that is not running.
+        toplevel: ?*Toplevel,
+        /// The desktop file ID when this button is a pinned app.
+        pin_id: ?[]u8 = null,
+        open_item: *gtk.Button,
+        close_item: *gtk.Button,
+        pin_item: *gtk.Button,
         button: *gtk.Button,
         icon: *gtk.Image,
         label: *gtk.Label,
@@ -64,6 +73,7 @@ pub const Taskbar = struct {
 
     fn freeEntry(self: *Taskbar, entry: *Entry) void {
         entry.members.deinit(self.allocator);
+        if (entry.pin_id) |p| self.allocator.free(p);
         self.allocator.free(entry.key);
         self.allocator.destroy(entry);
     }
@@ -86,9 +96,24 @@ pub const Taskbar = struct {
             }
             groups.deinit(a);
         }
+        // Windows of a pinned app share the pinned button when combined.
+        const pinned_ids = opts.pinned;
         for (list) |t| {
             if (!t.ready) continue;
-            const key = if (opts.group and t.app_id.len > 0)
+            var pin: ?[]const u8 = null;
+            if (pinned_ids.len > 0 and t.app_id.len > 0) {
+                if (common.appinfo.find(t.app_id)) |info| {
+                    defer info.as(gobject.Object).unref();
+                    if (info.getId()) |id_c| {
+                        for (pinned_ids) |p| if (std.mem.eql(u8, p, std.mem.span(id_c))) {
+                            pin = p;
+                        };
+                    }
+                }
+            }
+            const key = if (opts.group and pin != null)
+                std.fmt.allocPrint(a, "pin:{s}", .{pin.?}) catch continue
+            else if (opts.group and t.app_id.len > 0)
                 std.fmt.allocPrint(a, "app:{s}", .{t.app_id}) catch continue
             else
                 std.fmt.allocPrint(a, "win:{x}", .{@intFromPtr(t)}) catch continue;
@@ -109,6 +134,30 @@ pub const Taskbar = struct {
                 };
             }
         }
+        // A pinned app with no window keeps an idle launcher button.
+        var windowed_pins: usize = 0;
+        for (pinned_ids) |p| {
+            const key = std.fmt.allocPrint(a, "pin:{s}", .{p}) catch continue;
+            var present = false;
+            for (groups.items) |g| if (std.mem.eql(u8, g.key, key)) {
+                present = true;
+            };
+            if (present) {
+                a.free(key);
+                windowed_pins += 1;
+                continue;
+            }
+            groups.append(a, .{ .key = key }) catch a.free(key);
+        }
+        // Pinned buttons first, in the pinned order, then the rest.
+        var ordered: std.ArrayList(*Group) = .empty;
+        defer ordered.deinit(a);
+        for (pinned_ids) |p| {
+            var kb: [320]u8 = undefined;
+            const key = std.fmt.bufPrint(&kb, "pin:{s}", .{p}) catch continue;
+            for (groups.items) |*g| if (std.mem.eql(u8, g.key, key)) ordered.append(a, g) catch {};
+        }
+        for (groups.items) |*g| if (!std.mem.startsWith(u8, g.key, "pin:")) ordered.append(a, g) catch {};
 
         // 2. Drop buttons nothing stands behind any more.
         var gone: std.ArrayList([]const u8) = .empty;
@@ -128,16 +177,20 @@ pub const Taskbar = struct {
             self.freeEntry(entry);
         }
 
-        // 3. Add the new and refresh every button.
-        for (groups.items) |g| {
-            const entry = self.buttons.get(g.key) orelse (self.add(g.key, g.members.items[0]) catch continue);
+        // 3. Add the new, refresh every button and put them in order.
+        var previous: ?*gtk.Widget = null;
+        for (ordered.items) |g| {
+            const first: ?*Toplevel = if (g.members.items.len > 0) g.members.items[0] else null;
+            const entry = self.buttons.get(g.key) orelse (self.add(g.key, first) catch continue);
             entry.members.clearRetainingCapacity();
             entry.members.appendSlice(a, g.members.items) catch continue;
             update(entry, opts);
+            self.box.reorderChildAfter(entry.button.as(gtk.Widget), previous);
+            previous = entry.button.as(gtk.Widget);
         }
     }
 
-    fn add(self: *Taskbar, key: []const u8, first: *Toplevel) !*Entry {
+    fn add(self: *Taskbar, key: []const u8, first: ?*Toplevel) !*Entry {
         const entry = try self.allocator.create(Entry);
         errdefer self.allocator.destroy(entry);
         const owned_key = try self.allocator.dupe(u8, key);
@@ -170,11 +223,13 @@ pub const Taskbar = struct {
         menu.as(gtk.Widget).addCssClass("dkde-task-menu");
         const items = gtk.Box.new(.vertical, 0);
         menu.setChild(items.as(gtk.Widget));
+        const open_item = gtk.Button.newWithLabel(common.tr("Open"));
         const restore = gtk.Button.new();
         const maximize = gtk.Button.new();
         const close = gtk.Button.newWithLabel(common.tr("Close"));
         const close_all = gtk.Button.newWithLabel(common.tr("Close all windows"));
-        for ([_]*gtk.Button{ restore, maximize, close, close_all }) |item| {
+        const pin_item = gtk.Button.newWithLabel(common.tr("Pin to taskbar"));
+        for ([_]*gtk.Button{ open_item, restore, maximize, close, close_all, pin_item }) |item| {
             item.setHasFrame(0);
             items.append(item.as(gtk.Widget));
         }
@@ -191,6 +246,10 @@ pub const Taskbar = struct {
             .taskbar = self,
             .key = owned_key,
             .toplevel = first,
+            .pin_id = if (std.mem.startsWith(u8, key, "pin:")) try self.allocator.dupe(u8, key["pin:".len..]) else null,
+            .open_item = open_item,
+            .close_item = close,
+            .pin_item = pin_item,
             .button = button,
             .icon = icon,
             .label = label,
@@ -204,6 +263,8 @@ pub const Taskbar = struct {
         };
 
         _ = gtk.Button.signals.clicked.connect(button, *Entry, &onClicked, entry, .{});
+        _ = gtk.Button.signals.clicked.connect(open_item, *Entry, &onOpenClicked, entry, .{});
+        _ = gtk.Button.signals.clicked.connect(pin_item, *Entry, &onPinClicked, entry, .{});
         _ = gtk.Button.signals.clicked.connect(restore, *Entry, &onRestoreClicked, entry, .{});
         _ = gtk.Button.signals.clicked.connect(maximize, *Entry, &onMaximizeClicked, entry, .{});
         _ = gtk.Button.signals.clicked.connect(close, *Entry, &onCloseClicked, entry, .{});
@@ -234,8 +295,55 @@ pub const Taskbar = struct {
         return entry.members.items[0];
     }
 
-    fn update(entry: *Entry, opts: Options) void {
+    /// The app a button stands for (pinned, or found from its window).
+    fn appInfo(entry: *const Entry) ?*gio.AppInfo {
+        if (entry.pin_id) |id| {
+            const z = entry.taskbar.allocator.dupeSentinel(u8, id, 0) catch return null;
+            defer entry.taskbar.allocator.free(z);
+            const d = giounix.DesktopAppInfo.new(z) orelse return null;
+            return @ptrCast(d);
+        }
+        if (entry.members.items.len > 0) return common.appinfo.find(entry.members.items[0].app_id);
+        return null;
+    }
+
+    /// A pinned app that is not running: just an icon that launches it.
+    fn updateIdle(entry: *Entry) void {
         const a = entry.taskbar.allocator;
+        const widget = entry.button.as(gtk.Widget);
+        entry.toplevel = null;
+        entry.label.as(gtk.Widget).setVisible(0);
+        entry.count.as(gtk.Widget).setVisible(0);
+        setClass(widget, "icon-only", true);
+        setClass(widget, "stacked", false);
+        setClass(widget, "active", false);
+        setClass(widget, "minimized", false);
+        setClass(widget, "pinned", true);
+        widget.setSizeRequest(-1, -1);
+        if (appInfo(entry)) |info| {
+            defer info.as(gobject.Object).unref();
+            if (info.getIcon()) |icon| entry.icon.setFromGicon(icon) else entry.icon.setFromIconName("application-x-executable");
+            const name = a.dupeSentinel(u8, std.mem.span(info.getDisplayName()), 0) catch return;
+            defer a.free(name);
+            widget.setTooltipText(name);
+        } else entry.icon.setFromIconName("application-x-executable");
+        entry.open_item.as(gtk.Widget).setVisible(1);
+        entry.restore.as(gtk.Widget).setVisible(0);
+        entry.maximize.as(gtk.Widget).setVisible(0);
+        entry.close_item.as(gtk.Widget).setVisible(0);
+        entry.close_all.as(gtk.Widget).setVisible(0);
+        entry.pin_item.setLabel(common.tr("Unpin from taskbar"));
+        entry.pin_item.as(gtk.Widget).setVisible(1);
+    }
+
+    fn update(entry: *Entry, opts: Options) void {
+        if (entry.members.items.len == 0) return updateIdle(entry);
+        const a = entry.taskbar.allocator;
+        setClass(entry.button.as(gtk.Widget), "pinned", entry.pin_id != null);
+        entry.open_item.as(gtk.Widget).setVisible(0);
+        entry.restore.as(gtk.Widget).setVisible(1);
+        entry.maximize.as(gtk.Widget).setVisible(1);
+        entry.close_item.as(gtk.Widget).setVisible(1);
         const rep = representative(entry);
         entry.toplevel = rep;
         const widget = entry.button.as(gtk.Widget);
@@ -285,6 +393,15 @@ pub const Taskbar = struct {
         entry.restore.setLabel(if (rep.minimized) common.tr("Restore") else common.tr("Minimize"));
         entry.maximize.setLabel(if (rep.maximized) common.tr("Unmaximize") else common.tr("Maximize"));
         entry.close_all.as(gtk.Widget).setVisible(@intFromBool(stacked));
+        // Pin or unpin, when the window belongs to an app with a desktop entry.
+        if (entry.pin_id != null) {
+            entry.pin_item.setLabel(common.tr("Unpin from taskbar"));
+            entry.pin_item.as(gtk.Widget).setVisible(1);
+        } else if (common.appinfo.find(rep.app_id)) |info| {
+            info.as(gobject.Object).unref();
+            entry.pin_item.setLabel(common.tr("Pin to taskbar"));
+            entry.pin_item.as(gtk.Widget).setVisible(1);
+        } else entry.pin_item.as(gtk.Widget).setVisible(0);
     }
 
     fn setIcon(image: *gtk.Image, app_id: []const u8) void {
@@ -304,9 +421,29 @@ pub const Taskbar = struct {
 
     // Left click: activate; if already active, minimize. A stack lists its windows.
     fn onClicked(_: *gtk.Button, entry: *Entry) callconv(.c) void {
+        if (entry.members.items.len == 0) return launch(entry);
         if (entry.members.items.len > 1) return showList(entry);
-        const t = entry.toplevel;
+        const t = entry.toplevel orelse return;
         if (t.activated and !t.minimized) t.setMinimized(true) else t.activate();
+    }
+
+    fn launch(entry: *Entry) void {
+        const info = appInfo(entry) orelse return;
+        defer info.as(gobject.Object).unref();
+        common.appinfo.launch(entry.taskbar.allocator, info);
+    }
+
+    fn onOpenClicked(_: *gtk.Button, entry: *Entry) callconv(.c) void {
+        entry.menu.popdown();
+        launch(entry);
+    }
+
+    fn onPinClicked(_: *gtk.Button, entry: *Entry) callconv(.c) void {
+        entry.menu.popdown();
+        const info = appInfo(entry) orelse return;
+        defer info.as(gobject.Object).unref();
+        const id = std.mem.span(info.getId() orelse return);
+        pins.toggle(entry.taskbar.allocator, id);
     }
 
     const ListItem = struct { entry: *Entry, toplevel: *Toplevel };
@@ -350,7 +487,7 @@ pub const Taskbar = struct {
     // Middle click closes, right click opens the menu.
     fn onPressed(gesture: *gtk.GestureClick, _: c_int, _: f64, _: f64, entry: *Entry) callconv(.c) void {
         switch (gesture.as(gtk.GestureSingle).getCurrentButton()) {
-            2 => entry.toplevel.close(),
+            2 => if (entry.toplevel) |t| t.close(),
             3 => entry.menu.popup(),
             else => {},
         }
@@ -365,18 +502,19 @@ pub const Taskbar = struct {
 
     fn onRestoreClicked(_: *gtk.Button, entry: *Entry) callconv(.c) void {
         entry.menu.popdown();
-        const t = entry.toplevel;
+        const t = entry.toplevel orelse return;
         if (t.minimized) t.activate() else t.setMinimized(true);
     }
 
     fn onMaximizeClicked(_: *gtk.Button, entry: *Entry) callconv(.c) void {
         entry.menu.popdown();
-        entry.toplevel.setMaximized(!entry.toplevel.maximized);
+        const t = entry.toplevel orelse return;
+        t.setMaximized(!t.maximized);
     }
 
     fn onCloseClicked(_: *gtk.Button, entry: *Entry) callconv(.c) void {
         entry.menu.popdown();
-        entry.toplevel.close();
+        if (entry.toplevel) |t| t.close();
     }
 
     fn onCloseAllClicked(_: *gtk.Button, entry: *Entry) callconv(.c) void {

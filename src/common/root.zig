@@ -16,6 +16,7 @@ pub const menubar = @import("menubar.zig");
 pub const labwc = @import("labwc.zig");
 pub const log = @import("log.zig");
 pub const i18n = @import("i18n.zig");
+pub const icons = @import("icons.zig");
 pub const paths = @import("paths.zig");
 pub const state = @import("state.zig");
 pub const user = @import("user.zig");

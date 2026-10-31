@@ -13,6 +13,7 @@ const gtk = @import("gtk4");
 const common = @import("common");
 
 const surface = @import("surface.zig");
+const taskbar_pins = @import("taskbar_pins.zig");
 const Position = @import("position.zig").Position;
 
 const log = std.log.scoped(.startmenu);
@@ -502,11 +503,13 @@ pub const StartMenu = struct {
     const pin_action = 0;
     const location_action = 1;
     const admin_action = 2;
+    const taskbar_action = 3;
 
     fn showAppMenu(app: *AppEntry, parent: *gtk.Widget, x: f64, y: f64) void {
         const pinned = app.menu.isPinned(app.id);
         common.contextmenu.show(parent, x, y, &.{
             .{ .label = if (pinned) common.tr("Unpin from Start menu") else common.tr("Pin to Start menu"), .id = pin_action },
+            .{ .label = if (taskbar_pins.isPinned(app.menu.allocator, app.id)) common.tr("Unpin from taskbar") else common.tr("Pin to taskbar"), .id = taskbar_action },
             .{ .label = common.tr("Open file location"), .id = location_action },
             .{ .label = common.tr("Run as administrator"), .id = admin_action },
         }, AppEntry, onAppMenuChosen, app);
@@ -528,6 +531,10 @@ pub const StartMenu = struct {
     fn onAppMenuChosen(app: *AppEntry, id: usize) void {
         switch (id) {
             pin_action => app.menu.togglePin(app.id),
+            taskbar_action => {
+                taskbar_pins.toggle(app.menu.allocator, app.id);
+                app.menu.close();
+            },
             admin_action => app.menu.runAsAdmin(app),
             location_action => {
                 const desktop: *giounix.DesktopAppInfo = @ptrCast(app.info);

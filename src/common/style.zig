@@ -50,6 +50,8 @@ pub const Appearance = struct {
     allocator: std.mem.Allocator,
     config: config_mod.Config,
     provider: *gtk.CssProvider,
+    /// The icon theme before dkde chose one, to go back to when the choice is cleared.
+    system_icon_theme: ?[:0]u8 = null,
 
     pub fn create(allocator: std.mem.Allocator) !*Appearance {
         const self = try allocator.create(Appearance);
@@ -60,6 +62,14 @@ pub const Appearance = struct {
             .provider = gtk.CssProvider.new(),
         };
         errdefer self.config.deinit();
+        if (gtk.Settings.getDefault()) |settings| {
+            var current: ?[*:0]u8 = null;
+            settings.as(gobject.Object).get("gtk-icon-theme-name", &current, @as(?*anyopaque, null));
+            if (current) |c| {
+                defer glib.free(c);
+                self.system_icon_theme = allocator.dupeSentinel(u8, std.mem.span(c), 0) catch null;
+            }
+        }
 
         const display = gdk.Display.getDefault() orelse return error.NoDisplay;
         gtk.StyleContext.addProviderForDisplay(display, self.provider.as(gtk.StyleProvider), appearance_priority);
@@ -70,6 +80,7 @@ pub const Appearance = struct {
     }
 
     pub fn destroy(self: *Appearance) void {
+        if (self.system_icon_theme) |t| self.allocator.free(t);
         self.provider.as(gobject.Object).unref();
         self.config.deinit();
         self.allocator.destroy(self);
@@ -117,6 +128,17 @@ pub const Appearance = struct {
         // Windows-style caption buttons on the right.
         settings.as(gobject.Object).set("gtk-decoration-layout", @as([*:0]const u8, ":minimize,maximize,close"), @as(?*anyopaque, null));
         settings.as(gobject.Object).set("gtk-application-prefer-dark-theme", @as(c_int, @intFromBool(dark)), @as(?*anyopaque, null));
+        // The icon theme: the chosen one, else whatever the system had.
+        const icon_theme = self.config.getString(self.allocator, "appearance", "icon-theme", "") catch return;
+        defer self.allocator.free(icon_theme);
+        if (icon_theme.len > 0) {
+            if (self.allocator.dupeSentinel(u8, icon_theme, 0)) |z| {
+                defer self.allocator.free(z);
+                settings.as(gobject.Object).set("gtk-icon-theme-name", z.ptr, @as(?*anyopaque, null));
+            } else |_| {}
+        } else if (self.system_icon_theme) |sys| {
+            settings.as(gobject.Object).set("gtk-icon-theme-name", sys.ptr, @as(?*anyopaque, null));
+        }
         const font = self.config.getString(self.allocator, "appearance", "font", "") catch return;
         defer self.allocator.free(font);
         if (font.len > 0) {

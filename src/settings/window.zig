@@ -62,6 +62,8 @@ pub const SettingsWindow = struct {
     /// Installed apps, for the pickers.
     apps: std.ArrayList(*gio.AppInfo) = .empty,
     pinned: std.ArrayList([]u8) = .empty,
+    /// Names of the icon themes in the Appearance drop-down, in order.
+    icon_themes: std.ArrayList([:0]u8) = .empty,
     pinned_box: ?*gtk.Box = null,
     profile_box: ?*gtk.Box = null,
     profile_name: ?[]u8 = null,
@@ -323,6 +325,8 @@ pub const SettingsWindow = struct {
         self.bindings.deinit(self.allocator);
         for (self.account_names.items) |n| self.allocator.free(n);
         self.account_names.deinit(self.allocator);
+        for (self.icon_themes.items) |t| self.allocator.free(t);
+        self.icon_themes.deinit(self.allocator);
         for (self.strings.items) |str| self.allocator.free(str);
         self.strings.deinit(self.allocator);
         for (self.apps.items) |a| a.as(gobject.Object).unref();
@@ -517,6 +521,8 @@ pub const SettingsWindow = struct {
         _ = gobject.Object.signals.notify.connect(accent, *Binding, &onAccent, self.bind(&self.shared, "appearance", "accent"), .{ .detail = "rgba" });
         addRowDesc(page, common.tr("Accent colour"), "Used for the Start button, selections and highlights", accent.as(gtk.Widget));
 
+        addRowDesc(page, common.tr("Icon theme"), "The icons used by dkde apps and the taskbar", self.iconThemePicker().as(gtk.Widget));
+
         const font = gtk.FontDialogButton.new(gtk.FontDialog.new());
         font.setLevel(.family);
         const font_name = self.shared.getString(self.allocator, "appearance", "font", "") catch null;
@@ -558,6 +564,38 @@ pub const SettingsWindow = struct {
         hint.as(gtk.Widget).addCssClass("dim-label");
         page.append(hint.as(gtk.Widget));
         return page;
+    }
+
+    /// A drop-down of the installed icon themes; the first entry means "system default".
+    fn iconThemePicker(self: *SettingsWindow) *gtk.DropDown {
+        const names = common.icons.list(self.allocator) catch &.{};
+        defer common.icons.free(self.allocator, @constCast(names));
+        const list = gtk.StringList.new(null);
+        list.append(common.tr("System default"));
+        for (self.icon_themes.items) |t| self.allocator.free(t);
+        self.icon_themes.clearRetainingCapacity();
+        const current = self.shared.getString(self.allocator, "appearance", "icon-theme", "") catch null;
+        defer if (current) |c| self.allocator.free(c);
+        var selected: c_uint = 0;
+        for (names, 0..) |n, i| {
+            const z = self.allocator.dupeSentinel(u8, n, 0) catch continue;
+            self.icon_themes.append(self.allocator, z) catch {
+                self.allocator.free(z);
+                continue;
+            };
+            list.append(z.ptr);
+            if (current != null and std.mem.eql(u8, current.?, n)) selected = @intCast(i + 1);
+        }
+        const dd = gtk.DropDown.new(list.as(gio.ListModel), null);
+        dd.setSelected(selected);
+        _ = gobject.Object.signals.notify.connect(dd, *Binding, &onIconTheme, self.bind(&self.shared, "appearance", "icon-theme"), .{ .detail = "selected" });
+        return dd;
+    }
+
+    fn onIconTheme(dd: *gtk.DropDown, _: *gobject.ParamSpec, b: *Binding) callconv(.c) void {
+        const index = dd.getSelected();
+        const value: [:0]const u8 = if (index == 0 or index - 1 >= b.window.icon_themes.items.len) "" else b.window.icon_themes.items[index - 1];
+        b.config.setString(b.group, b.key, value) catch {};
     }
 
     fn onAccent(button: *gtk.ColorDialogButton, _: *gobject.ParamSpec, b: *Binding) callconv(.c) void {

@@ -10,6 +10,7 @@ const common = @import("common");
 
 const Bar = @import("bar.zig").Bar;
 const taskbar_mod = @import("taskbar.zig");
+const taskbar_pins = @import("taskbar_pins.zig");
 const Position = @import("position.zig").Position;
 const Wallpaper = @import("wallpaper.zig").Wallpaper;
 const Notifications = @import("notifications.zig").Notifications;
@@ -92,6 +93,8 @@ const App = struct {
             std.log.warn("no taskbar: {s}", .{@errorName(err)});
             break :blk null;
         };
+        // Pinned apps show even before the first window event.
+        self.syncTaskbars();
     }
 
     /// Handles one IPC command and returns the reply line.
@@ -165,7 +168,10 @@ const App = struct {
 
     fn syncTaskbars(self: *App) void {
         const manager = self.manager orelse return;
+        const pinned = taskbar_pins.ids(self.allocator) catch &.{};
+        defer common.config.freeStringList(self.allocator, @constCast(pinned));
         const opts: taskbar_mod.Options = .{
+            .pinned = @ptrCast(pinned),
             .group = self.config.getBool("panel", "group-windows", true),
             // A side panel is too narrow for titles.
             .labels = self.config.getBool("panel", "show-labels", true) and !self.panelPosition().isVertical(),

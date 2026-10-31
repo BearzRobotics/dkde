@@ -155,6 +155,8 @@ One per output.
 **Layout, left to right:** start button, taskbar buttons (fill the remaining
 space), clock.
 
+**Pinned apps:** `[panel] taskbar-pinned` (desktop file IDs, in order) puts launcher buttons first on the taskbar. A pinned app that is not running shows as an icon that starts it; when it runs, its windows share that button (when windows are combined). Pin or unpin from the right-click menu of a taskbar button, or of an app in the Start menu ("Pin to taskbar"). Written only when you pin or unpin.
+
 **Taskbar** (`wlr-foreign-toplevel-management-unstable-v1`, accessed through
 the `wl_display` that GDK exposes):
 
@@ -526,7 +528,7 @@ timer) are their own explicit actions and are not held back.
 
 | Page | Settings | Writes to |
 |---|---|---|
-| Appearance | Wallpaper, light/dark, accent colour, UI font | dkde config |
+| Appearance | Wallpaper, light/dark, accent colour, UI font, icon theme | dkde config |
 | Taskbar | Height, position, auto-hide, grouping, labels | dkde config |
 | Date & time | Clock style or custom format, time zone, set the clock | dkde config; `/etc/localtime`, `date` (administrator) |
 | Display | Resolution, refresh rate, scale per output | `wlr-randr`, then `display.sh` |
@@ -542,7 +544,7 @@ timer) are their own explicit actions and are not held back.
 
 **Implementation notes (M6):**
 
-- Appearance writes `[appearance] dark`, `accent` and `font` to `dkde.conf`.
+- Appearance writes `[appearance] dark`, `accent`, `font` and `icon-theme` to `dkde.conf`. The icon theme drop-down lists the themes installed under `$XDG_DATA_DIRS/icons`, `~/.local/share/icons` and `~/.icons` (folders whose `index.theme` has `Directories` and is not `Hidden`); "System default" clears the choice.
   Every component applies them live through `common.style.Appearance`.
   The wallpaper settings are the `[wallpaper]` keys of `panel.conf`.
 - The User page sets the profile picture (`[user] picture` in `dkde.conf`)
@@ -799,6 +801,11 @@ The taskbar-button and start-menu-item menus also open from the keyboard
   never mixed into config.
 - Missing or invalid values fall back to the default and log a warning; they
   never crash a component.
+- **Complete defaults:** the system files in `$PREFIX/share/dkde/` list every
+  key with its default and a comment. `dkde-setup --write-config` writes them
+  (plus a full `[profile:Default]` for the terminal) into `~/.config/dkde/` for
+  editing by hand: a missing file becomes a copy, an existing one only gains the
+  keys it lacks. It runs only when asked.
 - **Static files:** a config file is written only when the user changes a
   setting, and only if that changes its content: setting a value that is
   already in effect writes nothing, and nothing creates or rewrites a config

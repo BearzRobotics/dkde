@@ -1693,9 +1693,13 @@ test {
     _ = @import("hexpat/coverage_test.zig");
     _ = @import("strings.zig");
     _ = @import("disk.zig");
+    _ = @import("analyze.zig");
+    _ = @import("bookmarks.zig");
     _ = @import("structure.zig");
     _ = @import("strings.zig");
     _ = @import("disk.zig");
+    _ = @import("analyze.zig");
+    _ = @import("bookmarks.zig");
     _ = @import("buffer.zig");
     _ = @import("inspect.zig");
 }

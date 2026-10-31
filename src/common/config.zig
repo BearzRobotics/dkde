@@ -414,6 +414,118 @@ pub const Config = struct {
     }
 };
 
+// ---- complete, hand-editable files -------------------------------------------------------------
+
+pub const Written = enum { created, merged, unchanged };
+
+/// A complete `[profile:Default]` for term.conf, which the system defaults do
+/// not carry (a system profile could not be deleted by the user).
+pub const term_profile_template =
+    \\
+    \\# A terminal profile. Add more groups named [profile:<name>].
+    \\[profile:Default]
+    \\# Empty runs your login shell.
+    \\command=
+    \\# Starting folder; empty is your home.
+    \\directory=
+    \\font=Monospace 11
+    \\color-scheme=campbell
+    \\# block, bar or underline
+    \\cursor-style=block
+    \\# Window title and tab icon; empty uses the program's own.
+    \\title=
+    \\icon=
+    \\tab-color=
+    \\# NAME=value pairs separated by ;
+    \\environment=
+    \\# windowed, maximized or fullscreen
+    \\startup=windowed
+    \\# always, never or on-success
+    \\close-on-exit=always
+    \\# Let programs set the clipboard (OSC 52).
+    \\osc52=true
+    \\# 20 to 100; below 100 the background is see-through.
+    \\opacity=100
+    \\# Start size; 0 lets the window decide.
+    \\columns=0
+    \\rows=0
+    \\padding=4
+    \\copy-on-select=true
+    \\
+;
+
+/// Writes the user's file for `name` with every default in it, so it can be
+/// edited by hand. A missing file becomes a copy of the system defaults (with
+/// their comments); an existing one only gains the keys it lacks. Run on
+/// request, never automatically.
+pub fn writeAllDefaults(allocator: std.mem.Allocator, name: []const u8, extra: []const u8) !Written {
+    const system = (try paths.systemDataFile(allocator, name)) orelse return error.NoSystemDefaults;
+    defer allocator.free(system);
+    const user = try paths.userConfigFile(allocator, name);
+    defer allocator.free(user);
+    return mergeDefaults(allocator, system, user, extra);
+}
+
+fn mergeDefaults(allocator: std.mem.Allocator, system: [:0]const u8, user: [:0]const u8, extra: []const u8) !Written {
+    var contents: [*]u8 = undefined;
+    var length: usize = 0;
+    if (glib.fileGetContents(system, &contents, &length, null) == 0) return error.NoSystemDefaults;
+    defer glib.free(contents);
+
+    if (glib.fileTest(user, .{ .exists = true }) == 0) {
+        const dir = glib.pathGetDirname(user);
+        defer glib.free(dir);
+        _ = glib.mkdirWithParents(dir, 0o755);
+        const text = try std.mem.concat(allocator, u8, &.{ contents[0..length], extra });
+        defer allocator.free(text);
+        var err: ?*glib.Error = null;
+        if (glib.fileSetContents(user, text.ptr, @intCast(text.len), &err) == 0) {
+            if (err) |e| e.free();
+            return error.SaveFailed;
+        }
+        return .created;
+    }
+
+    // Add what is missing to the existing file, keeping its comments.
+    const have = glib.KeyFile.new();
+    defer have.free();
+    _ = have.loadFromFile(user, .{ .keep_comments = true }, null);
+    const before = have.toData(null, null) orelse return error.OutOfMemory;
+    defer glib.free(before);
+
+    const want = glib.KeyFile.new();
+    defer want.free();
+    const merged_text = try std.mem.concat(allocator, u8, &.{ contents[0..length], extra });
+    defer allocator.free(merged_text);
+    const z = try allocator.dupeSentinel(u8, merged_text, 0);
+    defer allocator.free(z);
+    _ = want.loadFromData(z, merged_text.len, .{}, null);
+
+    var n_groups: usize = 0;
+    const groups = want.getGroups(&n_groups);
+    defer glib.strfreev(groups);
+    for (groups[0..n_groups]) |group| {
+        var n_keys: usize = 0;
+        const keys = want.getKeys(group.?, &n_keys, null) orelse continue;
+        defer glib.strfreev(keys);
+        for (keys[0..n_keys]) |key| {
+            if (have.hasKey(group.?, key.?, null) != 0) continue;
+            const value = want.getValue(group.?, key.?, null) orelse continue;
+            defer glib.free(value);
+            have.setValue(group.?, key.?, value);
+        }
+    }
+    const after = have.toData(null, null) orelse return error.OutOfMemory;
+    defer glib.free(after);
+    if (std.mem.eql(u8, std.mem.span(before), std.mem.span(after))) return .unchanged;
+    var err: ?*glib.Error = null;
+    if (have.saveToFile(user, &err) == 0) {
+        if (err) |e| e.free();
+        return error.SaveFailed;
+    }
+    return .merged;
+}
+
 pub fn freeStringList(allocator: std.mem.Allocator, list: [][]u8) void {
     for (list) |item| allocator.free(item);
     allocator.free(list);
@@ -611,4 +723,33 @@ test "staged changes show at once and are written only on apply" {
     try std.testing.expect(std.mem.indexOf(u8, after, "height=70") != null);
     try std.testing.expect(changes >= 3);
     _ = std.c.unlink(path);
+}
+
+test "defaults fill a missing file, then only add what is missing" {
+    const a = std.testing.allocator;
+    const dir = glib.Dir.makeTmp("dkde-defaults-XXXXXX", null) orelse return error.NoTmp;
+    defer glib.free(dir);
+    const system = try std.fmt.allocPrintSentinel(a, "{s}/system.conf", .{std.mem.span(dir)}, 0);
+    defer a.free(system);
+    const user = try std.fmt.allocPrintSentinel(a, "{s}/sub/user.conf", .{std.mem.span(dir)}, 0);
+    defer a.free(user);
+    const defaults = "# comment\n[panel]\nheight=40\nposition=bottom\n";
+    _ = glib.fileSetContents(system, defaults.ptr, defaults.len, null);
+
+    try std.testing.expectEqual(Written.created, try mergeDefaults(a, system, user, "[extra]\nk=1\n"));
+    const first = try fileText(a, user);
+    defer a.free(first);
+    try std.testing.expect(std.mem.indexOf(u8, first, "# comment") != null and std.mem.indexOf(u8, first, "k=1") != null);
+    // Nothing missing: nothing is written.
+    try std.testing.expectEqual(Written.unchanged, try mergeDefaults(a, system, user, "[extra]\nk=1\n"));
+
+    // A hand-edited file keeps its values and gains the missing keys.
+    const edited = "[panel]\nheight=64\n";
+    _ = glib.fileSetContents(user, edited.ptr, edited.len, null);
+    try std.testing.expectEqual(Written.merged, try mergeDefaults(a, system, user, ""));
+    const second = try fileText(a, user);
+    defer a.free(second);
+    try std.testing.expect(std.mem.indexOf(u8, second, "height=64") != null);
+    try std.testing.expect(std.mem.indexOf(u8, second, "position=bottom") != null);
+    _ = std.c.unlink(user);
 }

@@ -453,6 +453,22 @@ fn writeMarker(allocator: std.mem.Allocator) void {
     _ = glib.fileSetContents(path, text.ptr, text.len, null);
 }
 
+/// `--write-config`: complete, hand-editable files in the user's config folder.
+fn writeConfig(allocator: std.mem.Allocator) void {
+    const names = [_][]const u8{ "dkde.conf", "panel.conf", "term.conf", "files.conf", "hex.conf", "edit.conf" };
+    for (names) |name| {
+        const extra = if (std.mem.eql(u8, name, "term.conf")) common.config.term_profile_template else "";
+        if (common.config.writeAllDefaults(allocator, name, extra)) |result| {
+            print("{s}: {s}\n", .{ name, switch (result) {
+                .created => "written with every default",
+                .merged => "missing defaults added",
+                .unchanged => "already complete",
+            } });
+        } else |err| print("{s}: {s}\n", .{ name, @errorName(err) });
+    }
+    print("Files are in ~/.config/dkde/. Edit them by hand; the programs pick changes up while running.\n", .{});
+}
+
 pub fn main(init: std.process.Init.Minimal) !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     defer _ = debug_allocator.deinit();
@@ -461,16 +477,20 @@ pub fn main(init: std.process.Init.Minimal) !void {
     var check_only = false;
     var yes = false;
     var once = false;
+    var write_config = false;
     for (init.args.vector[1..]) |arg| {
         const text = std.mem.span(arg);
         if (std.mem.eql(u8, text, "--check")) check_only = true;
         if (std.mem.eql(u8, text, "--once")) once = true;
+        if (std.mem.eql(u8, text, "--write-config")) write_config = true;
         if (std.mem.eql(u8, text, "--yes") or std.mem.eql(u8, text, "-y")) yes = true;
         if (std.mem.eql(u8, text, "--help") or std.mem.eql(u8, text, "-h")) {
-            out("usage: dkde-setup [--check] [--yes] [--once]\n  --check  only report; exit 1 if something is missing\n  --yes    apply user-level fixes without asking\n  --once   the first-login run: apply the user-level fixes quietly, and only if\n           setup has never run for this user (dkde-session does this)\n");
+            out("usage: dkde-setup [--check] [--yes] [--once] [--write-config]\n  --write-config  write every config file with all defaults in it (missing files are\n                  created, existing ones only gain the keys they lack), for editing by hand\n  --check  only report; exit 1 if something is missing\n  --yes    apply user-level fixes without asking\n  --once   the first-login run: apply the user-level fixes quietly, and only if\n           setup has never run for this user (dkde-session does this)\n");
             return;
         }
     }
+
+    if (write_config) return writeConfig(allocator);
 
     // The automatic run happens once. After that, setup runs only when asked
     // for by hand, so it never puts back what the user changed or removed.
