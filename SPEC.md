@@ -424,8 +424,9 @@ reference screenshots under `docs/reference/`.
 - Sidebar: Home, the XDG user directories, Trash, bookmarks, and mounted
   filesystems read from `/proc/self/mountinfo` (no gvfs).
 - Path bar: breadcrumb buttons that switch to a text entry on Ctrl+L.
-- Main view: switchable between an icon grid and a detailed list (name, size,
-  type, modified). Sortable columns.
+- Main view: five views, chosen from View in the menu bar: Details (name,
+  size, type, modified; sortable columns), List (one narrow column of names),
+  Small icons, Medium icons and Large icons. The choice is remembered.
 
 **Operations (all through GIO):**
 
@@ -437,7 +438,13 @@ reference screenshots under `docs/reference/`.
 - Long operations show progress and can be cancelled. Name conflicts ask the
   user what to do.
 - Properties dialog: name, type, size, location, timestamps, and
-  permissions.
+  permissions. The name and the nine permission bits can be edited and are
+  applied with OK (a rename, and `unix::mode` through GIO); owner and group are
+  shown but not changed.
+- Run: "Run" and "Run as Administrator" (through `common.elevate`, so sudo
+  asks for the password in a dialog) for executable files; "Mark as
+  Executable" / "Unmark as Executable" toggles the three execute bits.
+- "Open in New Window" starts another `dkde-files` on a folder.
 
 **Other:**
 
@@ -453,8 +460,27 @@ reference screenshots under `docs/reference/`.
   clipboard in v1.
 - The Trash entry browses `$XDG_DATA_HOME/Trash/files` directly. Restore
   reads the matching `.trashinfo` file. This is why gvfs is not needed.
-- `files.conf` keys: `[files] show-hidden`, `[files] view` (`list` or
-  `grid`), and `[bookmarks] paths` (`;` separated folders). Ctrl+D bookmarks
+- `files.conf` keys: `[files] show-hidden`, `[files] view` (`details`, `list`,
+  `small`, `medium` or `large`; the older `grid` means `medium`), and
+  `[bookmarks] paths` (`;` separated folders).
+- **Context menu** (right click): a row of emoji buttons on top (Windows 11
+  style, tooltips carry the names), then text entries. Both are configurable
+  in `files.conf`, group `[context]`, as `;` separated action ids, where `--`
+  is a separator: `quick` (the emoji row; default
+  `cut;copy;paste;rename;trash`), `item` (on files and folders) and `folder`
+  (on empty space). Defaults: `item` = `open;open-tab;open-window;open-with;run;
+  run-admin;exec;--;extract;compress-zip;compress-targz;restore;
+  delete-permanent;--;properties`, `folder` = `new-folder;open-window;
+  terminal-here;open-admin;toggle-hidden;bookmark;empty-trash;--;properties`.
+  Ids: `open open-tab open-window open-with run run-admin exec extract
+  compress-zip compress-targz restore delete-permanent empty-trash cut copy
+  paste rename trash new-folder terminal-here open-admin toggle-hidden
+  bookmark properties`. An id that does not apply to the selection (for
+  example `run` on a folder, `restore` outside the Trash) is left out, and
+  unknown ids are ignored. Extra commands: `[context-commands] <label> =
+  <command>` and use `cmd:<label>` in a list; `%f` becomes the selected file
+  (or `%F` all selected), `%d` the current folder, and the command runs in
+  the current folder. Ctrl+D bookmarks
   the current folder; right-clicking a bookmark in the sidebar removes it.
 - Copy and move run as an asynchronous job: nothing is scanned up front,
   progress and Cancel appear under the file list, and name conflicts ask

@@ -57,6 +57,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
 test {
     _ = @import("pure.zig");
+    _ = @import("context.zig");
     _ = @import("props.zig");
     _ = @import("ops.zig");
 }

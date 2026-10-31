@@ -9,6 +9,7 @@ const gtk = @import("gtk4");
 const common = @import("common");
 
 const archive = @import("archive.zig");
+const context = @import("context.zig");
 const ops = @import("ops.zig");
 const props = @import("props.zig");
 const pure = @import("pure.zig");
@@ -20,6 +21,20 @@ const list_attributes = "standard::name,standard::display-name,standard::type,st
     "time::modified,access::can-rename,access::can-delete";
 
 const Column = enum { name, size, kind, modified };
+
+/// How a folder is shown (SPEC.md 5.4). The tag names are the `view` values in files.conf.
+const ViewMode = enum {
+    details,
+    list,
+    small,
+    medium,
+    large,
+
+    fn parse(text: []const u8) ViewMode {
+        if (std.mem.eql(u8, text, "grid")) return .medium; // the older setting
+        return std.meta.stringToEnum(ViewMode, text) orelse .details;
+    }
+};
 const columns = [_]Column{ .name, .size, .kind, .modified };
 
 /// Everything that belongs to one tab. The window's own fields of the same
@@ -45,6 +60,7 @@ pub const FilesWindow = struct {
     allocator: std.mem.Allocator,
     config: *common.Config,
     window: *gtk.ApplicationWindow,
+    view_mode: ViewMode = .details,
 
     // Model chain: DirectoryList -> filter -> sort -> selection.
     dir_list: *gtk.DirectoryList,
@@ -132,6 +148,10 @@ pub const FilesWindow = struct {
         };
 
         self.proc_guard = common.proc.Guard(FilesWindow).create(self);
+        if (config.getString(allocator, "files", "view", "details")) |v| {
+            defer allocator.free(v);
+            self.view_mode = ViewMode.parse(v);
+        } else |_| {}
         self.makeViews();
         self.buildWindow(app);
         self.registerTab();
@@ -189,6 +209,7 @@ pub const FilesWindow = struct {
         _ = self.view_stack.addNamed(self.scroller_grid.as(gtk.Widget), "grid");
         self.view_stack.as(gtk.Widget).setHexpand(1);
         self.view_stack.as(gtk.Widget).setVexpand(1);
+        self.applyViewTo(self.view_stack, self.grid_view);
 
         // Right-click on empty space.
         const bg_click = gtk.GestureClick.new();
@@ -312,9 +333,6 @@ pub const FilesWindow = struct {
         paned.setShrinkStartChild(0);
         paned.setResizeStartChild(0);
 
-        const view = self.config.getString(self.allocator, "files", "view", "list") catch null;
-        defer if (view) |v| self.allocator.free(v);
-        const grid = view != null and std.mem.eql(u8, view.?, "grid");
         self.show_hidden = self.config.getBool("files", "show-hidden", false);
 
         // Classic menu bar above the panes.
@@ -324,6 +342,7 @@ pub const FilesWindow = struct {
                 mb.item("New _Tab", "new-tab", "<Control>t"),
                 mb.item("New _Folder", "new-folder", "<Control><Shift>n"),
                 mb.item("_Open", "open", null),
+                mb.item("Open in New _Window", "open-window", null),
                 mb.item("Open _Terminal Here", "terminal-here", null),
                 mb.item("Open Folder as _Administrator", "open-admin", null),
                 mb.item("_Properties", "properties", "<Alt>Return"),
@@ -344,7 +363,12 @@ pub const FilesWindow = struct {
                 mb.item("_Empty Trash", "empty-trash", null),
             } },
             .{ .label = "_View", .entries = &.{
-                mb.check("_Icon View", "toggle-view", grid),
+                mb.check("_Details", "view-details", self.view_mode == .details),
+                mb.check("_List", "view-list", self.view_mode == .list),
+                mb.check("_Small Icons", "view-small", self.view_mode == .small),
+                mb.check("_Medium Icons", "view-medium", self.view_mode == .medium),
+                mb.check("Lar_ge Icons", "view-large", self.view_mode == .large),
+                .separator,
                 mb.check("Show _Hidden Files", "toggle-hidden", self.show_hidden),
             } },
             .{ .label = "_Go", .entries = &.{
@@ -503,8 +527,6 @@ pub const FilesWindow = struct {
         var buf: [512]u8 = undefined;
         self.window.as(gtk.Window).setTitle(std.fmt.bufPrintSentinel(&buf, "{s}", .{if (name) |n| std.mem.span(n) else "Files"}, 0) catch "Files");
         self.updateStatus();
-        const grid = std.mem.eql(u8, std.mem.span(self.view_stack.getVisibleChildName() orelse "list"), "grid");
-        common.menubar.setChecked(self.window, "toggle-view", grid);
     }
 
     fn onSwitchPage(_: *gtk.Notebook, page: *gtk.Widget, _: c_uint, self: *FilesWindow) callconv(.c) void {
@@ -841,16 +863,36 @@ pub const FilesWindow = struct {
 
     fn onGridSetup(_: *gtk.SignalListItemFactory, item_obj: *gobject.Object, self: *FilesWindow) callconv(.c) void {
         const item: *gtk.ListItem = @ptrCast(item_obj);
-        const box = gtk.Box.new(.vertical, 4);
-        box.as(gtk.Widget).setSizeRequest(96, -1);
+        const mode = self.view_mode;
+        const row = mode == .small or mode == .list;
+        const box = gtk.Box.new(if (row) .horizontal else .vertical, if (row) 6 else 4);
+        box.as(gtk.Widget).setSizeRequest(switch (mode) {
+            .small => 190,
+            .list => -1,
+            .large => 140,
+            else => 96,
+        }, -1);
         const icon = gtk.Image.new();
-        icon.setPixelSize(48);
+        icon.setPixelSize(switch (mode) {
+            .small, .list => 16,
+            .large => 96,
+            else => 48,
+        });
         const label = gtk.Label.new(null);
-        label.setEllipsize(.middle);
-        label.setMaxWidthChars(12);
-        label.setWrap(1);
-        label.setLines(2);
-        label.setJustify(.center);
+        if (row) {
+            label.setEllipsize(.end);
+            label.setXalign(0);
+            label.setMaxWidthChars(if (mode == .list) 60 else 22);
+            box.as(gtk.Widget).setMarginTop(2);
+            box.as(gtk.Widget).setMarginBottom(2);
+            box.as(gtk.Widget).setMarginStart(4);
+        } else {
+            label.setEllipsize(.middle);
+            label.setMaxWidthChars(if (mode == .large) 16 else 12);
+            label.setWrap(1);
+            label.setLines(2);
+            label.setJustify(.center);
+        }
         box.append(icon.as(gtk.Widget));
         box.append(label.as(gtk.Widget));
         item.setChild(box.as(gtk.Widget));
@@ -1248,13 +1290,6 @@ pub const FilesWindow = struct {
         self.config.setBool("files", "show-hidden", self.show_hidden) catch {};
     }
 
-    fn toggleView(self: *FilesWindow) void {
-        const is_list = std.mem.eql(u8, std.mem.span(self.view_stack.getVisibleChildName() orelse "list"), "list");
-        self.view_stack.setVisibleChildName(if (is_list) "grid" else "list");
-        common.menubar.setChecked(self.window, "toggle-view", is_list);
-        self.config.setString("files", "view", if (is_list) "grid" else "list") catch {};
-    }
-
     fn addBookmark(self: *FilesWindow) void {
         const path_c = self.current.getPath() orelse return;
         defer glib.free(path_c);
@@ -1385,57 +1420,181 @@ pub const FilesWindow = struct {
         const box = gtk.Box.new(.vertical, 0);
         popover.setChild(box.as(gtk.Widget));
 
-        const in_trash = self.isInTrash();
-        var count: usize = 0;
-        {
-            var files = self.selectedFiles() catch return;
-            defer freeFiles(self.allocator, &files);
-            count = files.items.len;
+        var sel = self.describeSelection(on_item);
+        defer sel.deinit(self.allocator);
+
+        // Quick row: emoji buttons.
+        const quick = self.configuredIds("quick", context.default_quick);
+        defer quick.deinit(self.allocator);
+        const row = gtk.Box.new(.horizontal, 2);
+        row.as(gtk.Widget).setMarginBottom(2);
+        var quick_count: usize = 0;
+        for (quick.ids) |id| {
+            const entry = self.entryFor(id, &sel) orelse continue;
+            defer if (entry.free_label) self.allocator.free(entry.label);
+            self.quickButton(row, popover, id, entry);
+            quick_count += 1;
+        }
+        if (quick_count > 0) {
+            box.append(row.as(gtk.Widget));
+            box.append(gtk.Separator.new(.horizontal).as(gtk.Widget));
         }
 
-        if (on_item and count > 0) {
-            self.menuItem(box, popover, common.tr("Open"), "open", true);
-            if (count == 1) self.menuItem(box, popover, common.tr("Open in New Tab"), "open-tab", true);
-            if (count == 1 and !in_trash) self.openWithItems(box, popover);
-            self.menuItem(box, popover, common.tr("Cut"), "cut", !in_trash);
-            self.menuItem(box, popover, common.tr("Copy"), "copy", true);
-            self.menuItem(box, popover, common.tr("Rename…"), "rename", count == 1 and !in_trash);
-            if (!in_trash) self.archiveItems(box, popover, count);
-            if (in_trash) {
-                self.menuItem(box, popover, common.tr("Restore"), "restore", true);
-                self.menuItem(box, popover, common.tr("Delete Permanently"), "delete-permanent", true);
-            } else {
-                self.menuItem(box, popover, common.tr("Move to Trash"), "trash", true);
+        // Text entries.
+        const list = if (sel.on_item) self.configuredIds("item", context.default_item) else self.configuredIds("folder", context.default_folder);
+        defer list.deinit(self.allocator);
+        var pending_separator = false;
+        var shown: usize = 0;
+        for (list.ids) |id| {
+            if (std.mem.eql(u8, id, context.separator)) {
+                pending_separator = true;
+                continue;
             }
-            self.menuItem(box, popover, common.tr("Properties"), "properties", count == 1);
-        } else {
-            if (in_trash) {
-                self.menuItem(box, popover, common.tr("Empty Trash"), "empty-trash", true);
-            } else {
-                self.menuItem(box, popover, common.tr("New Folder"), "new-folder", true);
-                self.menuItem(box, popover, common.tr("Paste"), "paste", self.clip_files.items.len > 0);
+            if (std.mem.eql(u8, id, "open-with")) {
+                if (sel.single != null and !sel.is_dir and !sel.in_trash) {
+                    if (pending_separator and shown > 0) box.append(gtk.Separator.new(.horizontal).as(gtk.Widget));
+                    pending_separator = false;
+                    shown += self.openWithItems(box, popover);
+                }
+                continue;
             }
-            self.menuItem(box, popover, common.tr("Open Terminal Here"), "terminal-here", !in_trash);
-            self.menuItem(box, popover, common.tr("Show Hidden Files"), "toggle-hidden", true);
-            self.menuItem(box, popover, common.tr("Add to Bookmarks"), "bookmark", !in_trash);
-            self.menuItem(box, popover, common.tr("Properties"), "properties", true);
+            const entry = self.entryFor(id, &sel) orelse continue;
+            if (pending_separator and shown > 0) box.append(gtk.Separator.new(.horizontal).as(gtk.Widget));
+            pending_separator = false;
+            defer if (entry.free_label) self.allocator.free(entry.label);
+            self.menuItem(box, popover, entry.label, id, entry.enabled);
+            shown += 1;
         }
         popover.popup();
     }
 
-    /// Extract (for one archive) and the two ways to pack the selection.
-    fn archiveItems(self: *FilesWindow, box: *gtk.Box, popover: *gtk.Popover, count: usize) void {
-        if (count == 1) {
-            var files = self.selectedFiles() catch return;
-            defer freeFiles(self.allocator, &files);
-            const name = files.items[0].getBasename() orelse return;
-            defer glib.free(name);
-            if (archive.kindOf(std.mem.span(name))) |kind| {
-                self.menuItem(box, popover, common.tr("Extract Here"), "extract", common.proc.hasProgram(archive.extractTool(kind)));
-            }
+    /// What the menu needs to know about the selection (or the folder).
+    const SelectionFacts = struct {
+        on_item: bool,
+        count: usize = 0,
+        in_trash: bool = false,
+        single: ?*gio.File = null,
+        is_dir: bool = false,
+        is_regular: bool = false,
+        is_exec: bool = false,
+        archive: ?archive.Kind = null,
+
+        fn deinit(self: *SelectionFacts, _: std.mem.Allocator) void {
+            if (self.single) |f| f.as(gobject.Object).unref();
         }
-        self.menuItem(box, popover, common.tr("Compress to .zip"), "compress-zip", common.proc.hasProgram("zip"));
-        self.menuItem(box, popover, common.tr("Compress to .tar.gz"), "compress-targz", common.proc.hasProgram("tar"));
+    };
+
+    fn describeSelection(self: *FilesWindow, on_item: bool) SelectionFacts {
+        var facts: SelectionFacts = .{ .on_item = false, .in_trash = self.isInTrash() };
+        var files = self.selectedFiles() catch return facts;
+        defer freeFiles(self.allocator, &files);
+        facts.count = files.items.len;
+        facts.on_item = on_item and files.items.len > 0;
+        if (files.items.len != 1) return facts;
+        const file = files.items[0];
+        facts.single = @ptrCast(file.as(gobject.Object).ref());
+        const info = file.queryInfo("standard::type,standard::name,unix::mode", .{}, null, null) orelse return facts;
+        defer info.as(gobject.Object).unref();
+        facts.is_dir = info.getFileType() == .directory;
+        facts.is_regular = info.getFileType() == .regular;
+        if (info.hasAttribute("unix::mode") != 0) facts.is_exec = info.getAttributeUint32("unix::mode") & 0o111 != 0;
+        if (facts.is_regular) facts.archive = archive.kindOf(std.mem.span(info.getName()));
+        return facts;
+    }
+
+    const Entry = struct { label: [:0]const u8, enabled: bool = true, free_label: bool = false };
+
+    /// The menu entry for `id`, or null when it does not apply here.
+    fn entryFor(self: *FilesWindow, id: []const u8, sel: *const SelectionFacts) ?Entry {
+        const eql = std.mem.eql;
+        const item = sel.on_item;
+        const t = common.tr;
+        if (eql(u8, id, "open")) return if (item) .{ .label = t("Open") } else null;
+        if (eql(u8, id, "open-tab")) return if (item and sel.is_dir) .{ .label = t("Open in New Tab") } else null;
+        if (eql(u8, id, "open-window")) return if (!item or sel.is_dir) .{ .label = t("Open in New Window") } else null;
+        if (eql(u8, id, "run")) return if (item and sel.is_regular and sel.is_exec and !sel.in_trash) .{ .label = t("Run") } else null;
+        if (eql(u8, id, "run-admin")) return if (item and sel.is_regular and sel.is_exec and !sel.in_trash) .{ .label = t("Run as Administrator") } else null;
+        if (eql(u8, id, "exec")) {
+            if (!item or !sel.is_regular or sel.in_trash) return null;
+            return .{ .label = if (sel.is_exec) t("Unmark as Executable") else t("Mark as Executable") };
+        }
+        if (eql(u8, id, "extract")) {
+            const kind = sel.archive orelse return null;
+            if (!item or sel.in_trash) return null;
+            return .{ .label = t("Extract Here"), .enabled = common.proc.hasProgram(archive.extractTool(kind)) };
+        }
+        if (eql(u8, id, "compress-zip")) return if (item and !sel.in_trash) .{ .label = t("Compress to .zip"), .enabled = common.proc.hasProgram("zip") } else null;
+        if (eql(u8, id, "compress-targz")) return if (item and !sel.in_trash) .{ .label = t("Compress to .tar.gz"), .enabled = common.proc.hasProgram("tar") } else null;
+        if (eql(u8, id, "restore")) return if (item and sel.in_trash) .{ .label = t("Restore") } else null;
+        if (eql(u8, id, "delete-permanent")) return if (item and sel.in_trash) .{ .label = t("Delete Permanently") } else null;
+        if (eql(u8, id, "empty-trash")) return if (!item and sel.in_trash) .{ .label = t("Empty Trash") } else null;
+        if (eql(u8, id, "cut")) return if (item and !sel.in_trash) .{ .label = t("Cut") } else null;
+        if (eql(u8, id, "copy")) return if (item) .{ .label = t("Copy") } else null;
+        if (eql(u8, id, "paste")) return if (!sel.in_trash) .{ .label = t("Paste"), .enabled = self.clip_files.items.len > 0 } else null;
+        if (eql(u8, id, "rename")) return if (item and !sel.in_trash) .{ .label = t("Rename\u{2026}"), .enabled = sel.count == 1 } else null;
+        if (eql(u8, id, "trash")) return if (item and !sel.in_trash) .{ .label = t("Move to Trash") } else null;
+        if (eql(u8, id, "new-folder")) return if (!item and !sel.in_trash) .{ .label = t("New Folder") } else null;
+        if (eql(u8, id, "terminal-here")) return if (!sel.in_trash) .{ .label = t("Open Terminal Here") } else null;
+        if (eql(u8, id, "open-admin")) return if (!sel.in_trash) .{ .label = t("Open Folder as Administrator") } else null;
+        if (eql(u8, id, "toggle-hidden")) return .{ .label = t("Show Hidden Files") };
+        if (eql(u8, id, "bookmark")) return if (!sel.in_trash) .{ .label = t("Add to Bookmarks") } else null;
+        if (eql(u8, id, "properties")) return .{ .label = t("Properties"), .enabled = !item or sel.count == 1 };
+        if (std.mem.startsWith(u8, id, context.command_prefix)) {
+            const label = self.allocator.dupeSentinel(u8, id[context.command_prefix.len..], 0) catch return null;
+            return .{ .label = label, .enabled = sel.on_item or !self.commandNeedsFile(id), .free_label = true };
+        }
+        return null;
+    }
+
+    fn commandNeedsFile(self: *FilesWindow, id: []const u8) bool {
+        const name = self.allocator.dupeSentinel(u8, id[context.command_prefix.len..], 0) catch return false;
+        defer self.allocator.free(name);
+        const template = self.config.getString(self.allocator, "context-commands", name, "") catch return false;
+        defer self.allocator.free(template);
+        return std.mem.indexOf(u8, template, "%f") != null or std.mem.indexOf(u8, template, "%F") != null;
+    }
+
+    const IdList = struct {
+        ids: []const []const u8,
+        /// Backing text when the ids came from the configuration.
+        owned_text: ?[]u8 = null,
+
+        fn deinit(self: IdList, allocator: std.mem.Allocator) void {
+            allocator.free(self.ids);
+            if (self.owned_text) |t| allocator.free(t);
+        }
+    };
+
+    /// `[context] <key>` as ids, or the default when it is not set.
+    fn configuredIds(self: *FilesWindow, key: [:0]const u8, default: []const u8) IdList {
+        const text = self.config.getString(self.allocator, "context", key, "") catch return .{ .ids = &.{} };
+        if (text.len == 0) {
+            self.allocator.free(text);
+            const ids = context.parseList(self.allocator, default) catch &.{};
+            return .{ .ids = ids };
+        }
+        const ids = context.parseList(self.allocator, text) catch {
+            self.allocator.free(text);
+            return .{ .ids = &.{} };
+        };
+        return .{ .ids = ids, .owned_text = text };
+    }
+
+    fn quickButton(self: *FilesWindow, row: *gtk.Box, popover: *gtk.Popover, id: []const u8, entry: Entry) void {
+        const button = gtk.Button.newWithLabel(@ptrCast(context.emoji(id).ptr));
+        button.setHasFrame(0);
+        button.as(gtk.Widget).setTooltipText(entry.label);
+        button.as(gtk.Widget).setSensitive(@intFromBool(entry.enabled));
+        button.as(gtk.Widget).setHexpand(1);
+        const ctx = std.heap.c_allocator.create(MenuAction) catch return;
+        const owned = std.heap.c_allocator.dupe(u8, id) catch {
+            std.heap.c_allocator.destroy(ctx);
+            return;
+        };
+        ctx.* = .{ .window = self, .popover = popover, .action = owned, .owned = true };
+        _ = gtk.Button.signals.clicked.connect(button, *MenuAction, &onMenuAction, ctx, .{});
+        _ = gtk.Widget.signals.destroy.connect(button, *MenuAction, &onMenuActionDestroy, ctx, .{});
+        row.append(button.as(gtk.Widget));
     }
 
     const MenuAction = struct {
@@ -1443,6 +1602,8 @@ pub const FilesWindow = struct {
         popover: *gtk.Popover,
         action: []const u8,
         app: ?*gio.AppInfo = null,
+        /// `action` was allocated for this button.
+        owned: bool = false,
     };
 
     fn menuItem(self: *FilesWindow, box: *gtk.Box, popover: *gtk.Popover, label: [:0]const u8, action: []const u8, enabled: bool) void {
@@ -1454,18 +1615,23 @@ pub const FilesWindow = struct {
             l.setXalign(0);
         }
         const ctx = std.heap.c_allocator.create(MenuAction) catch return;
-        ctx.* = .{ .window = self, .popover = popover, .action = action };
+        const owned = std.heap.c_allocator.dupe(u8, action) catch {
+            std.heap.c_allocator.destroy(ctx);
+            return;
+        };
+        ctx.* = .{ .window = self, .popover = popover, .action = owned, .owned = true };
         _ = gtk.Button.signals.clicked.connect(button, *MenuAction, &onMenuAction, ctx, .{});
         _ = gtk.Widget.signals.destroy.connect(button, *MenuAction, &onMenuActionDestroy, ctx, .{});
         box.append(button.as(gtk.Widget));
     }
 
-    fn openWithItems(self: *FilesWindow, box: *gtk.Box, popover: *gtk.Popover) void {
-        var files = self.selectedFiles() catch return;
+    /// "Open With" entries for the selected file; returns how many it added.
+    fn openWithItems(self: *FilesWindow, box: *gtk.Box, popover: *gtk.Popover) usize {
+        var files = self.selectedFiles() catch return 0;
         defer freeFiles(self.allocator, &files);
-        const info = files.items[0].queryInfo("standard::content-type", .{}, null, null) orelse return;
+        const info = files.items[0].queryInfo("standard::content-type", .{}, null, null) orelse return 0;
         defer info.as(gobject.Object).unref();
-        const content_type = info.getContentType() orelse return;
+        const content_type = info.getContentType() orelse return 0;
         const apps = gio.AppInfo.getAllForType(content_type);
         defer apps.free();
 
@@ -1482,17 +1648,19 @@ pub const FilesWindow = struct {
                 const l: *gtk.Label = @ptrCast(child);
                 l.setXalign(0);
             }
-            const ctx = std.heap.c_allocator.create(MenuAction) catch return;
+            const ctx = std.heap.c_allocator.create(MenuAction) catch return shown;
             ctx.* = .{ .window = self, .popover = popover, .action = "open-with", .app = @ptrCast(app.as(gobject.Object).ref()) };
             _ = gtk.Button.signals.clicked.connect(button, *MenuAction, &onMenuAction, ctx, .{});
             _ = gtk.Widget.signals.destroy.connect(button, *MenuAction, &onMenuActionDestroy, ctx, .{});
             box.append(button.as(gtk.Widget));
             shown += 1;
         }
+        return shown;
     }
 
     fn onMenuActionDestroy(_: *gtk.Button, ctx: *MenuAction) callconv(.c) void {
         if (ctx.app) |app| app.as(gobject.Object).unref();
+        if (ctx.owned) std.heap.c_allocator.free(ctx.action);
         std.heap.c_allocator.destroy(ctx);
     }
 
@@ -1597,7 +1765,12 @@ pub const FilesWindow = struct {
         if (eql(u8, action, "back")) return self.goBack();
         if (eql(u8, action, "forward")) return self.goForward();
         if (eql(u8, action, "up")) return self.goUp();
-        if (eql(u8, action, "toggle-view")) return self.toggleView();
+        if (std.mem.startsWith(u8, action, "view-")) return self.setViewMode(ViewMode.parse(action[5..]));
+        if (eql(u8, action, "open-window")) return self.openInNewWindow();
+        if (eql(u8, action, "run")) return self.runSelected(false);
+        if (eql(u8, action, "run-admin")) return self.runSelected(true);
+        if (eql(u8, action, "exec")) return self.toggleExecutable();
+        if (std.mem.startsWith(u8, action, context.command_prefix)) return self.runCustomCommand(action[context.command_prefix.len..]);
         if (eql(u8, action, "close")) return self.window.as(gtk.Window).close();
         if (eql(u8, action, "close-tab")) return self.closeTab(self.active_tab);
         if (eql(u8, action, "new-tab")) return self.addTab(self.current);
@@ -1638,6 +1811,122 @@ pub const FilesWindow = struct {
             defer freeFiles(self.allocator, &files);
             if (files.items.len > 0 and app != null) self.openWith(files.items[0], app.?);
         }
+    }
+
+    // ---- run, new window, executable bit, custom commands ----------------
+
+    /// The one selected file, or null.
+    fn singleSelected(self: *FilesWindow) ?*gio.File {
+        var files = self.selectedFiles() catch return null;
+        defer freeFiles(self.allocator, &files);
+        if (files.items.len != 1) return null;
+        return @ptrCast(files.items[0].as(gobject.Object).ref());
+    }
+
+    fn openInNewWindow(self: *FilesWindow) void {
+        const target = self.singleSelected();
+        defer if (target) |t| t.as(gobject.Object).unref();
+        const file = if (target != null and self.isDirectory(target.?)) target.? else self.current;
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        common.appinfo.spawnIn(self.allocator, &.{ "dkde-files", std.mem.span(path) }, std.mem.span(path));
+    }
+
+    fn runSelected(self: *FilesWindow, as_admin: bool) void {
+        const file = self.singleSelected() orelse return;
+        defer file.as(gobject.Object).unref();
+        const path_c = file.getPath() orelse return;
+        defer glib.free(path_c);
+        const path = std.mem.span(path_c);
+        if (!as_admin) {
+            const dir = std.fs.path.dirname(path) orelse "/";
+            return common.appinfo.spawnIn(self.allocator, &.{path}, dir);
+        }
+        const a = std.heap.c_allocator;
+        var argv: std.ArrayList([]u8) = .empty;
+        defer {
+            for (argv.items) |x| a.free(x);
+            argv.deinit(a);
+        }
+        common.appinfo.displayEnvArgs(a, &argv) catch return;
+        argv.append(a, a.dupe(u8, path) catch return) catch return;
+        const view = a.alloc([]const u8, argv.items.len) catch return;
+        defer a.free(view);
+        for (argv.items, 0..) |x, i| view[i] = x;
+        const done = a.create(AdminDone) catch return;
+        done.* = .{ .window = self };
+        common.elevate.run(self.window.as(gtk.Window), "Run this program with administrator rights", view, "", AdminDone, onAdminDone, done);
+    }
+
+    /// Sets or clears the three execute bits.
+    fn toggleExecutable(self: *FilesWindow) void {
+        const file = self.singleSelected() orelse return;
+        defer file.as(gobject.Object).unref();
+        const info = file.queryInfo("unix::mode", .{}, null, null) orelse return;
+        defer info.as(gobject.Object).unref();
+        const mode = info.getAttributeUint32("unix::mode");
+        const new_mode: u32 = if (mode & 0o111 != 0) mode & ~@as(u32, 0o111) else mode | 0o111;
+        var err: ?*glib.Error = null;
+        if (file.setAttributeUint32("unix::mode", new_mode, .{}, null, &err) == 0) {
+            const message = if (err) |e| e.f_message orelse "unknown error" else "unknown error";
+            common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot change the permissions"), std.mem.span(message));
+            if (err) |e| e.free();
+        }
+    }
+
+    /// A command from `[context-commands]`, run in the current folder.
+    fn runCustomCommand(self: *FilesWindow, label: []const u8) void {
+        const key = self.allocator.dupeSentinel(u8, label, 0) catch return;
+        defer self.allocator.free(key);
+        const template = self.config.getString(self.allocator, "context-commands", key, "") catch return;
+        defer self.allocator.free(template);
+        if (template.len == 0) return;
+
+        var files = self.selectedFiles() catch return;
+        defer freeFiles(self.allocator, &files);
+        var paths: std.ArrayList([]const u8) = .empty;
+        defer {
+            for (paths.items) |p| glib.free(@constCast(p.ptr));
+            paths.deinit(self.allocator);
+        }
+        for (files.items) |f| {
+            const p = f.getPath() orelse continue;
+            paths.append(self.allocator, std.mem.span(p)) catch return;
+        }
+        const dir_c = self.current.getPath() orelse return;
+        defer glib.free(dir_c);
+        const dir = std.mem.span(dir_c);
+        const command = context.expand(self.allocator, template, paths.items, dir) catch return;
+        defer self.allocator.free(command);
+        common.appinfo.spawnIn(self.allocator, &.{ "sh", "-c", command }, dir);
+    }
+
+    // ---- view modes ------------------------------------------------------
+
+    fn setViewMode(self: *FilesWindow, mode: ViewMode) void {
+        self.view_mode = mode;
+        for (self.tabs.items, 0..) |t, i| {
+            if (i == self.active_tab) self.applyViewTo(self.view_stack, self.grid_view) else self.applyViewTo(t.view_stack, t.grid_view);
+        }
+        self.syncViewChecks();
+        self.config.setString("files", "view", @tagName(mode)) catch {};
+    }
+
+    fn syncViewChecks(self: *FilesWindow) void {
+        inline for (@typeInfo(ViewMode).@"enum".field_names) |name| {
+            common.menubar.setChecked(self.window, "view-" ++ name, self.view_mode == @field(ViewMode, name));
+        }
+    }
+
+    /// Shows `mode` in one tab's stack; icon modes get a fresh item factory.
+    fn applyViewTo(self: *FilesWindow, stack: *gtk.Stack, grid: *gtk.GridView) void {
+        if (self.view_mode == .details) return stack.setVisibleChildName("list");
+        const factory = gtk.SignalListItemFactory.new();
+        _ = gtk.SignalListItemFactory.signals.setup.connect(factory, *FilesWindow, &onGridSetup, self, .{});
+        _ = gtk.SignalListItemFactory.signals.bind.connect(factory, *FilesWindow, &onGridBind, self, .{});
+        grid.setFactory(factory.as(gtk.ListItemFactory));
+        grid.setMaxColumns(if (self.view_mode == .list) 1 else 12);
+        stack.setVisibleChildName("grid");
     }
 
     // ---- shortcuts -------------------------------------------------------
