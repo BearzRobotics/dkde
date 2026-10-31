@@ -1,0 +1,226 @@
+# General Roman Calendar (Novus Ordo, current Roman Missal). One line per day:
+#   MM-DD | rank | colour | name
+# rank: S+ highest solemnity, S solemnity, FL feast of the Lord, F feast,
+#       M obligatory memorial, O optional memorial
+# colour: W white, R red, G green, V violet, P rose, B black
+# Movable days (Easter, Advent, Pentecost, Trinity, Corpus Christi, Christ the
+# King and so on) are worked out by the program. Copy this file to
+# ~/.config/dkde/liturgy-no.txt to change it; that copy is used instead.
+01-01 | S  | W | Mary, the Holy Mother of God
+01-02 | M  | W | Basil the Great and Gregory Nazianzen, bishops and doctors
+01-03 | O  | W | The Most Holy Name of Jesus
+01-06 | S+ | W | The Epiphany of the Lord
+01-07 | O  | W | Raymond of Penyafort, priest
+01-13 | O  | W | Hilary, bishop and doctor
+01-17 | M  | W | Anthony, abbot
+01-20 | O  | R | Fabian, pope and martyr
+01-20 | O  | R | Sebastian, martyr
+01-21 | M  | R | Agnes, virgin and martyr
+01-22 | O  | R | Vincent, deacon and martyr
+01-24 | M  | W | Francis de Sales, bishop and doctor
+01-25 | F  | W | The Conversion of Saint Paul the Apostle
+01-26 | M  | W | Timothy and Titus, bishops
+01-27 | O  | W | Angela Merici, virgin
+01-28 | M  | W | Thomas Aquinas, priest and doctor
+01-31 | M  | W | John Bosco, priest
+02-02 | FL | W | The Presentation of the Lord
+02-03 | O  | R | Blaise, bishop and martyr
+02-03 | O  | W | Ansgar, bishop
+02-05 | M  | R | Agatha, virgin and martyr
+02-06 | M  | R | Paul Miki and Companions, martyrs
+02-08 | O  | W | Jerome Emiliani, priest
+02-08 | O  | W | Josephine Bakhita, virgin
+02-10 | M  | W | Scholastica, virgin
+02-11 | O  | W | Our Lady of Lourdes
+02-14 | M  | W | Cyril, monk, and Methodius, bishop
+02-17 | O  | W | The Seven Holy Founders of the Servite Order
+02-21 | O  | W | Peter Damian, bishop and doctor
+02-22 | F  | W | The Chair of Saint Peter the Apostle
+02-23 | M  | R | Polycarp, bishop and martyr
+02-27 | O  | W | Gregory of Narek, abbot and doctor
+03-04 | O  | W | Casimir
+03-07 | M  | R | Perpetua and Felicity, martyrs
+03-08 | O  | W | John of God, religious
+03-09 | O  | W | Frances of Rome, religious
+03-17 | O  | W | Patrick, bishop
+03-18 | O  | W | Cyril of Jerusalem, bishop and doctor
+03-19 | S  | W | Joseph, Spouse of the Blessed Virgin Mary
+03-23 | O  | W | Turibius of Mogrovejo, bishop
+03-25 | S  | W | The Annunciation of the Lord
+04-02 | O  | W | Francis of Paola, hermit
+04-04 | O  | W | Isidore, bishop and doctor
+04-05 | O  | W | Vincent Ferrer, priest
+04-07 | M  | W | John Baptist de la Salle, priest
+04-11 | M  | R | Stanislaus, bishop and martyr
+04-13 | O  | R | Martin I, pope and martyr
+04-21 | O  | W | Anselm, bishop and doctor
+04-23 | O  | R | George, martyr
+04-23 | O  | R | Adalbert, bishop and martyr
+04-24 | O  | R | Fidelis of Sigmaringen, priest and martyr
+04-25 | F  | R | Mark, evangelist
+04-28 | O  | R | Peter Chanel, priest and martyr
+04-28 | O  | W | Louis Grignion de Montfort, priest
+04-29 | M  | W | Catherine of Siena, virgin and doctor
+04-30 | O  | W | Pius V, pope
+05-01 | O  | W | Joseph the Worker
+05-02 | M  | W | Athanasius, bishop and doctor
+05-03 | F  | R | Philip and James, apostles
+05-10 | O  | W | John of Avila, priest and doctor
+05-12 | O  | R | Nereus and Achilleus, martyrs
+05-12 | O  | R | Pancras, martyr
+05-13 | O  | W | Our Lady of Fatima
+05-14 | F  | R | Matthias, apostle
+05-18 | O  | R | John I, pope and martyr
+05-20 | O  | W | Bernardine of Siena, priest
+05-21 | O  | R | Christopher Magallanes, priest, and Companions, martyrs
+05-22 | O  | W | Rita of Cascia, religious
+05-25 | O  | W | Bede the Venerable, priest and doctor
+05-25 | O  | W | Gregory VII, pope
+05-25 | O  | W | Mary Magdalene de' Pazzi, virgin
+05-26 | M  | W | Philip Neri, priest
+05-27 | O  | W | Augustine of Canterbury, bishop
+05-29 | O  | W | Paul VI, pope
+05-31 | F  | W | The Visitation of the Blessed Virgin Mary
+06-01 | M  | R | Justin, martyr
+06-02 | O  | R | Marcellinus and Peter, martyrs
+06-03 | M  | R | Charles Lwanga and Companions, martyrs
+06-05 | M  | R | Boniface, bishop and martyr
+06-06 | O  | W | Norbert, bishop
+06-09 | O  | W | Ephrem, deacon and doctor
+06-11 | M  | R | Barnabas, apostle
+06-13 | M  | W | Anthony of Padua, priest and doctor
+06-19 | O  | W | Romuald, abbot
+06-21 | M  | W | Aloysius Gonzaga, religious
+06-22 | O  | R | John Fisher, bishop, and Thomas More, martyrs
+06-24 | S  | W | The Nativity of Saint John the Baptist
+06-27 | O  | W | Cyril of Alexandria, bishop and doctor
+06-28 | M  | R | Irenaeus, bishop and martyr
+06-29 | S  | R | Saints Peter and Paul, apostles
+06-30 | O  | R | The First Martyrs of the Holy Roman Church
+07-03 | F  | R | Thomas, apostle
+07-04 | O  | W | Elizabeth of Portugal
+07-05 | O  | W | Anthony Zaccaria, priest
+07-06 | O  | R | Maria Goretti, virgin and martyr
+07-09 | O  | R | Augustine Zhao Rong, priest, and Companions, martyrs
+07-11 | M  | W | Benedict, abbot
+07-13 | O  | W | Henry
+07-14 | O  | W | Camillus de Lellis, priest
+07-15 | M  | W | Bonaventure, bishop and doctor
+07-16 | O  | W | Our Lady of Mount Carmel
+07-20 | O  | R | Apollinaris, bishop and martyr
+07-21 | O  | W | Lawrence of Brindisi, priest and doctor
+07-22 | F  | W | Mary Magdalene
+07-23 | O  | W | Bridget, religious
+07-24 | O  | W | Sharbel Makhluf, priest
+07-25 | F  | R | James, apostle
+07-26 | M  | W | Joachim and Anne, parents of the Blessed Virgin Mary
+07-29 | M  | W | Martha, Mary and Lazarus
+07-30 | O  | W | Peter Chrysologus, bishop and doctor
+07-31 | M  | W | Ignatius of Loyola, priest
+08-01 | M  | W | Alphonsus Liguori, bishop and doctor
+08-02 | O  | W | Eusebius of Vercelli, bishop
+08-02 | O  | W | Peter Julian Eymard, priest
+08-04 | M  | W | John Vianney, priest
+08-05 | O  | W | The Dedication of the Basilica of Saint Mary Major
+08-06 | FL | W | The Transfiguration of the Lord
+08-07 | O  | R | Sixtus II, pope, and Companions, martyrs
+08-07 | O  | W | Cajetan, priest
+08-08 | M  | W | Dominic, priest
+08-09 | O  | R | Teresa Benedicta of the Cross, virgin and martyr
+08-10 | F  | R | Lawrence, deacon and martyr
+08-11 | M  | W | Clare, virgin
+08-12 | O  | W | Jane Frances de Chantal, religious
+08-13 | O  | R | Pontian, pope, and Hippolytus, priest, martyrs
+08-14 | M  | R | Maximilian Mary Kolbe, priest and martyr
+08-15 | S  | W | The Assumption of the Blessed Virgin Mary
+08-16 | O  | W | Stephen of Hungary
+08-19 | O  | W | John Eudes, priest
+08-20 | M  | W | Bernard, abbot and doctor
+08-21 | M  | W | Pius X, pope
+08-22 | M  | W | The Queenship of the Blessed Virgin Mary
+08-23 | O  | W | Rose of Lima, virgin
+08-24 | F  | R | Bartholomew, apostle
+08-25 | O  | W | Louis
+08-25 | O  | W | Joseph Calasanz, priest
+08-27 | M  | W | Monica
+08-28 | M  | W | Augustine, bishop and doctor
+08-29 | M  | R | The Martyrdom of Saint John the Baptist
+09-03 | M  | W | Gregory the Great, pope and doctor
+09-08 | F  | W | The Nativity of the Blessed Virgin Mary
+09-09 | O  | W | Peter Claver, priest
+09-12 | O  | W | The Most Holy Name of Mary
+09-13 | M  | W | John Chrysostom, bishop and doctor
+09-14 | FL | R | The Exaltation of the Holy Cross
+09-15 | M  | W | Our Lady of Sorrows
+09-16 | M  | R | Cornelius, pope, and Cyprian, bishop, martyrs
+09-17 | O  | W | Robert Bellarmine, bishop and doctor
+09-17 | O  | W | Hildegard of Bingen, virgin and doctor
+09-19 | O  | R | Januarius, bishop and martyr
+09-20 | M  | R | Andrew Kim Taegon, priest, Paul Chong Hasang, and Companions, martyrs
+09-21 | F  | R | Matthew, apostle and evangelist
+09-23 | M  | W | Pius of Pietrelcina, priest
+09-26 | O  | R | Cosmas and Damian, martyrs
+09-27 | M  | W | Vincent de Paul, priest
+09-28 | O  | R | Wenceslaus, martyr
+09-28 | O  | R | Lawrence Ruiz and Companions, martyrs
+09-29 | F  | W | Michael, Gabriel and Raphael, archangels
+09-30 | M  | W | Jerome, priest and doctor
+10-01 | M  | W | Thérèse of the Child Jesus, virgin and doctor
+10-02 | M  | W | The Holy Guardian Angels
+10-04 | M  | W | Francis of Assisi
+10-05 | O  | W | Maria Faustina Kowalska, virgin
+10-06 | O  | W | Bruno, priest
+10-07 | M  | W | Our Lady of the Rosary
+10-09 | O  | R | Denis, bishop, and Companions, martyrs
+10-09 | O  | W | John Leonardi, priest
+10-11 | O  | W | John XXIII, pope
+10-14 | O  | R | Callistus I, pope and martyr
+10-15 | M  | W | Teresa of Jesus, virgin and doctor
+10-16 | O  | W | Hedwig, religious
+10-16 | O  | W | Margaret Mary Alacoque, virgin
+10-17 | M  | R | Ignatius of Antioch, bishop and martyr
+10-18 | F  | R | Luke, evangelist
+10-19 | O  | R | John de Brébeuf, Isaac Jogues, priests, and Companions, martyrs
+10-19 | O  | W | Paul of the Cross, priest
+10-22 | O  | W | John Paul II, pope
+10-23 | O  | W | John of Capistrano, priest
+10-24 | O  | W | Anthony Mary Claret, bishop
+10-28 | F  | R | Simon and Jude, apostles
+11-01 | S  | W | All Saints
+11-02 | S  | V | The Commemoration of All the Faithful Departed (All Souls)
+11-03 | O  | W | Martin de Porres, religious
+11-04 | M  | W | Charles Borromeo, bishop
+11-09 | FL | W | The Dedication of the Lateran Basilica
+11-10 | M  | W | Leo the Great, pope and doctor
+11-11 | M  | W | Martin of Tours, bishop
+11-12 | M  | R | Josaphat, bishop and martyr
+11-15 | O  | W | Albert the Great, bishop and doctor
+11-16 | O  | W | Margaret of Scotland
+11-16 | O  | W | Gertrude, virgin
+11-17 | M  | W | Elizabeth of Hungary, religious
+11-18 | O  | W | The Dedication of the Basilicas of Saints Peter and Paul
+11-21 | M  | W | The Presentation of the Blessed Virgin Mary
+11-22 | M  | R | Cecilia, virgin and martyr
+11-23 | O  | R | Clement I, pope and martyr
+11-23 | O  | R | Columban, abbot
+11-24 | M  | R | Andrew Dũng-Lạc, priest, and Companions, martyrs
+11-25 | O  | R | Catherine of Alexandria, virgin and martyr
+11-30 | F  | R | Andrew, apostle
+12-03 | M  | W | Francis Xavier, priest
+12-04 | O  | W | John Damascene, priest and doctor
+12-06 | O  | W | Nicholas, bishop
+12-07 | M  | W | Ambrose, bishop and doctor
+12-08 | S  | W | The Immaculate Conception of the Blessed Virgin Mary
+12-09 | O  | W | Juan Diego Cuauhtlatoatzin
+12-11 | O  | W | Damasus I, pope
+12-12 | O  | W | Our Lady of Guadalupe
+12-13 | M  | R | Lucy, virgin and martyr
+12-14 | M  | W | John of the Cross, priest and doctor
+12-21 | O  | W | Peter Canisius, priest and doctor
+12-23 | O  | W | John of Kanty, priest
+12-25 | S+ | W | The Nativity of the Lord (Christmas)
+12-26 | F  | R | Stephen, the first martyr
+12-27 | F  | W | John, apostle and evangelist
+12-28 | F  | R | The Holy Innocents, martyrs
+12-29 | O  | W | Thomas Becket, bishop and martyr
+12-31 | O  | W | Sylvester I, pope

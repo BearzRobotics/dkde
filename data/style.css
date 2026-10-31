@@ -747,3 +747,69 @@ menubar > item:selected {
 notebook > header.top > tabs > tab:checked {
   box-shadow: inset 0 -4px @dkde_accent;
 }
+
+/* Calendar: the month grid, and the liturgical colours (fixed, not themed). */
+.dkde-cal-cell {
+  padding: 3px 4px;
+  border-radius: 0;
+  border: 1px solid alpha(@dkde_fg, 0.12);
+  background-image: none;
+  min-width: 0;
+}
+
+.dkde-cal-cell.outside {
+  opacity: 0.45;
+}
+
+.dkde-cal-cell.today .dkde-cal-num {
+  background-color: @dkde_accent;
+  color: white;
+  border-radius: 10px;
+  padding: 0 6px;
+}
+
+.dkde-cal-cell.selected {
+  border-color: @dkde_accent;
+  box-shadow: inset 0 0 0 1px @dkde_accent;
+}
+
+.dkde-cal-num {
+  font-weight: bold;
+}
+
+.dkde-cal-lit,
+.dkde-cal-event {
+  font-size: 80%;
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
+.dkde-cal-event {
+  background-color: alpha(@dkde_accent, 0.22);
+}
+
+.dkde-cal-weekday {
+  font-weight: bold;
+  opacity: 0.7;
+}
+
+.dkde-lit-dot {
+  min-width: 10px;
+  min-height: 10px;
+  border-radius: 5px;
+  border: 1px solid alpha(black, 0.35);
+}
+
+.lit-white { background-color: #f6f5f4; }
+.lit-red { background-color: #c01c28; }
+.lit-green { background-color: #26a269; }
+.lit-violet { background-color: #813d9c; }
+.lit-rose { background-color: #f08aa6; }
+.lit-black { background-color: #241f31; }
+
+.dkde-cal-lit.lit-white { background-color: alpha(#a0a0a0, 0.25); }
+.dkde-cal-lit.lit-red { background-color: alpha(#c01c28, 0.25); }
+.dkde-cal-lit.lit-green { background-color: alpha(#26a269, 0.25); }
+.dkde-cal-lit.lit-violet { background-color: alpha(#813d9c, 0.25); }
+.dkde-cal-lit.lit-rose { background-color: alpha(#f08aa6, 0.35); }
+.dkde-cal-lit.lit-black { background-color: alpha(#241f31, 0.35); }

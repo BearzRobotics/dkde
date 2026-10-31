@@ -1,0 +1,255 @@
+# The General Roman Calendar of 1962 (Missale Romanum 1962, rubrics of 1960).
+# One line per day:   MM-DD | class | colour | name
+# class: 1, 2, 3 or 4; add L for a feast of the Lord (1L, 2L), which takes
+#        precedence over a Sunday of the same class
+# colour: W white, R red, G green, V violet, P rose, B black
+# Movable days (Easter and everything counted from it, Advent, the Sundays,
+# Ember days, Christ the King and so on) are worked out by the program.
+# In leap years the days from Feb 24 to Feb 28 move one day later.
+# Copy this file to ~/.config/dkde/liturgy-1962.txt to change it; that copy
+# is used instead.
+01-01 | 2L | W | Circumcision of Our Lord and Octave of the Nativity
+01-06 | 1L | W | Epiphany of Our Lord
+01-13 | 2L | W | Commemoration of the Baptism of Our Lord
+01-14 | 3  | W | Hilary, bishop, confessor and doctor
+01-15 | 3  | W | Paul, the first hermit, confessor
+01-16 | 3  | R | Marcellus I, pope and martyr
+01-17 | 3  | W | Anthony, abbot
+01-18 | 2  | W | Chair of Saint Peter at Rome
+01-19 | 4  | R | Marius, Martha, Audifax and Abachum, martyrs
+01-20 | 3  | R | Fabian and Sebastian, martyrs
+01-21 | 3  | R | Agnes, virgin and martyr
+01-22 | 3  | R | Vincent and Anastasius, martyrs
+01-23 | 3  | W | Raymond of Penyafort, confessor
+01-24 | 3  | R | Timothy, bishop and martyr
+01-25 | 3  | W | Conversion of Saint Paul, apostle
+01-26 | 3  | R | Polycarp, bishop and martyr
+01-27 | 3  | W | John Chrysostom, bishop, confessor and doctor
+01-28 | 3  | W | Peter Nolasco, confessor
+01-29 | 3  | W | Francis de Sales, bishop, confessor and doctor
+01-30 | 3  | R | Martina, virgin and martyr
+01-31 | 3  | W | John Bosco, confessor
+02-01 | 3  | R | Ignatius of Antioch, bishop and martyr
+02-02 | 2L | W | Purification of the Blessed Virgin Mary (Candlemas)
+02-03 | 3  | R | Blaise, bishop and martyr
+02-04 | 3  | W | Andrew Corsini, bishop and confessor
+02-05 | 3  | R | Agatha, virgin and martyr
+02-06 | 3  | W | Titus, bishop and confessor
+02-07 | 3  | W | Romuald, abbot
+02-08 | 3  | W | John of Matha, confessor
+02-09 | 3  | W | Cyril of Alexandria, bishop, confessor and doctor
+02-10 | 3  | W | Scholastica, virgin
+02-11 | 3  | W | Apparition of the Blessed Virgin Mary Immaculate (Lourdes)
+02-12 | 3  | W | The Seven Holy Founders of the Servite Order
+02-22 | 3  | W | Chair of Saint Peter at Antioch
+02-23 | 3  | R | Peter Damian, bishop, confessor and doctor
+02-24 | 2  | R | Matthias, apostle
+02-27 | 3  | W | Gabriel of Our Lady of Sorrows, confessor
+03-04 | 3  | W | Casimir, confessor
+03-06 | 3  | R | Perpetua and Felicity, martyrs
+03-07 | 3  | W | Thomas Aquinas, confessor and doctor
+03-08 | 3  | W | John of God, confessor
+03-09 | 3  | W | Frances of Rome, widow
+03-10 | 3  | R | The Forty Martyrs of Sebaste
+03-12 | 3  | W | Gregory the Great, pope, confessor and doctor
+03-17 | 3  | W | Patrick, bishop and confessor
+03-18 | 3  | W | Cyril of Jerusalem, bishop, confessor and doctor
+03-19 | 1  | W | Joseph, Spouse of the Blessed Virgin Mary, confessor
+03-21 | 3  | W | Benedict, abbot
+03-24 | 3  | W | Gabriel the Archangel
+03-25 | 1L | W | Annunciation of the Blessed Virgin Mary
+04-02 | 3  | W | Francis of Paola, confessor
+04-04 | 3  | W | Isidore, bishop, confessor and doctor
+04-05 | 3  | W | Vincent Ferrer, confessor
+04-11 | 3  | W | Leo the Great, pope, confessor and doctor
+04-13 | 3  | R | Hermenegild, martyr
+04-14 | 3  | R | Justin, martyr
+04-17 | 3  | R | Anicetus, pope and martyr
+04-21 | 3  | W | Anselm, bishop, confessor and doctor
+04-22 | 3  | R | Soter and Caius, popes and martyrs
+04-23 | 3  | R | George, martyr
+04-24 | 3  | R | Fidelis of Sigmaringen, martyr
+04-25 | 2  | R | Mark, evangelist
+04-26 | 3  | R | Cletus and Marcellinus, popes and martyrs
+04-27 | 3  | W | Peter Canisius, confessor and doctor
+04-28 | 3  | W | Paul of the Cross, confessor
+04-29 | 3  | R | Peter of Verona, martyr
+04-30 | 3  | W | Catherine of Siena, virgin
+05-01 | 1  | W | Joseph the Worker, confessor
+05-02 | 3  | W | Athanasius, bishop, confessor and doctor
+05-04 | 3  | W | Monica, widow
+05-05 | 3  | W | Pius V, pope and confessor
+05-07 | 3  | W | Stanislaus, bishop and martyr
+05-08 | 3  | W | Apparition of Saint Michael the Archangel
+05-09 | 3  | W | Gregory Nazianzen, bishop, confessor and doctor
+05-10 | 3  | W | Antoninus, bishop and confessor
+05-11 | 3  | R | Philip and James, apostles
+05-12 | 3  | R | Nereus, Achilleus, Domitilla and Pancras, martyrs
+05-13 | 3  | W | Robert Bellarmine, bishop, confessor and doctor
+05-15 | 3  | W | John Baptist de la Salle, confessor
+05-16 | 3  | W | Ubald, bishop and confessor
+05-17 | 3  | W | Paschal Baylon, confessor
+05-18 | 3  | R | Venantius, martyr
+05-19 | 3  | W | Peter Celestine, pope and confessor
+05-20 | 3  | W | Bernardine of Siena, confessor
+05-25 | 3  | W | Gregory VII, pope and confessor
+05-26 | 3  | W | Philip Neri, confessor
+05-27 | 3  | W | Bede the Venerable, confessor and doctor
+05-28 | 3  | W | Augustine of Canterbury, bishop and confessor
+05-31 | 2  | W | Queenship of the Blessed Virgin Mary
+06-02 | 3  | R | Marcellinus, Peter and Erasmus, martyrs
+06-04 | 3  | W | Francis Caracciolo, confessor
+06-05 | 3  | R | Boniface, bishop and martyr
+06-06 | 3  | W | Norbert, bishop and confessor
+06-10 | 3  | W | Margaret of Scotland, widow
+06-11 | 3  | R | Barnabas, apostle
+06-12 | 3  | W | John of Sahagun, confessor
+06-13 | 3  | W | Anthony of Padua, confessor and doctor
+06-14 | 3  | W | Basil the Great, bishop, confessor and doctor
+06-18 | 3  | W | Ephrem, deacon, confessor and doctor
+06-19 | 3  | W | Juliana Falconieri, virgin
+06-20 | 3  | R | Silverius, pope and martyr
+06-21 | 3  | W | Aloysius Gonzaga, confessor
+06-22 | 3  | W | Paulinus of Nola, bishop and confessor
+06-24 | 1  | W | Nativity of Saint John the Baptist
+06-26 | 3  | R | John and Paul, martyrs
+06-29 | 1  | R | Saints Peter and Paul, apostles
+06-30 | 3  | R | Commemoration of Saint Paul, apostle
+07-01 | 2L | R | The Most Precious Blood of Our Lord Jesus Christ
+07-02 | 2  | W | Visitation of the Blessed Virgin Mary
+07-03 | 3  | R | Leo II, pope and confessor
+07-05 | 3  | W | Anthony Mary Zaccaria, confessor
+07-08 | 3  | W | Elizabeth of Portugal, widow
+07-10 | 3  | R | The Seven Brothers, martyrs, and Rufina and Secunda, virgins and martyrs
+07-11 | 3  | W | Pius I, pope and martyr
+07-12 | 3  | W | John Gualbert, abbot
+07-13 | 3  | W | Anacletus, pope and martyr
+07-14 | 3  | W | Bonaventure, bishop, confessor and doctor
+07-15 | 3  | W | Henry, emperor and confessor
+07-16 | 3  | W | Our Lady of Mount Carmel
+07-17 | 3  | W | Alexius, confessor
+07-18 | 3  | W | Camillus de Lellis, confessor
+07-19 | 3  | W | Vincent de Paul, confessor
+07-20 | 3  | W | Jerome Emiliani, confessor
+07-21 | 3  | W | Lawrence of Brindisi, confessor and doctor
+07-22 | 3  | W | Mary Magdalene, penitent
+07-23 | 3  | W | Apollinaris, bishop and martyr
+07-25 | 2  | R | James, apostle
+07-26 | 2  | W | Anne, mother of the Blessed Virgin Mary
+07-27 | 3  | R | Pantaleon, martyr
+07-28 | 3  | R | Nazarius, Celsus, Victor and Innocent, martyrs
+07-29 | 3  | W | Martha, virgin
+07-30 | 3  | R | Abdon and Sennen, martyrs
+07-31 | 3  | W | Ignatius of Loyola, confessor
+08-01 | 3  | R | Saint Peter in Chains
+08-02 | 3  | W | Alphonsus Liguori, bishop, confessor and doctor
+08-04 | 3  | W | Dominic, confessor
+08-05 | 3  | W | Our Lady of the Snows
+08-06 | 2L | W | The Transfiguration of Our Lord Jesus Christ
+08-07 | 3  | W | Cajetan, confessor
+08-08 | 3  | R | Cyriacus, Largus and Smaragdus, martyrs
+08-09 | 3  | W | John Vianney, confessor
+08-10 | 2  | R | Lawrence, martyr
+08-11 | 3  | R | Tiburtius and Susanna, martyrs
+08-12 | 3  | W | Clare, virgin
+08-13 | 3  | R | Hippolytus and Cassian, martyrs
+08-14 | 2  | V | Vigil of the Assumption
+08-15 | 1  | W | Assumption of the Blessed Virgin Mary
+08-16 | 3  | W | Joachim, father of the Blessed Virgin Mary
+08-17 | 3  | W | Hyacinth, confessor
+08-18 | 3  | R | Agapitus, martyr
+08-19 | 3  | W | John Eudes, confessor
+08-20 | 3  | W | Bernard, abbot and doctor
+08-21 | 3  | W | Jane Frances de Chantal, widow
+08-22 | 2  | W | Immaculate Heart of the Blessed Virgin Mary
+08-23 | 3  | W | Philip Benizi, confessor
+08-24 | 2  | R | Bartholomew, apostle
+08-25 | 3  | W | Louis, king and confessor
+08-26 | 3  | R | Zephyrinus, pope and martyr
+08-27 | 3  | W | Joseph Calasanz, confessor
+08-28 | 3  | W | Augustine, bishop, confessor and doctor
+08-29 | 3  | R | Beheading of Saint John the Baptist
+08-30 | 3  | W | Rose of Lima, virgin
+08-31 | 3  | W | Raymond Nonnatus, confessor
+09-01 | 3  | W | Giles, abbot
+09-02 | 3  | W | Stephen of Hungary, king and confessor
+09-03 | 3  | W | Pius X, pope and confessor
+09-05 | 3  | W | Lawrence Justinian, bishop and confessor
+09-08 | 2  | W | Nativity of the Blessed Virgin Mary
+09-10 | 3  | W | Nicholas of Tolentino, confessor
+09-12 | 3  | W | The Most Holy Name of Mary
+09-14 | 2L | R | Exaltation of the Holy Cross
+09-15 | 3  | W | The Seven Sorrows of the Blessed Virgin Mary
+09-16 | 3  | R | Cornelius, pope, and Cyprian, bishop, martyrs
+09-17 | 3  | W | The Stigmata of Saint Francis
+09-18 | 3  | W | Joseph of Cupertino, confessor
+09-19 | 3  | R | Januarius, bishop, and Companions, martyrs
+09-20 | 3  | R | Eustace and Companions, martyrs
+09-21 | 2  | R | Matthew, apostle and evangelist
+09-22 | 3  | R | Thomas of Villanova, bishop and confessor
+09-23 | 3  | R | Linus, pope and martyr
+09-24 | 3  | W | Our Lady of Ransom
+09-27 | 3  | R | Cosmas and Damian, martyrs
+09-28 | 3  | R | Wenceslaus, martyr
+09-29 | 1  | W | Dedication of Saint Michael the Archangel
+09-30 | 3  | W | Jerome, priest, confessor and doctor
+10-01 | 3  | W | Remigius, bishop and confessor
+10-02 | 3  | W | The Holy Guardian Angels
+10-03 | 3  | W | Thérèse of the Child Jesus, virgin
+10-04 | 3  | W | Francis of Assisi, confessor
+10-05 | 3  | R | Placid and Companions, martyrs
+10-06 | 3  | W | Bruno, confessor
+10-07 | 2  | W | The Most Holy Rosary of the Blessed Virgin Mary
+10-08 | 3  | W | Bridget, widow
+10-09 | 3  | R | Denis and Companions, martyrs
+10-10 | 3  | W | Francis Borgia, confessor
+10-11 | 2  | W | Maternity of the Blessed Virgin Mary
+10-13 | 3  | W | Edward, king and confessor
+10-14 | 3  | R | Callistus I, pope and martyr
+10-15 | 3  | W | Teresa, virgin
+10-16 | 3  | W | Hedwig, widow
+10-17 | 3  | W | Margaret Mary Alacoque, virgin
+10-18 | 2  | R | Luke, evangelist
+10-19 | 3  | W | Peter of Alcantara, confessor
+10-20 | 3  | W | John Cantius, confessor
+10-24 | 3  | W | Raphael the Archangel
+10-25 | 3  | R | Chrysanthus and Daria, martyrs
+10-26 | 3  | R | Evaristus, pope and martyr
+10-28 | 2  | R | Simon and Jude, apostles
+11-01 | 1  | W | All Saints
+11-02 | 1  | V | Commemoration of All the Faithful Departed (All Souls)
+11-04 | 3  | W | Charles Borromeo, bishop and confessor
+11-08 | 3  | R | The Four Crowned Martyrs
+11-09 | 2L | W | Dedication of the Archbasilica of the Most Holy Saviour
+11-10 | 3  | W | Andrew Avellino, confessor
+11-11 | 3  | W | Martin of Tours, bishop and confessor
+11-12 | 3  | R | Martin I, pope and martyr
+11-13 | 3  | W | Didacus, confessor
+11-14 | 3  | R | Josaphat, bishop and martyr
+11-15 | 3  | W | Albert the Great, bishop, confessor and doctor
+11-16 | 3  | W | Gertrude, virgin
+11-17 | 3  | W | Gregory the Wonderworker, bishop and confessor
+11-18 | 3  | W | Dedication of the Basilicas of Saints Peter and Paul
+11-19 | 3  | W | Elizabeth of Hungary, widow
+11-20 | 3  | W | Felix of Valois, confessor
+11-21 | 3  | W | Presentation of the Blessed Virgin Mary
+11-22 | 3  | R | Cecilia, virgin and martyr
+11-23 | 3  | R | Clement I, pope and martyr
+11-24 | 3  | W | John of the Cross, confessor and doctor
+11-25 | 3  | R | Catherine of Alexandria, virgin and martyr
+11-30 | 2  | R | Andrew, apostle
+12-03 | 3  | W | Francis Xavier, confessor
+12-04 | 3  | W | Peter Chrysologus, bishop, confessor and doctor
+12-06 | 3  | W | Nicholas, bishop and confessor
+12-07 | 3  | W | Ambrose, bishop, confessor and doctor
+12-08 | 1  | W | Immaculate Conception of the Blessed Virgin Mary
+12-11 | 3  | W | Damasus I, pope and confessor
+12-13 | 3  | R | Lucy, virgin and martyr
+12-21 | 2  | R | Thomas, apostle
+12-24 | 1  | V | Vigil of the Nativity of Our Lord
+12-25 | 1L | W | Nativity of Our Lord Jesus Christ (Christmas)
+12-26 | 2  | R | Stephen, the first martyr
+12-27 | 2  | W | John, apostle and evangelist
+12-28 | 2  | R | The Holy Innocents, martyrs
+12-29 | 3  | R | Thomas Becket, bishop and martyr
+12-31 | 3  | W | Sylvester I, pope and confessor

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Calendar
-Comment=A month calendar with notes for each day
+Comment=A month calendar with events, reminders and liturgical calendars
 Exec=dkde-calendar
 Icon=x-office-calendar
 Terminal=false

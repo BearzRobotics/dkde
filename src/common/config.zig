@@ -345,6 +345,18 @@ pub const Config = struct {
         try self.saveUserFile(user);
     }
 
+    pub const Pair = struct { key: [:0]const u8, value: [:0]const u8 };
+
+    /// Replaces a whole group in the user's file with `pairs` in one write
+    /// (one file change, so a watcher reloads once). Not for staged configs.
+    pub fn setGroup(self: *Config, group: [:0]const u8, pairs: []const Pair) !void {
+        const user = try self.loadUserFile();
+        defer user.file.free();
+        _ = user.file.removeGroup(group, null);
+        for (pairs) |pair| user.file.setString(group, pair.key, pair.value);
+        try self.saveUserFile(user);
+    }
+
     /// Removes a whole group from the user's file, then reloads.
     pub fn removeGroup(self: *Config, group: [:0]const u8) !void {
         if (self.staged) return self.queue(.{ .remove_group = try self.allocator.dupeSentinel(u8, group, 0) });
