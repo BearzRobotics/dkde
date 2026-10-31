@@ -24,6 +24,10 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 | `dkde-snip` | Screenshots |
 | `dkde-setup` | First-run check and fixes |
 
+## Theming
+
+One stylesheet and `dkde.conf` (dark mode, accent colour, font) style every program; you can override anything in `~/.config/dkde/style.css`. See [docs/theming.md](docs/theming.md).
+
 ## Screenshots
 
 ![The desktop: Files and the terminal, with the taskbar, desktop switcher and system area](docs/screenshots/desktop.png)

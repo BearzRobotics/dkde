@@ -92,13 +92,22 @@ pub const Appearance = struct {
 
         const dark = self.config.getBool("appearance", "dark", false);
         const css = std.fmt.allocPrintSentinel(self.allocator,
-            \\@define-color dkde_accent {s};
-            \\@define-color dkde_bg {s};
-            \\@define-color dkde_fg {s};
+            \\@define-color dkde_accent {[accent]s};
+            \\@define-color dkde_bg {[bg]s};
+            \\@define-color dkde_fg {[fg]s};
+            \\/* GTK's own widgets (switches, suggested-action buttons, focus rings,
+            \\   selections) take their accent from these names. */
+            \\@define-color accent_bg_color {[accent]s};
+            \\@define-color accent_color {[accent]s};
+            \\@define-color accent_fg_color #ffffff;
+            \\@define-color theme_selected_bg_color {[accent]s};
+            \\@define-color theme_selected_fg_color #ffffff;
+            \\@define-color selected_bg_color {[accent]s};
+            \\@define-color selected_fg_color #ffffff;
         , .{
-            accent,
-            if (dark) "#242424" else "#f6f5f4",
-            if (dark) "#f0f0f0" else "#1e1e1e",
+            .accent = accent,
+            .bg = if (dark) "#242424" else "#f6f5f4",
+            .fg = if (dark) "#f0f0f0" else "#1e1e1e",
         }, 0) catch return;
         defer self.allocator.free(css);
         self.provider.loadFromString(css);
@@ -117,3 +126,19 @@ pub const Appearance = struct {
         }
     }
 };
+
+/// A zero-size widget whose CSS `color` is the accent colour. Code that draws
+/// with cairo cannot read CSS variables, but it can read this widget's colour
+/// (`accentOf`), so drawn parts follow the accent setting like everything else.
+pub fn accentProbe() *gtk.Widget {
+    const probe = gtk.Box.new(.horizontal, 0);
+    probe.as(gtk.Widget).addCssClass("dkde-accent-probe");
+    probe.as(gtk.Widget).setCanTarget(0);
+    return probe.as(gtk.Widget);
+}
+
+pub fn accentOf(probe: *gtk.Widget) gdk.RGBA {
+    var color: gdk.RGBA = undefined;
+    probe.getColor(&color);
+    return color;
+}

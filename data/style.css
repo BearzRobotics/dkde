@@ -5,6 +5,12 @@
 @define-color dkde_accent #3584e4;
 @define-color dkde_bg #f6f5f4;
 @define-color dkde_fg #1e1e1e;
+/* Fixed, not themed: meanings that must look the same in light and dark. */
+@define-color dkde_warning #f5c211;
+@define-color dkde_caution #ff7800;
+@define-color dkde_danger #e01b24;
+@define-color dkde_osd #1e1e1e;
+@define-color dkde_close #c42b1c;
 
 window.dkde {
   background-color: @dkde_bg;
@@ -201,7 +207,7 @@ window.dkde headerbar windowcontrols button:active {
 }
 
 window.dkde headerbar windowcontrols button.close:hover {
-  background-color: #c42b1c;
+  background-color: @dkde_close;
   color: white;
 }
 
@@ -568,9 +574,9 @@ button.dkde-desktop.urgent {
 columnview.dkde-process-table > listview > row > cell {
   padding: 5px 10px;
 }
-columnview.dkde-process-table label.dkde-heat-1 { background-color: alpha(#f5c211, 0.18); }
-columnview.dkde-process-table label.dkde-heat-2 { background-color: alpha(#ff7800, 0.30); }
-columnview.dkde-process-table label.dkde-heat-3 { background-color: alpha(#e01b24, 0.38); }
+columnview.dkde-process-table label.dkde-heat-1 { background-color: alpha(@dkde_warning, 0.18); }
+columnview.dkde-process-table label.dkde-heat-2 { background-color: alpha(@dkde_caution, 0.30); }
+columnview.dkde-process-table label.dkde-heat-3 { background-color: alpha(@dkde_danger, 0.38); }
 
 /* Flat desktop switcher and quick-settings button to match the taskbar. */
 window.dkde-panel button.dkde-desktop {
@@ -614,7 +620,7 @@ button.dkde-charmap-cell:hover {
   background: alpha(@dkde_accent, 0.25);
 }
 progressbar.dkde-bar-full progress {
-  background-color: #e01b24;
+  background-color: @dkde_danger;
 }
 
 /* On-screen display for volume and brightness keys. */
@@ -622,7 +628,7 @@ window.dkde-osd-window {
   background: transparent;
 }
 .dkde-osd {
-  background-color: alpha(#1e1e1e, 0.92);
+  background-color: alpha(@dkde_osd, 0.92);
   color: white;
   border-radius: 28px;
   padding: 12px 20px;
@@ -669,4 +675,75 @@ label.dkde-keycap {
   border-radius: 5px;
   padding: 3px 10px;
   font-weight: 600;
+}
+
+/* Cairo-drawn parts read their accent colour from this (common.style.accentProbe). */
+.dkde-accent-probe {
+  color: @dkde_accent;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+/* ---- The accent on GTK's own widgets ----
+ * GTK's built-in theme bakes its blue into these rules instead of reading a
+ * variable, so they are restated here with the accent. (Selection colours of
+ * text and lists are left to the theme.) */
+button.suggested-action {
+  background-image: none;
+  background-color: @dkde_accent;
+  border-color: shade(@dkde_accent, 0.7);
+  color: white;
+}
+button.suggested-action:hover {
+  background-color: shade(@dkde_accent, 1.1);
+}
+button.suggested-action:active,
+button.suggested-action:checked {
+  background-color: shade(@dkde_accent, 0.9);
+}
+button.suggested-action:disabled {
+  opacity: 0.5;
+}
+
+switch:checked {
+  background-color: @dkde_accent;
+  border-color: shade(@dkde_accent, 0.7);
+  color: white;
+}
+
+check:checked,
+radio:checked,
+check:indeterminate,
+radio:indeterminate {
+  background-image: none;
+  background-color: @dkde_accent;
+  border-color: shade(@dkde_accent, 0.7);
+  color: white;
+}
+
+progressbar > trough > progress,
+scale > trough > highlight,
+levelbar > trough > block.high,
+levelbar > trough > block:not(.empty) {
+  background-image: none;
+  background-color: @dkde_accent;
+  border-color: shade(@dkde_accent, 0.8);
+}
+
+entry:focus-within,
+spinbutton:focus-within,
+searchentry:focus-within {
+  border-color: @dkde_accent;
+  outline-color: alpha(@dkde_accent, 0.5);
+}
+
+menubar > item:selected {
+  box-shadow: inset 0 -3px @dkde_accent;
+  color: @dkde_accent;
+}
+
+notebook > header.top > tabs > tab:checked {
+  box-shadow: inset 0 -4px @dkde_accent;
 }

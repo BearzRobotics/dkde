@@ -12,6 +12,7 @@ const gtk = @import("gtk4");
 const pango = @import("pango1");
 const pangocairo = @import("pangocairo1");
 
+const common = @import("common");
 const buffer_mod = @import("buffer.zig");
 const Buffer = buffer_mod.Buffer;
 
@@ -23,6 +24,8 @@ pub const View = struct {
     /// The widget to put in a window: the drawing area and its scroll bar.
     box: *gtk.Box,
     area: *gtk.DrawingArea,
+    /// Carries the accent colour for the drawn selection and caret.
+    probe: *gtk.Widget,
     adjustment: *gtk.Adjustment,
     layout: *pango.Layout,
     font: *pango.FontDescription,
@@ -67,12 +70,15 @@ pub const View = struct {
         area.as(gtk.Widget).addCssClass("dkde-hex-view");
         box.append(area.as(gtk.Widget));
         box.append(scrollbar.as(gtk.Widget));
+        const probe = common.style.accentProbe();
+        box.append(probe);
 
         self.* = .{
             .allocator = allocator,
             .buffer = buffer,
             .box = box,
             .area = area,
+            .probe = probe,
             .adjustment = adjustment,
             .layout = area.as(gtk.Widget).createPangoLayout(null),
             .font = pango.FontDescription.fromString("Monospace 11"),
@@ -228,6 +234,7 @@ pub const View = struct {
         const bytes = self.buffer.slice();
         const bpr = self.bytes_per_row;
         const first = self.firstRow();
+        const accent = common.style.accentOf(self.probe);
         const sel = self.selectionRange();
         const rows_on_screen = @as(usize, @intFromFloat(h / self.cell_h)) + 2;
         _ = w;
@@ -247,7 +254,7 @@ pub const View = struct {
                 const selected = if (sel) |s| off >= s[0] and off < s[1] else false;
                 const is_cursor = off == self.cursor;
                 if (selected) {
-                    cr.setSourceRgba(0.21, 0.52, 0.89, 0.40);
+                    cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, 0.40);
                     cr.rectangle(pad + self.hexColumn(col) * self.cell_w, y, 2 * self.cell_w, self.cell_h);
                     cr.fill();
                     cr.rectangle(pad + (self.textStart() + @as(f64, @floatFromInt(col))) * self.cell_w, y, self.cell_w, self.cell_h);
@@ -256,13 +263,13 @@ pub const View = struct {
                 if (is_cursor) {
                     const hex_active = self.pane == .hex;
                     // The active pane gets the strong caret, the other an outline.
-                    cr.setSourceRgba(0.21, 0.52, 0.89, if (hex_active) 0.85 else 0.35);
+                    cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, if (hex_active) 0.85 else 0.35);
                     const hx = pad + (self.hexColumn(col) + @as(f64, @floatFromInt(self.nibble))) * self.cell_w;
                     if (hex_active) {
                         if (self.insert_mode) cr.rectangle(hx, y, 2, self.cell_h) else cr.rectangle(hx, y, self.cell_w, self.cell_h);
                     } else cr.rectangle(pad + self.hexColumn(col) * self.cell_w, y, 2 * self.cell_w, self.cell_h);
                     cr.fill();
-                    cr.setSourceRgba(0.21, 0.52, 0.89, if (!hex_active) 0.85 else 0.35);
+                    cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, if (!hex_active) 0.85 else 0.35);
                     const tx = pad + (self.textStart() + @as(f64, @floatFromInt(col))) * self.cell_w;
                     if (!hex_active and self.insert_mode) cr.rectangle(tx, y, 2, self.cell_h) else cr.rectangle(tx, y, self.cell_w, self.cell_h);
                     cr.fill();

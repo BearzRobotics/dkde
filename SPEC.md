@@ -768,6 +768,12 @@ The taskbar-button and start-menu-item menus also open from the keyboard
   button turns red on hover. All styling is in `style.css`.
 - The accent colour and light/dark choice are applied through CSS variables
   defined in that one stylesheet. No component hard-codes a colour.
+- The generated appearance variables also redefine GTK's `accent_color` and
+  selection names, and `style.css` restates the rules GTK's theme hard-codes in
+  blue (suggested-action buttons, switches, check and radio buttons, progress,
+  scales, focus rings, menu bar and tab highlights) with `@dkde_accent`. Code
+  that draws with cairo gets the accent from `common.style.accentProbe`/
+  `accentOf`. The full guide is `docs/theming.md`.
 - Default icon theme: **OPEN**, with `hicolor` as the fallback.
 
 ### 6.3 Keyboard

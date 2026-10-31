@@ -62,6 +62,8 @@ const Card = struct {
     value: *gtk.Label,
     detail: *gtk.Label,
     graph: *gtk.DrawingArea,
+    /// Gives the graph the accent colour; see `common.style.accentProbe`.
+    probe: *gtk.Widget,
     /// Most recent samples, 0 to 1, oldest first; 60 of them.
     history: [history_len]f64 = @splat(0),
     filled: usize = 0,
@@ -90,7 +92,9 @@ const Card = struct {
         box.append(value.as(gtk.Widget));
         box.append(detail.as(gtk.Widget));
         box.append(graph.as(gtk.Widget));
-        self.* = .{ .allocator = allocator, .box = box, .value = value, .detail = detail, .graph = graph };
+        const probe = common.style.accentProbe();
+        box.append(probe);
+        self.* = .{ .allocator = allocator, .box = box, .value = value, .detail = detail, .graph = graph, .probe = probe };
         graph.setDrawFunc(onDraw, self, null);
         _ = gtk.Widget.signals.destroy.connect(box, *Card, &onDestroy, self, .{});
         return self;
@@ -113,7 +117,8 @@ const Card = struct {
         const w: f64 = @floatFromInt(width);
         const h: f64 = @floatFromInt(height);
         const step = w / @as(f64, @floatFromInt(history_len - 1));
-        cr.setSourceRgba(0.21, 0.52, 0.89, 0.12);
+        const accent = common.style.accentOf(self.probe);
+        cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, 0.12);
         cr.rectangle(0, 0, w, h);
         cr.fill();
 
@@ -121,7 +126,7 @@ const Card = struct {
         for (self.history, 0..) |v, i| cr.lineTo(@as(f64, @floatFromInt(i)) * step, h - v * (h - 2) - 1);
         cr.lineTo(w, h);
         cr.closePath();
-        cr.setSourceRgba(0.21, 0.52, 0.89, 0.28);
+        cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, 0.28);
         cr.fillPreserve();
 
         cr.newPath();
@@ -130,7 +135,7 @@ const Card = struct {
             const y = h - v * (h - 2) - 1;
             if (i == 0) cr.moveTo(x, y) else cr.lineTo(x, y);
         }
-        cr.setSourceRgba(0.21, 0.52, 0.89, 1);
+        cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, 1);
         cr.setLineWidth(1.5);
         cr.stroke();
     }
