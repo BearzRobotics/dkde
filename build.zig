@@ -74,6 +74,7 @@ pub fn build(b: *std.Build) void {
             }
             if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "hex") or std.mem.eql(u8, name, "color") or std.mem.eql(u8, name, "parted") or std.mem.eql(u8, name, "pdf")) mod.addImport("cairo1", gobject.module("cairo1"));
             if (std.mem.eql(u8, name, "pdf")) mod.linkSystemLibrary("poppler-glib", .{});
+            if (std.mem.eql(u8, name, "parted")) mod.addImport("pangocairo1", gobject.module("pangocairo1"));
             if (std.mem.eql(u8, name, "hex")) {
                 mod.addImport("pangocairo1", gobject.module("pangocairo1"));
                 // YAML, for Kaitai Struct format files (third_party/zig-yaml).

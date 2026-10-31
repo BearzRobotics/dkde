@@ -9,6 +9,9 @@ const gtk = @import("gtk4");
 
 const style = @import("style.zig");
 
+/// The program's arguments after its name, for a window that takes a file.
+pub var args: []const [*:0]const u8 = &.{};
+
 pub fn run(comptime app_id: [:0]const u8, comptime Window: type, init: std.process.Init.Minimal) !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     defer _ = debug_allocator.deinit();
@@ -29,6 +32,7 @@ pub fn run(comptime app_id: [:0]const u8, comptime Window: type, init: std.proce
         }
     };
 
+    if (init.args.vector.len > 1) args = @ptrCast(init.args.vector[1..]);
     var state: State = .{ .allocator = debug_allocator.allocator() };
     defer if (state.appearance) |a| a.destroy();
 
