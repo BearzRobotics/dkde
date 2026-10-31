@@ -148,25 +148,121 @@ pub const Keybind = struct {
     /// A labwc action with a `to` attribute, such as GoToDesktop.
     action: []const u8 = "",
     to: []const u8 = "",
+    /// What Settings > Shortcuts calls it.
+    name: []const u8 = "",
 };
 
 pub const dkde_keybinds = [_]Keybind{
-    .{ .key = "Super_L", .command = "dkde-panel msg toggle-menu" },
-    .{ .key = "C-S-Escape", .command = "dkde-tasks" },
-    .{ .key = "Print", .command = "dkde-snip --full" },
-    .{ .key = "S-Print", .command = "dkde-snip --region" },
+    .{ .name = "Start menu", .key = "Super_L", .command = "dkde-panel msg toggle-menu" },
+    .{ .name = "Open a terminal", .key = "C-A-t", .command = "dkde-term" },
+    .{ .name = "Lock the screen", .key = "C-A-l", .command = "dkde-panel msg lock" },
+    .{ .name = "Task Manager", .key = "C-S-Escape", .command = "dkde-tasks" },
+    .{ .name = "Screenshot (full screen)", .key = "Print", .command = "dkde-snip --full" },
+    .{ .name = "Screenshot (region)", .key = "S-Print", .command = "dkde-snip --region" },
     // Volume and brightness keys; the panel shows an on-screen display.
-    .{ .key = "XF86AudioRaiseVolume", .command = "dkde-panel msg volume-up" },
-    .{ .key = "XF86AudioLowerVolume", .command = "dkde-panel msg volume-down" },
-    .{ .key = "XF86AudioMute", .command = "dkde-panel msg volume-mute" },
-    .{ .key = "XF86MonBrightnessUp", .command = "dkde-panel msg brightness-up" },
-    .{ .key = "XF86MonBrightnessDown", .command = "dkde-panel msg brightness-down" },
+    .{ .name = "Volume up", .key = "XF86AudioRaiseVolume", .command = "dkde-panel msg volume-up" },
+    .{ .name = "Volume down", .key = "XF86AudioLowerVolume", .command = "dkde-panel msg volume-down" },
+    .{ .name = "Mute", .key = "XF86AudioMute", .command = "dkde-panel msg volume-mute" },
+    .{ .name = "Brightness up", .key = "XF86MonBrightnessUp", .command = "dkde-panel msg brightness-up" },
+    .{ .name = "Brightness down", .key = "XF86MonBrightnessDown", .command = "dkde-panel msg brightness-down" },
     // Virtual desktops: switch, or carry the active window along.
-    .{ .key = "C-A-Left", .action = "GoToDesktop", .to = "left" },
-    .{ .key = "C-A-Right", .action = "GoToDesktop", .to = "right" },
-    .{ .key = "C-A-S-Left", .action = "SendToDesktop", .to = "left" },
-    .{ .key = "C-A-S-Right", .action = "SendToDesktop", .to = "right" },
+    .{ .name = "Previous desktop", .key = "C-A-Left", .action = "GoToDesktop", .to = "left" },
+    .{ .name = "Next desktop", .key = "C-A-Right", .action = "GoToDesktop", .to = "right" },
+    .{ .name = "Move window to previous desktop", .key = "C-A-S-Left", .action = "SendToDesktop", .to = "left" },
+    .{ .name = "Move window to next desktop", .key = "C-A-S-Right", .action = "SendToDesktop", .to = "right" },
 };
+
+/// What identifies an entry inside a `<keybind>` block, whatever key it is on.
+pub fn signature(buf: []u8, k: Keybind) []const u8 {
+    if (k.action.len > 0) return std.fmt.bufPrint(buf, "name=\"{s}\" to=\"{s}\"", .{ k.action, k.to }) catch "";
+    return std.fmt.bufPrint(buf, "command=\"{s}\"", .{k.command}) catch "";
+}
+
+const Block = struct { start: usize, end: usize, key_start: usize, key_end: usize };
+
+/// The `<keybind>` block that runs `k`, wherever it is bound.
+fn findBlock(xml: []const u8, k: Keybind) ?Block {
+    var sig_buf: [200]u8 = undefined;
+    const sig = signature(&sig_buf, k);
+    if (sig.len == 0) return null;
+    const open = "<keybind key=\"";
+    var at: usize = 0;
+    while (std.mem.indexOfPos(u8, xml, at, open)) |start| {
+        const key_start = start + open.len;
+        const key_end = std.mem.indexOfScalarPos(u8, xml, key_start, '"') orelse return null;
+        const close = std.mem.indexOfPos(u8, xml, key_end, "</keybind>") orelse return null;
+        if (std.mem.indexOf(u8, xml[key_end..close], sig) != null) {
+            return .{ .start = start, .end = close + "</keybind>".len, .key_start = key_start, .key_end = key_end };
+        }
+        at = close;
+    }
+    return null;
+}
+
+/// The key `k` is bound to in `xml`, or null when it is not bound at all.
+pub fn currentKey(xml: []const u8, k: Keybind) ?[]const u8 {
+    const b = findBlock(xml, k) orelse return null;
+    return xml[b.key_start..b.key_end];
+}
+
+/// Is `key` bound to something other than `except`?
+pub fn keyTakenByOther(xml: []const u8, key: []const u8, except: Keybind) bool {
+    var needle_buf: [96]u8 = undefined;
+    const needle = std.fmt.bufPrint(&needle_buf, "<keybind key=\"{s}\"", .{key}) catch return false;
+    var at: usize = 0;
+    while (std.mem.indexOfPos(u8, xml, at, needle)) |start| {
+        const close = std.mem.indexOfPos(u8, xml, start, "</keybind>") orelse return true;
+        var sig_buf: [200]u8 = undefined;
+        const sig = signature(&sig_buf, except);
+        if (sig.len == 0 or std.mem.indexOf(u8, xml[start..close], sig) == null) return true;
+        at = close;
+    }
+    return false;
+}
+
+/// Rebinds `k` to `new_key`: the existing block's key is changed, or the
+/// entry is added when it was not bound.
+pub fn setKey(allocator: std.mem.Allocator, xml_in: []const u8, k: Keybind, new_key: []const u8) ![]u8 {
+    if (findBlock(xml_in, k)) |b| {
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(allocator);
+        try out.appendSlice(allocator, xml_in[0..b.key_start]);
+        try out.appendSlice(allocator, new_key);
+        try out.appendSlice(allocator, xml_in[b.key_end..]);
+        return out.toOwnedSlice(allocator);
+    }
+    var moved = k;
+    moved.key = new_key;
+    const merged = try mergeKeybinds(allocator, xml_in, &.{moved});
+    return merged orelse allocator.dupe(u8, xml_in);
+}
+
+/// "C-A-t" as "Ctrl+Alt+T", for showing to people.
+pub fn describeKey(buf: []u8, key: []const u8) []const u8 {
+    var w: std.Io.Writer = .fixed(buf);
+    var parts = std.mem.splitScalar(u8, key, '-');
+    var pieces: [8][]const u8 = undefined;
+    var n: usize = 0;
+    while (parts.next()) |part| {
+        if (n < pieces.len) {
+            pieces[n] = part;
+            n += 1;
+        }
+    }
+    // A key that is itself "-" would split into empty pieces; show it as it is.
+    if (n == 0 or pieces[n - 1].len == 0) return key;
+    for (pieces[0 .. n - 1]) |m| {
+        const label: []const u8 = if (std.mem.eql(u8, m, "C")) "Ctrl" else if (std.mem.eql(u8, m, "A")) "Alt" else if (std.mem.eql(u8, m, "S")) "Shift" else if (std.mem.eql(u8, m, "W")) "Super" else m;
+        w.print("{s}+", .{label}) catch return key;
+    }
+    const last = pieces[n - 1];
+    if (std.mem.eql(u8, last, "Super_L") or std.mem.eql(u8, last, "Super_R")) {
+        w.writeAll("Super") catch return key;
+    } else if (last.len == 1) {
+        w.writeByte(std.ascii.toUpper(last[0])) catch return key;
+    } else w.writeAll(last) catch return key;
+    return w.buffered();
+}
 
 fn hasKey(xml: []const u8, key: []const u8) bool {
     var needle_buf: [64]u8 = undefined;
@@ -180,7 +276,8 @@ fn hasKey(xml: []const u8, key: []const u8) bool {
 pub fn mergeKeybinds(allocator: std.mem.Allocator, xml_in: []const u8, wanted: []const Keybind) !?[]u8 {
     var missing: std.ArrayList(Keybind) = .empty;
     defer missing.deinit(allocator);
-    for (wanted) |k| if (!hasKey(xml_in, k.key)) try missing.append(allocator, k);
+    // Skip entries already bound, on their usual key or on one the user chose.
+    for (wanted) |k| if (!hasKey(xml_in, k.key) and findBlock(xml_in, k) == null) try missing.append(allocator, k);
     if (missing.items.len == 0) return null;
 
     var xml: std.ArrayList(u8) = .empty;
@@ -349,4 +446,57 @@ test "libinput: a section without the default device gets one" {
     try std.testing.expect(std.mem.indexOf(u8, out, "<device category=\"touchpad\">") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "<device category=\"default\">") != null);
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, out, "</device>"));
+}
+
+test "finding and changing a binding" {
+    const a = std.testing.allocator;
+    const xml =
+        \\<labwc_config>
+        \\  <keyboard>
+        \\    <keybind key="C-A-t">
+        \\      <action name="Execute" command="dkde-term"/>
+        \\    </keybind>
+        \\    <keybind key="C-A-Left">
+        \\      <action name="GoToDesktop" to="left"/>
+        \\    </keybind>
+        \\  </keyboard>
+        \\</labwc_config>
+        \\
+    ;
+    const term = dkde_keybinds[1];
+    try std.testing.expectEqualStrings("C-A-t", currentKey(xml, term).?);
+    const left = dkde_keybinds[11];
+    try std.testing.expectEqualStrings("C-A-Left", currentKey(xml, left).?);
+    try std.testing.expect(currentKey(xml, dkde_keybinds[2]) == null);
+
+    const changed = try setKey(a, xml, term, "W-Return");
+    defer a.free(changed);
+    try std.testing.expectEqualStrings("W-Return", currentKey(changed, term).?);
+    try std.testing.expect(std.mem.indexOf(u8, changed, "C-A-t") == null);
+    try std.testing.expectEqualStrings("C-A-Left", currentKey(changed, left).?); // others untouched
+
+    // Not bound yet: the entry is added on the new key.
+    const added = try setKey(a, xml, dkde_keybinds[2], "C-A-k");
+    defer a.free(added);
+    try std.testing.expectEqualStrings("C-A-k", currentKey(added, dkde_keybinds[2]).?);
+}
+
+test "conflicts and merging respect the user's keys" {
+    const a = std.testing.allocator;
+    const xml = "<labwc_config><keyboard><keybind key=\"W-t\"><action name=\"Execute\" command=\"dkde-term\"/></keybind></keyboard></labwc_config>";
+    try std.testing.expect(keyTakenByOther(xml, "W-t", dkde_keybinds[2]));
+    try std.testing.expect(!keyTakenByOther(xml, "W-t", dkde_keybinds[1])); // its own binding
+    try std.testing.expect(!keyTakenByOther(xml, "W-x", dkde_keybinds[1]));
+    // dkde-setup must not add the terminal again on C-A-t.
+    const merged = (try mergeKeybinds(a, xml, &.{dkde_keybinds[1]}));
+    try std.testing.expect(merged == null);
+}
+
+test "keys read well" {
+    var buf: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("Ctrl+Alt+T", describeKey(&buf, "C-A-t"));
+    try std.testing.expectEqualStrings("Super", describeKey(&buf, "Super_L"));
+    try std.testing.expectEqualStrings("Print", describeKey(&buf, "Print"));
+    try std.testing.expectEqualStrings("Ctrl+Shift+Escape", describeKey(&buf, "C-S-Escape"));
+    try std.testing.expectEqualStrings("Super+E", describeKey(&buf, "W-e"));
 }

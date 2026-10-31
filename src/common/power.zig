@@ -4,6 +4,8 @@
 
 const std = @import("std");
 const glib = @import("glib2");
+const appinfo = @import("appinfo.zig");
+const Config = @import("config.zig").Config;
 
 /// What can be asked of the system: whether a program is on PATH, and whether
 /// logind (or elogind) is running.
@@ -28,6 +30,35 @@ pub fn detectSleep(p: Probe) ?[]const u8 {
     if (p.has_program(p.context, "pm-suspend")) return "pm-suspend";
     if (p.has_program(p.context, "systemctl")) return "systemctl suspend";
     return null;
+}
+
+pub const Detect = *const fn (Probe) ?[]const u8;
+
+/// The command for `key` in `[menu]` of panel.conf, else the detected one.
+/// The caller frees it. Null when there is nothing to run.
+pub fn resolve(allocator: std.mem.Allocator, cfg: *const Config, key: [:0]const u8, detect: Detect) ?[]u8 {
+    const configured = cfg.getString(allocator, "menu", key, "") catch return null;
+    if (configured.len > 0) return configured;
+    allocator.free(configured);
+    const found = detect(system_probe) orelse return null;
+    return allocator.dupe(u8, found) catch null;
+}
+
+/// Starts the lock or sleep command; false when there is none or it cannot be parsed.
+pub fn run(allocator: std.mem.Allocator, cfg: *const Config, key: [:0]const u8, detect: Detect) bool {
+    const command = resolve(allocator, cfg, key, detect) orelse return false;
+    defer allocator.free(command);
+    const z = allocator.dupeSentinel(u8, command, 0) catch return false;
+    defer allocator.free(z);
+    var argc: c_int = 0;
+    var argv: [*:null]?[*:0]u8 = undefined;
+    if (glib.shellParseArgv(z, &argc, &argv, null) == 0) return false;
+    defer glib.strfreev(argv);
+    var list: std.ArrayList([]const u8) = .empty;
+    defer list.deinit(allocator);
+    for (argv[0..@intCast(argc)]) |arg| list.append(allocator, std.mem.span(arg.?)) catch return false;
+    appinfo.spawn(allocator, list.items);
+    return true;
 }
 
 fn realHasProgram(_: ?*anyopaque, name: []const u8) bool {

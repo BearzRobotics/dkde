@@ -42,3 +42,9 @@
 <keybind key="XF86MonBrightnessDown">
   <action name="Execute" command="dkde-panel msg brightness-down"/>
 </keybind>
+<keybind key="C-A-t">
+  <action name="Execute" command="dkde-term"/>
+</keybind>
+<keybind key="C-A-l">
+  <action name="Execute" command="dkde-panel msg lock"/>
+</keybind>

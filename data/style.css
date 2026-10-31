@@ -636,3 +636,27 @@ window.dkde-osd-window {
   background-color: white;
   min-height: 6px;
 }
+
+/* The desktop indicator in the system area. */
+window.dkde-panel button.dkde-desktops-button {
+  background-image: none;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 6px;
+  margin: 5px 2px;
+  padding: 0 8px;
+}
+window.dkde-panel button.dkde-desktops-button:hover {
+  background-color: alpha(@dkde_fg, 0.1);
+}
+popover.dkde-desktops-popover button.dkde-desktop {
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 6px;
+  background-image: none;
+}
+popover.dkde-desktops-popover button.dkde-desktop.active {
+  background-color: @dkde_accent;
+  color: white;
+}

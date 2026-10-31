@@ -694,29 +694,12 @@ pub const StartMenu = struct {
         self.runPowerCommand("sleep-command", common.power.detectSleep);
     }
 
-    /// The configured command, else the detected one; the caller frees it.
-    fn powerCommand(self: *StartMenu, key: [:0]const u8, detect: *const fn (common.power.Probe) ?[]const u8) ?[]u8 {
-        const configured = self.config.getString(self.allocator, "menu", key, "") catch return null;
-        if (configured.len > 0) return configured;
-        self.allocator.free(configured);
-        const found = detect(common.power.system_probe) orelse return null;
-        return self.allocator.dupe(u8, found) catch null;
+    fn powerCommand(self: *StartMenu, key: [:0]const u8, detect: common.power.Detect) ?[]u8 {
+        return common.power.resolve(self.allocator, self.config, key, detect);
     }
 
-    fn runPowerCommand(self: *StartMenu, key: [:0]const u8, detect: *const fn (common.power.Probe) ?[]const u8) void {
-        const command = self.powerCommand(key, detect) orelse return;
-        defer self.allocator.free(command);
-        const commandz = self.allocator.dupeSentinel(u8, command, 0) catch return;
-        defer self.allocator.free(commandz);
-        var argc: c_int = 0;
-        var argv: [*:null]?[*:0]u8 = undefined;
-        if (glib.shellParseArgv(commandz, &argc, &argv, null) == 0) return;
-        defer glib.strfreev(argv);
-        var list: std.ArrayList([]const u8) = .empty;
-        defer list.deinit(self.allocator);
-        for (argv[0..@intCast(argc)]) |arg| list.append(self.allocator, std.mem.span(arg.?)) catch return;
-        common.appinfo.spawn(self.allocator, list.items);
-        self.close();
+    fn runPowerCommand(self: *StartMenu, key: [:0]const u8, detect: common.power.Detect) void {
+        if (common.power.run(self.allocator, self.config, key, detect)) self.close();
     }
 
     fn onLogoff(_: *gtk.Button, self: *StartMenu) callconv(.c) void {

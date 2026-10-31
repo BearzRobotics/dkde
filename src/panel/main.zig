@@ -109,6 +109,15 @@ const App = struct {
             if (std.mem.eql(u8, command, "brightness-up")) return reply(q.nudgeBrightness(10));
             if (std.mem.eql(u8, command, "brightness-down")) return reply(q.nudgeBrightness(-10));
         }
+        // Bound to Ctrl+Alt+L, and used by anything that wants to lock.
+        if (std.mem.eql(u8, command, "lock")) {
+            if (!common.power.run(self.allocator, &self.config, "lock-command", common.power.detectLock)) return "error: no lock command";
+            return "ok";
+        }
+        if (std.mem.eql(u8, command, "sleep")) {
+            if (!common.power.run(self.allocator, &self.config, "sleep-command", common.power.detectSleep)) return "error: no sleep command";
+            return "ok";
+        }
         if (std.mem.eql(u8, command, "reload")) {
             self.config.reload() catch return "error: reload failed";
             onConfigChanged(self);

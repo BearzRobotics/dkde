@@ -94,6 +94,8 @@ pub const Bar = struct {
     quick: ?*Quick,
     desktops_box: *gtk.Box,
     desktops_scroll: ?*gtk.EventControllerScroll = null,
+    desktops_label: ?*gtk.Label = null,
+    desktops_popover: ?*gtk.Popover = null,
     position: Position,
     autohide: bool,
     thickness: c_int,
@@ -190,7 +192,6 @@ pub const Bar = struct {
         const desktops_box = gtk.Box.new(if (vertical) .vertical else .horizontal, 2);
         desktops_box.as(gtk.Widget).addCssClass("dkde-desktops");
         desktops_box.as(gtk.Widget).setVisible(0);
-        root.append(desktops_box.as(gtk.Widget));
 
         const taskbar = try Taskbar.create(allocator, vertical);
         errdefer taskbar.destroy();
@@ -201,6 +202,9 @@ pub const Bar = struct {
         bar_click.as(gtk.GestureSingle).setButton(3);
         _ = gtk.GestureClick.signals.pressed.connect(bar_click, *gtk.Box, &onBarRightClick, taskbar.box, .{});
         taskbar.box.as(gtk.Widget).addController(bar_click.as(gtk.EventController));
+
+        // The virtual desktop indicator sits with the other system icons.
+        root.append(desktops_box.as(gtk.Widget));
 
         // Status icons of apps (StatusNotifierItem), left of the clock.
         const tray_box = gtk.Box.new(if (vertical) .vertical else .horizontal, 4);
@@ -307,17 +311,18 @@ pub const Bar = struct {
         }
     }
 
-    const DesktopClick = struct { workspaces: *Workspaces, index: usize };
+    const DesktopClick = struct { workspaces: *Workspaces, index: usize, popover: *gtk.Popover };
 
     fn onDesktopDestroy(_: *gtk.Button, ctx: *DesktopClick) callconv(.c) void {
         std.heap.c_allocator.destroy(ctx);
     }
 
     fn onDesktopClicked(_: *gtk.Button, ctx: *DesktopClick) callconv(.c) void {
+        ctx.popover.popdown();
         ctx.workspaces.activate(ctx.index);
     }
 
-    /// Mouse wheel over the switcher moves to the next or previous desktop.
+    /// Mouse wheel over the icon moves to the next or previous desktop.
     fn onDesktopScroll(_: *gtk.EventControllerScroll, _: f64, dy: f64, ws: *Workspaces) callconv(.c) c_int {
         const count = ws.list.items.len;
         const now = ws.activeIndex() orelse return 0;
@@ -326,12 +331,56 @@ pub const Bar = struct {
         return 1;
     }
 
-    /// Rebuilds the desktop buttons from the compositor's list.
+    fn onDesktopsButton(_: *gtk.Button, popover: *gtk.Popover) callconv(.c) void {
+        popover.popup();
+    }
+
+    /// One icon for all desktops: it shows the current number, a click opens a
+    /// chooser, and the wheel switches.
     pub fn setWorkspaces(self: *Bar, ws: ?*Workspaces) void {
         const box = self.desktops_box;
-        while (box.as(gtk.Widget).getFirstChild()) |child| box.remove(child);
         const w = ws orelse return box.as(gtk.Widget).setVisible(0);
         box.as(gtk.Widget).setVisible(@intFromBool(w.list.items.len > 1));
+
+        if (self.desktops_popover == null) {
+            const button = gtk.Button.new();
+            button.as(gtk.Widget).addCssClass("dkde-desktops-button");
+            button.setHasFrame(0);
+            const content = gtk.Box.new(.horizontal, 5);
+            content.append(gtk.Image.newFromIconName("view-grid-symbolic").as(gtk.Widget));
+            const label = gtk.Label.new("1");
+            content.append(label.as(gtk.Widget));
+            button.setChild(content.as(gtk.Widget));
+            button.as(gtk.Widget).setTooltipText(common.tr("Virtual desktops"));
+            const popover = gtk.Popover.new();
+            popover.as(gtk.Widget).addCssClass("dkde-desktops-popover");
+            popover.as(gtk.Widget).setParent(button.as(gtk.Widget));
+            _ = gtk.Button.signals.clicked.connect(button, *gtk.Popover, &onDesktopsButton, popover, .{});
+            box.append(button.as(gtk.Widget));
+            const scroll = gtk.EventControllerScroll.new(.{ .vertical = true });
+            _ = gtk.EventControllerScroll.signals.scroll.connect(scroll, *Workspaces, &onDesktopScroll, w, .{});
+            button.as(gtk.Widget).addController(scroll.as(gtk.EventController));
+            self.desktops_scroll = scroll;
+            self.desktops_label = label;
+            self.desktops_popover = popover;
+        }
+
+        // The current number on the icon.
+        if (self.desktops_label) |label| {
+            var buf: [8]u8 = undefined;
+            const active = (w.activeIndex() orelse 0) + 1;
+            label.setText(std.fmt.bufPrintSentinel(&buf, "{d}", .{active}, 0) catch "");
+        }
+
+        // The chooser: one button per desktop, in rows of five.
+        const popover = self.desktops_popover.?;
+        const grid = gtk.Grid.new();
+        grid.setRowSpacing(4);
+        grid.setColumnSpacing(4);
+        grid.as(gtk.Widget).setMarginTop(8);
+        grid.as(gtk.Widget).setMarginBottom(8);
+        grid.as(gtk.Widget).setMarginStart(8);
+        grid.as(gtk.Widget).setMarginEnd(8);
         for (w.list.items, 0..) |item, i| {
             var buf: [16]u8 = undefined;
             const text = std.fmt.bufPrintSentinel(&buf, "{d}", .{i + 1}, 0) catch continue;
@@ -340,17 +389,12 @@ pub const Bar = struct {
             if (item.active) button.as(gtk.Widget).addCssClass("active");
             if (item.urgent) button.as(gtk.Widget).addCssClass("urgent");
             const ctx = std.heap.c_allocator.create(DesktopClick) catch continue;
-            ctx.* = .{ .workspaces = w, .index = i };
+            ctx.* = .{ .workspaces = w, .index = i, .popover = popover };
             _ = gtk.Button.signals.clicked.connect(button, *DesktopClick, &onDesktopClicked, ctx, .{});
             _ = gtk.Widget.signals.destroy.connect(button, *DesktopClick, &onDesktopDestroy, ctx, .{});
-            box.append(button.as(gtk.Widget));
+            grid.attach(button.as(gtk.Widget), @intCast(i % 5), @intCast(i / 5), 1, 1);
         }
-        if (self.desktops_scroll == null) {
-            const scroll = gtk.EventControllerScroll.new(.{ .vertical = true });
-            _ = gtk.EventControllerScroll.signals.scroll.connect(scroll, *Workspaces, &onDesktopScroll, w, .{});
-            box.as(gtk.Widget).addController(scroll.as(gtk.EventController));
-            self.desktops_scroll = scroll;
-        }
+        popover.setChild(grid.as(gtk.Widget));
     }
 
     pub fn setThickness(self: *Bar, thickness: c_int) void {
