@@ -235,6 +235,20 @@ pub const Handle = struct {
         return .{ .fd = fd, .writable = writable, .size = @intCast(end) };
     }
 
+    /// Opens `/proc/PID/mem` read-only. It cannot be sized with `lseek`, so the
+    /// caller gives the size (the length of the region to show).
+    pub fn openMem(path: [:0]const u8, size: u64) OpenError!Handle {
+        const fd = open(path.ptr, O_RDONLY | O_CLOEXEC);
+        if (fd < 0) {
+            return switch (std.c._errno().*) {
+                13, 1 => error.AccessDenied,
+                2, 3 => error.NotFound, // ENOENT, ESRCH
+                else => error.Failed,
+            };
+        }
+        return .{ .fd = fd, .writable = false, .size = size };
+    }
+
     pub fn closeHandle(self: *Handle) void {
         _ = close(self.fd);
     }
@@ -264,6 +278,93 @@ pub const Handle = struct {
         _ = fsync(self.fd);
     }
 };
+
+// ---- process memory ----------------------------------------------------------------------
+
+pub const Process = struct {
+    pid: u32,
+    name: []u8,
+};
+
+pub fn freeProcesses(a: Allocator, list_: []Process) void {
+    for (list_) |p| a.free(p.name);
+    a.free(list_);
+}
+
+/// Running processes, by pid, from `/proc`.
+pub fn listProcesses(a: Allocator) Allocator.Error![]Process {
+    var out: std.ArrayList(Process) = .empty;
+    errdefer freeProcesses(a, out.items);
+    var err: ?*glib.Error = null;
+    const dir = glib.Dir.open("/proc", 0, &err) orelse {
+        if (err) |e| e.free();
+        return out.toOwnedSlice(a);
+    };
+    defer dir.close();
+    while (@as(?[*:0]const u8, @ptrCast(dir.readName()))) |n| {
+        const pid = std.fmt.parseInt(u32, std.mem.span(n), 10) catch continue;
+        const name = readSmallF(a, "/proc/{d}/comm", .{pid}) orelse continue;
+        out.append(a, .{ .pid = pid, .name = name }) catch |e| {
+            a.free(name);
+            return e;
+        };
+    }
+    std.mem.sort(Process, out.items, {}, struct {
+        fn less(_: void, x: Process, y: Process) bool {
+            return x.pid < y.pid;
+        }
+    }.less);
+    return out.toOwnedSlice(a);
+}
+
+pub const Region = struct {
+    start: u64,
+    end: u64,
+    /// `rwxp`.
+    perms: [4]u8,
+    /// The mapped file, `[heap]`, `[stack]` or empty.
+    name: []u8,
+};
+
+pub fn freeRegions(a: Allocator, regions: []Region) void {
+    for (regions) |r| a.free(r.name);
+    a.free(regions);
+}
+
+/// The readable regions in the text of `/proc/PID/maps`. Regions above the
+/// signed 64-bit range (the vsyscall page) cannot be read with `pread` and are left out.
+pub fn parseMaps(a: Allocator, text: []const u8) Allocator.Error![]Region {
+    var out: std.ArrayList(Region) = .empty;
+    errdefer freeRegions(a, out.items);
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |line| {
+        var parts = std.mem.tokenizeScalar(u8, line, ' ');
+        const range = parts.next() orelse continue;
+        const perms = parts.next() orelse continue;
+        if (perms.len != 4 or perms[0] != 'r') continue;
+        _ = parts.next(); // offset
+        _ = parts.next(); // device
+        _ = parts.next(); // inode
+        const dash = std.mem.indexOfScalar(u8, range, '-') orelse continue;
+        const start = std.fmt.parseInt(u64, range[0..dash], 16) catch continue;
+        const end = std.fmt.parseInt(u64, range[dash + 1 ..], 16) catch continue;
+        if (end <= start or end > std.math.maxInt(i64)) continue;
+        const rest = std.mem.trim(u8, parts.rest(), " ");
+        try out.append(a, .{ .start = start, .end = end, .perms = perms[0..4].*, .name = try a.dupe(u8, rest) });
+    }
+    return out.toOwnedSlice(a);
+}
+
+/// The readable regions of process `pid`.
+pub fn regionsOf(a: Allocator, pid: u32) Allocator.Error![]Region {
+    var buf: [64]u8 = undefined;
+    const path = std.fmt.bufPrintSentinel(&buf, "/proc/{d}/maps", .{pid}, 0) catch return a.alloc(Region, 0);
+    var contents: [*]u8 = undefined;
+    var length: usize = 0;
+    if (glib.fileGetContents(path, &contents, &length, null) == 0) return a.alloc(Region, 0);
+    defer glib.free(contents);
+    return parseMaps(a, contents[0..length]);
+}
 
 /// The sectors (by index in `window`) whose bytes differ between `now` and
 /// `original`, for `sector_size`-byte sectors. Caller frees.
@@ -339,4 +440,36 @@ test "reading and writing sectors of an image file" {
     var again: [5]u8 = undefined;
     _ = try ro.readAt(1024, &again);
     try std.testing.expectEqualStrings("HELLO", &again);
+}
+
+test "readable regions are read from a maps file" {
+    const a = std.testing.allocator;
+    const text =
+        "55d0c8a00000-55d0c8a21000 r--p 00000000 08:01 1234 /usr/bin/cat\n" ++
+        "55d0c8a21000-55d0c8a26000 rw-p 00000000 00:00 0 [heap]\n" ++
+        "7ffd1c3a0000-7ffd1c3c1000 ---p 00000000 00:00 0\n" ++
+        "ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0 [vsyscall]\n";
+    const regions = try parseMaps(a, text);
+    defer freeRegions(a, regions);
+    try std.testing.expectEqual(@as(usize, 2), regions.len);
+    try std.testing.expectEqual(@as(u64, 0x55d0c8a00000), regions[0].start);
+    try std.testing.expectEqualStrings("[heap]", regions[1].name);
+}
+
+test "this process's own memory can be read" {
+    const a = std.testing.allocator;
+    const regions = try regionsOf(a, @intCast(std.c.getpid()));
+    defer freeRegions(a, regions);
+    try std.testing.expect(regions.len > 0);
+}
+
+test "bytes of this process can be read through /proc/PID/mem" {
+    const marker: [8]u8 = .{ 'D', 'K', 'D', 'E', 'm', 'a', 'r', 'k' };
+    var path_buf: [64]u8 = undefined;
+    const path = try std.fmt.bufPrintSentinel(&path_buf, "/proc/{d}/mem", .{std.c.getpid()}, 0);
+    const mem = try Handle.openMem(path, 8);
+    defer @constCast(&mem).closeHandle();
+    var got: [8]u8 = undefined;
+    try std.testing.expectEqual(@as(usize, 8), try mem.readAt(@intFromPtr(&marker), &got));
+    try std.testing.expectEqualSlices(u8, &marker, &got);
 }

@@ -39,82 +39,33 @@ const App = struct {
         common.style.load(self.allocator) catch |err|
             std.log.warn("stylesheet not loaded: {s}", .{@errorName(err)});
         self.appearance = common.style.Appearance.create(self.allocator) catch null;
-        const editor = HexEditor.create(self.allocator, app) catch |err| {
+        const host = Host.create(self.allocator, app) catch |err| {
             std.log.err("cannot create the window: {s}", .{@errorName(err)});
             return;
         };
+        const editor = host.addTab() orelse return;
         if (self.file) |path| editor.openPath(path);
-        editor.window.as(gtk.Window).present();
+        host.window.as(gtk.Window).present();
         if (self.device) |dev| editor.openDevice(dev) else editor.autoDetect();
     }
 };
 
-const inspector_rows = 12;
-
-const HexEditor = struct {
+/// The window: menu bar and a notebook with one `HexEditor` per tab. Menu
+/// actions go to the tab being shown.
+const Host = struct {
     allocator: std.mem.Allocator,
     window: *gtk.ApplicationWindow,
-    buffer: buffer_mod.Buffer,
-    view: *View,
-    path: ?[:0]u8 = null,
-    status: *gtk.Label,
-    inspector: *gtk.Box,
-    names: [inspector_rows]*gtk.Label = undefined,
-    values: [inspector_rows]*gtk.Label = undefined,
-    endian: inspect.Endian = .little,
-    /// The last search, so Find Next has something to look for.
-    needle: ?[]u8 = null,
-    closing_after_save: bool = false,
-    pending: ?Pending = null,
+    notebook: *gtk.Notebook,
+    tabs: std.ArrayList(*HexEditor) = .empty,
 
-    // Structure (Kaitai formats).
-    config: common.Config,
-    panel: *structure.Panel = undefined,
-    library: ?*structure.Library = null,
-    ranges: []view_mod.Range = &.{},
-    show_colours: bool = true,
-    /// The buffer revision the structure was parsed from.
-    parsed_revision: u64 = 0,
-    reparse_source: c_uint = 0,
-    /// True while a click in the structure panel moves the view, so the view
-    /// does not answer by re-selecting in the panel.
-    picking: bool = false,
-    disk: ?DiskState = null,
-    /// A second file to compare with, and the differences found.
-    other: ?[]u8 = null,
-    diffs: []analyze.Diff = &.{},
-    diff_view: []view_mod.Range = &.{},
-    compared_revision: u64 = 0,
-    /// Offsets to return to (Alt+Left after a jump).
-    back_stack: std.ArrayList(usize) = .empty,
-    bookmarks: bookmarks_mod.List = .{},
-    mark_view: []view_mod.Range = &.{},
-    /// Last search pattern (text, hex with wildcards, or a number).
-    pattern: ?analyze.Pattern = null,
-    disasm_dir: ?[]u8 = null,
-    pending_device: ?[]u8 = null,
-    folder_kind: structure.Kind = .ksy,
-    proc_guard: *common.proc.Guard(HexEditor) = undefined,
-
-    const Pending = enum { open, close, revert, new };
-
-    fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*HexEditor {
-        const self = try allocator.create(HexEditor);
+    fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*Host {
+        const self = try allocator.create(Host);
         errdefer allocator.destroy(self);
         self.* = .{
             .allocator = allocator,
             .window = gtk.ApplicationWindow.new(app),
-            .buffer = buffer_mod.Buffer.init(allocator),
-            .view = undefined,
-            .status = gtk.Label.new(""),
-            .inspector = gtk.Box.new(.vertical, 2),
-            .config = try common.Config.load(allocator, "hex.conf"),
+            .notebook = gtk.Notebook.new(),
         };
-        errdefer self.config.deinit();
-        self.view = try View.create(allocator, &self.buffer, onViewChanged, self);
-        self.panel = try structure.Panel.create(allocator, onPanelPick, self);
-        self.proc_guard = common.proc.Guard(HexEditor).create(self);
-
         const window = self.window.as(gtk.Window);
         window.setTitle(common.tr("Hex Editor"));
         window.setDefaultSize(1160, 640);
@@ -124,11 +75,12 @@ const HexEditor = struct {
         const mb = common.menubar;
         const menus = [_]mb.Menu{
             .{ .label = "_File", .entries = &.{
-                mb.item("_New", "new", "<Control>n"),
+                mb.item("_New tab", "new", "<Control>n"),
                 mb.item("_Open…", "open", "<Control>o"),
                 mb.item("_Save", "save", "<Control>s"),
                 mb.item("Save _As…", "save-as", "<Control><Shift>s"),
                 mb.item("_Revert", "revert", null),
+                mb.item("_Close tab", "close-tab", "<Control>w"),
                 .separator,
                 mb.item("E_xit", "close", "<Control>q"),
             } },
@@ -191,6 +143,7 @@ const HexEditor = struct {
             } },
             .{ .label = "_Disk", .entries = &.{
                 mb.item("_Open disk or partition…", "open-disk", null),
+                mb.item("Open _process memory…", "open-process", null),
                 mb.item("Go to _sector…", "goto-sector", null),
                 mb.item("_Previous window", "disk-prev", "<Alt>Page_Up"),
                 mb.item("_Next window", "disk-next", "<Alt>Page_Down"),
@@ -198,7 +151,7 @@ const HexEditor = struct {
                 mb.check("_Enable writing", "disk-writing", false),
                 mb.item("_Write changes…", "disk-write", null),
                 .separator,
-                mb.item("_Close disk", "disk-close", null),
+                mb.item("_Close disk or process", "disk-close", null),
             } },
             .{ .label = "_Structure", .entries = &.{
                 mb.item("_Choose format…", "choose-format", "<Control>t"),
@@ -217,7 +170,183 @@ const HexEditor = struct {
                 mb.item("Find _strings…", "strings", null),
             } },
         };
-        const menu_bar = mb.build(app, self.window, &menus, HexEditor, onMenubarAction, self);
+        const menu_bar = mb.build(app, self.window, &menus, Host, onAction, self);
+
+        self.notebook.setScrollable(1);
+        self.notebook.as(gtk.Widget).setVexpand(1);
+        const root = gtk.Box.new(.vertical, 0);
+        root.append(menu_bar.as(gtk.Widget));
+        root.append(self.notebook.as(gtk.Widget));
+        window.setChild(root.as(gtk.Widget));
+        _ = gtk.Notebook.signals.switch_page.connect(self.notebook, *Host, &onSwitchPage, self, .{});
+        _ = gtk.Window.signals.close_request.connect(window, *Host, &onCloseRequest, self, .{});
+        _ = gtk.Widget.signals.destroy.connect(self.window, *Host, &onDestroy, self, .{});
+        return self;
+    }
+
+    fn onDestroy(_: *gtk.ApplicationWindow, self: *Host) callconv(.c) void {
+        self.tabs.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+
+    fn active(self: *Host) ?*HexEditor {
+        const i = self.notebook.getCurrentPage();
+        if (i < 0 or i >= self.tabs.items.len) return null;
+        return self.tabs.items[@intCast(i)];
+    }
+
+    fn addTab(self: *Host) ?*HexEditor {
+        const editor = HexEditor.create(self.allocator, self) catch |err| {
+            std.log.err("cannot create a tab: {s}", .{@errorName(err)});
+            return null;
+        };
+        self.tabs.append(self.allocator, editor) catch return null;
+        const head = gtk.Box.new(.horizontal, 6);
+        head.append(editor.tab_label.as(gtk.Widget));
+        const close = gtk.Button.newWithLabel("\u{00D7}");
+        close.as(gtk.Button).setHasFrame(0);
+        close.as(gtk.Widget).setTooltipText(common.tr("Close tab"));
+        head.append(close.as(gtk.Widget));
+        _ = gtk.Button.signals.clicked.connect(close, *HexEditor, &onTabClose, editor, .{});
+        const n = self.notebook.appendPage(editor.page.as(gtk.Widget), head.as(gtk.Widget));
+        self.notebook.setCurrentPage(n);
+        editor.updateAll();
+        editor.view.grabFocus();
+        return editor;
+    }
+
+    /// The tab a newly opened thing should go into: `current` if it is empty,
+    /// otherwise a new one.
+    fn tabFor(self: *Host, current: *HexEditor) *HexEditor {
+        if (current.isPristine()) {
+            const n = self.notebook.pageNum(current.page.as(gtk.Widget));
+            if (n >= 0) self.notebook.setCurrentPage(n);
+            return current;
+        }
+        return self.addTab() orelse current;
+    }
+
+    fn closeTab(self: *Host, tab: *HexEditor) void {
+        if (self.tabs.items.len <= 1) return self.window.as(gtk.Window).close();
+        for (self.tabs.items, 0..) |t, i| if (t == tab) {
+            _ = self.tabs.orderedRemove(i);
+            self.notebook.removePage(@intCast(i));
+            break;
+        };
+        if (self.active()) |a| {
+            a.updateAll();
+            a.view.grabFocus();
+        }
+    }
+
+    fn onTabClose(_: *gtk.Button, tab: *HexEditor) callconv(.c) void {
+        tab.confirmDiscard(.close);
+    }
+
+    fn onSwitchPage(_: *gtk.Notebook, _: *gtk.Widget, num: c_uint, self: *Host) callconv(.c) void {
+        if (num >= self.tabs.items.len) return;
+        const tab = self.tabs.items[num];
+        tab.updateTitle();
+        const writing = if (tab.disk) |d| d.writing else false;
+        common.menubar.setChecked(self.window, "disk-writing", writing);
+    }
+
+    /// Asks about each tab with unsaved changes, one at a time; each answer
+    /// closes the window again until none is left.
+    fn onCloseRequest(_: *gtk.Window, self: *Host) callconv(.c) c_int {
+        for (self.tabs.items, 0..) |t, i| if (t.buffer.isModified()) {
+            self.notebook.setCurrentPage(@intCast(i));
+            t.confirmDiscard(.quit);
+            return 1;
+        };
+        return 0;
+    }
+
+    fn onAction(self: *Host, action: []const u8) void {
+        const eql = std.mem.eql;
+        if (eql(u8, action, "new")) {
+            _ = self.addTab();
+            return;
+        }
+        if (eql(u8, action, "close")) return self.window.as(gtk.Window).close();
+        const tab = self.active() orelse return;
+        if (eql(u8, action, "close-tab")) return tab.confirmDiscard(.close);
+        if (eql(u8, action, "open")) return tab.proceed(.open);
+        tab.onMenubarAction(action);
+    }
+};
+
+const inspector_rows = 12;
+
+const HexEditor = struct {
+    allocator: std.mem.Allocator,
+    window: *gtk.ApplicationWindow,
+    host: *Host,
+    /// What the notebook shows for this tab, and its title label.
+    page: *gtk.Box = undefined,
+    tab_label: *gtk.Label = undefined,
+    buffer: buffer_mod.Buffer,
+    view: *View,
+    path: ?[:0]u8 = null,
+    status: *gtk.Label,
+    inspector: *gtk.Box,
+    names: [inspector_rows]*gtk.Label = undefined,
+    values: [inspector_rows]*gtk.Label = undefined,
+    endian: inspect.Endian = .little,
+    /// The last search, so Find Next has something to look for.
+    needle: ?[]u8 = null,
+    closing_after_save: bool = false,
+    pending: ?Pending = null,
+
+    // Structure (Kaitai formats).
+    config: common.Config,
+    panel: *structure.Panel = undefined,
+    library: ?*structure.Library = null,
+    ranges: []view_mod.Range = &.{},
+    show_colours: bool = true,
+    /// The buffer revision the structure was parsed from.
+    parsed_revision: u64 = 0,
+    reparse_source: c_uint = 0,
+    /// True while a click in the structure panel moves the view, so the view
+    /// does not answer by re-selecting in the panel.
+    picking: bool = false,
+    disk: ?DiskState = null,
+    /// A second file to compare with, and the differences found.
+    other: ?[]u8 = null,
+    diffs: []analyze.Diff = &.{},
+    diff_view: []view_mod.Range = &.{},
+    compared_revision: u64 = 0,
+    /// Offsets to return to (Alt+Left after a jump).
+    back_stack: std.ArrayList(usize) = .empty,
+    bookmarks: bookmarks_mod.List = .{},
+    mark_view: []view_mod.Range = &.{},
+    /// Last search pattern (text, hex with wildcards, or a number).
+    pattern: ?analyze.Pattern = null,
+    disasm_dir: ?[]u8 = null,
+    pending_device: ?[]u8 = null,
+    folder_kind: structure.Kind = .ksy,
+    proc_guard: *common.proc.Guard(HexEditor) = undefined,
+
+    const Pending = enum { open, close, quit, revert, new };
+
+    fn create(allocator: std.mem.Allocator, host: *Host) !*HexEditor {
+        const self = try allocator.create(HexEditor);
+        errdefer allocator.destroy(self);
+        self.* = .{
+            .allocator = allocator,
+            .window = host.window,
+            .host = host,
+            .buffer = buffer_mod.Buffer.init(allocator),
+            .view = undefined,
+            .status = gtk.Label.new(""),
+            .inspector = gtk.Box.new(.vertical, 2),
+            .config = try common.Config.load(allocator, "hex.conf"),
+        };
+        errdefer self.config.deinit();
+        self.view = try View.create(allocator, &self.buffer, onViewChanged, self);
+        self.panel = try structure.Panel.create(allocator, onPanelPick, self);
+        self.proc_guard = common.proc.Guard(HexEditor).create(self);
+
 
         // Data inspector on the right.
         self.inspector.as(gtk.Widget).addCssClass("dkde-hex-inspector");
@@ -263,21 +392,23 @@ const HexEditor = struct {
         self.status.as(gtk.Widget).setMarginBottom(3);
         self.status.as(gtk.Widget).addCssClass("dkde-files-status");
 
-        const root = gtk.Box.new(.vertical, 0);
-        root.append(menu_bar.as(gtk.Widget));
+        const page = gtk.Box.new(.vertical, 0);
         body.as(gtk.Widget).setVexpand(1);
-        root.append(body.as(gtk.Widget));
-        root.append(self.status.as(gtk.Widget));
-        window.setChild(root.as(gtk.Widget));
-
-        _ = gtk.Window.signals.close_request.connect(window, *HexEditor, &onCloseRequest, self, .{});
-        _ = gtk.Widget.signals.destroy.connect(self.window, *HexEditor, &onDestroy, self, .{});
+        page.append(body.as(gtk.Widget));
+        page.append(self.status.as(gtk.Widget));
+        self.page = page;
+        self.tab_label = gtk.Label.new(common.tr("Untitled"));
+        _ = gtk.Widget.signals.destroy.connect(page, *HexEditor, &onDestroy, self, .{});
         self.updateAll();
-        self.view.grabFocus();
         return self;
     }
 
-    fn onDestroy(_: *gtk.ApplicationWindow, self: *HexEditor) callconv(.c) void {
+    /// Nothing open and nothing changed: a new file can take this tab over.
+    fn isPristine(self: *const HexEditor) bool {
+        return self.path == null and self.disk == null and !self.buffer.isModified() and self.buffer.len() == 0;
+    }
+
+    fn onDestroy(_: *gtk.Box, self: *HexEditor) callconv(.c) void {
         if (self.reparse_source != 0) _ = glib.Source.remove(self.reparse_source);
         self.closeDisk();
         if (self.pending_device) |p| self.allocator.free(p);
@@ -316,9 +447,11 @@ const HexEditor = struct {
 
     fn updateTitle(self: *HexEditor) void {
         var buf: [512]u8 = undefined;
-        const name: []const u8 = if (self.disk) |d| std.fs.path.basename(d.path) else if (self.path) |p| std.fs.path.basename(p) else "Untitled";
+        const name: []const u8 = if (self.disk) |d| (if (d.process) |pn| pn else std.fs.path.basename(d.path)) else if (self.path) |p| std.fs.path.basename(p) else "Untitled";
         const text = std.fmt.bufPrintSentinel(&buf, "{s}{s} \u{2014} Hex Editor", .{ if (self.buffer.isModified()) "*" else "", name }, 0) catch return;
-        self.window.as(gtk.Window).setTitle(text);
+        const tab = std.fmt.bufPrintSentinel(buf[256..], "{s}{s}", .{ if (self.buffer.isModified()) "*" else "", name }, 0) catch return;
+        self.tab_label.setText(tab);
+        if (self.host.active() == self) self.window.as(gtk.Window).setTitle(text);
     }
 
     fn updateStatus(self: *HexEditor) void {
@@ -337,6 +470,18 @@ const HexEditor = struct {
         }
         if (self.disk) |d| {
             const abs = d.window_start + v.cursor;
+            if (d.process) |name| {
+                const text = std.fmt.bufPrintSentinel(&buf, "{s}   Address 0x{X}{s}   Region 0x{X}\u{2013}0x{X} ({d} bytes)   read-only   {s}", .{
+                    name,
+                    d.origin + abs,
+                    selection,
+                    d.origin,
+                    d.origin + d.handle.size,
+                    d.handle.size,
+                    field,
+                }, 0) catch return;
+                return self.status.setText(text);
+            }
             const text = std.fmt.bufPrintSentinel(&buf, "{s}   Sector {d} +{d}   Offset 0x{X} ({d}){s}   Disk {d} bytes   {s}   {s}", .{
                 std.fs.path.basename(d.path),
                 abs / d.sector,
@@ -490,8 +635,9 @@ const HexEditor = struct {
             return;
         };
         defer file.as(gobject.Object).unref();
-        self.loadFile(file);
-        self.autoDetect();
+        const tab = self.host.tabFor(self);
+        tab.loadFile(file);
+        tab.autoDetect();
     }
 
     // ---- unsaved changes -------------------------------------------------------------------
@@ -535,6 +681,10 @@ const HexEditor = struct {
             .close => {
                 // The changes are saved or dropped: mark it clean so closing does not ask again.
                 self.buffer.markSaved();
+                self.host.closeTab(self);
+            },
+            .quit => {
+                self.buffer.markSaved();
                 self.window.as(gtk.Window).close();
             },
             .revert => if (self.path) |p| {
@@ -551,12 +701,6 @@ const HexEditor = struct {
                 self.view.refresh();
             },
         }
-    }
-
-    fn onCloseRequest(_: *gtk.Window, self: *HexEditor) callconv(.c) c_int {
-        if (!self.buffer.isModified()) return 0;
-        self.confirmDiscard(.close);
-        return 1;
     }
 
     // ---- find and go to --------------------------------------------------------------------
@@ -667,6 +811,7 @@ const HexEditor = struct {
 
     fn gotoSector(self: *HexEditor, text: []const u8) bool {
         const d = self.disk orelse return false;
+        if (d.process != null) return false;
         const lba = parseOffset(text) orelse return false;
         if (@as(u64, lba) * d.sector >= d.handle.size) return false;
         self.diskGoto(@as(u64, lba) * d.sector);
@@ -1354,7 +1499,17 @@ const HexEditor = struct {
         /// What the window held when it was read, to find the changed sectors.
         original: []u8 = &.{},
         writing: bool = false,
+        /// Process memory: the address of byte 0 of the region shown, and
+        /// the process name. Zero and null for a disk.
+        origin: u64 = 0,
+        process: ?[:0]u8 = null,
     };
+
+    /// The address of the first byte held in the buffer.
+    fn diskBase(self: *const HexEditor) u64 {
+        const d = self.disk orelse return 0;
+        return d.origin + d.window_start;
+    }
 
     fn inDiskMode(self: *const HexEditor) bool {
         return self.disk != null;
@@ -1366,6 +1521,7 @@ const HexEditor = struct {
         h.closeHandle();
         self.allocator.free(d.path);
         self.allocator.free(d.original);
+        if (d.process) |p| self.allocator.free(p);
         self.disk = null;
         self.view.base_offset = 0;
         self.view.offset_digits = 8;
@@ -1459,14 +1615,14 @@ const HexEditor = struct {
         const len: usize = @intCast(@min(window_bytes, d.handle.size - start));
         const bytes = self.allocator.alloc(u8, len) catch return;
         defer self.allocator.free(bytes);
-        const got = d.handle.readAt(start, bytes) catch {
+        const got = d.handle.readAt(d.origin + start, bytes) catch {
             return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot read the disk"), common.tr("Reading failed at that position."));
         };
         self.buffer.load(bytes[0..got]) catch return;
         self.allocator.free(d.original);
         d.original = self.allocator.dupe(u8, bytes[0..got]) catch &.{};
         d.window_start = start;
-        self.view.base_offset = start;
+        self.view.base_offset = d.origin + start;
         self.view.cursor = 0;
         self.view.adjustment.setValue(0);
         self.clearStructure();
@@ -1476,12 +1632,14 @@ const HexEditor = struct {
     /// Moves to absolute byte `abs` of the device, loading another window if needed.
     fn diskGoto(self: *HexEditor, abs: u64) void {
         const d = self.disk orelse return;
-        if (abs < d.window_start or abs >= d.window_start + self.buffer.len()) {
-            self.loadWindow(abs);
-            if (self.disk.?.window_start > abs) return;
+        if (abs < d.origin) return;
+        const rel = abs - d.origin;
+        if (rel < d.window_start or rel >= d.window_start + self.buffer.len()) {
+            self.loadWindow(rel);
+            if (self.disk.?.window_start > rel) return;
         }
         const win = self.disk.?.window_start;
-        if (abs >= win) self.view.moveTo(@intCast(abs - win), false);
+        if (rel >= win) self.view.moveTo(@intCast(rel - win), false);
     }
 
     fn diskStep(self: *HexEditor, forward: bool) void {
@@ -1495,6 +1653,10 @@ const HexEditor = struct {
 
     fn enableWriting(self: *HexEditor) void {
         const d = &(self.disk orelse return);
+        if (d.process != null) {
+            common.menubar.setChecked(self.window, "disk-writing", false);
+            return self.status.setText(common.tr("Process memory is read-only."));
+        }
         if (d.writing) {
             // Back to read-only.
             var h = d.handle;
@@ -1663,12 +1825,177 @@ const HexEditor = struct {
         const path = editor.allocator.dupe(u8, dlg.infos[@intCast(i)].path) catch return;
         defer editor.allocator.free(path);
         dlg.window.destroy();
-        editor.openDevice(path);
+        editor.host.tabFor(editor).openDevice(path);
     }
 
     fn onDiskPickerDestroy(_: *gtk.Window, dlg: *DiskPicker) callconv(.c) void {
         disk_mod.freeInfos(dlg.editor.allocator, dlg.infos);
         dlg.editor.allocator.destroy(dlg);
+    }
+
+    // ---- process memory -----------------------------------------------------------------------
+
+    /// Shows the memory region [start, end) of process `pid`, read-only.
+    fn openProcessRegion(self: *HexEditor, pid: u32, name: []const u8, start: u64, end: u64) void {
+        if (self.buffer.isModified()) {
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Unsaved changes"), common.tr("Write or discard your changes before opening process memory."));
+        }
+        var pbuf: [64]u8 = undefined;
+        const mem_path = std.fmt.bufPrintSentinel(&pbuf, "/proc/{d}/mem", .{pid}, 0) catch return;
+        const handle = disk_mod.Handle.openMem(mem_path, end - start) catch |err| {
+            if (err == error.AccessDenied) {
+                return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot read this process"), common.tr("The system does not allow reading it. Processes of other users need dkde-hex started as administrator, and some systems (ptrace_scope) restrict even your own."));
+            }
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot read this process"), common.tr("It may have exited."));
+        };
+        const label = std.fmt.allocPrintSentinel(self.allocator, "{s} (pid {d})", .{ name, pid }, 0) catch {
+            var h = handle;
+            h.closeHandle();
+            return;
+        };
+        const key = std.fmt.allocPrintSentinel(self.allocator, "process:{s}:{X}", .{ name, start }, 0) catch {
+            self.allocator.free(label);
+            var h = handle;
+            h.closeHandle();
+            return;
+        };
+        self.closeDisk();
+        self.disk = .{ .handle = handle, .path = key, .sector = 512, .origin = start, .process = label };
+        self.view.fixed_size = true;
+        self.view.insert_mode = false;
+        self.view.offset_digits = 12;
+        self.clearStructure();
+        if (self.path) |p| self.allocator.free(p);
+        self.path = null;
+        self.loadWindow(0);
+        self.loadBookmarks();
+    }
+
+    const ProcPicker = struct {
+        editor: *HexEditor,
+        window: *gtk.Window,
+        list: *gtk.ListBox,
+        title: *gtk.Label,
+        back: *gtk.Button,
+        procs: []disk_mod.Process,
+        regions: []disk_mod.Region = &.{},
+        /// The chosen process while regions are shown.
+        chosen: ?usize = null,
+    };
+
+    fn chooseProcess(self: *HexEditor) void {
+        const procs = disk_mod.listProcesses(self.allocator) catch return;
+        const dlg = self.allocator.create(ProcPicker) catch {
+            disk_mod.freeProcesses(self.allocator, procs);
+            return;
+        };
+        const window = gtk.Window.new();
+        window.setTitle(common.tr("Open process memory"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setModal(1);
+        window.setDefaultSize(640, 460);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        box.as(gtk.Widget).setMarginTop(12);
+        box.as(gtk.Widget).setMarginBottom(12);
+        box.as(gtk.Widget).setMarginStart(12);
+        box.as(gtk.Widget).setMarginEnd(12);
+        window.setChild(box.as(gtk.Widget));
+        const head = gtk.Box.new(.horizontal, 8);
+        const back = gtk.Button.newWithLabel(common.tr("Back"));
+        back.as(gtk.Widget).setVisible(0);
+        const title = gtk.Label.new("");
+        title.setXalign(0);
+        title.setWrap(1);
+        title.as(gtk.Widget).setHexpand(1);
+        head.append(back.as(gtk.Widget));
+        head.append(title.as(gtk.Widget));
+        box.append(head.as(gtk.Widget));
+        const list = gtk.ListBox.new();
+        list.setActivateOnSingleClick(0);
+        const scroller = gtk.ScrolledWindow.new();
+        scroller.setChild(list.as(gtk.Widget));
+        scroller.as(gtk.Widget).setVexpand(1);
+        box.append(scroller.as(gtk.Widget));
+        dlg.* = .{ .editor = self, .window = window, .list = list, .title = title, .back = back, .procs = procs };
+        fillProcesses(dlg);
+        _ = gtk.ListBox.signals.row_activated.connect(list, *ProcPicker, &onProcPicked, dlg, .{});
+        _ = gtk.Button.signals.clicked.connect(back, *ProcPicker, &onProcBack, dlg, .{});
+        _ = gtk.Widget.signals.destroy.connect(window, *ProcPicker, &onProcDestroy, dlg, .{});
+        window.present();
+    }
+
+    fn addRow(list: *gtk.ListBox, text: [:0]const u8) void {
+        const label = gtk.Label.new(text);
+        label.setXalign(0);
+        label.as(gtk.Widget).setMarginTop(3);
+        label.as(gtk.Widget).setMarginBottom(3);
+        label.as(gtk.Widget).setMarginStart(6);
+        label.as(gtk.Widget).addCssClass("monospace");
+        list.append(label.as(gtk.Widget));
+    }
+
+    fn clearRows(list: *gtk.ListBox) void {
+        while (list.getRowAtIndex(0)) |row| list.remove(row.as(gtk.Widget));
+    }
+
+    fn fillProcesses(dlg: *ProcPicker) void {
+        clearRows(dlg.list);
+        dlg.chosen = null;
+        dlg.back.as(gtk.Widget).setVisible(0);
+        dlg.title.setText(common.tr("Double-click a process. Its memory opens read-only."));
+        for (dlg.procs) |p| {
+            var buf: [160]u8 = undefined;
+            addRow(dlg.list, std.fmt.bufPrintSentinel(&buf, "{d: >8}   {s}", .{ p.pid, p.name }, 0) catch continue);
+        }
+    }
+
+    fn fillRegions(dlg: *ProcPicker, index: usize) void {
+        const p = dlg.procs[index];
+        const regions = disk_mod.regionsOf(dlg.editor.allocator, p.pid) catch return;
+        disk_mod.freeRegions(dlg.editor.allocator, dlg.regions);
+        dlg.regions = regions;
+        dlg.chosen = index;
+        clearRows(dlg.list);
+        dlg.back.as(gtk.Widget).setVisible(1);
+        var tbuf: [160]u8 = undefined;
+        dlg.title.setText(if (regions.len == 0)
+            std.fmt.bufPrintSentinel(&tbuf, "{s} (pid {d}): no readable regions. It belongs to another user (start dkde-hex as administrator) or has exited.", .{ p.name, p.pid }, 0) catch ""
+        else
+            std.fmt.bufPrintSentinel(&tbuf, "{s} (pid {d}): {d} readable regions. Double-click one.", .{ p.name, p.pid, regions.len }, 0) catch "");
+        for (regions) |r| {
+            var buf: [400]u8 = undefined;
+            addRow(dlg.list, std.fmt.bufPrintSentinel(&buf, "{X:0>12}-{X:0>12}  {s}  {d: >10} KiB  {s}", .{ r.start, r.end, r.perms, (r.end - r.start) / 1024, r.name }, 0) catch continue);
+        }
+    }
+
+    fn onProcPicked(_: *gtk.ListBox, row: *gtk.ListBoxRow, dlg: *ProcPicker) callconv(.c) void {
+        const i = row.getIndex();
+        if (i < 0) return;
+        const idx: usize = @intCast(i);
+        if (dlg.chosen) |c| {
+            if (idx >= dlg.regions.len) return;
+            const r = dlg.regions[idx];
+            const p = dlg.procs[c];
+            const editor = dlg.editor;
+            const name = editor.allocator.dupe(u8, p.name) catch return;
+            defer editor.allocator.free(name);
+            const pid = p.pid;
+            dlg.window.destroy();
+            return editor.host.tabFor(editor).openProcessRegion(pid, name, r.start, r.end);
+        }
+        if (idx < dlg.procs.len) fillRegions(dlg, idx);
+    }
+
+    fn onProcBack(_: *gtk.Button, dlg: *ProcPicker) callconv(.c) void {
+        fillProcesses(dlg);
+    }
+
+    fn onProcDestroy(_: *gtk.Window, dlg: *ProcPicker) callconv(.c) void {
+        const a = dlg.editor.allocator;
+        disk_mod.freeProcesses(a, dlg.procs);
+        disk_mod.freeRegions(a, dlg.regions);
+        a.destroy(dlg);
     }
 
     // ---- reverse-engineering tools -------------------------------------------------------------
@@ -2129,7 +2456,7 @@ const HexEditor = struct {
         defer self.allocator.free(path);
         const bytes = self.buffer.slice()[s[0]..s[1]];
         if (glib.fileSetContents(path, bytes.ptr, @intCast(bytes.len), null) == 0) return;
-        const base = s[0] + @as(usize, @intCast(if (self.disk) |d| d.window_start else 0));
+        const base = s[0] + @as(usize, @intCast(self.diskBase()));
         const vma = std.fmt.allocPrint(self.allocator, "--adjust-vma=0x{X}", .{base}) catch return;
         defer self.allocator.free(vma);
         if (self.disasm_dir) |old| self.allocator.free(old);
@@ -2202,7 +2529,7 @@ const HexEditor = struct {
     fn refreshMarks(self: *HexEditor) void {
         self.allocator.free(self.mark_view);
         self.mark_view = &.{};
-        const base: u64 = if (self.disk) |d| d.window_start else 0;
+        const base: u64 = self.diskBase();
         var list: std.ArrayList(view_mod.Range) = .empty;
         for (self.bookmarks.items.items) |b| {
             if (b.start + b.len <= base or b.start >= base + self.buffer.len()) continue;
@@ -2225,7 +2552,7 @@ const HexEditor = struct {
     };
 
     fn bookmarkDialog(self: *HexEditor, edit: ?usize) void {
-        const base: u64 = if (self.disk) |d| d.window_start else 0;
+        const base: u64 = self.diskBase();
         var start: u64 = base + self.view.cursor;
         var len: u64 = 1;
         if (self.view.selection()) |s| {
@@ -2401,12 +2728,9 @@ const HexEditor = struct {
 
     fn onMenubarAction(self: *HexEditor, action: []const u8) void {
         const eql = std.mem.eql;
-        if (eql(u8, action, "new")) return self.confirmDiscard(.new);
-        if (eql(u8, action, "open")) return self.confirmDiscard(.open);
         if (eql(u8, action, "save")) return self.save();
         if (eql(u8, action, "save-as")) return self.saveAsDialog();
         if (eql(u8, action, "revert")) return if (self.path != null) self.confirmDiscard(.revert);
-        if (eql(u8, action, "close")) return self.window.as(gtk.Window).close();
         if (eql(u8, action, "undo")) return self.view.undo();
         if (eql(u8, action, "redo")) return self.view.redo();
         if (eql(u8, action, "copy")) return self.view.copy(false);
@@ -2431,6 +2755,7 @@ const HexEditor = struct {
         if (eql(u8, action, "get-patterns")) return self.getFormats(.hexpat);
         if (eql(u8, action, "patterns-folder")) return self.formatsFolderDialog(.hexpat);
         if (eql(u8, action, "open-disk")) return self.chooseDisk();
+        if (eql(u8, action, "open-process")) return self.chooseProcess();
         if (eql(u8, action, "goto-sector")) return self.ask(.sector);
         if (eql(u8, action, "disk-prev")) return self.diskStep(false);
         if (eql(u8, action, "disk-next")) return self.diskStep(true);
