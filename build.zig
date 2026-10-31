@@ -45,6 +45,15 @@ pub fn build(b: *std.Build) void {
     const common_tests = b.addTest(.{ .root_module = common });
     test_step.dependOn(&b.addRunArtifact(common_tests).step);
 
+    // The PDF page renderer: cairo drawing on top of the vendored zpdf parser.
+    // It does not need GTK or poppler, so its tests always run.
+    const zpdf_mod = b.createModule(.{ .root_source_file = b.path("third_party/zpdf/src/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
+    const pdfrender = b.createModule(.{ .root_source_file = b.path("src/pdfrender/render.zig"), .target = target, .optimize = optimize, .link_libc = true });
+    pdfrender.addImport("zpdf", zpdf_mod);
+    pdfrender.addImport("cairo1", gobject.module("cairo1"));
+    pdfrender.linkSystemLibrary("cairo", .{});
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = pdfrender })).step);
+
     inline for (components) |name| {
         // dkde-pdf needs poppler, so it is only built when asked for.
         const is_pdf = comptime std.mem.eql(u8, name, "pdf");
