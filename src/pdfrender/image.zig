@@ -155,6 +155,21 @@ pub fn toArgb(a: Allocator, spec: Spec, data: []const u8, fill: [3]u8, alpha: ?[
     return out;
 }
 
+/// Packs straight-alpha 8-bit RGBA, with an optional soft mask multiplied into the alpha.
+pub fn fromRgba8(a: Allocator, w: usize, h: usize, rgba: []const u8, alpha: ?[]const u8) Error![]u32 {
+    if (w * h * 4 > rgba.len) return error.BadImage;
+    if (@as(u64, w) * h > max_pixels) return error.TooBig;
+    const out = try a.alloc(u32, w * h);
+    for (0..w * h) |i| {
+        var al: u32 = rgba[i * 4 + 3];
+        if (alpha) |am| if (i < am.len) {
+            al = (al * am[i] + 127) / 255;
+        };
+        out[i] = pack(@intCast(al), rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]);
+    }
+    return out;
+}
+
 /// Packs 8-bit RGB (as a JPEG decoder returns it) the same way.
 pub fn fromRgb8(a: Allocator, w: usize, h: usize, rgb: []const u8, alpha: ?[]const u8) Error![]u32 {
     if (w * h * 3 > rgb.len) return error.BadImage;

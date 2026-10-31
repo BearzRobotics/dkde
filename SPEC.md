@@ -95,7 +95,8 @@ Runtime libraries allowed in v1:
 - gvfs/udisks2
 - shared-mime-info (data, needed for GIO content types)
 - An icon theme (https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)
-- stb_image (public domain / MIT), vendored in `third_party/stb/`, JPEG decoding only, built by Zig's C compiler.
+- zigimg (MIT), vendored in `third_party/zigimg/` and used as a package with its own `build.zig`; wrapped by `src/imgcodec/` (decode to RGBA, EXIF orientation), shared by `dkde-view` and the PDF renderer. Zig 0.17.0, no system libraries.
+- stb_image (public domain / MIT), vendored in `third_party/stb/`, JPEG decoding only, built by Zig's C compiler. Only a fallback in the PDF renderer, for JPEGs zigimg refuses (such as CMYK).
 - zpdf (CC0), vendored in `third_party/zpdf/`, the PDF reader under `src/pdfrender/`
   (Zig 0.17.0, no dependencies). It is meant to replace poppler-glib in `dkde-pdf`, so
   that viewer needs no system PDF library. See `third_party/zpdf/README.dkde.md`.
@@ -670,9 +671,12 @@ default apps and the start menu find it.
   sqrt abs exp`, `π`, `e`); degrees or radians; Enter evaluates.
 - `dkde-edit`: UTF-8 text only. Keys in `edit.conf`: `[edit] word-wrap`,
   `font`. Ctrl+N/O/S, Ctrl+Shift+S, Ctrl+F or Ctrl+H for find and replace.
-- `dkde-view`: loads through gdk-pixbuf, so it opens whatever the installed
-  pixbuf loaders support (WebP needs `webp-pixbuf-loader`, SVG needs
-  `librsvg2-common`). No new library beyond the GTK chain. "Set as
+- `dkde-view`: decodes in Zig through the shared `imgcodec` module (zigimg:
+  PNG, JPEG baseline and progressive, GIF, BMP, TGA, QOI, TIFF, PCX, netpbm,
+  and a few older formats), honouring EXIF orientation. Formats zigimg does
+  not read (WebP, SVG, ICO, AVIF, JPEG XL, animated GIF frames beyond the
+  first) fall back to gdk-pixbuf and whatever loaders are installed (WebP
+  needs `webp-pixbuf-loader`, SVG needs `librsvg2-common`). "Set as
   wallpaper" writes `[wallpaper] image` and clears `slideshow-dir`.
 - `dkde-tasks`: processes from `/proc`, refreshed every 1.5 s. Two summary
   cards (CPU, memory) show the current value and a 60-sample history graph;

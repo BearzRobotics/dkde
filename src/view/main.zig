@@ -1,5 +1,7 @@
-//! dkde-view: image viewer (SPEC.md 5.6). Loading goes through gdk-pixbuf,
-//! so it opens whatever formats the installed pixbuf loaders support.
+//! dkde-view: image viewer (SPEC.md 5.6). Images are decoded in Zig by the shared
+//! `imgcodec` module (zigimg: PNG, JPEG, GIF, BMP, TGA, QOI, TIFF and more, with
+//! EXIF orientation); gdk-pixbuf is the fallback for formats it cannot read
+//! (WebP, SVG, ICO, AVIF, JPEG XL), whatever loaders are installed.
 
 const std = @import("std");
 const gdk = @import("gdk4");
@@ -11,6 +13,7 @@ const gtk = @import("gtk4");
 const common = @import("common");
 
 const pure = @import("pure.zig");
+const imgcodec = @import("imgcodec");
 
 const App = struct {
     allocator: std.mem.Allocator,
@@ -231,6 +234,13 @@ const Viewer = struct {
         errdefer self.allocator.free(z);
 
         var err: ?*glib.Error = null;
+        if (self.decodeWithZig(z)) |zig_pixbuf| {
+            if (self.path) |p| self.allocator.free(p);
+            self.path = z;
+            self.setPixbuf(zig_pixbuf);
+            self.fit();
+            return;
+        }
         const loaded = gdkpixbuf.Pixbuf.newFromFile(z, &err) orelse {
             const message = if (err) |e| e.f_message orelse "unknown error" else "unknown error";
             common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot open this image"), std.mem.span(message));
@@ -247,6 +257,30 @@ const Viewer = struct {
         self.path = z;
         self.setPixbuf(pixbuf);
         self.fit();
+    }
+
+    /// Decodes `path` with imgcodec into a pixbuf, or null when the format is not one it reads.
+    fn decodeWithZig(self: *Viewer, path: [:0]const u8) ?*gdkpixbuf.Pixbuf {
+        _ = self;
+        const a = std.heap.c_allocator;
+        var contents: [*]u8 = undefined;
+        var len: usize = 0;
+        if (glib.fileGetContents(path, &contents, &len, null) == 0) return null;
+        defer glib.free(contents);
+        const bytes = contents[0..len];
+        var dec = imgcodec.decode(a, bytes) catch return null;
+        dec = imgcodec.orient(a, dec, imgcodec.exifOrientation(bytes)) catch return null;
+        if (dec.width > std.math.maxInt(c_int) / 4 or dec.height > std.math.maxInt(c_int)) {
+            dec.deinit(a);
+            return null;
+        }
+        // The pixbuf owns the pixels from here; it frees them with this.
+        return gdkpixbuf.Pixbuf.newFromData(dec.rgba.ptr, .rgb, 1, 8, @intCast(dec.width), @intCast(dec.height), @intCast(dec.width * 4), &freeRgba, null);
+    }
+
+    fn freeRgba(data: [*]u8, _: ?*anyopaque) callconv(.c) void {
+        // Allocated with c_allocator in decodeWithZig; its length is not needed to free.
+        std.c.free(data);
     }
 
     fn setPixbuf(self: *Viewer, pixbuf: *gdkpixbuf.Pixbuf) void {

@@ -11,6 +11,7 @@ const std = @import("std");
 const cairo = @import("cairo1");
 const zpdf = @import("zpdf");
 const image = @import("image.zig");
+const imgcodec = @import("imgcodec");
 pub const Diag = @import("diag.zig").Diag;
 
 extern fn stbi_load_from_memory(buffer: [*]const u8, len: c_int, x: *c_int, y: *c_int, comp: *c_int, req_comp: c_int) ?[*]u8;
@@ -18,6 +19,7 @@ extern fn stbi_image_free(data: *anyopaque) void;
 
 const Object = zpdf.Object;
 const Operand = zpdf.interpreter.Operand;
+const FontEncoding = zpdf.encoding.FontEncoding;
 const Lexer = zpdf.interpreter.ContentLexer;
 
 pub const Error = error{ NoSuchPage, OutOfMemory };
@@ -42,6 +44,10 @@ const Font = struct {
     first_char: i64 = 0,
     widths: []const f64 = &.{},
     missing_width: f64 = 500,
+    /// Character codes to Unicode, and widths for composite fonts (zpdf's reading of the font).
+    enc: ?*FontEncoding = null,
+    /// A Type0 font: codes are CIDs and widths come from /W. (zpdf also marks some simple TrueType fonts with a ToUnicode map as CID.)
+    composite: bool = false,
 
     fn width(self: Font, code: u8) f64 {
         const i = @as(i64, code) - self.first_char;
@@ -110,6 +116,21 @@ const Ctx = struct {
         };
     }
 
+    fn resolveThunk(ctx: *const anyopaque, o: Object) Object {
+        const self: *Ctx = @ptrCast(@alignCast(@constCast(ctx)));
+        return self.resolve(o);
+    }
+
+    /// The font's character-code to Unicode mapping (ToUnicode, /Encoding, CID maps), read by zpdf.
+    fn loadEncoding(self: *Ctx, fd: Object.Dict) ?*FontEncoding {
+        const enc = self.arena.create(FontEncoding) catch return null;
+        enc.* = zpdf.encoding.parseFontEncoding(self.arena, fd, resolveThunk, self) catch {
+            self.diag.note("font-encoding-failed", "");
+            return null;
+        };
+        return enc;
+    }
+
     fn font(self: *Ctx, name: []const u8) ?*const Font {
         if (self.fonts.get(name)) |f| return f;
         const res = self.resources orelse return null;
@@ -146,6 +167,8 @@ const Ctx = struct {
         if (self.resolve(fd.get("Subtype") orelse .null) == .name and std.mem.eql(u8, self.resolve(fd.get("Subtype").?).name, "Type0")) self.diag.note("font-type0-composite", name);
         // The 14 standard fonts come without widths: Courier is fixed, the rest use an average.
         if (f.widths.len == 0 and f.family == .mono) f.missing_width = 600;
+        f.composite = self.resolve(fd.get("Subtype") orelse .null) == .name and std.mem.eql(u8, self.resolve(fd.get("Subtype").?).name, "Type0");
+        f.enc = self.loadEncoding(fd);
         self.fonts.put(name, f) catch return null;
         return f;
     }
@@ -231,11 +254,51 @@ fn newLine(c: *Ctx, tx: f64, ty: f64) void {
     c.tm = c.tlm;
 }
 
+/// A UTF-8 buffer for one character, written by zpdf's decoder.
+const OneChar = struct {
+    buf: [16]u8 = undefined,
+    len: usize = 0,
+
+    pub fn writeAll(self: *OneChar, bytes: []const u8) !void {
+        const n = @min(bytes.len, self.buf.len - self.len);
+        @memcpy(self.buf[self.len..][0..n], bytes[0..n]);
+        self.len += n;
+    }
+
+    pub fn writeByte(self: *OneChar, b: u8) !void {
+        try self.writeAll(&.{b});
+    }
+
+    pub fn print(_: *OneChar, comptime _: []const u8, _: anytype) !void {}
+};
+
 fn showString(c: *Ctx, s: []const u8) void {
     const f = c.state.font orelse return;
     const fs = c.state.font_size;
     const cr = c.cr;
-    for (s) |code| {
+    // Composite fonts use 2-byte (sometimes 1 to 4) codes; simple fonts 1.
+    const step: usize = if (f.enc) |e| (if (f.composite and e.is_cid) std.math.clamp(@as(usize, e.bytes_per_char), 1, 4) else 1) else 1;
+    var i: usize = 0;
+    while (i < s.len) {
+        const n = @min(step, s.len - i);
+        var code: u32 = 0;
+        for (s[i .. i + n]) |byte| code = (code << 8) | byte;
+        const raw = s[i .. i + n];
+        i += n;
+
+        // The character as UTF-8: through the font's own mapping when it has one.
+        var one: OneChar = .{};
+        if (f.enc) |e| {
+            e.decode(raw, &one) catch {};
+        } else if (code < 0x80) {
+            one.buf[0] = @intCast(code);
+            one.len = 1;
+        } else {
+            one.len = std.unicode.utf8Encode(@intCast(code), &one.buf) catch 0;
+        }
+        one.buf[@min(one.len, one.buf.len - 1)] = 0;
+        const is_space = code == ' ' and n == 1;
+
         cr.save();
         var m: cairo.Matrix = undefined;
         // Text space to user space: the text matrix, then the rise and horizontal scale.
@@ -250,31 +313,34 @@ fn showString(c: *Ctx, s: []const u8) void {
             .mono => "monospace",
         }, if (f.italic) .italic else .normal, if (f.bold) .bold else .normal);
         cr.setFontSize(fs);
-        // Codes above 127 are taken as Latin-1, which fits WinAnsi for the common letters.
-        var buf: [5]u8 = @splat(0);
-        if (code < 0x80) {
-            buf[0] = code;
-        } else {
-            buf[0] = 0xC0 | (code >> 6);
-            buf[1] = 0x80 | (code & 0x3F);
+
+        // The advance: the PDF's widths when it has them, else the substitute font's own.
+        const is_cid = f.composite and f.enc != null;
+        var w0: f64 = -1; // negative: measure the substitute glyph
+        if (is_cid) {
+            w0 = f.enc.?.widths.getCIDWidth(code) / 1000.0;
+        } else if (f.widths.len > 0) {
+            w0 = f.width(@truncate(code)) / 1000.0;
         }
-        // Without widths in the PDF (the standard 14 fonts), use the substitute font's own.
-        var w0 = f.width(code) / 1000.0;
-        if (f.widths.len == 0 and code != 0) {
-            var ext: cairo.TextExtents = undefined;
-            // A large size, so hinting does not round the advance to whole pixels.
-            cr.setFontSize(1000);
-            cr.textExtents(@ptrCast(&buf), &ext);
-            w0 = ext.x_advance / 1000.0;
-            cr.setFontSize(fs);
+        if (w0 < 0) {
+            w0 = 0.5;
+            if (one.len > 0 and one.buf[0] != 0) {
+                var ext: cairo.TextExtents = undefined;
+                // A large size, so hinting does not round the advance to whole pixels.
+                cr.setFontSize(1000);
+                cr.textExtents(@ptrCast(&one.buf), &ext);
+                w0 = ext.x_advance / 1000.0;
+                cr.setFontSize(fs);
+            }
         }
-        if (code != ' ' and code != 0 and c.state.render_mode != 3 and c.state.render_mode != 7) {
+
+        if (!is_space and one.len > 0 and one.buf[0] > 0x20 and c.state.render_mode != 3 and c.state.render_mode != 7) {
             setFill(c);
             cr.moveTo(0, 0);
-            cr.showText(@ptrCast(&buf));
+            cr.showText(@ptrCast(&one.buf));
         }
         cr.restore();
-        const tx = (w0 * fs + c.state.char_space + (if (code == ' ') c.state.word_space else 0)) * c.state.h_scale;
+        const tx = (w0 * fs + c.state.char_space + (if (is_space) c.state.word_space else 0)) * c.state.h_scale;
         advance(c, tx);
     }
 }
@@ -677,6 +743,12 @@ fn grayOf(c: *Ctx, st: Object.Stream) ?Gray8 {
     const data = decoded(c, st) orelse return null;
     defer c.gpa.free(data);
     if (lastFilter(c, st)) |f| if (std.mem.eql(u8, f, "DCTDecode") or std.mem.eql(u8, f, "DCT")) {
+        if (imgcodec.decode(c.gpa, data)) |dec| {
+            defer dec.deinit(c.gpa);
+            const out = c.gpa.alloc(u8, dec.width * dec.height) catch return null;
+            for (out, 0..) |*o, i| o.* = dec.rgba[i * 4];
+            return .{ .w = dec.width, .h = dec.height, .data = out };
+        } else |_| {}
         var x: c_int = 0;
         var y: c_int = 0;
         var n: c_int = 0;
@@ -743,14 +815,23 @@ fn drawImage(c: *Ctx, st: Object.Stream, name: []const u8) void {
     if (std.mem.eql(u8, filter, "DCTDecode") or std.mem.eql(u8, filter, "DCT")) {
         const data = decoded(c, st) orelse return;
         defer c.gpa.free(data);
-        var x: c_int = 0;
-        var y: c_int = 0;
-        var n: c_int = 0;
-        const px = stbi_load_from_memory(data.ptr, @intCast(@min(data.len, std.math.maxInt(c_int))), &x, &y, &n, 3) orelse return c.diag.note("image-jpeg-failed", name);
-        defer stbi_image_free(px);
-        w = @intCast(x);
-        h = @intCast(y);
-        pixels = image.fromRgb8(c.gpa, w, h, px[0 .. w * h * 3], alpha) catch |e| return c.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", name);
+        // zigimg (Zig) first; stb_image for what it refuses, such as CMYK JPEGs.
+        if (imgcodec.decode(c.gpa, data)) |dec| {
+            defer dec.deinit(c.gpa);
+            w = dec.width;
+            h = dec.height;
+            pixels = image.fromRgba8(c.gpa, w, h, dec.rgba, alpha) catch |e| return c.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", name);
+        } else |_| {
+            c.diag.note("jpeg-fallback-stb", name);
+            var x: c_int = 0;
+            var y: c_int = 0;
+            var n: c_int = 0;
+            const px = stbi_load_from_memory(data.ptr, @intCast(@min(data.len, std.math.maxInt(c_int))), &x, &y, &n, 3) orelse return c.diag.note("image-jpeg-failed", name);
+            defer stbi_image_free(px);
+            w = @intCast(x);
+            h = @intCast(y);
+            pixels = image.fromRgb8(c.gpa, w, h, px[0 .. w * h * 3], alpha) catch |e| return c.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", name);
+        }
     } else {
         const data = decoded(c, st) orelse return;
         defer c.gpa.free(data);

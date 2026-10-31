@@ -45,11 +45,20 @@ pub fn build(b: *std.Build) void {
     const common_tests = b.addTest(.{ .root_module = common });
     test_step.dependOn(&b.addRunArtifact(common_tests).step);
 
+    // Image decoding in Zig (vendored zigimg), shared by dkde-view and the PDF renderer.
+    const zigimg = b.dependency("zigimg", .{ .target = target, .optimize = optimize });
+    const imgcodec = b.createModule(.{ .root_source_file = b.path("src/imgcodec/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
+    imgcodec.addImport("zigimg", zigimg.module("zigimg"));
+    const imgcodec_run = b.addRunArtifact(b.addTest(.{ .root_module = imgcodec }));
+    imgcodec_run.has_side_effects = true; // DKDE_TEST_IMAGE is read from the environment
+    test_step.dependOn(&imgcodec_run.step);
+
     // The PDF page renderer: cairo drawing on top of the vendored zpdf parser.
     // It does not need GTK or poppler, so its tests always run.
     const zpdf_mod = b.createModule(.{ .root_source_file = b.path("third_party/zpdf/src/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
     const pdfrender = b.createModule(.{ .root_source_file = b.path("src/pdfrender/render.zig"), .target = target, .optimize = optimize, .link_libc = true });
     pdfrender.addImport("zpdf", zpdf_mod);
+    pdfrender.addImport("imgcodec", imgcodec);
     pdfrender.addImport("cairo1", gobject.module("cairo1"));
     pdfrender.linkSystemLibrary("cairo", .{});
     // JPEG decoding for image streams: stb_image, vendored, built by Zig's own C compiler.
@@ -97,6 +106,7 @@ pub fn build(b: *std.Build) void {
             if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "hex") or std.mem.eql(u8, name, "color") or std.mem.eql(u8, name, "parted") or std.mem.eql(u8, name, "pdf")) mod.addImport("cairo1", gobject.module("cairo1"));
             if (std.mem.eql(u8, name, "pdf")) mod.linkSystemLibrary("poppler-glib", .{});
             if (std.mem.eql(u8, name, "parted")) mod.addImport("pangocairo1", gobject.module("pangocairo1"));
+            if (std.mem.eql(u8, name, "view")) mod.addImport("imgcodec", imgcodec);
             if (std.mem.eql(u8, name, "hex")) {
                 mod.addImport("pangocairo1", gobject.module("pangocairo1"));
                 // YAML, for Kaitai Struct format files (third_party/zig-yaml).
