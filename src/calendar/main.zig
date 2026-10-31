@@ -12,6 +12,7 @@ const gtk = @import("gtk4");
 const common = @import("common");
 const liturgy = @import("liturgy.zig");
 const editor = @import("editor.zig");
+const calsys = @import("calsys.zig");
 
 const events = common.events;
 const civil = common.civil;
@@ -32,7 +33,8 @@ pub const CalendarApp = struct {
     cfg: common.Config,
     list: events.List,
 
-    // What is shown.
+    // What is shown. `year` and `month` are in the calendar system `sys`.
+    sys: calsys.System,
     year: i32,
     month: u8,
     selected: Date,
@@ -46,6 +48,7 @@ pub const CalendarApp = struct {
     grid: *gtk.Grid,
     month_label: *gtk.Label,
     heading: *gtk.Label,
+    alt_label: *gtk.Label,
     lit_box: *gtk.Box,
     events_box: *gtk.Box,
     text: *gtk.TextView,
@@ -69,18 +72,25 @@ pub const CalendarApp = struct {
         defer now.unref();
         const today: Date = .{ .year = now.getYear(), .month = @intCast(now.getMonth()), .day = @intCast(now.getDayOfMonth()) };
 
+        const sys_text = try cfg.getString(allocator, "view", "system", "julian");
+        defer allocator.free(sys_text);
+        const sys = calsys.System.parse(sys_text);
+        const here = calsys.fromCivil(sys, today);
+
         self.* = .{
             .allocator = allocator,
             .window = gtk.ApplicationWindow.new(app),
             .cfg = cfg,
             .list = list,
-            .year = today.year,
-            .month = today.month,
+            .sys = sys,
+            .year = here.year,
+            .month = here.month,
             .selected = today,
             .today = today,
             .grid = gtk.Grid.new(),
             .month_label = gtk.Label.new(""),
             .heading = gtk.Label.new(""),
+            .alt_label = gtk.Label.new(""),
             .lit_box = gtk.Box.new(.vertical, 6),
             .events_box = gtk.Box.new(.vertical, 4),
             .text = gtk.TextView.new(),
@@ -102,6 +112,11 @@ pub const CalendarApp = struct {
         _ = gtk.Button.signals.clicked.connect(prev, *CalendarApp, &onPrev, self, .{});
         _ = gtk.Button.signals.clicked.connect(next, *CalendarApp, &onNext, self, .{});
         _ = gtk.Button.signals.clicked.connect(today_button, *CalendarApp, &onToday, self, .{});
+        var terminated = [_]?[*:0]const u8{ common.tr("Julian (Old Calendar)").ptr, common.tr("Gregorian").ptr, common.tr("Fixed (13 months)").ptr, null };
+        const system_menu = gtk.DropDown.newFromStrings(@ptrCast(&terminated));
+        system_menu.setSelected(@backingInt(self.sys));
+        system_menu.as(gtk.Widget).setTooltipText(common.tr("Calendar system"));
+        _ = gobject.Object.signals.notify.connect(system_menu, *CalendarApp, &onSystem, self, .{ .detail = "selected" });
         self.month_label.as(gtk.Widget).addCssClass("title-3");
         self.month_label.as(gtk.Widget).setMarginStart(8);
         self.month_label.as(gtk.Widget).setMarginEnd(8);
@@ -126,6 +141,7 @@ pub const CalendarApp = struct {
         bar.append(next.as(gtk.Widget));
         bar.append(self.month_label.as(gtk.Widget));
         bar.append(today_button.as(gtk.Widget));
+        bar.append(system_menu.as(gtk.Widget));
         bar.append(spacer.as(gtk.Widget));
         bar.append(no_check.as(gtk.Widget));
         bar.append(tlm_check.as(gtk.Widget));
@@ -174,7 +190,11 @@ pub const CalendarApp = struct {
 
         const right = gtk.Box.new(.vertical, 6);
         right.as(gtk.Widget).setSizeRequest(320, -1);
+        self.alt_label.setXalign(0);
+        self.alt_label.setWrap(1);
+        self.alt_label.as(gtk.Widget).addCssClass("dim-label");
         right.append(self.heading.as(gtk.Widget));
+        right.append(self.alt_label.as(gtk.Widget));
         right.append(day_scroller.as(gtk.Widget));
         right.append(notes_label.as(gtk.Widget));
         right.append(notes_scroller.as(gtk.Widget));
@@ -262,16 +282,30 @@ pub const CalendarApp = struct {
     fn shiftMonth(self: *CalendarApp, delta: i32) void {
         var m: i32 = @as(i32, self.month) + delta;
         var y = self.year;
+        const count: i32 = self.sys.monthCount();
         if (m < 1) {
-            m = 12;
+            m = count;
             y -= 1;
-        } else if (m > 12) {
+        } else if (m > count) {
             m = 1;
             y += 1;
         }
         self.year = y;
         self.month = @intCast(m);
         self.rebuildGrid();
+    }
+
+    fn onSystem(menu: *gtk.DropDown, _: *gobject.ParamSpec, self: *CalendarApp) callconv(.c) void {
+        const index = menu.getSelected();
+        if (index > 2) return;
+        self.sys = @fromBackingInt(@intCast(index));
+        self.cfg.setString("view", "system", self.sys.name()) catch {};
+        // Show the month that holds the selected day in the new system.
+        const v = calsys.fromCivil(self.sys, self.selected);
+        self.year = v.year;
+        self.month = v.month;
+        self.rebuildGrid();
+        self.showDay();
     }
 
     fn onToday(_: *gtk.Button, self: *CalendarApp) callconv(.c) void {
@@ -282,10 +316,9 @@ pub const CalendarApp = struct {
     fn selectDate(self: *CalendarApp, date: Date) void {
         self.flush();
         self.selected = date;
-        if (date.year != self.year or date.month != self.month) {
-            self.year = date.year;
-            self.month = date.month;
-        }
+        const v = calsys.fromCivil(self.sys, date);
+        self.year = v.year;
+        self.month = v.month;
         self.rebuildGrid();
         self.showDay();
     }
@@ -306,31 +339,44 @@ pub const CalendarApp = struct {
 
     fn rebuildGrid(self: *CalendarApp) void {
         clearGrid(self.grid);
+        const sys = self.sys;
 
-        const first: Date = .{ .year = self.year, .month = self.month, .day = 1 };
-        const heading = glib.DateTime.newLocal(self.year, self.month, 1, 0, 0, 0) orelse return;
-        defer heading.unref();
-        if (heading.format("%B %Y")) |text| {
-            defer glib.free(text);
-            self.month_label.setText(text);
-        }
+        var title: [64]u8 = undefined;
+        self.month_label.setText(bufZ(&title, "{s} {d}{s}", .{
+            calsys.monthName(sys, self.month),
+            self.year,
+            if (sys == .julian) " (Julian)" else "",
+        }) catch "");
 
-        const names = .{ "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
-        inline for (names, 0..) |n, col| {
+        const heads = .{ "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+        inline for (heads, 0..) |n, col| {
             const l = gtk.Label.new(common.tr(n));
             l.as(gtk.Widget).addCssClass("dkde-cal-weekday");
             self.grid.attach(l.as(gtk.Widget), @intCast(col), 0, 1, 1);
         }
 
+        const first = calsys.toCivil(sys, .{ .year = self.year, .month = self.month, .day = 1 });
+        const days = calsys.monthDays(sys, self.year, self.month);
+        if (sys == .fixed) {
+            // Every month is four whole weeks; Leap Day and Year Day get a row of their own.
+            var i: usize = 0;
+            while (i < 28) : (i += 1) self.placeCell(i, first.addDays(@intCast(i)), @intCast(i % 7), @intCast(i / 7 + 1), 1);
+            if (days == 29) self.placeCell(28, first.addDays(28), 0, 5, 7);
+            return;
+        }
         const lead: i64 = first.weekday();
         var i: usize = 0;
         while (i < 42) : (i += 1) {
             const date = first.addDays(@as(i64, @intCast(i)) - lead);
-            self.cells[i] = .{ .app = self, .date = date };
-            const button = self.makeCell(date);
-            _ = gtk.Button.signals.clicked.connect(button, *Cell, &onCell, &self.cells[i], .{});
-            self.grid.attach(button.as(gtk.Widget), @intCast(i % 7), @intCast(i / 7 + 1), 1, 1);
+            self.placeCell(i, date, @intCast(i % 7), @intCast(i / 7 + 1), 1);
         }
+    }
+
+    fn placeCell(self: *CalendarApp, index: usize, date: Date, col: c_int, row: c_int, span: c_int) void {
+        self.cells[index] = .{ .app = self, .date = date };
+        const button = self.makeCell(date);
+        _ = gtk.Button.signals.clicked.connect(button, *Cell, &onCell, &self.cells[index], .{});
+        self.grid.attach(button.as(gtk.Widget), col, row, span, 1);
     }
 
     fn makeCell(self: *CalendarApp, date: Date) *gtk.Button {
@@ -341,17 +387,30 @@ pub const CalendarApp = struct {
         w.setHexpand(1);
         w.setVexpand(1);
         w.setSizeRequest(96, 74);
-        if (date.month != self.month) w.addCssClass("outside");
+        const v = calsys.fromCivil(self.sys, date);
+        if (v.month != self.month or v.year != self.year) w.addCssClass("outside");
         if (date.eql(self.today)) w.addCssClass("today");
         if (date.eql(self.selected)) w.addCssClass("selected");
 
         const box = gtk.Box.new(.vertical, 1);
-        var nb: [8]u8 = undefined;
-        const num = gtk.Label.new(bufZ(&nb, "{d}", .{date.day}) catch "");
+        var nb: [24]u8 = undefined;
+        const num = gtk.Label.new(if (calsys.isSpecial(self.sys, v)) zstr(calsys.specialName(v)) else (bufZ(&nb, "{d}", .{v.day}) catch ""));
         num.setXalign(0);
         num.as(gtk.Widget).addCssClass("dkde-cal-num");
         num.as(gtk.Widget).setHalign(.start);
-        box.append(num.as(gtk.Widget));
+        const top = gtk.Box.new(.horizontal, 4);
+        top.append(num.as(gtk.Widget));
+        if (self.sys != .gregorian) {
+            // The civil date, small, at the right.
+            var cb: [16]u8 = undefined;
+            const civil_label = gtk.Label.new(bufZ(&cb, "{d}/{d}", .{ date.month, date.day }) catch "");
+            civil_label.as(gtk.Widget).setHexpand(1);
+            civil_label.setXalign(1);
+            civil_label.as(gtk.Widget).addCssClass("dim-label");
+            civil_label.as(gtk.Widget).addCssClass("dkde-cal-civil");
+            top.append(civil_label.as(gtk.Widget));
+        }
+        box.append(top.as(gtk.Widget));
 
         var day: liturgy.Day = undefined;
         if (self.table_no) |*t| self.addLitLine(box, t, date, &day);
@@ -410,14 +469,21 @@ pub const CalendarApp = struct {
         @memcpy(self.key[0..key.len], key);
         self.key_len = key.len;
 
-        const dt = glib.DateTime.newLocal(self.selected.year, self.selected.month, self.selected.day, 0, 0, 0);
-        if (dt) |d| {
-            defer d.unref();
-            if (d.format("%A, %-d %B %Y")) |title| {
-                defer glib.free(title);
-                self.heading.setText(title);
+        // The heading is in the chosen system; the others follow in small type.
+        var hb: [96]u8 = undefined;
+        self.heading.setText(zstr(calsys.describe(&hb, self.sys, self.selected)));
+        var ab: [320]u8 = undefined;
+        var used: usize = 0;
+        inline for (.{ calsys.System.julian, calsys.System.gregorian, calsys.System.fixed }) |other| {
+            if (other != self.sys) {
+                var tb: [96]u8 = undefined;
+                const text = calsys.describe(&tb, other, self.selected);
+                const line = std.fmt.bufPrint(ab[used..], "{s}{s}: {s}", .{ if (used > 0) "\n" else "", other.label(), text }) catch "";
+                used += line.len;
             }
         }
+        ab[used] = 0;
+        self.alt_label.setText(ab[0..used :0]);
         self.showLiturgy();
         self.showEvents();
 
@@ -687,4 +753,5 @@ test "date keys" {
 
 test {
     _ = @import("liturgy.zig");
+    _ = @import("calsys.zig");
 }
