@@ -48,3 +48,32 @@
 <keybind key="C-A-l">
   <action name="Execute" command="dkde-panel msg lock"/>
 </keybind>
+<!-- labwc's own window shortcuts. dkde writes these itself and removes <default />
+     from <keyboard>, so they can be changed in Settings > Keyboard shortcuts. -->
+<keybind key="A-Tab">
+  <action name="NextWindow"/>
+</keybind>
+<keybind key="A-S-Tab">
+  <action name="PreviousWindow"/>
+</keybind>
+<keybind key="A-F4">
+  <action name="Close"/>
+</keybind>
+<keybind key="W-a">
+  <action name="ToggleMaximize"/>
+</keybind>
+<keybind key="W-Left">
+  <action name="SnapToEdge" direction="left"/>
+</keybind>
+<keybind key="W-Right">
+  <action name="SnapToEdge" direction="right"/>
+</keybind>
+<keybind key="W-Up">
+  <action name="SnapToEdge" direction="up"/>
+</keybind>
+<keybind key="W-Down">
+  <action name="SnapToEdge" direction="down"/>
+</keybind>
+<keybind key="A-Space">
+  <action name="ShowMenu" menu="client-menu"/>
+</keybind>

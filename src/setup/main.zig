@@ -162,10 +162,13 @@ const Setup = struct {
     fn checkKeybinds(self: *Setup) void {
         const path = self.labwcFile("rc.xml");
         const current = self.readFile(path) orelse "";
-        const updated = common.labwc.mergeKeybinds(self.arena.allocator(), current, &common.labwc.dkde_keybinds) catch null;
+        // dkde owns every shortcut, labwc's window ones included, so they can be
+        // changed in one place (Settings > Keyboard shortcuts).
+        const updated = common.labwc.takeOverKeybinds(self.arena.allocator(), current, &common.labwc.dkde_keybinds) catch null;
+        const title = "labwc keybindings (dkde's shortcuts, in place of labwc's built-in ones)";
         if (updated) |content| {
-            self.add(.{ .title = "labwc keybindings (Super, Print, Ctrl+Shift+Esc)", .status = .todo, .detail = self.fmt("add the missing ones to {s}; yours are kept", .{path}), .write_path = path, .write_content = content });
-        } else self.add(.{ .title = "labwc keybindings (Super, Print, Ctrl+Shift+Esc)", .status = .ok });
+            self.add(.{ .title = title, .status = .todo, .detail = self.fmt("add the missing ones to {s} and drop labwc's <default />; your own are kept", .{path}), .write_path = path, .write_content = content });
+        } else self.add(.{ .title = title, .status = .ok });
     }
 
     fn checkEnvironment(self: *Setup) void {

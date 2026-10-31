@@ -384,7 +384,7 @@ Xwayland; placing the bar relies on the window manager honouring dock hints
 Example labwc files are in `data/labwc/`: an `autostart` that restarts the
 panel and keybindings for Super (start menu), Print / Shift+Print
 (screenshots), Ctrl+Shift+Esc (Task Manager) and virtual desktops
-(Ctrl+Alt+Left/Right to switch, add Shift to carry the window along), Ctrl+Alt+T for a terminal and Ctrl+Alt+L to lock. Settings > Keyboard shortcuts changes them. The
+(Ctrl+Alt+Left/Right to switch, add Shift to carry the window along), Ctrl+Alt+T for a terminal and Ctrl+Alt+L to lock. Settings > Keyboard shortcuts changes them. dkde writes labwc's own window shortcuts (Alt+Tab, Alt+F4, Super+arrows and so on) into the same list and turns off labwc's built-in set, so every shortcut is changed in one place. The
 number of desktops is under Settings > Taskbar.
 
 For a graphical login, install `greetd` and copy `data/greetd/config.toml` to

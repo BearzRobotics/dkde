@@ -145,8 +145,11 @@ pub const Keybind = struct {
     key: []const u8,
     /// Runs a command; empty when `action` is used instead.
     command: []const u8 = "",
-    /// A labwc action with a `to` attribute, such as GoToDesktop.
+    /// A labwc action, such as GoToDesktop or Close.
     action: []const u8 = "",
+    /// Its one attribute (`to` for desktops, `direction` for snapping, `menu`),
+    /// with `to` as the value; both empty for an action that takes none.
+    attr: []const u8 = "to",
     to: []const u8 = "",
     /// What Settings > Shortcuts calls it.
     name: []const u8 = "",
@@ -170,11 +173,25 @@ pub const dkde_keybinds = [_]Keybind{
     .{ .name = "Next desktop", .key = "C-A-Right", .action = "GoToDesktop", .to = "right" },
     .{ .name = "Move window to previous desktop", .key = "C-A-S-Left", .action = "SendToDesktop", .to = "left" },
     .{ .name = "Move window to next desktop", .key = "C-A-S-Right", .action = "SendToDesktop", .to = "right" },
+    // The window shortcuts labwc ships. dkde writes them out itself (and drops
+    // labwc's `<default />`), so every shortcut is in this one list.
+    .{ .name = "Switch to next window", .key = "A-Tab", .action = "NextWindow", .attr = "", .to = "" },
+    .{ .name = "Switch to previous window", .key = "A-S-Tab", .action = "PreviousWindow", .attr = "", .to = "" },
+    .{ .name = "Close window", .key = "A-F4", .action = "Close", .attr = "", .to = "" },
+    .{ .name = "Maximize or restore window", .key = "W-a", .action = "ToggleMaximize", .attr = "", .to = "" },
+    .{ .name = "Snap window to the left half", .key = "W-Left", .action = "SnapToEdge", .attr = "direction", .to = "left" },
+    .{ .name = "Snap window to the right half", .key = "W-Right", .action = "SnapToEdge", .attr = "direction", .to = "right" },
+    .{ .name = "Snap window to the top half", .key = "W-Up", .action = "SnapToEdge", .attr = "direction", .to = "up" },
+    .{ .name = "Snap window to the bottom half", .key = "W-Down", .action = "SnapToEdge", .attr = "direction", .to = "down" },
+    .{ .name = "Window menu", .key = "A-Space", .action = "ShowMenu", .attr = "menu", .to = "client-menu" },
 };
 
 /// What identifies an entry inside a `<keybind>` block, whatever key it is on.
 pub fn signature(buf: []u8, k: Keybind) []const u8 {
-    if (k.action.len > 0) return std.fmt.bufPrint(buf, "name=\"{s}\" to=\"{s}\"", .{ k.action, k.to }) catch "";
+    if (k.action.len > 0) {
+        if (k.attr.len == 0 or k.to.len == 0) return std.fmt.bufPrint(buf, "name=\"{s}\"", .{k.action}) catch "";
+        return std.fmt.bufPrint(buf, "name=\"{s}\" {s}=\"{s}\"", .{ k.action, k.attr, k.to }) catch "";
+    }
     return std.fmt.bufPrint(buf, "command=\"{s}\"", .{k.command}) catch "";
 }
 
@@ -316,6 +333,55 @@ pub fn hasKey(xml: []const u8, key: []const u8) bool {
     return std.mem.indexOf(u8, xml, needle) != null;
 }
 
+/// Does `<keyboard>` still load labwc's own default keybinds?
+pub fn hasKeyboardDefault(xml: []const u8) bool {
+    const open = std.mem.indexOf(u8, xml, "<keyboard>") orelse return false;
+    const close = std.mem.indexOfPos(u8, xml, open, "</keyboard>") orelse xml.len;
+    const body = xml[open..close];
+    return std.mem.indexOf(u8, body, "<default />") != null or std.mem.indexOf(u8, body, "<default/>") != null;
+}
+
+/// Removes `<default />` from `<keyboard>`, so labwc binds only what rc.xml
+/// lists. Null when there was none.
+pub fn removeKeyboardDefault(allocator: std.mem.Allocator, xml_in: []const u8) !?[]u8 {
+    if (!hasKeyboardDefault(xml_in)) return null;
+    const open = std.mem.indexOf(u8, xml_in, "<keyboard>").?;
+    const close = std.mem.indexOfPos(u8, xml_in, open, "</keyboard>") orelse xml_in.len;
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    try out.appendSlice(allocator, xml_in[0..open]);
+    var rest = xml_in[open..close];
+    while (true) {
+        const tag = std.mem.indexOf(u8, rest, "<default />") orelse std.mem.indexOf(u8, rest, "<default/>") orelse break;
+        const len: usize = if (std.mem.startsWith(u8, rest[tag..], "<default />")) "<default />".len else "<default/>".len;
+        // Take the whole line when the tag is alone on it.
+        var from = tag;
+        while (from > 0 and (rest[from - 1] == ' ' or rest[from - 1] == '\t')) from -= 1;
+        var to = tag + len;
+        if (to < rest.len and rest[to] == '\n' and (from == 0 or rest[from - 1] == '\n')) to += 1;
+        try out.appendSlice(allocator, rest[0..from]);
+        rest = rest[to..];
+    }
+    try out.appendSlice(allocator, rest);
+    try out.appendSlice(allocator, xml_in[close..]);
+    return try out.toOwnedSlice(allocator);
+}
+
+/// Makes rc.xml carry every one of dkde's shortcuts and none of labwc's own:
+/// missing entries are added and `<default />` is removed. Null when rc.xml
+/// already is that way.
+pub fn takeOverKeybinds(allocator: std.mem.Allocator, xml_in: []const u8, wanted: []const Keybind) !?[]u8 {
+    const merged = try mergeKeybinds(allocator, xml_in, wanted);
+    errdefer if (merged) |m| allocator.free(m);
+    const base = merged orelse xml_in;
+    const stripped = try removeKeyboardDefault(allocator, base);
+    if (stripped) |st| {
+        if (merged) |m| allocator.free(m);
+        return st;
+    }
+    return merged;
+}
+
 /// Adds the keybindings in `wanted` that rc.xml does not already bind,
 /// creating `<keyboard>` (with the default bindings) if needed. Existing
 /// content is left alone. Returns null when nothing had to change.
@@ -332,7 +398,8 @@ pub fn mergeKeybinds(allocator: std.mem.Allocator, xml_in: []const u8, wanted: [
 
     if (std.mem.indexOf(u8, xml.items, "<keyboard>") == null) {
         const close = std.mem.lastIndexOf(u8, xml.items, "</labwc_config>") orelse return error.NotLabwcConfig;
-        try xml.insertSlice(allocator, close, "  <keyboard>\n    <default />\n  </keyboard>\n");
+        // No `<default />`: dkde writes every shortcut itself.
+        try xml.insertSlice(allocator, close, "  <keyboard>\n  </keyboard>\n");
     }
     const close = std.mem.indexOf(u8, xml.items, "</keyboard>") orelse return error.NotLabwcConfig;
 
@@ -341,7 +408,11 @@ pub fn mergeKeybinds(allocator: std.mem.Allocator, xml_in: []const u8, wanted: [
     for (missing.items) |k| {
         const onrelease = if (std.mem.eql(u8, k.key, "Super_L")) " onRelease=\"yes\"" else "";
         if (k.action.len > 0) {
-            try block.print(allocator, "    <keybind key=\"{s}\">\n      <action name=\"{s}\" to=\"{s}\"/>\n    </keybind>\n", .{ k.key, k.action, k.to });
+            if (k.attr.len == 0 or k.to.len == 0) {
+                try block.print(allocator, "    <keybind key=\"{s}\">\n      <action name=\"{s}\"/>\n    </keybind>\n", .{ k.key, k.action });
+            } else {
+                try block.print(allocator, "    <keybind key=\"{s}\">\n      <action name=\"{s}\" {s}=\"{s}\"/>\n    </keybind>\n", .{ k.key, k.action, k.attr, k.to });
+            }
         } else {
             try block.print(allocator, "    <keybind key=\"{s}\"{s}>\n      <action name=\"Execute\" command=\"{s}\"/>\n    </keybind>\n", .{ k.key, onrelease, k.command });
         }
@@ -373,7 +444,7 @@ test "keybinds: created in an empty config" {
     const a = std.testing.allocator;
     const out = (try mergeKeybinds(a, "", &dkde_keybinds)).?;
     defer a.free(out);
-    try std.testing.expect(std.mem.indexOf(u8, out, "<default />") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "<default />") == null);
     try std.testing.expect(std.mem.indexOf(u8, out, "key=\"Super_L\" onRelease=\"yes\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "dkde-snip --region") != null);
 }
@@ -740,4 +811,38 @@ test "the user's own keybinds are listed" {
     try std.testing.expectEqualStrings("W-e", found[0].key);
     try std.testing.expectEqualStrings("dkde-files", found[0].what);
     try std.testing.expectEqualStrings("Exit", found[1].what);
+}
+
+test "taking over labwc's defaults" {
+    const a = std.testing.allocator;
+    const before =
+        \\<labwc_config>
+        \\  <keyboard>
+        \\    <default />
+        \\    <keybind key="W-e"><action name="Execute" command="my-files"/></keybind>
+        \\  </keyboard>
+        \\</labwc_config>
+        \\
+    ;
+    try std.testing.expect(hasKeyboardDefault(before));
+    const after = (try takeOverKeybinds(a, before, &dkde_keybinds)).?;
+    defer a.free(after);
+    try std.testing.expect(!hasKeyboardDefault(after));
+    try std.testing.expect(std.mem.indexOf(u8, after, "my-files") != null); // the user's own stay
+    try std.testing.expectEqualStrings("A-Tab", currentKey(after, dkde_keybinds[15]).?);
+    try std.testing.expectEqualStrings("W-Left", currentKey(after, dkde_keybinds[19]).?);
+    try std.testing.expect(std.mem.indexOf(u8, after, "<action name=\"Close\"/>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, after, "<action name=\"SnapToEdge\" direction=\"left\"/>") != null);
+    // Doing it again changes nothing.
+    try std.testing.expect((try takeOverKeybinds(a, after, &dkde_keybinds)) == null);
+}
+
+test "removing the default tag only inside keyboard" {
+    const a = std.testing.allocator;
+    const xml = "<labwc_config>\n<keyboard>\n  <default />\n</keyboard>\n<mouse>\n  <default />\n</mouse>\n</labwc_config>\n";
+    const out = (try removeKeyboardDefault(a, xml)).?;
+    defer a.free(out);
+    try std.testing.expect(!hasKeyboardDefault(out));
+    try std.testing.expect(std.mem.indexOf(u8, out, "<mouse>\n  <default />") != null); // mouse untouched
+    try std.testing.expect((try removeKeyboardDefault(a, out)) == null);
 }

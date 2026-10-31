@@ -562,16 +562,22 @@ files and the components pick up the changes through their file monitors.
   records the next key press (modifiers C-, A-, S-, W-; a plain letter needs a
   modifier, while function, media and Print keys may stand alone; the bare Super
   key is allowed for the start menu only); Reset restores the default key. A key
-  already bound to another entry of rc.xml is refused. Below the editable list
-  the page shows what labwc binds itself, and the user's other keybinds from
-  rc.xml. labwc has no command that prints its effective keybinds, so the
-  built-in list is read from the `keybinds listed below` block of
-  labwc-config(5) (`zcat` of the installed man page), with a built-in copy of
-  the 0.9 list when the man page cannot be read, plus the volume and brightness
-  keys labwc also binds. Choosing a key that replaces a built-in one is allowed
-  and says so. A shortcut cannot be switched off here (rebinding or resetting
-  only), because `dkde-setup` would not add it back but the key would still be
-  listed as missing.
+  already bound to another entry of rc.xml is refused.
+  **dkde owns every shortcut.** Besides its own, the list holds labwc's window
+  shortcuts as explicit entries: Alt+Tab and Alt+Shift+Tab (`NextWindow`,
+  `PreviousWindow`), Alt+F4 (`Close`), Super+A (`ToggleMaximize`), Super with
+  the arrow keys (`SnapToEdge`, left, right, up, down) and Alt+Space
+  (`ShowMenu menu="client-menu"`). `dkde-setup` writes them all and removes
+  `<default />` from `<keyboard>`, so labwc binds nothing beyond rc.xml and a
+  change made in Settings is the only definition of that shortcut. labwc's
+  Super+Return (`lab-sensible-terminal`) and its amixer and brightnessctl keys
+  are not carried over: Ctrl+Alt+T and dkde's own volume and brightness keys
+  replace them. On an rc.xml that still has `<default />`, the page says so,
+  lists what labwc adds (read from the `keybinds listed below` block of
+  labwc-config(5), via `zcat` of the installed man page, with a built-in copy of
+  the 0.9 list as fallback), and offers *Use dkde's shortcuts only* to do the same
+  migration. A shortcut cannot be switched off here (rebind or reset only). Other
+  keybinds the user put in rc.xml are listed read-only below.
 
 **Editing labwc files:** only dkde's own sections and keys are changed, and
 the rest of the file is preserved. A backup is written before the first edit.
@@ -636,7 +642,7 @@ without asking.
 
 **One time only.** `dkde-setup --once` is what `dkde-session` runs before
 starting labwc: it applies the user-level fixes (labwc `autostart`, keybindings
-and `environment`, the home folders) without asking, never runs anything that
+including the take-over of labwc's built-in shortcuts, `environment`, the home folders) without asking, never runs anything that
 needs root, and then writes `$XDG_STATE_HOME/dkde/setup-done`. While that file
 exists `--once` does nothing, so setup never puts back a line the user removed
 or a key they moved. A plain `dkde-setup` run is always allowed by hand, ignores

@@ -1444,12 +1444,25 @@ pub const ShortcutsPage = struct {
         }
     };
 
+    /// Writes every dkde shortcut into rc.xml and drops labwc's own `<default />`.
+    const TakeOver = struct {
+        pub fn apply(_: @This(), allocator: std.mem.Allocator, content: []const u8) ![]u8 {
+            return (try labwc.takeOverKeybinds(allocator, content, &labwc.dkde_keybinds)) orelse allocator.dupe(u8, content);
+        }
+    };
+
+    fn onTakeOver(self: *ShortcutsPage, _: []const u8, _: []const u8) void {
+        self.window.editLabwcFile("rc.xml", TakeOver, .{});
+        self.notice.setText(common.tr("labwc's own shortcuts are now written into your list above, so they can be changed here."));
+        self.rebuild();
+    }
+
     pub fn build(window: *SettingsWindow) *gtk.Box {
         const page = win.SettingsWindow.newPage(common.tr("Keyboard shortcuts"));
         const self = gpa.create(ShortcutsPage) catch @panic("OOM");
         self.* = .{ .window = window, .content = gtk.Box.new(.vertical, 8), .status = gtk.Label.new(""), .notice = gtk.Label.new("") };
         self.guard = hw.Guard(ShortcutsPage).create(self);
-        _ = note(page, common.tr("Choose Change, then press the new shortcut. Changes apply at once. A shortcut already used by another entry is refused; one that replaces a built-in labwc shortcut is allowed, with a note."));
+        _ = note(page, common.tr("Choose Change, then press the new shortcut. Changes apply at once. A shortcut already used by another entry is refused."));
         self.notice.setXalign(0);
         self.notice.setWrap(1);
         self.notice.as(gtk.Widget).addCssClass("dim-label");
@@ -1560,12 +1573,16 @@ pub const ShortcutsPage = struct {
             win.SettingsWindow.addRow(self.content, name, controls.as(gtk.Widget));
         }
 
-        // What labwc provides itself. These are changed in rc.xml by hand.
-        self.section(common.tr("Built into labwc"));
-        for (self.builtins) |b| self.readOnlyRow(b.key, b.what, if (labwc.hasKey(xml, b.key)) " (replaced by your rc.xml)" else "");
-        for (labwc.builtin_media) |b| {
-            if (labwc.hasKey(xml, b.key)) continue; // dkde's own volume keys take over
-            self.readOnlyRow(b.key, b.what, "");
+        // While `<default />` is still in rc.xml, labwc adds its own shortcuts on
+        // top of this list. Offer to write them into the list instead.
+        if (labwc.hasKeyboardDefault(xml)) {
+            self.section(common.tr("labwc's own shortcuts are still active"));
+            _ = note(self.content, common.tr("labwc adds its built-in shortcuts on top of the list above, and those cannot be changed here. Take them over to manage every shortcut in one place."));
+            const take = button(ShortcutsPage, self, common.tr("Use dkde's shortcuts only"), onTakeOver, "", "");
+            take.as(gtk.Widget).addCssClass("suggested-action");
+            take.as(gtk.Widget).setHalign(.start);
+            self.content.append(take.as(gtk.Widget));
+            for (self.builtins) |b| self.readOnlyRow(b.key, b.what, "");
         }
 
         // Shortcuts in rc.xml that dkde did not put there.
@@ -1584,8 +1601,10 @@ pub const ShortcutsPage = struct {
 
     /// Entries dkde manages show up above, not here.
     fn isDkdeEntry(what: []const u8) bool {
-        if (std.mem.eql(u8, what, "GoToDesktop") or std.mem.eql(u8, what, "SendToDesktop")) return true;
-        for (labwc.dkde_keybinds) |k| if (k.command.len > 0 and std.mem.eql(u8, what, k.command)) return true;
+        for (labwc.dkde_keybinds) |k| {
+            if (k.command.len > 0 and std.mem.eql(u8, what, k.command)) return true;
+            if (k.action.len > 0 and std.mem.eql(u8, what, k.action)) return true;
+        }
         return false;
     }
 
@@ -1602,12 +1621,17 @@ pub const ShortcutsPage = struct {
         }
         self.window.editLabwcFile("rc.xml", KeyEdit, .{ .index = index, .key = key });
         self.rebuild();
-        // Replacing one of labwc's own shortcuts is allowed, but worth saying.
-        if (labwc.builtinFor(self.builtins, key)) |what| {
+        // While labwc's defaults are active, replacing one of them is worth saying.
+        const after = self.window.readLabwcFile("rc.xml") catch return;
+        defer self.window.allocator.free(after);
+        const still_default = labwc.hasKeyboardDefault(after);
+        if (still_default) if (labwc.builtinFor(self.builtins, key)) |what| {
             var buf: [64]u8 = undefined;
             var z: [256]u8 = undefined;
             self.notice.setText(std.fmt.bufPrintSentinel(&z, "{s} now runs \"{s}\" and replaces labwc's own shortcut ({s}).", .{ labwc.describeKey(&buf, key), kb.name, what }, 0) catch "");
-        } else self.notice.setText("");
+            return;
+        };
+        self.notice.setText("");
     }
 
     fn onReset(self: *ShortcutsPage, idx: []const u8, _: []const u8) void {
