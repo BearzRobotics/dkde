@@ -494,10 +494,14 @@ pub const Value = union(enum) {
                     extra_end = entry.end;
 
                     const key = try gpa.dupe(u8, tree.rawString(entry.data.key, entry.data.key));
-                    errdefer gpa.free(key);
 
                     const gop = out_map.getOrPutAssumeCapacity(key);
-                    if (gop.found_existing) return error.DuplicateMapKey;
+                    if (gop.found_existing) {
+                        gpa.free(key);
+                        return error.DuplicateMapKey;
+                    }
+                    // Owned by the map from here on; its errdefer frees key and value.
+                    gop.value_ptr.* = .empty;
 
                     gop.value_ptr.* = if (entry.data.maybe_node.unwrap()) |value|
                         try Value.fromNode(gpa, tree, value)

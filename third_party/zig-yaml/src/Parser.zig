@@ -613,15 +613,22 @@ fn expectToken(self: *Parser, id: Token.Id, comptime exclusions: []const Token.I
 }
 
 fn getLine(self: *Parser, index: Token.Index) usize {
-    return self.tokens.items(.line_col)[@intFromEnum(index)].line;
+    const all = self.tokens.items(.line_col);
+    // Past the last token (the input ended): report the last position.
+    if (@intFromEnum(index) >= all.len) return if (all.len == 0) 0 else all[all.len - 1].line;
+    return all[@intFromEnum(index)].line;
 }
 
 fn getCol(self: *Parser, index: Token.Index) usize {
-    return self.tokens.items(.line_col)[@intFromEnum(index)].col;
+    const all = self.tokens.items(.line_col);
+    // Past the last token the column is 0, which ends any block.
+    if (@intFromEnum(index) >= all.len) return 0;
+    return all[@intFromEnum(index)].col;
 }
 
 fn parseSingleQuoted(self: *Parser, gpa: Allocator, raw: []const u8) ParseError!String {
-    assert(raw[0] == '\'' and raw[raw.len - 1] == '\'');
+    // An unterminated quote reaches here as a single quote character.
+    if (raw.len < 2 or raw[0] != '\'' or raw[raw.len - 1] != '\'') return error.UnexpectedToken;
     const raw_no_quotes = raw[1 .. raw.len - 1];
 
     try self.string_bytes.ensureUnusedCapacity(gpa, raw_no_quotes.len);
@@ -664,7 +671,7 @@ fn parseSingleQuoted(self: *Parser, gpa: Allocator, raw: []const u8) ParseError!
 }
 
 fn parseDoubleQuoted(self: *Parser, gpa: Allocator, raw: []const u8) ParseError!String {
-    assert(raw[0] == '"' and raw[raw.len - 1] == '"');
+    if (raw.len < 2 or raw[0] != '"' or raw[raw.len - 1] != '"') return error.UnexpectedToken;
     const raw_no_quotes = raw[1 .. raw.len - 1];
 
     try self.string_bytes.ensureUnusedCapacity(gpa, raw_no_quotes.len);
@@ -723,11 +730,14 @@ fn rawString(self: Parser, start: Token.Index, end: Token.Index) []const u8 {
 }
 
 fn token(self: Parser, index: Token.Index) Token {
-    return self.tokens.items(.token)[@intFromEnum(index)];
+    const all = self.tokens.items(.token);
+    // Past the end (truncated input) the last token, normally eof, stands in.
+    return all[@min(@intFromEnum(index), all.len - 1)];
 }
 
 fn fail(self: *Parser, gpa: Allocator, token_index: Token.Index, comptime format: []const u8, args: anytype) ParseError {
-    const line_col = self.tokens.items(.line_col)[@intFromEnum(token_index)];
+    const all_lc = self.tokens.items(.line_col);
+    const line_col = all_lc[@min(@intFromEnum(token_index), all_lc.len - 1)];
     const msg = try std.fmt.allocPrint(gpa, format, args);
     defer gpa.free(msg);
     const line_info = getLineInfo(self.source, line_col);
