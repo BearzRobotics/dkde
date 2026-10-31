@@ -29,6 +29,7 @@ pub fn build(b: *std.Build) void {
     scanner.addCustomProtocol(b.path("protocols/wlr-virtual-pointer-unstable-v1.xml"));
     scanner.addCustomProtocol(b.path("protocols/ext-workspace-v1.xml"));
     scanner.addCustomProtocol(b.path("protocols/ext-idle-notify-v1.xml"));
+    scanner.addCustomProtocol(b.path("protocols/virtual-keyboard-unstable-v1.xml"));
     scanner.generate("wl_seat", 1);
     scanner.generate("wl_output", 1);
     scanner.generate("zwlr_foreign_toplevel_manager_v1", 3);
@@ -37,6 +38,7 @@ pub fn build(b: *std.Build) void {
     scanner.generate("zwlr_virtual_pointer_manager_v1", 2);
     scanner.generate("ext_workspace_manager_v1", 1);
     scanner.generate("ext_idle_notifier_v1", 1);
+    scanner.generate("zwp_virtual_keyboard_manager_v1", 1);
     const wayland_module = b.createModule(.{ .root_source_file = scanner.result, .target = target, .optimize = optimize });
 
     const test_step = b.step("test", "Run unit tests");

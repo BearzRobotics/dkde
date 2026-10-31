@@ -807,9 +807,12 @@ shortcuts:
   Each line is `HH:MM:SS level(scope) program[pid]: message` (UTC). GLib and
   GTK are switched separately with `G_MESSAGES_DEBUG=all`.
 - **`dkde-pointer`** is a development aid, not part of the desktop: it moves,
-  clicks and scrolls through `wlr-virtual-pointer` (`dkde-pointer move X Y
-  click sleep MS ...`, with `--size WxH` for the output size) so hover and click
-  behaviour can be tested in a nested compositor.
+  clicks and scrolls through `wlr-virtual-pointer` and presses keys through
+  `zwp_virtual_keyboard_v1` (`dkde-pointer move X Y click sleep MS`, `tap super`,
+  `chord ctrl+shift+escape`, with `--size WxH` for the output size), so hover,
+  click and shortcut behaviour can be tested in a nested compositor. The
+  compositor under test needs dkde's `bin` directory on its own `PATH`, because it
+  starts the programs that shortcuts name.
 
 ### 6.5 Licence
 

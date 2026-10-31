@@ -97,8 +97,9 @@ below for the full list and one install command.
 Vendored in the repo: `protocols/` holds the protocol XML files that
 `wayland-protocols` does not ship or the build must not depend on:
 `wlr-foreign-toplevel-management` (taskbar), `wlr-screencopy` (screenshots),
-`wlr-virtual-pointer` (scrolling screenshots, `dkde-pointer`) and
-`ext-workspace-v1` (virtual desktops).
+`wlr-virtual-pointer` (scrolling screenshots, `dkde-pointer`),
+`ext-workspace-v1` (virtual desktops), `ext-idle-notify-v1` (idle timeouts) and
+`virtual-keyboard-unstable-v1` (`dkde-pointer` key presses).
 
 There is no init-system, systemd, logind, libadwaita or X11 dependency, and no D-Bus
 *library* dependency: notifications and the system tray use GIO's own GDBus
@@ -327,8 +328,9 @@ On a regular Wayland-only system none of this applies.
   (`dkde-session` does that by default; times are UTC). For GTK's own
   messages use `G_MESSAGES_DEBUG=all`. Example:
   `DKDE_LOG=debug dkde-panel 2>&1 | less`.
-- `dkde-pointer move 640 719 sleep 500 click` drives the pointer through
-  `wlr-virtual-pointer`; it is a test aid for nested compositors.
+- `dkde-pointer move 640 719 sleep 500 click` or `dkde-pointer tap super` drive the
+  pointer and keyboard through the virtual-input protocols; it is a test aid for
+  nested compositors (`chord ctrl+alt+t` presses a shortcut).
 - Administrator actions (Settings > User, start menu > right-click an app >
   Run as administrator, Files > Open Folder as Administrator) ask for your
   password in a dkde dialog and run through `sudo`, so your account must be
