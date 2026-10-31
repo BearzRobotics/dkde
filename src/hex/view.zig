@@ -65,13 +65,19 @@ pub const View = struct {
     drag_origin: usize = 0,
     /// Sorted by start; not owned.
     highlights: []const Range = &.{},
+    /// Added to the offsets shown in the left column (disk mode shows a window
+    /// of a device, whose first byte is not at 0).
+    base_offset: u64 = 0,
+    /// 8, or 12 for devices over 4 GiB.
+    offset_digits: usize = 8,
+    /// The size cannot change (a window of a device): no insert, delete or append.
+    fixed_size: bool = false,
 
     /// Called after the cursor, selection or content changed.
     changed: *const fn (*anyopaque) void,
     changed_data: *anyopaque,
 
     const pad = 8.0;
-    const offset_chars = 8;
 
     pub fn create(
         allocator: std.mem.Allocator,
@@ -193,8 +199,8 @@ pub const View = struct {
     }
 
     /// Characters from the left edge of the rows to the first hex digit.
-    fn hexStart(_: *const View) f64 {
-        return offset_chars + 2;
+    fn hexStart(self: *const View) f64 {
+        return @as(f64, @floatFromInt(self.offset_digits)) + 2;
     }
 
     fn hexColumn(self: *const View, col: usize) f64 {
@@ -313,7 +319,10 @@ pub const View = struct {
 
             // The text of the row, in three pieces.
             var buf: [512]u8 = undefined;
-            const offset_text = (if (self.uppercase) std.fmt.bufPrint(&buf, "{X:0>8}", .{start}) else std.fmt.bufPrint(&buf, "{x:0>8}", .{start})) catch continue;
+            const shown_offset: u64 = start + self.base_offset;
+            const offset_text = (if (self.offset_digits > 8)
+                (if (self.uppercase) std.fmt.bufPrint(&buf, "{X:0>12}", .{shown_offset}) else std.fmt.bufPrint(&buf, "{x:0>12}", .{shown_offset}))
+            else if (self.uppercase) std.fmt.bufPrint(&buf, "{X:0>8}", .{shown_offset}) else std.fmt.bufPrint(&buf, "{x:0>8}", .{shown_offset})) catch continue;
             cr.setSourceRgba(fg.f_red, fg.f_green, fg.f_blue, 0.55);
             self.drawText(cr, offset_text, pad, y);
 
@@ -421,7 +430,7 @@ pub const View = struct {
     }
 
     pub fn setInsertMode(self: *View, on: bool) void {
-        self.insert_mode = on;
+        self.insert_mode = on and !self.fixed_size;
         self.notify();
     }
 
@@ -529,6 +538,7 @@ pub const View = struct {
     }
 
     fn putByte(self: *View, value: u8) void {
+        if (self.fixed_size and (self.cursor >= self.buffer.len() or self.insert_mode)) return;
         self.anchor = null;
         if (self.cursor >= self.buffer.len() or self.insert_mode) {
             self.buffer.replace(self.cursor, 0, &.{value}, false) catch return;
@@ -541,6 +551,7 @@ pub const View = struct {
     }
 
     fn putNibble(self: *View, digit: u8) void {
+        if (self.fixed_size and (self.cursor >= self.buffer.len() or self.insert_mode)) return;
         self.anchor = null;
         const bytes = self.buffer.slice();
         if (self.nibble == 0) {
@@ -562,6 +573,7 @@ pub const View = struct {
     }
 
     fn deleteSelection(self: *View) bool {
+        if (self.fixed_size) return false;
         const sel = self.selectionRange() orelse return false;
         self.buffer.replace(sel[0], sel[1] - sel[0], "", false) catch return false;
         self.cursor = sel[0];
@@ -572,6 +584,7 @@ pub const View = struct {
     }
 
     fn deleteForward(self: *View) void {
+        if (self.fixed_size) return;
         if (!self.deleteSelection()) {
             if (self.cursor >= self.buffer.len()) return;
             self.buffer.replace(self.cursor, 1, "", false) catch return;
@@ -581,6 +594,7 @@ pub const View = struct {
     }
 
     fn deleteBackward(self: *View) void {
+        if (self.fixed_size) return;
         if (!self.deleteSelection()) {
             if (self.cursor == 0) return;
             self.cursor -= 1;
@@ -649,13 +663,16 @@ pub const View = struct {
         // Hex digits paste as bytes (in the hex pane); anything else as its characters.
         const parsed = if (self.pane == .hex) (buffer_mod.parseHex(self.allocator, slice) catch null) else null;
         const owned = parsed != null;
-        const bytes: []const u8 = parsed orelse slice;
+        var bytes: []const u8 = parsed orelse slice;
         defer if (owned) self.allocator.free(parsed.?);
         if (bytes.len == 0) return;
 
         const sel = self.selectionRange();
         const at = if (sel) |s| s[0] else self.cursor;
-        const remove = if (sel) |s| s[1] - s[0] else if (self.insert_mode) 0 else @min(bytes.len, self.buffer.len() - @min(at, self.buffer.len()));
+        // A fixed size means pasting overwrites what is there and stops at the end.
+        if (self.fixed_size) bytes = bytes[0..@min(bytes.len, self.buffer.len() - @min(at, self.buffer.len()))];
+        if (bytes.len == 0) return;
+        const remove = if (self.fixed_size) bytes.len else if (sel) |s| s[1] - s[0] else if (self.insert_mode) 0 else @min(bytes.len, self.buffer.len() - @min(at, self.buffer.len()));
         self.buffer.replace(at, remove, bytes, false) catch return;
         self.cursor = at + bytes.len;
         self.anchor = null;

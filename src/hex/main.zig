@@ -16,6 +16,7 @@ const View = view_mod.View;
 const structure = @import("structure.zig");
 const ksy_interp = @import("ksy/interp.zig");
 const strings = @import("strings.zig");
+const disk_mod = @import("disk.zig");
 const ksy_model = @import("ksy/model.zig");
 const hexpat = @import("hexpat/eval.zig");
 
@@ -28,6 +29,8 @@ const App = struct {
     allocator: std.mem.Allocator,
     appearance: ?*common.style.Appearance = null,
     file: ?[:0]const u8,
+    /// `--device PATH`: open a disk straight away.
+    device: ?[:0]const u8 = null,
 
     fn activate(app: *gtk.Application, self: *App) callconv(.c) void {
         common.style.load(self.allocator) catch |err|
@@ -39,7 +42,7 @@ const App = struct {
         };
         if (self.file) |path| editor.openPath(path);
         editor.window.as(gtk.Window).present();
-        editor.autoDetect();
+        if (self.device) |dev| editor.openDevice(dev) else editor.autoDetect();
     }
 };
 
@@ -73,6 +76,8 @@ const HexEditor = struct {
     /// True while a click in the structure panel moves the view, so the view
     /// does not answer by re-selecting in the panel.
     picking: bool = false,
+    disk: ?DiskState = null,
+    pending_device: ?[]u8 = null,
     folder_kind: structure.Kind = .ksy,
     proc_guard: *common.proc.Guard(HexEditor) = undefined,
 
@@ -138,6 +143,17 @@ const HexEditor = struct {
                 .separator,
                 mb.check("Data _inspector", "inspector", true),
                 mb.check("_Big-endian values", "big-endian", false),
+            } },
+            .{ .label = "_Disk", .entries = &.{
+                mb.item("_Open disk or partition…", "open-disk", null),
+                mb.item("Go to _sector…", "goto-sector", null),
+                mb.item("_Previous window", "disk-prev", "<Alt>Page_Up"),
+                mb.item("_Next window", "disk-next", "<Alt>Page_Down"),
+                .separator,
+                mb.check("_Enable writing", "disk-writing", false),
+                mb.item("_Write changes…", "disk-write", null),
+                .separator,
+                mb.item("_Close disk", "disk-close", null),
             } },
             .{ .label = "_Structure", .entries = &.{
                 mb.item("_Choose format…", "choose-format", "<Control>t"),
@@ -218,6 +234,8 @@ const HexEditor = struct {
 
     fn onDestroy(_: *gtk.ApplicationWindow, self: *HexEditor) callconv(.c) void {
         if (self.reparse_source != 0) _ = glib.Source.remove(self.reparse_source);
+        self.closeDisk();
+        if (self.pending_device) |p| self.allocator.free(p);
         self.proc_guard.kill();
         self.panel.destroy();
         self.allocator.free(self.ranges);
@@ -245,7 +263,7 @@ const HexEditor = struct {
 
     fn updateTitle(self: *HexEditor) void {
         var buf: [512]u8 = undefined;
-        const name: []const u8 = if (self.path) |p| std.fs.path.basename(p) else "Untitled";
+        const name: []const u8 = if (self.disk) |d| std.fs.path.basename(d.path) else if (self.path) |p| std.fs.path.basename(p) else "Untitled";
         const text = std.fmt.bufPrintSentinel(&buf, "{s}{s} \u{2014} Hex Editor", .{ if (self.buffer.isModified()) "*" else "", name }, 0) catch return;
         self.window.as(gtk.Window).setTitle(text);
     }
@@ -263,6 +281,21 @@ const HexEditor = struct {
         if (self.panel.result) |r| {
             const at = if (v.selection()) |sel| sel[0] else v.cursor;
             if (structure.nodeAt(r.root, at)) |n| field = structure.pathOf(n, &path_buf);
+        }
+        if (self.disk) |d| {
+            const abs = d.window_start + v.cursor;
+            const text = std.fmt.bufPrintSentinel(&buf, "{s}   Sector {d} +{d}   Offset 0x{X} ({d}){s}   Disk {d} bytes   {s}   {s}", .{
+                std.fs.path.basename(d.path),
+                abs / d.sector,
+                abs % d.sector,
+                abs,
+                abs,
+                selection,
+                d.handle.size,
+                if (d.writing) "WRITE ENABLED" else "read-only",
+                field,
+            }, 0) catch return;
+            return self.status.setText(text);
         }
         const text = std.fmt.bufPrintSentinel(&buf, "Offset 0x{X:0>8} ({d}){s}   Size {d} bytes   {s}   {s}   {s}", .{
             v.cursor,
@@ -343,6 +376,7 @@ const HexEditor = struct {
     }
 
     fn save(self: *HexEditor) void {
+        if (self.disk != null) return self.diskWrite();
         const path = self.path orelse return self.saveAsDialog();
         self.writeTo(path);
     }
@@ -477,7 +511,7 @@ const HexEditor = struct {
         dialog: *gtk.Window,
         entry: *gtk.Entry,
         hex: ?*gtk.CheckButton,
-        kind: enum { find, goto },
+        kind: enum { find, goto, sector },
 
         fn submit(self: *Ask) void {
             submitAsk(self);
@@ -486,7 +520,7 @@ const HexEditor = struct {
 
     fn ask(self: *HexEditor, kind: @FieldType(Ask, "kind")) void {
         const dialog = gtk.Window.new();
-        dialog.setTitle(if (kind == .find) common.tr("Find") else common.tr("Go to offset"));
+        dialog.setTitle(if (kind == .find) common.tr("Find") else if (kind == .sector) common.tr("Go to sector") else common.tr("Go to offset"));
         dialog.setTransientFor(self.window.as(gtk.Window));
         dialog.setModal(1);
         dialog.setDefaultSize(360, -1);
@@ -498,7 +532,7 @@ const HexEditor = struct {
         box.as(gtk.Widget).setMarginEnd(16);
         dialog.setChild(box.as(gtk.Widget));
 
-        const label = gtk.Label.new(if (kind == .find) common.tr("Search for") else common.tr("Offset (decimal, or hex with 0x)"));
+        const label = gtk.Label.new(if (kind == .find) common.tr("Search for") else if (kind == .sector) common.tr("Sector number (LBA, decimal or hex with 0x)") else common.tr("Offset (decimal, or hex with 0x)"));
         label.setXalign(0);
         box.append(label.as(gtk.Widget));
         const entry = gtk.Entry.new();
@@ -558,7 +592,19 @@ const HexEditor = struct {
 
     fn gotoOffset(self: *HexEditor, text: []const u8) bool {
         const offset = parseOffset(text) orelse return false;
+        if (self.disk != null) {
+            self.diskGoto(offset);
+            return true;
+        }
         self.view.moveTo(offset, false);
+        return true;
+    }
+
+    fn gotoSector(self: *HexEditor, text: []const u8) bool {
+        const d = self.disk orelse return false;
+        const lba = parseOffset(text) orelse return false;
+        if (@as(u64, lba) * d.sector >= d.handle.size) return false;
+        self.diskGoto(@as(u64, lba) * d.sector);
         return true;
     }
 
@@ -1134,6 +1180,334 @@ const HexEditor = struct {
         self.autoDetect();
     }
 
+    // ---- disk mode ----------------------------------------------------------------------------
+
+    const window_bytes: u64 = 4 << 20;
+
+    const DiskState = struct {
+        handle: disk_mod.Handle,
+        path: [:0]u8,
+        sector: u32,
+        window_start: u64 = 0,
+        /// What the window held when it was read, to find the changed sectors.
+        original: []u8 = &.{},
+        writing: bool = false,
+    };
+
+    fn inDiskMode(self: *const HexEditor) bool {
+        return self.disk != null;
+    }
+
+    fn closeDisk(self: *HexEditor) void {
+        const d = self.disk orelse return;
+        var h = d.handle;
+        h.closeHandle();
+        self.allocator.free(d.path);
+        self.allocator.free(d.original);
+        self.disk = null;
+        self.view.base_offset = 0;
+        self.view.offset_digits = 8;
+        self.view.fixed_size = false;
+        common.menubar.setChecked(self.window, "disk-writing", false);
+    }
+
+    /// Opens a device (`/dev/sdb`, a partition, or any file) for reading.
+    pub fn openDevice(self: *HexEditor, path: []const u8) void {
+        if (self.buffer.isModified()) {
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Unsaved changes"), common.tr("Write or discard your changes before opening another disk."));
+        }
+        const z = self.allocator.dupeSentinel(u8, path, 0) catch return;
+        const handle = disk_mod.Handle.openPath(z, false) catch |err| {
+            defer self.allocator.free(z);
+            if (err == error.AccessDenied) {
+                self.pending_device = self.allocator.dupe(u8, path) catch return;
+                return common.dialogs.choose(
+                    self.window.as(gtk.Window),
+                    common.tr("Administrator rights needed"),
+                    common.tr("Reading a disk needs administrator rights. dkde-hex can open it in a second window running as administrator; it asks for your password."),
+                    &.{ "Cancel", "Open as administrator" },
+                    0,
+                    HexEditor,
+                    onAdminChoice,
+                    self,
+                );
+            }
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot open the disk"), common.tr("The device could not be opened."));
+        };
+        self.closeDisk();
+        var sector: u32 = 512;
+        if (disk_mod.list(self.allocator)) |infos| {
+            defer disk_mod.freeInfos(self.allocator, infos);
+            for (infos) |i| if (std.mem.eql(u8, i.path, path)) {
+                sector = i.sector_size;
+            };
+        } else |_| {}
+        self.disk = .{ .handle = handle, .path = z, .sector = sector };
+        self.view.fixed_size = true;
+        self.view.insert_mode = false;
+        self.view.offset_digits = if (handle.size > 0xFFFF_FFFF) 12 else 8;
+        self.clearStructure();
+        if (self.path) |p| self.allocator.free(p);
+        self.path = null;
+        self.loadWindow(0);
+    }
+
+    fn onAdminChoice(self: *HexEditor, index: c_int) void {
+        const path = self.pending_device orelse return;
+        defer {
+            self.allocator.free(path);
+            self.pending_device = null;
+        }
+        if (index != 1) return;
+        const a = std.heap.c_allocator;
+        var argv: std.ArrayList([]u8) = .empty;
+        defer {
+            for (argv.items) |x| a.free(x);
+            argv.deinit(a);
+        }
+        common.appinfo.displayEnvArgs(a, &argv) catch return;
+        argv.append(a, a.dupe(u8, "dkde-hex") catch return) catch return;
+        argv.append(a, a.dupe(u8, "--device") catch return) catch return;
+        argv.append(a, a.dupe(u8, path) catch return) catch return;
+        const view = a.alloc([]const u8, argv.items.len) catch return;
+        defer a.free(view);
+        for (argv.items, 0..) |x, i| view[i] = x;
+        const done = a.create(AdminDone) catch return;
+        done.* = .{ .editor = self };
+        common.elevate.run(self.window.as(gtk.Window), "Open this disk with administrator rights", view, "", AdminDone, onAdminDone, done);
+    }
+
+    const AdminDone = struct { editor: *HexEditor };
+
+    fn onAdminDone(done: *AdminDone, outcome: common.elevate.Outcome, message: []const u8) void {
+        defer std.heap.c_allocator.destroy(done);
+        if (outcome != .failed) return;
+        var buf: [512]u8 = undefined;
+        common.dialogs.showError(done.editor.window.as(gtk.Window), common.tr("Could not open as administrator"), std.fmt.bufPrintSentinel(&buf, "{s}", .{message}, 0) catch "");
+    }
+
+    /// Reads the window of the device that contains absolute offset `at`.
+    fn loadWindow(self: *HexEditor, at: u64) void {
+        var d = &(self.disk orelse return);
+        if (self.buffer.isModified()) {
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Unsaved changes"), common.tr("Write or discard your changes before moving to another part of the disk."));
+        }
+        const start = (@min(at, d.handle.size -| 1) / window_bytes) * window_bytes;
+        const len: usize = @intCast(@min(window_bytes, d.handle.size - start));
+        const bytes = self.allocator.alloc(u8, len) catch return;
+        defer self.allocator.free(bytes);
+        const got = d.handle.readAt(start, bytes) catch {
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot read the disk"), common.tr("Reading failed at that position."));
+        };
+        self.buffer.load(bytes[0..got]) catch return;
+        self.allocator.free(d.original);
+        d.original = self.allocator.dupe(u8, bytes[0..got]) catch &.{};
+        d.window_start = start;
+        self.view.base_offset = start;
+        self.view.cursor = 0;
+        self.view.adjustment.setValue(0);
+        self.clearStructure();
+        self.view.refresh();
+    }
+
+    /// Moves to absolute byte `abs` of the device, loading another window if needed.
+    fn diskGoto(self: *HexEditor, abs: u64) void {
+        const d = self.disk orelse return;
+        if (abs < d.window_start or abs >= d.window_start + self.buffer.len()) {
+            self.loadWindow(abs);
+            if (self.disk.?.window_start > abs) return;
+        }
+        const win = self.disk.?.window_start;
+        if (abs >= win) self.view.moveTo(@intCast(abs - win), false);
+    }
+
+    fn diskStep(self: *HexEditor, forward: bool) void {
+        const d = self.disk orelse return;
+        if (forward) {
+            if (d.window_start + window_bytes < d.handle.size) self.loadWindow(d.window_start + window_bytes);
+        } else if (d.window_start >= window_bytes) {
+            self.loadWindow(d.window_start - window_bytes);
+        }
+    }
+
+    fn enableWriting(self: *HexEditor) void {
+        const d = &(self.disk orelse return);
+        if (d.writing) {
+            // Back to read-only.
+            var h = d.handle;
+            h.closeHandle();
+            d.handle = disk_mod.Handle.openPath(d.path, false) catch return;
+            d.writing = false;
+            return self.updateStatus();
+        }
+        common.dialogs.choose(
+            self.window.as(gtk.Window),
+            common.tr("Enable writing to this disk?"),
+            common.tr("Edits are written straight to the device when you choose Write changes. A wrong edit can make a disk or its files unreadable. Nothing is written until you confirm each write."),
+            &.{ "Cancel", "Enable writing" },
+            0,
+            HexEditor,
+            onEnableWritingAnswer,
+            self,
+        );
+        // The menu toggled itself; it is set again once the answer is known.
+        common.menubar.setChecked(self.window, "disk-writing", false);
+    }
+
+    fn onEnableWritingAnswer(self: *HexEditor, index: c_int) void {
+        const d = &(self.disk orelse return);
+        if (index != 1) return;
+        var h = d.handle;
+        const rw = disk_mod.Handle.openPath(d.path, true) catch {
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot write to this disk"), common.tr("Writing needs administrator rights. Open the disk as administrator (Disk \u{25B8} Open disk\u{2026}, then choose Open as administrator)."));
+        };
+        h.closeHandle();
+        d.handle = rw;
+        d.writing = true;
+        common.menubar.setChecked(self.window, "disk-writing", true);
+        self.updateStatus();
+    }
+
+    /// Asks, then writes the sectors that differ from what was read.
+    fn diskWrite(self: *HexEditor) void {
+        const d = self.disk orelse return;
+        if (!d.writing) {
+            self.closing_after_save = false;
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Writing is off"), common.tr("Turn on Disk \u{25B8} Enable writing first."));
+        }
+        const changed = disk_mod.changedSectors(self.allocator, d.original, self.buffer.slice(), d.sector) catch return;
+        defer self.allocator.free(changed);
+        if (changed.len == 0) {
+            self.closing_after_save = false;
+            return self.status.setText(common.tr("Nothing has changed."));
+        }
+        var mounted = false;
+        if (disk_mod.list(self.allocator)) |infos| {
+            defer disk_mod.freeInfos(self.allocator, infos);
+            mounted = disk_mod.anyMounted(infos, d.path);
+        } else |_| {}
+        const first = (d.window_start / d.sector) + changed[0] * (@as(u64, d.sector) / d.sector);
+        var detail: [640]u8 = undefined;
+        const text = std.fmt.bufPrintSentinel(&detail, "{d} sector{s} of {s} will be overwritten (first: sector {d}, {d} bytes each).{s}", .{
+            changed.len,
+            if (changed.len == 1) "" else "s",
+            d.path,
+            first,
+            d.sector,
+            if (mounted) " WARNING: this disk or one of its partitions is mounted. Writing under a mounted filesystem can corrupt it." else "",
+        }, 0) catch return;
+        common.dialogs.choose(self.window.as(gtk.Window), common.tr("Write changes to the disk?"), text, &.{ "Cancel", "Write" }, 0, HexEditor, onWriteAnswer, self);
+    }
+
+    fn onWriteAnswer(self: *HexEditor, index: c_int) void {
+        const d = &(self.disk orelse return);
+        if (index != 1) {
+            self.closing_after_save = false;
+            return;
+        }
+        const changed = disk_mod.changedSectors(self.allocator, d.original, self.buffer.slice(), d.sector) catch return;
+        defer self.allocator.free(changed);
+        const data = self.buffer.slice();
+        for (changed) |s| {
+            const lo = s * d.sector;
+            const hi = @min(data.len, lo + d.sector);
+            d.handle.writeAt(d.window_start + lo, data[lo..hi]) catch {
+                self.closing_after_save = false;
+                return common.dialogs.showError(self.window.as(gtk.Window), common.tr("The write failed"), common.tr("Part of the changes may have been written."));
+            };
+        }
+        d.handle.flush();
+        self.allocator.free(d.original);
+        d.original = self.allocator.dupe(u8, data) catch &.{};
+        self.buffer.markSaved();
+        self.updateAll();
+        self.status.setText(common.tr("Written."));
+        if (self.closing_after_save) {
+            self.closing_after_save = false;
+            self.proceed(self.pending orelse .close);
+        }
+    }
+
+    // The list of disks to choose from.
+
+    const DiskPicker = struct {
+        editor: *HexEditor,
+        window: *gtk.Window,
+        infos: []disk_mod.Info,
+    };
+
+    fn chooseDisk(self: *HexEditor) void {
+        const infos = disk_mod.list(self.allocator) catch return;
+        const dlg = self.allocator.create(DiskPicker) catch {
+            disk_mod.freeInfos(self.allocator, infos);
+            return;
+        };
+        const window = gtk.Window.new();
+        window.setTitle(common.tr("Open a disk"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setModal(1);
+        window.setDefaultSize(560, 420);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        box.as(gtk.Widget).setMarginTop(12);
+        box.as(gtk.Widget).setMarginBottom(12);
+        box.as(gtk.Widget).setMarginStart(12);
+        box.as(gtk.Widget).setMarginEnd(12);
+        window.setChild(box.as(gtk.Widget));
+        const intro = gtk.Label.new(common.tr("Double-click a disk or partition. It opens read-only; writing is a separate step."));
+        intro.setXalign(0);
+        intro.setWrap(1);
+        box.append(intro.as(gtk.Widget));
+        const list = gtk.ListBox.new();
+        list.setActivateOnSingleClick(0);
+        for (infos) |i| {
+            var buf: [320]u8 = undefined;
+            const gib = @as(f64, @floatFromInt(i.size_bytes)) / (1024.0 * 1024.0 * 1024.0);
+            const text = std.fmt.bufPrintSentinel(&buf, "{s}{s}   {d:.1} GiB   {s}{s}", .{
+                if (i.is_partition) "      " else "",
+                i.path,
+                gib,
+                i.model,
+                if (i.mounted) "   [mounted]" else "",
+            }, 0) catch continue;
+            const label = gtk.Label.new(text);
+            label.setXalign(0);
+            label.as(gtk.Widget).setMarginTop(4);
+            label.as(gtk.Widget).setMarginBottom(4);
+            label.as(gtk.Widget).setMarginStart(6);
+            label.as(gtk.Widget).addCssClass("monospace");
+            list.append(label.as(gtk.Widget));
+        }
+        const scroller = gtk.ScrolledWindow.new();
+        scroller.setChild(list.as(gtk.Widget));
+        scroller.as(gtk.Widget).setVexpand(1);
+        box.append(scroller.as(gtk.Widget));
+        if (infos.len == 0) {
+            const none = gtk.Label.new(common.tr("No disks were found. You can also start dkde-hex with --device /dev/sdX."));
+            none.setWrap(1);
+            box.append(none.as(gtk.Widget));
+        }
+        dlg.* = .{ .editor = self, .window = window, .infos = infos };
+        _ = gtk.ListBox.signals.row_activated.connect(list, *DiskPicker, &onDiskPicked, dlg, .{});
+        _ = gtk.Widget.signals.destroy.connect(window, *DiskPicker, &onDiskPickerDestroy, dlg, .{});
+        window.present();
+    }
+
+    fn onDiskPicked(_: *gtk.ListBox, row: *gtk.ListBoxRow, dlg: *DiskPicker) callconv(.c) void {
+        const i = row.getIndex();
+        if (i < 0 or i >= dlg.infos.len) return;
+        const editor = dlg.editor;
+        const path = editor.allocator.dupe(u8, dlg.infos[@intCast(i)].path) catch return;
+        defer editor.allocator.free(path);
+        dlg.window.destroy();
+        editor.openDevice(path);
+    }
+
+    fn onDiskPickerDestroy(_: *gtk.Window, dlg: *DiskPicker) callconv(.c) void {
+        disk_mod.freeInfos(dlg.editor.allocator, dlg.infos);
+        dlg.editor.allocator.destroy(dlg);
+    }
+
     // ---- menu --------------------------------------------------------------------------------
 
     fn onMenubarAction(self: *HexEditor, action: []const u8) void {
@@ -1167,6 +1541,18 @@ const HexEditor = struct {
         if (eql(u8, action, "get-formats")) return self.getFormats(.ksy);
         if (eql(u8, action, "get-patterns")) return self.getFormats(.hexpat);
         if (eql(u8, action, "patterns-folder")) return self.formatsFolderDialog(.hexpat);
+        if (eql(u8, action, "open-disk")) return self.chooseDisk();
+        if (eql(u8, action, "goto-sector")) return self.ask(.sector);
+        if (eql(u8, action, "disk-prev")) return self.diskStep(false);
+        if (eql(u8, action, "disk-next")) return self.diskStep(true);
+        if (eql(u8, action, "disk-writing")) return self.enableWriting();
+        if (eql(u8, action, "disk-write")) return self.diskWrite();
+        if (eql(u8, action, "disk-close")) {
+            self.closeDisk();
+            self.buffer.load("") catch return;
+            self.view.refresh();
+            return self.updateAll();
+        }
         if (eql(u8, action, "strings")) return self.showStrings();
         if (eql(u8, action, "choose-format")) return self.chooseFormat();
         if (eql(u8, action, "load-ksy")) return self.loadDefinitionDialog();
@@ -1194,6 +1580,7 @@ fn submitAsk(ctx: *HexEditor.Ask) void {
     const ok = switch (ctx.kind) {
         .find => editor.startSearch(text, if (ctx.hex) |h| h.getActive() != 0 else false),
         .goto => editor.gotoOffset(text),
+        .sector => editor.gotoSector(text),
     };
     if (ok) ctx.dialog.destroy() else editor.status.setText(common.tr("That is not valid here."));
 }
@@ -1206,7 +1593,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
     var app: App = .{ .allocator = allocator, .file = null };
     defer if (app.appearance) |a| a.destroy();
     // One optional file name; GTK sees only the program name.
-    if (init.args.vector.len > 1) app.file = std.mem.span(init.args.vector[1]);
+    if (init.args.vector.len > 2 and std.mem.eql(u8, std.mem.span(init.args.vector[1]), "--device")) {
+        app.device = std.mem.span(init.args.vector[2]);
+    } else if (init.args.vector.len > 1) app.file = std.mem.span(init.args.vector[1]);
 
     const gtk_app = gtk.Application.new("org.dkde.hex", .{ .non_unique = true });
     defer gtk_app.as(gobject.Object).unref();
@@ -1227,8 +1616,10 @@ test {
     _ = @import("hexpat/eval.zig");
     _ = @import("hexpat/coverage_test.zig");
     _ = @import("strings.zig");
+    _ = @import("disk.zig");
     _ = @import("structure.zig");
     _ = @import("strings.zig");
+    _ = @import("disk.zig");
     _ = @import("buffer.zig");
     _ = @import("inspect.zig");
 }
