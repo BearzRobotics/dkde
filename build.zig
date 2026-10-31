@@ -1,7 +1,7 @@
 const std = @import("std");
 const Scanner = @import("wayland").Scanner;
 
-const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks", "idle", "pdf" };
+const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks", "idle", "pdf", "parted" };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -72,7 +72,7 @@ pub fn build(b: *std.Build) void {
                 mod.linkSystemLibrary("x11", .{});
                 mod.addImport("gdkx114", gobject.module("gdkx114"));
             }
-            if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "hex") or std.mem.eql(u8, name, "color") or std.mem.eql(u8, name, "pdf")) mod.addImport("cairo1", gobject.module("cairo1"));
+            if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "hex") or std.mem.eql(u8, name, "color") or std.mem.eql(u8, name, "parted") or std.mem.eql(u8, name, "pdf")) mod.addImport("cairo1", gobject.module("cairo1"));
             if (std.mem.eql(u8, name, "pdf")) mod.linkSystemLibrary("poppler-glib", .{});
             if (std.mem.eql(u8, name, "hex")) {
                 mod.addImport("pangocairo1", gobject.module("pangocairo1"));
@@ -102,7 +102,7 @@ pub fn build(b: *std.Build) void {
         }
     }
 
-    for ([_][]const u8{ "dkde-files", "dkde-term", "dkde-settings", "dkde-calc", "dkde-edit", "dkde-view", "dkde-tasks", "dkde-snip", "dkde-hex", "dkde-charmap", "dkde-clock", "dkde-calendar", "dkde-color", "dkde-disks" }) |name| {
+    for ([_][]const u8{ "dkde-files", "dkde-term", "dkde-settings", "dkde-calc", "dkde-edit", "dkde-view", "dkde-tasks", "dkde-snip", "dkde-hex", "dkde-charmap", "dkde-clock", "dkde-calendar", "dkde-color", "dkde-disks", "dkde-parted" }) |name| {
         b.getInstallStep().dependOn(&b.addInstallFileWithDir(
             b.path(b.fmt("data/{s}.desktop", .{name})),
             .prefix,

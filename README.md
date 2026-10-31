@@ -18,6 +18,7 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 | `dkde-calendar` | Calendar with notes |
 | `dkde-color` | Colour mixer |
 | `dkde-disks` | Disk usage |
+| `dkde-parted` | Partitions: tables, partitions, formatting, mounting |
 | `dkde-calc` | Calculator |
 | `dkde-view` | Image viewer |
 | `dkde-tasks` | Task Manager |
@@ -26,7 +27,7 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 
 ## Reverse engineering with the hex editor
 
-`dkde-hex` can parse a file with a [Kaitai Struct](https://kaitai.io) description or an [ImHex](https://imhex.werwolv.net) pattern and show its fields as a tree, coloured in the hex view. Formats and patterns are not bundled; see [docs/hex-structure.md](docs/hex-structure.md). The YAML parser is [zig-yaml](https://codeberg.org/kubkon/zig-yaml) by Jakub Konka (MIT), vendored in `third_party/zig-yaml/`.
+`dkde-hex` also has a Disk mode for raw sectors of disks, partitions and images (read-only until you enable writing; see SPEC §5.6). `dkde-hex` can parse a file with a [Kaitai Struct](https://kaitai.io) description or an [ImHex](https://imhex.werwolv.net) pattern and show its fields as a tree, coloured in the hex view. Formats and patterns are not bundled; see [docs/hex-structure.md](docs/hex-structure.md). The YAML parser is [zig-yaml](https://codeberg.org/kubkon/zig-yaml) by Jakub Konka (MIT), vendored in `third_party/zig-yaml/`.
 
 ## Theming
 
@@ -102,6 +103,8 @@ below for the full list and one install command.
 | Xorg session and X11 taskbar/screenshots | `libx11-dev` to build, `zig build -Dx11=true` (see "Xorg") |
 | Hex editor structure view | Kaitai `.ksy` files and/or ImHex `.hexpat` patterns, not bundled: Structure ▸ Get Kaitai formats… / Get ImHex patterns… (needs `git`, or `curl`/`wget` with `tar`) |
 | File manager archives | `zip`, `unzip`, `tar`, `7zip` |
+| Partition tool `dkde-parted` | `util-linux` (`lsblk`, `mount`), `parted` and `sudo`; for formatting, the `mkfs` tool of each filesystem: `e2fsprogs`, `xfsprogs`, `btrfs-progs`, `dosfstools`, `exfatprogs`, `ntfs-3g` |
+| Hex editor disk mode (raw sectors) | nothing extra; reading a device needs root, which it asks for through `sudo` |
 | Run as administrator (file manager, Settings) | `sudo` |
 
 ### Fetched by `zig build` (pinned by hash in `build.zig.zon`)
@@ -140,7 +143,7 @@ sudo apt install \
     network-manager bluez rfkill brightnessctl wlr-randr \
     cups cups-client cups-filters \
     gvfs udisks2 zip unzip 7zip chrony sudo passwd \
-    git curl tar \
+    git curl tar parted e2fsprogs dosfstools exfatprogs xfsprogs btrfs-progs ntfs-3g \
     tmux vim htop
 ```
 
@@ -256,7 +259,7 @@ installed under the prefix:
 
 | Path | What |
 |---|---|
-| `bin/dkde-*` | The programs: `dkde-panel`, `dkde-term`, `dkde-files`, `dkde-settings`, `dkde-edit`, `dkde-calc`, `dkde-view`, `dkde-tasks`, `dkde-snip`, `dkde-setup`, `dkde-greeter`, and the session scripts `dkde-session`, `dkde-greeter-session`, `dkde-greeter-start`, `dkde-xsession`, `dkde-startx` (`dkde-pointer` is a test tool you can delete) |
+| `bin/dkde-*` | The programs: `dkde-panel`, `dkde-term`, `dkde-files`, `dkde-settings`, `dkde-edit`, `dkde-calc`, `dkde-parted`, `dkde-view`, `dkde-tasks`, `dkde-snip`, `dkde-setup`, `dkde-greeter`, and the session scripts `dkde-session`, `dkde-greeter-session`, `dkde-greeter-start`, `dkde-xsession`, `dkde-startx` (`dkde-pointer` is a test tool you can delete) |
 | `share/applications/` | Start menu entries for the apps |
 | `share/wayland-sessions/dkde.desktop` | The session entry for login managers (GDM, SDDM, greetd's own menu and so on) |
 | `share/xsessions/dkde-x11.desktop` | The Xorg session entry (see "Xorg") |

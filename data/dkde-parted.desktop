@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Partitions
+Comment=Create, format and delete disk partitions
+Exec=dkde-parted
+Icon=drive-harddisk
+Terminal=false
+Categories=System;Utility;
