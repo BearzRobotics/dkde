@@ -11,6 +11,7 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 | `dkde-files` | File manager |
 | `dkde-settings` | Settings |
 | `dkde-edit` | Text editor |
+| `dkde-hex` | Hex editor |
 | `dkde-calc` | Calculator |
 | `dkde-view` | Image viewer |
 | `dkde-tasks` | Task Manager |

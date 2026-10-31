@@ -534,6 +534,7 @@ default apps and the start menu find it.
 | `dkde-view` | Image viewer | Zoom, fit, rotate, previous/next in folder, set as wallpaper. |
 | `dkde-tasks` | Task Manager | Processes from `/proc`, CPU and memory, end process. Opened with Ctrl+Shift+Esc. |
 | `dkde-snip` | Screenshots | `wlr-screencopy-unstable-v1`. Full screen, window, or region. Print Screen. (if possible a scroll option for webpage) |
+| `dkde-hex` | Hex editor | Whole file in memory (up to 1 GiB). Offsets, hex and text panes; overwrite and insert; undo and redo; select, copy as hex or text, paste hex; find (text or hex bytes, both directions, wrapping); go to offset; 8, 16 or 32 bytes per row; data inspector (8 to 64-bit integers, floats, bits, in either byte order). Saves with `g_file_set_contents`, which replaces the file and does not keep unusual permissions. Not done: huge files, bookmarks, comparing two files, structure templates. |
 
 **Implementation notes (accessories):**
 
