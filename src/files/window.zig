@@ -8,6 +8,7 @@ const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const common = @import("common");
 
+const archive = @import("archive.zig");
 const ops = @import("ops.zig");
 const props = @import("props.zig");
 const pure = @import("pure.zig");
@@ -66,6 +67,8 @@ pub const FilesWindow = struct {
     path_entry: *gtk.Entry,
     search: *gtk.SearchEntry,
     status: *gtk.Label,
+    /// For archive commands that finish after the user may have closed the window.
+    proc_guard: *common.proc.Guard(FilesWindow) = undefined,
     progress_box: *gtk.Box,
     progress_bar: *gtk.ProgressBar,
     progress_label: *gtk.Label,
@@ -128,6 +131,7 @@ pub const FilesWindow = struct {
             .current = start_file,
         };
 
+        self.proc_guard = common.proc.Guard(FilesWindow).create(self);
         self.makeViews();
         self.buildWindow(app);
         self.registerTab();
@@ -139,6 +143,7 @@ pub const FilesWindow = struct {
     }
 
     fn onWindowDestroy(_: *gtk.ApplicationWindow, self: *FilesWindow) callconv(.c) void {
+        self.proc_guard.kill();
         if (self.job) |job| job.cancel();
         for (self.crumb_ctxs.items) |ctx| {
             self.allocator.free(ctx.path);
@@ -1395,6 +1400,7 @@ pub const FilesWindow = struct {
             self.menuItem(box, popover, common.tr("Cut"), "cut", !in_trash);
             self.menuItem(box, popover, common.tr("Copy"), "copy", true);
             self.menuItem(box, popover, common.tr("Rename…"), "rename", count == 1 and !in_trash);
+            if (!in_trash) self.archiveItems(box, popover, count);
             if (in_trash) {
                 self.menuItem(box, popover, common.tr("Restore"), "restore", true);
                 self.menuItem(box, popover, common.tr("Delete Permanently"), "delete-permanent", true);
@@ -1415,6 +1421,21 @@ pub const FilesWindow = struct {
             self.menuItem(box, popover, common.tr("Properties"), "properties", true);
         }
         popover.popup();
+    }
+
+    /// Extract (for one archive) and the two ways to pack the selection.
+    fn archiveItems(self: *FilesWindow, box: *gtk.Box, popover: *gtk.Popover, count: usize) void {
+        if (count == 1) {
+            var files = self.selectedFiles() catch return;
+            defer freeFiles(self.allocator, &files);
+            const name = files.items[0].getBasename() orelse return;
+            defer glib.free(name);
+            if (archive.kindOf(std.mem.span(name))) |kind| {
+                self.menuItem(box, popover, common.tr("Extract Here"), "extract", common.proc.hasProgram(archive.extractTool(kind)));
+            }
+        }
+        self.menuItem(box, popover, common.tr("Compress to .zip"), "compress-zip", common.proc.hasProgram("zip"));
+        self.menuItem(box, popover, common.tr("Compress to .tar.gz"), "compress-targz", common.proc.hasProgram("tar"));
     }
 
     const MenuAction = struct {
@@ -1492,6 +1513,84 @@ pub const FilesWindow = struct {
     }
 
     /// Runs a named action: the one place menus and shortcuts meet.
+    // ---- archives ---------------------------------------------------------------------
+
+    fn nameTaken(dir: *gio.File, name: []const u8) bool {
+        var buf: [512]u8 = undefined;
+        const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{name}, 0) catch return true;
+        const child = dir.getChild(z);
+        defer child.as(gobject.Object).unref();
+        return child.queryExists(null) != 0;
+    }
+
+    /// Unpacks the selected archive into a new folder next to it, named after it.
+    fn extractSelected(self: *FilesWindow) void {
+        var files = self.selectedFiles() catch return;
+        defer freeFiles(self.allocator, &files);
+        if (files.items.len != 1) return;
+        const file = files.items[0];
+        const name_c = file.getBasename() orelse return;
+        defer glib.free(name_c);
+        const name = std.mem.span(name_c);
+        const kind = archive.kindOf(name) orelse return;
+        const parent = file.getParent() orelse return;
+        defer parent.as(gobject.Object).unref();
+        var buf: [512]u8 = undefined;
+        const dest_name = archive.uniqueName(&buf, archive.stem(name), "", parent, nameTaken);
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        const parent_path = parent.getPath() orelse return;
+        defer glib.free(parent_path);
+        const dest = std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ std.mem.span(parent_path), dest_name }) catch return;
+        defer self.allocator.free(dest);
+        self.status.setText(common.tr("Extracting\u{2026}"));
+        common.proc.run(FilesWindow, self.proc_guard, &.{ "sh", "-c", archive.extractScript(kind), "sh", std.mem.span(path), dest }, onArchiveDone);
+    }
+
+    /// Packs the selection into one archive in the folder being shown.
+    fn compressSelected(self: *FilesWindow, kind: archive.Pack) void {
+        var files = self.selectedFiles() catch return;
+        defer freeFiles(self.allocator, &files);
+        if (files.items.len == 0) return;
+        const dir_path = self.current.getPath() orelse return;
+        defer glib.free(dir_path);
+
+        // One item is named after itself; several become "Archive".
+        var base_buf: [256]u8 = undefined;
+        const base: []const u8 = blk: {
+            if (files.items.len == 1) {
+                const n = files.items[0].getBasename() orelse break :blk "Archive";
+                defer glib.free(n);
+                const len = @min(std.mem.span(n).len, base_buf.len);
+                @memcpy(base_buf[0..len], std.mem.span(n)[0..len]);
+                break :blk base_buf[0..len];
+            }
+            break :blk "Archive";
+        };
+        var out_buf: [512]u8 = undefined;
+        const out = archive.uniqueName(&out_buf, base, archive.packExtension(kind), self.current, nameTaken);
+
+        var argv: std.ArrayList([]const u8) = .empty;
+        defer argv.deinit(self.allocator);
+        var owned: std.ArrayList([*:0]u8) = .empty;
+        defer {
+            for (owned.items) |o| glib.free(o);
+            owned.deinit(self.allocator);
+        }
+        argv.appendSlice(self.allocator, &.{ "sh", "-c", archive.packScript(kind), "sh", std.mem.span(dir_path), out }) catch return;
+        for (files.items) |f| {
+            const n = f.getBasename() orelse continue;
+            owned.append(self.allocator, n) catch continue;
+            argv.append(self.allocator, std.mem.span(n)) catch return;
+        }
+        self.status.setText(common.tr("Compressing\u{2026}"));
+        common.proc.run(FilesWindow, self.proc_guard, argv.items, onArchiveDone);
+    }
+
+    fn onArchiveDone(self: *FilesWindow, ok: bool, _: []const u8) void {
+        self.status.setText(if (ok) common.tr("Done.") else common.tr("The archive command failed."));
+    }
+
     fn perform(self: *FilesWindow, action: []const u8, app: ?*gio.AppInfo) void {
         const eql = std.mem.eql;
         if (eql(u8, action, "open")) return self.openSelected();
@@ -1519,6 +1618,9 @@ pub const FilesWindow = struct {
             defer glib.free(path);
             return common.appinfo.spawnIn(self.allocator, &.{"dkde-term"}, std.mem.span(path));
         }
+        if (eql(u8, action, "extract")) return self.extractSelected();
+        if (eql(u8, action, "compress-zip")) return self.compressSelected(.zip);
+        if (eql(u8, action, "compress-targz")) return self.compressSelected(.tar_gz);
         if (eql(u8, action, "cut")) return self.copySelection(true);
         if (eql(u8, action, "copy")) return self.copySelection(false);
         if (eql(u8, action, "paste")) return self.paste();
@@ -1696,3 +1798,7 @@ pub const FilesWindow = struct {
         if (self.sidebar_paths.items[index]) |path| self.removeBookmark(path);
     }
 };
+
+test {
+    _ = @import("archive.zig");
+}

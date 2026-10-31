@@ -455,6 +455,15 @@ reference screenshots under `docs/reference/`.
 
 **Thumbnails:** **post-v1**.
 
+**Archives:** the item context menu offers *Extract Here* for a single `.zip`,
+`.tar`, `.tar.gz`/`.tgz`, `.tar.xz`/`.txz`, `.tar.bz2`/`.tbz2`, `.tar.zst`, `.7z`
+or `.rar` file (into a new folder named after it, "name (2)" if taken) and
+*Compress to .zip* / *Compress to .tar.gz* for the selection (named after the
+single item, or "Archive"). They run `unzip`, `tar`, `7z`, `unrar` and `zip` in
+the background, and an item is greyed out when its tool is missing. File names
+reach the shell scripts only as positional parameters. Not done: progress, a
+cancel button, password-protected archives, opening an archive as a folder.
+
 ### 5.5 Settings (`dkde-settings`)
 
 **Window:** a category list on the left and a page on the right. Changes take
