@@ -95,6 +95,13 @@ Runtime libraries allowed in v1:
 - gvfs/udisks2
 - shared-mime-info (data, needed for GIO content types)
 - An icon theme (https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)
+- zig-yaml (MIT), vendored in `third_party/zig-yaml/`, used only by `dkde-hex`
+  to read Kaitai Struct `.ksy` files. It is a copy of the `src/` directory of
+  the GitHub commit `e5cf8ac3de410749fef57a3f3864100104043042` (the project has
+  since moved to https://codeberg.org/kubkon/zig-yaml), with two small edits so
+  it builds on Zig 0.17: `Parser.zig` and `Tree.zig` read struct fields through
+  `field_names`/`field_types`, and the error bundle is created with `Wip.init`.
+  Its own `build.zig` is not used. See `third_party/zig-yaml/README.dkde.md`.
 
 Anything not on this list needs a spec change explaining why.
 
@@ -595,7 +602,7 @@ default apps and the start menu find it.
 | `dkde-view` | Image viewer | Zoom, fit, rotate, previous/next in folder, set as wallpaper. |
 | `dkde-tasks` | Task Manager | Processes from `/proc`, CPU and memory, end process. Opened with Ctrl+Shift+Esc. |
 | `dkde-snip` | Screenshots | `wlr-screencopy-unstable-v1`. Full screen, window, or region. Print Screen. (if possible a scroll option for webpage) |
-| `dkde-hex` | Hex editor | Whole file in memory (up to 1 GiB). Offsets, hex and text panes; overwrite and insert; undo and redo; select, copy as hex or text, paste hex; find (text or hex bytes, both directions, wrapping); go to offset; 8, 16 or 32 bytes per row; data inspector (8 to 64-bit integers, floats, bits, in either byte order). Saves with `g_file_set_contents`, which replaces the file and does not keep unusual permissions. Not done: huge files, bookmarks, comparing two files, structure templates. |
+| `dkde-hex` | Hex editor | Whole file in memory (up to 1 GiB). Offsets, hex and text panes; overwrite and insert; undo and redo; select, copy as hex or text, paste hex; find (text or hex bytes, both directions, wrapping); go to offset; 8, 16 or 32 bytes per row; data inspector (8 to 64-bit integers, floats, bits, in either byte order). Saves with `g_file_set_contents`, which replaces the file and does not keep unusual permissions. **Structure (reverse engineering):** reads [Kaitai Struct](https://kaitai.io) `.ksy` descriptions, parses the open file with them and shows a tree of fields with values and byte ranges. Selecting a field selects its bytes, the cursor selects the field it is in (breadcrumb in the status bar), and fields are coloured in the hex view. A format is picked automatically from the file's magic bytes (or a unique file extension), by Structure ▸ Choose format…, or loaded by hand (Load definition…). Formats are **not bundled** (their licences are mixed): point `[hex] formats-dir` in `hex.conf` (or Structure ▸ Formats folder…) at a folder of `.ksy` files such as a clone of kaitai_struct_formats; the default is `~/.local/share/dkde/formats`. Find strings lists ASCII and UTF-16 text with offsets. Not done: huge files, bookmarks, comparing two files, writing back through a format, `process` (xor, zlib), `valid` checks, `params` types, user-defined methods, `_io` seeking inside substreams of other objects beyond `pos`/`io`. A parse that fails keeps what it read and shows the error as a node. See `docs/hex-structure.md`. |
 | `dkde-pdf` | PDF viewer | **Optional:** built only with `zig build -Dpdf=true`, linking `poppler-glib` by name (`pkg-config poppler-glib`; the few calls it uses are declared by hand, so no headers are needed). One scrolling column, pages rendered on demand and cached; zoom presets, fit width and fit page, Ctrl+wheel zoom; go to page; text search with highlights across the whole document and next/previous; copy a page's text; password prompt for protected files. Not done: text selection with the mouse, outline and thumbnail sidebars, annotations, forms, printing, two-page view, HiDPI-sharp rendering. |
 | `dkde-charmap` | Character Map | Unicode blocks (Latin, Greek, Cyrillic, arrows, maths, box drawing, symbols, emoji and more) as a grid of at most 256 characters; click to collect into a box, copy. Hover shows the code point and UTF-8 bytes. No search by character name (GLib has no name table). |
 | `dkde-clock` | Clock | Stopwatch with laps, countdown timer, and a one-shot alarm. A finished timer or alarm sends a desktop notification (session bus) and a beep. Timers and alarms run only while the window is open: there is no background service. |
@@ -738,7 +745,7 @@ The taskbar-button and start-menu-item menus also open from the keyboard
 - **Format:** INI-style, read and written with GLib's `GKeyFile`. No
   additional parser dependency.
 - **Location:** `$XDG_CONFIG_HOME/dkde/`. One file per component:
-  `panel.conf`, `term.conf`, `files.conf`. Shared settings like accent
+  `panel.conf`, `term.conf`, `files.conf`, `hex.conf`. Shared settings like accent
   colour and font live in `dkde.conf`.
 - **System defaults:** `$PREFIX/share/dkde/*.conf`. The user's files only
   hold what they changed.

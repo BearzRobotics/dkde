@@ -21,6 +21,8 @@ pub const Buffer = struct {
     /// Length of the undo stack when the file was last saved; null once that
     /// state can no longer be reached by undoing or redoing.
     saved_at: ?usize = 0,
+    /// Bumps on every change to the content, so a cache can tell it is stale.
+    revision: u64 = 0,
 
     pub fn init(allocator: std.mem.Allocator) Buffer {
         return .{ .allocator = allocator };
@@ -51,6 +53,7 @@ pub const Buffer = struct {
         self.data.clearRetainingCapacity();
         try self.data.appendSlice(self.allocator, content);
         self.saved_at = 0;
+        self.revision += 1;
     }
 
     pub fn len(self: *const Buffer) usize {
@@ -70,6 +73,7 @@ pub const Buffer = struct {
     }
 
     fn apply(self: *Buffer, offset: usize, remove_len: usize, insert: []const u8) !void {
+        self.revision += 1;
         try self.data.replaceRange(self.allocator, offset, remove_len, insert);
     }
 
@@ -84,6 +88,7 @@ pub const Buffer = struct {
             const top = &self.undo_stack.items[self.undo_stack.items.len - 1];
             if (top.mergeable and top.offset == offset and top.inserted.len == 1 and insert.len == 1 and remove == 1) {
                 self.data.items[offset] = insert[0];
+                self.revision += 1;
                 top.inserted[0] = insert[0];
                 top.mergeable = false;
                 return;

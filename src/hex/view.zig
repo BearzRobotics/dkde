@@ -18,6 +18,20 @@ const Buffer = buffer_mod.Buffer;
 
 pub const Pane = enum { hex, text };
 
+/// A stretch of bytes the structure view knows about, drawn in a soft colour.
+pub const Range = struct { start: usize, len: usize, color: u8 };
+
+/// Fill colours for `Range.color` (taken modulo the length), chosen to read on
+/// both light and dark backgrounds at low opacity.
+const palette = [_][3]f64{
+    .{ 0.25, 0.55, 0.95 },
+    .{ 0.25, 0.75, 0.40 },
+    .{ 0.95, 0.60, 0.15 },
+    .{ 0.70, 0.40, 0.90 },
+    .{ 0.15, 0.75, 0.75 },
+    .{ 0.90, 0.35, 0.40 },
+};
+
 pub const View = struct {
     allocator: std.mem.Allocator,
     buffer: *Buffer,
@@ -43,6 +57,8 @@ pub const View = struct {
     nibble: u1 = 0,
     anchor: ?usize = null,
     drag_origin: usize = 0,
+    /// Sorted by start; not owned.
+    highlights: []const Range = &.{},
 
     /// Called after the cursor, selection or content changed.
     changed: *const fn (*anyopaque) void,
@@ -253,6 +269,16 @@ pub const View = struct {
                 if (off > bytes.len) break;
                 const selected = if (sel) |s| off >= s[0] and off < s[1] else false;
                 const is_cursor = off == self.cursor;
+                if (off < bytes.len) if (self.rangeAt(off)) |range| {
+                    const c = palette[range.color % palette.len];
+                    cr.setSourceRgba(c[0], c[1], c[2], 0.30);
+                    // Join with the next byte of the same field so a field reads as one strip.
+                    const joined = off + 1 < range.start + range.len and col + 1 < bpr and col % 8 != 7;
+                    cr.rectangle(pad + self.hexColumn(col) * self.cell_w, y, if (joined) 3 * self.cell_w else 2 * self.cell_w, self.cell_h);
+                    cr.fill();
+                    cr.rectangle(pad + (self.textStart() + @as(f64, @floatFromInt(col))) * self.cell_w, y, self.cell_w, self.cell_h);
+                    cr.fill();
+                };
                 if (selected) {
                     cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, 0.40);
                     cr.rectangle(pad + self.hexColumn(col) * self.cell_w, y, 2 * self.cell_w, self.cell_h);
@@ -351,6 +377,25 @@ pub const View = struct {
         self.updateScrollRange();
         self.ensureVisible();
         self.notify();
+    }
+
+    /// Colours these ranges (sorted by start). The slice must outlive its use.
+    pub fn setHighlights(self: *View, ranges: []const Range) void {
+        self.highlights = ranges;
+        self.area.as(gtk.Widget).queueDraw();
+    }
+
+    fn rangeAt(self: *const View, off: usize) ?Range {
+        const r = self.highlights;
+        var lo: usize = 0;
+        var hi: usize = r.len;
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+            if (r[mid].start <= off) lo = mid + 1 else hi = mid;
+        }
+        if (lo == 0) return null;
+        const cand = r[lo - 1];
+        return if (off < cand.start + cand.len) cand else null;
     }
 
     pub fn setBytesPerRow(self: *View, n: usize) void {

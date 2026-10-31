@@ -24,6 +24,10 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 | `dkde-snip` | Screenshots |
 | `dkde-setup` | First-run check and fixes |
 
+## Reverse engineering with the hex editor
+
+`dkde-hex` can parse a file with a [Kaitai Struct](https://kaitai.io) description and show its fields as a tree, coloured in the hex view. Formats are not bundled; see [docs/hex-structure.md](docs/hex-structure.md). The YAML parser is [zig-yaml](https://codeberg.org/kubkon/zig-yaml) by Jakub Konka (MIT), vendored in `third_party/zig-yaml/`.
+
 ## Theming
 
 One stylesheet and `dkde.conf` (dark mode, accent colour, font) style every program; you can override anything in `~/.config/dkde/style.css`. See [docs/theming.md](docs/theming.md).

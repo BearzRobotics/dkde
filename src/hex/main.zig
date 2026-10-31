@@ -11,7 +11,12 @@ const common = @import("common");
 
 const buffer_mod = @import("buffer.zig");
 const inspect = @import("inspect.zig");
-const View = @import("view.zig").View;
+const view_mod = @import("view.zig");
+const View = view_mod.View;
+const structure = @import("structure.zig");
+const ksy_interp = @import("ksy/interp.zig");
+const strings = @import("strings.zig");
+const ksy_model = @import("ksy/model.zig");
 
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
@@ -33,6 +38,7 @@ const App = struct {
         };
         if (self.file) |path| editor.openPath(path);
         editor.window.as(gtk.Window).present();
+        editor.autoDetect();
     }
 };
 
@@ -54,6 +60,19 @@ const HexEditor = struct {
     closing_after_save: bool = false,
     pending: ?Pending = null,
 
+    // Structure (Kaitai formats).
+    config: common.Config,
+    panel: *structure.Panel = undefined,
+    library: ?*structure.Library = null,
+    ranges: []view_mod.Range = &.{},
+    show_colours: bool = true,
+    /// The buffer revision the structure was parsed from.
+    parsed_revision: u64 = 0,
+    reparse_source: c_uint = 0,
+    /// True while a click in the structure panel moves the view, so the view
+    /// does not answer by re-selecting in the panel.
+    picking: bool = false,
+
     const Pending = enum { open, close, revert, new };
 
     fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*HexEditor {
@@ -66,12 +85,15 @@ const HexEditor = struct {
             .view = undefined,
             .status = gtk.Label.new(""),
             .inspector = gtk.Box.new(.vertical, 2),
+            .config = try common.Config.load(allocator, "hex.conf"),
         };
+        errdefer self.config.deinit();
         self.view = try View.create(allocator, &self.buffer, onViewChanged, self);
+        self.panel = try structure.Panel.create(allocator, onPanelPick, self);
 
         const window = self.window.as(gtk.Window);
         window.setTitle(common.tr("Hex Editor"));
-        window.setDefaultSize(960, 620);
+        window.setDefaultSize(1160, 640);
         self.window.as(gtk.Widget).addCssClass("dkde");
         _ = common.header.create(window, "accessories-text-editor", true);
 
@@ -113,6 +135,19 @@ const HexEditor = struct {
                 mb.check("Data _inspector", "inspector", true),
                 mb.check("_Big-endian values", "big-endian", false),
             } },
+            .{ .label = "_Structure", .entries = &.{
+                mb.item("_Choose format…", "choose-format", "<Control>t"),
+                mb.item("_Load definition…", "load-ksy", null),
+                mb.item("_Re-parse", "reparse", "F5"),
+                mb.item("C_lear", "clear-structure", null),
+                .separator,
+                mb.check("Show _colours", "colours", true),
+                mb.check("Structure _panel", "structure-panel", true),
+                .separator,
+                mb.item("Formats _folder…", "formats-folder", null),
+                .separator,
+                mb.item("Find _strings…", "strings", null),
+            } },
         };
         const menu_bar = mb.build(app, self.window, &menus, HexEditor, onMenubarAction, self);
 
@@ -150,6 +185,9 @@ const HexEditor = struct {
         body.append(self.view.widget());
         body.append(gtk.Separator.new(.vertical).as(gtk.Widget));
         body.append(self.inspector.as(gtk.Widget));
+        body.append(gtk.Separator.new(.vertical).as(gtk.Widget));
+        body.append(self.panel.box.as(gtk.Widget));
+        self.panel.box.as(gtk.Widget).setVisible(0);
 
         self.status.setXalign(0);
         self.status.as(gtk.Widget).setMarginStart(8);
@@ -172,6 +210,11 @@ const HexEditor = struct {
     }
 
     fn onDestroy(_: *gtk.ApplicationWindow, self: *HexEditor) callconv(.c) void {
+        if (self.reparse_source != 0) _ = glib.Source.remove(self.reparse_source);
+        self.panel.destroy();
+        self.allocator.free(self.ranges);
+        if (self.library) |l| l.deinit();
+        self.config.deinit();
         self.buffer.deinit();
         if (self.path) |p| self.allocator.free(p);
         if (self.needle) |n| self.allocator.free(n);
@@ -189,6 +232,7 @@ const HexEditor = struct {
         self.updateTitle();
         self.updateStatus();
         self.updateInspector();
+        self.followStructure();
     }
 
     fn updateTitle(self: *HexEditor) void {
@@ -206,13 +250,20 @@ const HexEditor = struct {
             std.fmt.bufPrint(&sel_text, "   Selected {d} bytes", .{s[1] - s[0]}) catch ""
         else
             "";
-        const text = std.fmt.bufPrintSentinel(&buf, "Offset 0x{X:0>8} ({d}){s}   Size {d} bytes   {s}   {s}", .{
+        var path_buf: [160]u8 = undefined;
+        var field: []const u8 = "";
+        if (self.panel.result) |r| {
+            const at = if (v.selection()) |sel| sel[0] else v.cursor;
+            if (structure.nodeAt(r.root, at)) |n| field = structure.pathOf(n, &path_buf);
+        }
+        const text = std.fmt.bufPrintSentinel(&buf, "Offset 0x{X:0>8} ({d}){s}   Size {d} bytes   {s}   {s}   {s}", .{
             v.cursor,
             v.cursor,
             selection,
             self.buffer.len(),
             if (v.insert_mode) "INS" else "OVR",
             if (v.pane == .hex) "hex" else "text",
+            field,
         }, 0) catch return;
         self.status.setText(text);
     }
@@ -275,6 +326,7 @@ const HexEditor = struct {
         self.path = owned;
         self.view.cursor = 0;
         self.view.adjustment.setValue(0);
+        self.clearStructure();
         self.view.refresh();
     }
 
@@ -342,6 +394,7 @@ const HexEditor = struct {
         };
         defer file.as(gobject.Object).unref();
         self.loadFile(file);
+        self.autoDetect();
     }
 
     // ---- unsaved changes -------------------------------------------------------------------
@@ -391,9 +444,11 @@ const HexEditor = struct {
                 const copy = self.allocator.dupeSentinel(u8, p, 0) catch return;
                 defer self.allocator.free(copy);
                 self.openPath(copy);
+                self.autoDetect();
             },
             .new => {
                 self.buffer.load("") catch return;
+                self.clearStructure();
                 if (self.path) |p| self.allocator.free(p);
                 self.path = null;
                 self.view.refresh();
@@ -525,6 +580,367 @@ const HexEditor = struct {
         }
     }
 
+    // ---- structure ----------------------------------------------------------------------------
+
+    /// The folder holding `.ksy` files: `[hex] formats-dir`, else
+    /// `~/.local/share/dkde/formats`.
+    fn formatsDir(self: *HexEditor) ![]u8 {
+        const configured = try self.config.getString(self.allocator, "hex", "formats-dir", "");
+        if (configured.len > 0) return configured;
+        self.allocator.free(configured);
+        return std.fmt.allocPrint(self.allocator, "{s}/dkde/formats", .{std.mem.span(glib.getUserDataDir())});
+    }
+
+    /// Scans the formats folder the first time it is needed.
+    fn ensureLibrary(self: *HexEditor) ?*structure.Library {
+        if (self.library) |l| return l;
+        const dir = self.formatsDir() catch return null;
+        defer self.allocator.free(dir);
+        self.library = structure.Library.scan(self.allocator, dir) catch null;
+        return self.library;
+    }
+
+    fn rescanLibrary(self: *HexEditor) void {
+        if (self.library) |l| l.deinit();
+        self.library = null;
+        _ = self.ensureLibrary();
+    }
+
+    /// After opening a file: use the format that matches its magic bytes.
+    fn autoDetect(self: *HexEditor) void {
+        if (self.buffer.len() == 0) return;
+        const lib = self.ensureLibrary() orelse return;
+        const entry = lib.detect(self.buffer.slice(), if (self.path) |p| p else null) orelse return;
+        const copy = self.allocator.dupe(u8, entry.path) catch return;
+        defer self.allocator.free(copy);
+        self.applyPath(copy);
+    }
+
+    fn clearStructure(self: *HexEditor) void {
+        self.panel.clear();
+        self.panel.setHint(common.tr("No format applied. Use Structure \u{25B8} Choose format\u{2026} or Load definition\u{2026}"));
+        self.allocator.free(self.ranges);
+        self.ranges = &.{};
+        self.view.setHighlights(&.{});
+        self.panel.box.as(gtk.Widget).setVisible(0);
+        self.updateStatus();
+    }
+
+    /// Loads the `.ksy` at `path` and shows what it finds in the buffer.
+    fn applyPath(self: *HexEditor, path: []const u8) void {
+        const lib = self.ensureLibrary() orelse blk: {
+            self.library = structure.Library.scan(self.allocator, "") catch return;
+            break :blk self.library.?;
+        };
+        const format = lib.load(path) catch {
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot use this format"), common.tr("The file is not a readable Kaitai Struct description."));
+        };
+        self.showFormat(format);
+    }
+
+    /// Parses the buffer with `format` (taking ownership of it) and shows the result.
+    fn showFormat(self: *HexEditor, format: *ksy_model.Format) void {
+        const result = ksy_interp.run(self.allocator, format, self.buffer.slice()) catch {
+            format.deinit();
+            return;
+        };
+        self.panel.show(format, result);
+        self.parsed_revision = self.buffer.revision;
+        self.panel.box.as(gtk.Widget).setVisible(1);
+        self.applyHighlights();
+        self.updateStatus();
+    }
+
+    fn applyHighlights(self: *HexEditor) void {
+        self.allocator.free(self.ranges);
+        self.ranges = &.{};
+        if (self.show_colours) if (self.panel.result) |r| {
+            self.ranges = structure.collectRanges(self.allocator, r.root) catch &.{};
+        };
+        self.view.setHighlights(self.ranges);
+    }
+
+    /// Parses again after edits (the buffer changed under the structure).
+    fn reparse(self: *HexEditor) void {
+        const format = self.panel.format orelse return;
+        // The panel hands the format back so it can be shown again with a new result.
+        self.panel.format = null;
+        self.showFormat(format);
+    }
+
+    fn onReparseTick(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *HexEditor = @ptrCast(@alignCast(data.?));
+        self.reparse_source = 0;
+        if (self.panel.format != null and self.parsed_revision != self.buffer.revision) self.reparse();
+        return 0;
+    }
+
+    /// Keeps the structure in step with the view: follows the cursor, and
+    /// refreshes after edits once typing pauses.
+    fn followStructure(self: *HexEditor) void {
+        const r = self.panel.result orelse return;
+        if (self.parsed_revision != self.buffer.revision and self.reparse_source == 0) {
+            self.reparse_source = glib.timeoutAdd(400, onReparseTick, self);
+        }
+        if (self.picking or self.parsed_revision != self.buffer.revision) return;
+        if (self.view.selection() != null) return;
+        if (structure.nodeAt(r.root, self.view.cursor)) |n| self.panel.reveal(n);
+    }
+
+    fn onPanelPick(data: *anyopaque, node: *structure.Node) void {
+        const self: *HexEditor = @ptrCast(@alignCast(data));
+        if (node.len == 0) return;
+        self.picking = true;
+        defer self.picking = false;
+        self.view.select(node.start, node.len);
+    }
+
+    fn loadDefinitionDialog(self: *HexEditor) void {
+        const dialog = gtk.FileDialog.new();
+        defer dialog.as(gobject.Object).unref();
+        dialog.open(self.window.as(gtk.Window), null, onDefinitionChosen, self);
+    }
+
+    fn onDefinitionChosen(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *HexEditor = @ptrCast(@alignCast(data.?));
+        const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
+        var err: ?*glib.Error = null;
+        const file = dialog.openFinish(result, &err) orelse {
+            if (err) |e| e.free();
+            return;
+        };
+        defer file.as(gobject.Object).unref();
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        self.applyPath(std.mem.span(path));
+    }
+
+    fn formatsFolderDialog(self: *HexEditor) void {
+        const dialog = gtk.FileDialog.new();
+        defer dialog.as(gobject.Object).unref();
+        dialog.setTitle(common.tr("Folder of Kaitai .ksy files"));
+        dialog.selectFolder(self.window.as(gtk.Window), null, onFolderChosen, self);
+    }
+
+    fn onFolderChosen(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *HexEditor = @ptrCast(@alignCast(data.?));
+        const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
+        var err: ?*glib.Error = null;
+        const file = dialog.selectFolderFinish(result, &err) orelse {
+            if (err) |e| e.free();
+            return;
+        };
+        defer file.as(gobject.Object).unref();
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        self.config.setString("hex", "formats-dir", std.mem.span(path)) catch {};
+        self.rescanLibrary();
+        const count = if (self.library) |l| l.entries.items.len else 0;
+        var buf: [96]u8 = undefined;
+        self.status.setText(std.fmt.bufPrintSentinel(&buf, "{d} formats found.", .{count}, 0) catch "");
+        if (count > 0) self.chooseFormat();
+    }
+
+    // The format picker: a search box over the library, the best fit first.
+
+    const Picker = struct {
+        editor: *HexEditor,
+        window: *gtk.Window,
+        search: *gtk.SearchEntry,
+        list: *gtk.ListBox,
+        /// Library entries shown, by row.
+        shown: std.ArrayList(usize) = .empty,
+
+        fn matches(entry: *const structure.Entry, query: []const u8) bool {
+            if (query.len == 0) return true;
+            return std.ascii.findIgnoreCase(entry.title, query) != null or std.ascii.findIgnoreCase(entry.id, query) != null;
+        }
+
+        fn fill(self: *Picker, query: []const u8) void {
+            const lib = self.editor.library orelse return;
+            const a = self.editor.allocator;
+            self.list.removeAll();
+            self.shown.clearRetainingCapacity();
+            const suggested = lib.detect(self.editor.buffer.slice(), self.editor.path);
+            if (suggested) |e| if (query.len == 0) {
+                const index = (@intFromPtr(e) - @intFromPtr(lib.entries.items.ptr)) / @sizeOf(structure.Entry);
+                self.shown.append(a, index) catch return;
+                self.appendLabel(e, true);
+            };
+            for (lib.entries.items, 0..) |*e, i| {
+                if (self.shown.items.len >= 300) break;
+                if (!matches(e, query)) continue;
+                if (suggested != null and query.len == 0 and e == suggested.?) continue;
+                self.shown.append(a, i) catch return;
+                self.appendLabel(e, false);
+            }
+        }
+
+        fn appendLabel(self: *Picker, e: *const structure.Entry, suggested: bool) void {
+            var buf: [400]u8 = undefined;
+            const text = std.fmt.bufPrintSentinel(&buf, "{s}{s}  \u{2014}  {s}", .{ if (suggested) "\u{2605} " else "", e.title, e.id }, 0) catch return;
+            const label = gtk.Label.new(text);
+            label.setXalign(0);
+            label.setEllipsize(.end);
+            label.as(gtk.Widget).setMarginTop(4);
+            label.as(gtk.Widget).setMarginBottom(4);
+            label.as(gtk.Widget).setMarginStart(6);
+            self.list.append(label.as(gtk.Widget));
+        }
+    };
+
+    fn chooseFormat(self: *HexEditor) void {
+        const lib = self.ensureLibrary();
+        if (lib == null or lib.?.entries.items.len == 0) {
+            common.dialogs.showError(
+                self.window.as(gtk.Window),
+                common.tr("No formats found"),
+                common.tr("Choose a folder with Kaitai Struct .ksy files, for example a clone of kaitai_struct_formats."),
+            );
+            return self.formatsFolderDialog();
+        }
+        const picker = self.allocator.create(Picker) catch return;
+        const window = gtk.Window.new();
+        window.setTitle(common.tr("Choose a format"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setModal(1);
+        window.setDefaultSize(460, 520);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        box.as(gtk.Widget).setMarginTop(12);
+        box.as(gtk.Widget).setMarginBottom(12);
+        box.as(gtk.Widget).setMarginStart(12);
+        box.as(gtk.Widget).setMarginEnd(12);
+        window.setChild(box.as(gtk.Widget));
+        picker.* = .{ .editor = self, .window = window, .search = gtk.SearchEntry.new(), .list = gtk.ListBox.new() };
+        picker.search.setPlaceholderText(common.tr("Search formats"));
+        box.append(picker.search.as(gtk.Widget));
+        const scroller = gtk.ScrolledWindow.new();
+        scroller.setChild(picker.list.as(gtk.Widget));
+        scroller.as(gtk.Widget).setVexpand(1);
+        box.append(scroller.as(gtk.Widget));
+        picker.list.setActivateOnSingleClick(0);
+        _ = gtk.SearchEntry.signals.search_changed.connect(picker.search, *Picker, &onPickerSearch, picker, .{});
+        _ = gtk.ListBox.signals.row_activated.connect(picker.list, *Picker, &onPickerActivated, picker, .{});
+        _ = gtk.Widget.signals.destroy.connect(window, *Picker, &onPickerDestroy, picker, .{});
+        picker.fill("");
+        window.present();
+        _ = picker.search.as(gtk.Widget).grabFocus();
+    }
+
+    fn onPickerSearch(entry: *gtk.SearchEntry, picker: *Picker) callconv(.c) void {
+        picker.fill(std.mem.span(entry.as(gtk.Editable).getText()));
+    }
+
+    fn onPickerActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, picker: *Picker) callconv(.c) void {
+        const i = row.getIndex();
+        if (i < 0 or i >= picker.shown.items.len) return;
+        const editor = picker.editor;
+        const lib = editor.library orelse return;
+        // Copy first: the window's destruction frees the picker.
+        const copy = editor.allocator.dupe(u8, lib.entries.items[picker.shown.items[@intCast(i)]].path) catch return;
+        defer editor.allocator.free(copy);
+        picker.window.destroy();
+        editor.applyPath(copy);
+    }
+
+    fn onPickerDestroy(_: *gtk.Window, picker: *Picker) callconv(.c) void {
+        picker.shown.deinit(picker.editor.allocator);
+        picker.editor.allocator.destroy(picker);
+    }
+
+    // ---- strings ------------------------------------------------------------------------------
+
+    const strings_cap = 2000;
+
+    const StringsDialog = struct {
+        editor: *HexEditor,
+        window: *gtk.Window,
+        min_len: *gtk.SpinButton,
+        list: *gtk.ListBox,
+        note: *gtk.Label,
+        hits: []strings.Hit = &.{},
+
+        fn fill(self: *StringsDialog) void {
+            const a = self.editor.allocator;
+            a.free(self.hits);
+            self.hits = &.{};
+            self.list.removeAll();
+            const data = self.editor.buffer.slice();
+            const min: usize = @intCast(@max(2, self.min_len.getValueAsInt()));
+            self.hits = strings.extract(a, data, min, strings_cap) catch return;
+            for (self.hits) |hit| {
+                var text_buf: [120]u8 = undefined;
+                var line: [200]u8 = undefined;
+                const shown = strings.text(data, hit, &text_buf);
+                const label = gtk.Label.new(std.fmt.bufPrintSentinel(&line, "{X:0>8}  {s}{s}", .{ hit.offset, if (hit.wide) "[w] " else "", shown }, 0) catch "");
+                label.setXalign(0);
+                label.setEllipsize(.end);
+                label.as(gtk.Widget).addCssClass("monospace");
+                label.as(gtk.Widget).setMarginTop(2);
+                label.as(gtk.Widget).setMarginBottom(2);
+                label.as(gtk.Widget).setMarginStart(6);
+                self.list.append(label.as(gtk.Widget));
+            }
+            var nb: [96]u8 = undefined;
+            const capped = self.hits.len >= strings_cap;
+            self.note.setText(std.fmt.bufPrintSentinel(&nb, "{d} strings{s}. Double-click one to select it.", .{ self.hits.len, if (capped) " (the first ones)" else "" }, 0) catch "");
+        }
+    };
+
+    fn showStrings(self: *HexEditor) void {
+        const dlg = self.allocator.create(StringsDialog) catch return;
+        const window = gtk.Window.new();
+        window.setTitle(common.tr("Strings"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setDefaultSize(520, 560);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        box.as(gtk.Widget).setMarginTop(12);
+        box.as(gtk.Widget).setMarginBottom(12);
+        box.as(gtk.Widget).setMarginStart(12);
+        box.as(gtk.Widget).setMarginEnd(12);
+        window.setChild(box.as(gtk.Widget));
+        const top = gtk.Box.new(.horizontal, 8);
+        top.append(gtk.Label.new(common.tr("Shortest string")).as(gtk.Widget));
+        const spin = gtk.SpinButton.newWithRange(3, 64, 1);
+        spin.setValue(4);
+        top.append(spin.as(gtk.Widget));
+        box.append(top.as(gtk.Widget));
+        const note = gtk.Label.new("");
+        note.setXalign(0);
+        note.as(gtk.Widget).addCssClass("dim-label");
+        box.append(note.as(gtk.Widget));
+        const list = gtk.ListBox.new();
+        list.setActivateOnSingleClick(0);
+        const scroller = gtk.ScrolledWindow.new();
+        scroller.setChild(list.as(gtk.Widget));
+        scroller.as(gtk.Widget).setVexpand(1);
+        box.append(scroller.as(gtk.Widget));
+        dlg.* = .{ .editor = self, .window = window, .min_len = spin, .list = list, .note = note };
+        _ = gtk.SpinButton.signals.value_changed.connect(spin, *StringsDialog, &onStringsMin, dlg, .{});
+        _ = gtk.ListBox.signals.row_activated.connect(list, *StringsDialog, &onStringsActivated, dlg, .{});
+        _ = gtk.Widget.signals.destroy.connect(window, *StringsDialog, &onStringsDestroy, dlg, .{});
+        dlg.fill();
+        window.present();
+    }
+
+    fn onStringsMin(_: *gtk.SpinButton, dlg: *StringsDialog) callconv(.c) void {
+        dlg.fill();
+    }
+
+    fn onStringsActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, dlg: *StringsDialog) callconv(.c) void {
+        const i = row.getIndex();
+        if (i < 0 or i >= dlg.hits.len) return;
+        const hit = dlg.hits[@intCast(i)];
+        dlg.editor.view.select(hit.offset, hit.len);
+    }
+
+    fn onStringsDestroy(_: *gtk.Window, dlg: *StringsDialog) callconv(.c) void {
+        dlg.editor.allocator.free(dlg.hits);
+        dlg.editor.allocator.destroy(dlg);
+    }
+
     // ---- menu --------------------------------------------------------------------------------
 
     fn onMenubarAction(self: *HexEditor, action: []const u8) void {
@@ -553,6 +969,20 @@ const HexEditor = struct {
         if (eql(u8, action, "insert")) return self.view.setInsertMode(!self.view.insert_mode);
         if (eql(u8, action, "inspector")) {
             const w = self.inspector.as(gtk.Widget);
+            return w.setVisible(@intFromBool(w.getVisible() == 0));
+        }
+        if (eql(u8, action, "strings")) return self.showStrings();
+        if (eql(u8, action, "choose-format")) return self.chooseFormat();
+        if (eql(u8, action, "load-ksy")) return self.loadDefinitionDialog();
+        if (eql(u8, action, "reparse")) return self.reparse();
+        if (eql(u8, action, "clear-structure")) return self.clearStructure();
+        if (eql(u8, action, "formats-folder")) return self.formatsFolderDialog();
+        if (eql(u8, action, "colours")) {
+            self.show_colours = !self.show_colours;
+            return self.applyHighlights();
+        }
+        if (eql(u8, action, "structure-panel")) {
+            const w = self.panel.box.as(gtk.Widget);
             return w.setVisible(@intFromBool(w.getVisible() == 0));
         }
         if (eql(u8, action, "big-endian")) {
@@ -596,6 +1026,10 @@ test {
     _ = @import("ksy/expr.zig");
     _ = @import("ksy/model.zig");
     _ = @import("ksy/interp.zig");
+    _ = @import("structure.zig");
+    _ = @import("strings.zig");
+    _ = @import("structure.zig");
+    _ = @import("strings.zig");
     _ = @import("buffer.zig");
     _ = @import("inspect.zig");
 }
