@@ -29,7 +29,7 @@ pub const System = enum {
 
     pub fn label(self: System) []const u8 {
         return switch (self) {
-            .julian => "Julian (Old Calendar)",
+            .julian => "Julian",
             .gregorian => "Gregorian",
             .fixed => "Fixed (13 months)",
         };

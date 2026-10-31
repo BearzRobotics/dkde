@@ -112,7 +112,7 @@ pub const CalendarApp = struct {
         _ = gtk.Button.signals.clicked.connect(prev, *CalendarApp, &onPrev, self, .{});
         _ = gtk.Button.signals.clicked.connect(next, *CalendarApp, &onNext, self, .{});
         _ = gtk.Button.signals.clicked.connect(today_button, *CalendarApp, &onToday, self, .{});
-        var terminated = [_]?[*:0]const u8{ common.tr("Julian (Old Calendar)").ptr, common.tr("Gregorian").ptr, common.tr("Fixed (13 months)").ptr, null };
+        var terminated = [_]?[*:0]const u8{ common.tr("Julian").ptr, common.tr("Gregorian").ptr, common.tr("Fixed (13 months)").ptr, null };
         const system_menu = gtk.DropDown.newFromStrings(@ptrCast(&terminated));
         system_menu.setSelected(@backingInt(self.sys));
         system_menu.as(gtk.Widget).setTooltipText(common.tr("Calendar system"));
