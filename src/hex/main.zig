@@ -773,7 +773,61 @@ const HexEditor = struct {
     fn loadDefinitionDialog(self: *HexEditor) void {
         const dialog = gtk.FileDialog.new();
         defer dialog.as(gobject.Object).unref();
+        dialog.setTitle(common.tr("Load a Kaitai format or ImHex pattern"));
+        // Start where the downloaded formats and patterns are, not in the home folder.
+        if (self.definitionsFolder()) |dir| {
+            defer self.allocator.free(dir);
+            if (self.allocator.dupeSentinel(u8, dir, 0)) |z| {
+                defer self.allocator.free(z);
+                const folder = gio.File.newForPath(z);
+                defer folder.as(gobject.Object).unref();
+                dialog.setInitialFolder(folder);
+            } else |_| {}
+        }
+        // Only the two kinds of file this takes.
+        const filter = gtk.FileFilter.new();
+        filter.setName(common.tr("Formats and patterns (*.ksy, *.hexpat)"));
+        filter.addPattern("*.ksy");
+        filter.addPattern("*.hexpat");
+        const filters = gio.ListStore.new(gtk.FileFilter.getGObjectType());
+        defer filters.as(gobject.Object).unref();
+        filters.append(filter.as(gobject.Object));
+        dialog.setFilters(filters.as(gio.ListModel));
         dialog.open(self.window.as(gtk.Window), null, onDefinitionChosen, self);
+    }
+
+    /// The folder to start Load definition in: the ImHex `patterns/` folder or
+    /// the Kaitai formats folder, whichever has something in it.
+    fn definitionsFolder(self: *HexEditor) ?[]u8 {
+        const lib = self.ensureLibrary();
+        const want: structure.Kind = blk: {
+            if (lib) |l| {
+                var ksy: usize = 0;
+                var pat: usize = 0;
+                for (l.entries.items) |e| {
+                    if (e.kind == .ksy) ksy += 1 else pat += 1;
+                }
+                break :blk if (pat > ksy) .hexpat else .ksy;
+            }
+            break :blk .ksy;
+        };
+        const base = (if (want == .ksy) self.formatsDir() else self.patternsDir()) catch return null;
+        if (want == .hexpat) {
+            // A clone has its patterns in a subfolder.
+            const inner = std.fs.path.join(self.allocator, &.{ base, "patterns" }) catch return base;
+            const z = self.allocator.dupeSentinel(u8, inner, 0) catch return base;
+            defer self.allocator.free(z);
+            if (glib.fileTest(z, .{ .is_dir = true }) != 0) {
+                self.allocator.free(base);
+                return inner;
+            }
+            self.allocator.free(inner);
+        }
+        const bz = self.allocator.dupeSentinel(u8, base, 0) catch return base;
+        defer self.allocator.free(bz);
+        if (glib.fileTest(bz, .{ .is_dir = true }) != 0) return base;
+        self.allocator.free(base);
+        return null;
     }
 
     fn onDefinitionChosen(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {

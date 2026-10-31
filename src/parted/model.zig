@@ -17,6 +17,11 @@ pub const Part = struct {
     fstype: []const u8,
     label: []const u8,
     mounts: []const []const u8,
+    /// Bytes used and free inside the filesystem, when lsblk knows them (mounted).
+    used: ?u64 = null,
+    avail: ?u64 = null,
+    /// Partition flags as parted names them (images only).
+    flags: []const u8 = "",
 };
 
 pub const Disk = struct {
@@ -63,6 +68,14 @@ fn num(v: ?std.json.Value) u64 {
         .string => |s| std.fmt.parseInt(u64, s, 10) catch 0,
         .float => |f| if (f < 0) 0 else @intFromFloat(f),
         else => 0,
+    };
+}
+
+fn optNum(v: ?std.json.Value) ?u64 {
+    const x = v orelse return null;
+    return switch (x) {
+        .null => null,
+        else => num(x),
     };
 }
 
@@ -127,6 +140,8 @@ pub fn parseLsblk(arena: Allocator, text: []const u8) !([]const Disk) {
                     .fstype = try arena.dupe(u8, str(ko.get("fstype"))),
                     .label = try arena.dupe(u8, str(ko.get("label"))),
                     .mounts = try mountsOf(arena, ko),
+                    .used = optNum(ko.get("fsused")),
+                    .avail = optNum(ko.get("fsavail")),
                 });
             }
         };
@@ -191,14 +206,17 @@ pub fn parsePartedMachine(arena: Allocator, path: []const u8, text: []const u8, 
         _ = f.next();
         const size_b = std.fmt.parseInt(u64, std.mem.trimEnd(u8, f.next() orelse "", "B"), 10) catch continue;
         const fs = f.next() orelse "";
-        const name = f.next() orelse "";
+        _ = f.next(); // the partition name
+        const part_flags = std.mem.trim(u8, f.next() orelse "", " ");
         try parts.append(arena, .{
+            .flags = try arena.dupe(u8, part_flags),
             .path = try std.fmt.allocPrint(arena, "{s}#{d}", .{ path, number }),
             .number = number,
             .start = start_b / d.sector,
             .size = size_b,
             .fstype = try arena.dupe(u8, partedFs(fs)),
-            .label = try arena.dupe(u8, name),
+            // The GPT partition name is not the filesystem label.
+            .label = "",
             .mounts = &.{},
         });
     }
@@ -259,199 +277,6 @@ fn addGap(arena: Allocator, out: *std.ArrayList(Gap), from: u64, to: u64, per_mi
     const start = std.mem.alignForward(u64, from, per_mib);
     const end = std.mem.alignBackward(u64, to, per_mib);
     if (end > start) try out.append(arena, .{ .start = start, .end = end });
-}
-
-// -- commands -----------------------------------------------------------------------------
-
-pub const FsKind = enum { ext4, btrfs, xfs, vfat, exfat, ntfs, swap };
-
-pub fn fsTool(k: FsKind) [:0]const u8 {
-    return switch (k) {
-        .ext4 => "mkfs.ext4",
-        .btrfs => "mkfs.btrfs",
-        .xfs => "mkfs.xfs",
-        .vfat => "mkfs.vfat",
-        .exfat => "mkfs.exfat",
-        .ntfs => "mkfs.ntfs",
-        .swap => "mkswap",
-    };
-}
-
-pub fn fsName(k: FsKind) [:0]const u8 {
-    return switch (k) {
-        .ext4 => "ext4",
-        .btrfs => "btrfs",
-        .xfs => "xfs",
-        .vfat => "FAT32",
-        .exfat => "exFAT",
-        .ntfs => "NTFS",
-        .swap => "swap",
-    };
-}
-
-pub fn newTable(arena: Allocator, dev: []const u8, kind: []const u8) Allocator.Error![]const []const u8 {
-    return arena.dupe([]const u8, &.{ "parted", "-s", dev, "mklabel", kind });
-}
-
-/// `start_mib` and `end_mib` are where it begins and ends on the disk.
-pub fn newPartition(arena: Allocator, dev: []const u8, start_mib: u64, end_mib: u64) Allocator.Error![]const []const u8 {
-    return arena.dupe([]const u8, &.{
-        "parted",                                              "-s",                                                "-a", "optimal", dev, "mkpart", "primary",
-        try std.fmt.allocPrint(arena, "{d}MiB", .{start_mib}), try std.fmt.allocPrint(arena, "{d}MiB", .{end_mib}),
-    });
-}
-
-pub fn deletePartition(arena: Allocator, dev: []const u8, number: u32) Allocator.Error![]const []const u8 {
-    return arena.dupe([]const u8, &.{ "parted", "-s", dev, "rm", try std.fmt.allocPrint(arena, "{d}", .{number}) });
-}
-
-pub fn format(arena: Allocator, kind: FsKind, label: []const u8, path: []const u8) Allocator.Error![]const []const u8 {
-    var a: std.ArrayList([]const u8) = .empty;
-    try a.append(arena, fsTool(kind));
-    switch (kind) {
-        .ext4 => try a.appendSlice(arena, &.{ "-q", "-F" }),
-        .btrfs, .xfs => try a.append(arena, "-f"),
-        .swap => try a.append(arena, "-f"),
-        .ntfs => try a.append(arena, "-Q"),
-        else => {},
-    }
-    if (label.len > 0) {
-        try a.append(arena, switch (kind) {
-            .vfat => "-n",
-            else => "-L",
-        });
-        try a.append(arena, label);
-    }
-    try a.append(arena, path);
-    return a.items;
-}
-
-/// Shell text with `s` quoted.
-fn quote(arena: Allocator, s: []const u8) Allocator.Error![]const u8 {
-    var out: std.ArrayList(u8) = .empty;
-    try out.append(arena, '\'');
-    for (s) |c| {
-        if (c == '\'') try out.appendSlice(arena, "'\\''") else try out.append(arena, c);
-    }
-    try out.append(arena, '\'');
-    return out.items;
-}
-
-/// The filesystem part of a resize, for partition device `$DEV`; null when the
-/// filesystem cannot be resized in this direction (or at all) here.
-fn fsResizeCommand(arena: Allocator, fstype: []const u8, new_mib: u64, shrink: bool) Allocator.Error!?[]const u8 {
-    const eql = std.mem.eql;
-    if (eql(u8, fstype, "ext4") or eql(u8, fstype, "ext3") or eql(u8, fstype, "ext2")) {
-        if (shrink) return try std.fmt.allocPrint(arena, "e2fsck -f -y \"$DEV\" && resize2fs \"$DEV\" {d}M", .{new_mib});
-        return "e2fsck -f -y \"$DEV\" && resize2fs \"$DEV\"";
-    }
-    if (eql(u8, fstype, "ntfs")) {
-        if (shrink) return try std.fmt.allocPrint(arena, "ntfsresize -f -s {d}M \"$DEV\"", .{new_mib});
-        return "ntfsresize -f \"$DEV\"";
-    }
-    if (eql(u8, fstype, "vfat")) return try std.fmt.allocPrint(arena, "fatresize -s {d}M \"$DEV\"", .{new_mib});
-    return null;
-}
-
-/// Why this filesystem cannot be resized here, or null if it can.
-pub fn resizeRefusal(fstype: []const u8, shrink: bool) ?[]const u8 {
-    const eql = std.mem.eql;
-    if (fstype.len == 0) return null; // nothing to resize inside
-    if (eql(u8, fstype, "ext4") or eql(u8, fstype, "ext3") or eql(u8, fstype, "ext2") or eql(u8, fstype, "ntfs") or eql(u8, fstype, "vfat")) return null;
-    if (eql(u8, fstype, "xfs") and !shrink) return "xfs can only grow while mounted; mount it and use xfs_growfs.";
-    if (eql(u8, fstype, "xfs")) return "xfs cannot be shrunk.";
-    if (eql(u8, fstype, "btrfs")) return "btrfs is resized while mounted; use btrfs filesystem resize.";
-    return "This filesystem cannot be resized here.";
-}
-
-/// A script run as `sh -c`: for a partition of an image it attaches a loop
-/// device so that `$DEV` exists, runs `body`, and detaches again.
-fn partScript(arena: Allocator, image: ?[]const u8, number: u32, dev: []const u8, body: []const u8) Allocator.Error![]const []const u8 {
-    var s: std.ArrayList(u8) = .empty;
-    if (image) |img| {
-        try s.print(arena, "set -e; L=$(losetup --show -fP {s}); trap 'losetup -d \"$L\"' EXIT; i=0; while [ ! -b \"${{L}}p{d}\" ] && [ $i -lt 25 ]; do sleep 0.2; i=$((i+1)); done; DEV=\"${{L}}p{d}\"; {s}", .{ try quote(arena, img), number, number, body });
-    } else {
-        try s.print(arena, "set -e; DEV={s}; {s}", .{ try quote(arena, dev), body });
-    }
-    return arena.dupe([]const u8, &.{ "sh", "-c", s.items });
-}
-
-/// Formats partition `number` (a device partition `dev`, or of image `image`).
-pub fn formatScript(arena: Allocator, image: ?[]const u8, number: u32, dev: []const u8, kind: FsKind, label: []const u8) Allocator.Error![]const []const u8 {
-    const cmd = try format(arena, kind, label, "$DEV");
-    var body: std.ArrayList(u8) = .empty;
-    for (cmd, 0..) |w, i| {
-        if (i > 0) try body.append(arena, ' ');
-        // `$DEV` must stay a variable; everything else is quoted.
-        if (std.mem.eql(u8, w, "$DEV")) try body.appendSlice(arena, "\"$DEV\"") else try body.appendSlice(arena, try quote(arena, w));
-    }
-    return partScript(arena, image, number, dev, body.items);
-}
-
-pub fn checkScript(arena: Allocator, image: ?[]const u8, number: u32, dev: []const u8, fstype: []const u8) Allocator.Error![]const []const u8 {
-    const cmd = try check(arena, fstype, "$DEV");
-    var body: std.ArrayList(u8) = .empty;
-    for (cmd, 0..) |w, i| {
-        if (i > 0) try body.append(arena, ' ');
-        if (std.mem.eql(u8, w, "$DEV")) try body.appendSlice(arena, "\"$DEV\"") else try body.appendSlice(arena, try quote(arena, w));
-    }
-    return partScript(arena, image, number, dev, body.items);
-}
-
-/// Makes partition `number` of `disk_path` end at `new_end_mib` (it keeps its
-/// start), resizing the filesystem first when shrinking and after when growing.
-pub fn resizeScript(arena: Allocator, image: ?[]const u8, disk_path: []const u8, number: u32, dev: []const u8, fstype: []const u8, start_mib: u64, new_end_mib: u64, shrink: bool) Allocator.Error!?[]const []const u8 {
-    const new_size = new_end_mib - start_mib;
-    const fs_cmd = if (fstype.len > 0) (try fsResizeCommand(arena, fstype, new_size, shrink)) orelse return null else null;
-    // Shrinking makes parted ask "are you sure?", which `-s` answers with no; the
-    // filesystem has already been shrunk, so answer yes.
-    const parted = if (shrink)
-        try std.fmt.allocPrint(arena, "echo Yes | parted ---pretend-input-tty {s} resizepart {d} {d}MiB", .{ try quote(arena, disk_path), number, new_end_mib })
-    else
-        try std.fmt.allocPrint(arena, "parted -s {s} resizepart {d} {d}MiB", .{ try quote(arena, disk_path), number, new_end_mib });
-    // Loop devices see the partition table only when attached after it changed,
-    // so for an image the filesystem step runs in its own attach.
-    var s: std.ArrayList(u8) = .empty;
-    const attach = if (image) |img| try std.fmt.allocPrint(arena, "L=$(losetup --show -fP {s}); i=0; while [ ! -b \"${{L}}p{d}\" ] && [ $i -lt 25 ]; do sleep 0.2; i=$((i+1)); done; DEV=\"${{L}}p{d}\"", .{ try quote(arena, img), number, number }) else try std.fmt.allocPrint(arena, "DEV={s}", .{try quote(arena, dev)});
-    const detach = if (image != null) "; losetup -d \"$L\"" else "";
-    try s.appendSlice(arena, "set -e; ");
-    if (shrink) {
-        if (fs_cmd) |c| try s.print(arena, "{s}; {s}{s}; {s}{s}", .{ attach, c, detach, "", "" });
-        if (fs_cmd != null) try s.appendSlice(arena, "; ");
-        try s.appendSlice(arena, parted);
-    } else {
-        try s.appendSlice(arena, parted);
-        if (fs_cmd) |c| try s.print(arena, "; {s}; {s}{s}", .{ attach, c, detach });
-    }
-    return try arena.dupe([]const u8, &.{ "sh", "-c", s.items });
-}
-
-/// Creates a sparse image `path` of `size_mib` MiB with a partition table
-/// (`gpt`, `msdos`, or `none`). No administrator rights are needed.
-pub fn newImage(arena: Allocator, path: []const u8, size_mib: u64, table: []const u8) Allocator.Error![]const []const u8 {
-    return arena.dupe([]const u8, &.{
-        "sh", "-c",                                               "truncate -s \"$2\" \"$1\" && { [ \"$3\" = none ] || parted -s \"$1\" mklabel \"$3\"; }", "sh",
-        path, try std.fmt.allocPrint(arena, "{d}M", .{size_mib}), table,
-    });
-}
-
-pub fn unmount(arena: Allocator, path: []const u8) Allocator.Error![]const []const u8 {
-    return arena.dupe([]const u8, &.{ "umount", path });
-}
-
-pub fn mount(arena: Allocator, path: []const u8, dir: []const u8) Allocator.Error![]const []const u8 {
-    return arena.dupe([]const u8, &.{ "sh", "-c", "mkdir -p \"$2\" && mount \"$1\" \"$2\"", "sh", path, dir });
-}
-
-/// A read-only check, whichever tool fits the filesystem.
-pub fn check(arena: Allocator, fstype: []const u8, path: []const u8) Allocator.Error![]const []const u8 {
-    const eql = std.mem.eql;
-    if (eql(u8, fstype, "btrfs")) return arena.dupe([]const u8, &.{ "btrfs", "check", "--readonly", path });
-    if (eql(u8, fstype, "xfs")) return arena.dupe([]const u8, &.{ "xfs_repair", "-n", path });
-    if (eql(u8, fstype, "vfat")) return arena.dupe([]const u8, &.{ "fsck.vfat", "-n", path });
-    if (eql(u8, fstype, "exfat")) return arena.dupe([]const u8, &.{ "fsck.exfat", "-n", path });
-    if (eql(u8, fstype, "ntfs")) return arena.dupe([]const u8, &.{ "ntfsfix", "-n", path });
-    return arena.dupe([]const u8, &.{ "e2fsck", "-n", path });
 }
 
 // -- tests --------------------------------------------------------------------------------
@@ -522,23 +347,6 @@ test "a filesystem on the bare disk is not free space, and its mount counts" {
     try std.testing.expect(isSystemDisk(disks[0]));
 }
 
-test "commands" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-    const np = try newPartition(a, "/dev/sdb", 1, 1025);
-    try std.testing.expectEqualStrings("1025MiB", np[np.len - 1]);
-    const f = try format(a, .ext4, "data", "/dev/sdb1");
-    try std.testing.expectEqualStrings("mkfs.ext4", f[0]);
-    try std.testing.expectEqualStrings("-L", f[3]);
-    const v = try format(a, .vfat, "BOOT", "/dev/sdb1");
-    try std.testing.expectEqualStrings("-n", v[1]);
-    const nolabel = try format(a, .xfs, "", "/dev/sdb1");
-    try std.testing.expectEqual(@as(usize, 3), nolabel.len);
-    const d = try deletePartition(a, "/dev/sdb", 3);
-    try std.testing.expectEqualStrings("3", d[d.len - 1]);
-}
-
 test "parted machine output becomes an image disk" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -561,32 +369,4 @@ test "an image without a table is plain free space" {
     const d = try parsePartedMachine(arena.allocator(), "/tmp/new.img", "", 64 << 20);
     try std.testing.expectEqual(@as(u64, 64 << 20), d.size);
     try std.testing.expectEqualStrings("", d.table);
-}
-
-test "resize scripts put the filesystem step on the right side" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-    const shrink = (try resizeScript(a, null, "/dev/sdb", 1, "/dev/sdb1", "ext4", 1, 100, true)).?;
-    const fs_at = std.mem.indexOf(u8, shrink[2], "resize2fs").?;
-    const parted_at = std.mem.indexOf(u8, shrink[2], "resizepart").?;
-    try std.testing.expect(fs_at < parted_at);
-    const grow = (try resizeScript(a, null, "/dev/sdb", 1, "/dev/sdb1", "ext4", 1, 200, false)).?;
-    try std.testing.expect(std.mem.indexOf(u8, grow[2], "resize2fs").? > std.mem.indexOf(u8, grow[2], "resizepart").?);
-    try std.testing.expect((try resizeScript(a, null, "/dev/sdb", 1, "/dev/sdb1", "xfs", 1, 200, false)) == null);
-    try std.testing.expect(resizeRefusal("btrfs", false) != null);
-    try std.testing.expect(resizeRefusal("ext4", true) == null);
-    const img = (try resizeScript(a, "/tmp/a.img", "/tmp/a.img", 2, "", "ext4", 1, 50, true)).?;
-    try std.testing.expect(std.mem.indexOf(u8, img[2], "losetup") != null);
-}
-
-test "format and check scripts quote and keep DEV a variable" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-    const f = try formatScript(a, null, 1, "/dev/sdb1", .ext4, "my data");
-    try std.testing.expect(std.mem.indexOf(u8, f[2], "'my data'") != null);
-    try std.testing.expect(std.mem.indexOf(u8, f[2], "\"$DEV\"") != null);
-    const c = try checkScript(a, "/tmp/it's.img", 1, "", "ext4");
-    try std.testing.expect(std.mem.indexOf(u8, c[2], "'/tmp/it'\\''s.img'") != null);
 }

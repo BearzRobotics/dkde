@@ -103,7 +103,7 @@ below for the full list and one install command.
 | Xorg session and X11 taskbar/screenshots | `libx11-dev` to build, `zig build -Dx11=true` (see "Xorg") |
 | Hex editor structure view | Kaitai `.ksy` files and/or ImHex `.hexpat` patterns, not bundled: Structure ▸ Get Kaitai formats… / Get ImHex patterns… (needs `git`, or `curl`/`wget` with `tar`) |
 | File manager archives | `zip`, `unzip`, `tar`, `7zip` |
-| Partition tool `dkde-parted` | `util-linux` (`lsblk`, `mount`), `parted` and `sudo`; for formatting, the `mkfs` tool of each filesystem: `e2fsprogs`, `xfsprogs`, `btrfs-progs`, `dosfstools`, `exfatprogs`, `ntfs-3g` |
+| Partition tool `dkde-parted` | `util-linux` (`lsblk`, `mount`), `parted` and `sudo`; for formatting, the tools of each filesystem you want: `e2fsprogs`, `xfsprogs`, `btrfs-progs`, `dosfstools` (+ `fatresize`), `exfatprogs`, `ntfs-3g`, `f2fs-tools`, `jfsutils`, `reiserfsprogs`, `nilfs-tools`, `udftools`, `hfsprogs`. A filesystem is offered only when its tools are installed |
 | Hex editor disk mode (raw sectors) | nothing extra; reading a device needs root, which it asks for through `sudo` |
 | Run as administrator (file manager, Settings) | `sudo` |
 
@@ -144,6 +144,7 @@ sudo apt install \
     cups cups-client cups-filters \
     gvfs udisks2 zip unzip 7zip chrony sudo passwd \
     git curl tar parted e2fsprogs dosfstools exfatprogs xfsprogs btrfs-progs ntfs-3g \
+    f2fs-tools jfsutils reiserfsprogs nilfs-tools udftools hfsprogs fatresize \
     tmux vim htop
 ```
 
