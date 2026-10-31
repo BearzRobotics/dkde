@@ -120,7 +120,7 @@ sudo apt install \
     pipewire pipewire-pulse pipewire-bin wireplumber pulseaudio-utils \
     network-manager bluez rfkill brightnessctl wlr-randr \
     cups cups-client cups-filters \
-    gvfs udisks2 zip unzip p7zip-full chrony sudo passwd \
+    gvfs udisks2 zip unzip 7zip chrony sudo passwd \
     tmux vim htop
 ```
 
@@ -138,7 +138,7 @@ sudo apt install \
 | Idle screen off | `wlr-randr` | screen-off timeout does nothing |
 | Display settings | `wlr-randr` 0.4 or newer | Display page says what to install |
 | Printers | `cups`, `cups-client`, `cups-filters` | Printers page says what to install |
-| Archives in Files | `zip`, `unzip`, `tar`, `p7zip-full` (7z), `unrar` (as many as you use) | the menu items are greyed out |
+| Archives in Files | `zip`, `unzip`, `tar`, `7zip` (7z), `unrar` (as many as you use) | the menu items are greyed out |
 | Removable drives | `gvfs`, `udisks2` | no automatic drive list |
 | Date and time | `chrony` (clock sync; use `ntpd`, `chronyd` or `systemd-timesyncd`, whichever your system has) | the clock is only as right as you set it |
 | Images, icons, fonts | `webp-pixbuf-loader`, `librsvg2-common`, `papirus-icon-theme`, `fonts-noto-*` | missing formats and glyphs |
