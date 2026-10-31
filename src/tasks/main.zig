@@ -150,6 +150,8 @@ const TaskManager = struct {
     window: *gtk.ApplicationWindow,
     list: *gtk.StringList,
     selection: *gtk.SingleSelection,
+    /// The table; context menus attach here because rows are rebuilt on every refresh.
+    table: ?*gtk.ColumnView = null,
     summary: *gtk.Label,
     cpu_card: *Card,
     mem_card: *Card,
@@ -246,6 +248,7 @@ const TaskManager = struct {
 
         // Process table.
         const view = gtk.ColumnView.new(self.selection.as(gtk.SelectionModel));
+        self.table = view;
         view.as(gtk.Widget).setVexpand(1);
         view.as(gtk.Widget).addCssClass("dkde-process-table");
         const titles = [_][:0]const u8{ "Name", "PID", "User", "CPU %", "Memory", "Threads" };
@@ -534,12 +537,68 @@ const TaskManager = struct {
 
     // ---- cells ----------------------------------------------------------------------
 
-    fn onSetup(_: *gtk.SignalListItemFactory, item_obj: *gobject.Object, _: *TaskManager) callconv(.c) void {
+    fn onSetup(_: *gtk.SignalListItemFactory, item_obj: *gobject.Object, self: *TaskManager) callconv(.c) void {
         const item: *gtk.ListItem = @ptrCast(item_obj);
         const label = gtk.Label.new(null);
         label.setXalign(0);
         label.setEllipsize(.end);
         item.setChild(label.as(gtk.Widget));
+        // Right-click a process for its menu.
+        const ctx = std.heap.c_allocator.create(RowCtx) catch return;
+        ctx.* = .{ .app = self, .item = item };
+        const click = gtk.GestureClick.new();
+        click.as(gtk.GestureSingle).setButton(3);
+        _ = gtk.GestureClick.signals.pressed.connect(click, *RowCtx, &onRowRightClick, ctx, .{});
+        _ = gtk.Widget.signals.destroy.connect(label, *RowCtx, &onRowCtxDestroy, ctx, .{});
+        label.as(gtk.Widget).addController(click.as(gtk.EventController));
+    }
+
+    const RowCtx = struct { app: *TaskManager, item: *gtk.ListItem };
+
+    fn onRowCtxDestroy(_: *gtk.Label, ctx: *RowCtx) callconv(.c) void {
+        std.heap.c_allocator.destroy(ctx);
+    }
+
+    const menu_end = 0;
+    const menu_force = 1;
+    const menu_copy_pid = 2;
+    const menu_copy_name = 3;
+
+    fn onRowRightClick(gesture: *gtk.GestureClick, _: c_int, x: f64, y: f64, ctx: *RowCtx) callconv(.c) void {
+        const self = ctx.app;
+        // The row under the pointer becomes the selected one, then the menu opens on it.
+        self.selection.setSelected(ctx.item.getPosition());
+        const widget = gesture.as(gtk.EventController).getWidget() orelse return;
+        // Rows are rebuilt on every refresh, so the menu hangs off the table.
+        const table = (self.table orelse return).as(gtk.Widget);
+        var tx: f64 = x;
+        var ty: f64 = y;
+        _ = widget.translateCoordinates(table, x, y, &tx, &ty);
+        common.contextmenu.show(table, tx, ty, &.{
+            .{ .label = common.tr("End Task"), .id = menu_end },
+            .{ .label = common.tr("Force Quit\u{2026}"), .id = menu_force },
+            .{ .label = common.tr("Copy PID"), .id = menu_copy_pid },
+            .{ .label = common.tr("Copy name"), .id = menu_copy_name },
+        }, TaskManager, onProcessMenu, self);
+    }
+
+    fn onProcessMenu(self: *TaskManager, id: usize) void {
+        switch (id) {
+            menu_end => self.signal(SIGTERM),
+            menu_force => onForceClicked(undefined, self),
+            menu_copy_pid, menu_copy_name => {
+                const pid = self.selectedPid() orelse return;
+                var buf: [128]u8 = undefined;
+                const text = if (id == menu_copy_pid)
+                    std.fmt.bufPrintSentinel(&buf, "{d}", .{pid}, 0) catch return
+                else blk: {
+                    const p = self.processes.get(pid) orelse return;
+                    break :blk std.fmt.bufPrintSentinel(&buf, "{s}", .{p.nameSlice()}, 0) catch return;
+                };
+                self.window.as(gtk.Widget).getClipboard().setText(text);
+            },
+            else => {},
+        }
     }
 
     fn onBindFor(comptime kind: Column) fn (*gtk.SignalListItemFactory, *gobject.Object, *TaskManager) callconv(.c) void {
