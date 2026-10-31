@@ -133,9 +133,9 @@ pub const Cmd = struct {
 pub fn commands(arena: Allocator, d: model.Disk, op: Op) Allocator.Error!?Cmd {
     const image: ?[]const u8 = if (d.image) d.path else null;
     switch (op) {
-        .new_table => |o| return .{ .argv = try fs.newTable(arena, d.path, o.kind), .root = !d.image },
-        .create => |o| return .{ .argv = try fs.newPartition(arena, d.path, o.start_mib, o.end_mib), .root = !d.image },
-        .delete => |o| return .{ .argv = try fs.deletePartition(arena, d.path, o.number), .root = !d.image },
+        .new_table => |o| return .{ .argv = try fs.newTable(arena, d.path, o.kind), .root = !model.plainImage(d) },
+        .create => |o| return .{ .argv = try fs.newPartition(arena, d.path, o.start_mib, o.end_mib), .root = !model.plainImage(d) },
+        .delete => |o| return .{ .argv = try fs.deletePartition(arena, d.path, o.number), .root = !model.plainImage(d) },
         .format => |o| {
             const dev = if (d.image) "" else try fs.partitionPath(arena, d.path, o.number);
             return .{ .argv = try fs.formatScript(arena, image, o.number, dev, o.fs, o.label), .root = true };
@@ -147,7 +147,7 @@ pub fn commands(arena: Allocator, d: model.Disk, op: Op) Allocator.Error!?Cmd {
             const shrink = o.new_end_mib - start_mib < p.size / model.mib;
             const dev = if (d.image) "" else try fs.partitionPath(arena, d.path, o.number);
             const argv = (try fs.resizeScript(arena, image, d.path, o.number, dev, p.fstype, start_mib, o.new_end_mib, shrink)) orelse return null;
-            return .{ .argv = argv, .root = !d.image or p.fstype.len > 0 };
+            return .{ .argv = argv, .root = !model.plainImage(d) or p.fstype.len > 0 };
         },
         .label => |o| {
             const i = partIndex(d, o.number) orelse return null;
@@ -156,7 +156,7 @@ pub fn commands(arena: Allocator, d: model.Disk, op: Op) Allocator.Error!?Cmd {
             const argv = (try fs.relabelScript(arena, image, o.number, dev, f, o.label)) orelse return null;
             return .{ .argv = argv, .root = true };
         },
-        .flag => |o| return .{ .argv = try fs.setFlag(arena, d.path, o.number, o.flag, o.on), .root = !d.image },
+        .flag => |o| return .{ .argv = try fs.setFlag(arena, d.path, o.number, o.flag, o.on), .root = !model.plainImage(d) },
         .wipe => |o| {
             const dev = if (d.image) "" else try fs.partitionPath(arena, d.path, o.number);
             return .{ .argv = try fs.wipeScript(arena, image, o.number, dev), .root = true };
@@ -241,8 +241,14 @@ test "commands use the layout at that point" {
     // On an image, table and partition changes need no root.
     var img = sampleDisk();
     img.image = true;
-    img.path = "/tmp/a.img";
+    img.path = "/tmp/dkde-ops-test.img";
+    _ = std.c.fclose(std.c.fopen("/tmp/dkde-ops-test.img", "w").?);
+    defer _ = std.c.unlink("/tmp/dkde-ops-test.img");
     try std.testing.expect(!(try commands(a, img, make)).?.root);
+    // One the user cannot write (here: missing) goes through administrator rights.
+    img.path = "/nonexistent/a.img";
+    try std.testing.expect((try commands(a, img, make)).?.root);
+    img.path = "/tmp/dkde-ops-test.img";
     try std.testing.expect((try commands(a, img, fmt)).?.root);
     // Shrinking works out the direction from the partition as it is.
     const shrink = (try commands(a, d0, .{ .resize = .{ .number = 1, .new_end_mib = 50 } })).?;

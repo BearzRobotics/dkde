@@ -370,3 +370,14 @@ test "an image without a table is plain free space" {
     try std.testing.expectEqual(@as(u64, 64 << 20), d.size);
     try std.testing.expectEqualStrings("", d.table);
 }
+
+extern fn access(path: [*:0]const u8, mode: c_int) c_int;
+
+/// An image file the current user may change, so its operations need no
+/// administrator rights. A root-owned image (made with sudo or dd) needs them.
+pub fn plainImage(d: Disk) bool {
+    if (!d.image) return false;
+    var buf: [4096]u8 = undefined;
+    const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{d.path}, 0) catch return false;
+    return access(z, 2) == 0; // W_OK
+}

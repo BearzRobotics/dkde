@@ -1105,7 +1105,19 @@ const Parted = struct {
         for (self.real, 0..) |d, i| out[i] = self.predicted(d.path, self.pending.items.len) orelse d;
         self.disks = out;
         self.refreshPending();
+        const prev = self.selected_row;
         if (self.selected_disk != null) self.fillParts();
+        // Keep working where the user was: the same row, or the free space
+        // when a new table has just emptied the disk.
+        var pick: ?usize = if (prev) |r| (if (r < self.rows.items.len) r else null) else null;
+        if (self.pending.items.len > 0 and self.pending.items[self.pending.items.len - 1].op == .new_table) {
+            pick = null;
+            for (self.rows.items, 0..) |row, i| if (row == .gap) {
+                pick = i;
+                break;
+            };
+        }
+        if (pick) |i| if (self.part_list.getRowAtIndex(@intCast(i))) |row| self.part_list.selectRow(row);
         self.updateButtons();
     }
 
