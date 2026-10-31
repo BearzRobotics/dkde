@@ -334,7 +334,7 @@ fn showString(c: *Ctx, s: []const u8) void {
             }
         }
 
-        if (!is_space and one.len > 0 and one.buf[0] > 0x20 and c.state.render_mode != 3 and c.state.render_mode != 7) {
+        if (one.len > 0 and one.buf[0] > 0x20 and c.state.render_mode != 3 and c.state.render_mode != 7) {
             setFill(c);
             cr.moveTo(0, 0);
             cr.showText(@ptrCast(&one.buf));
