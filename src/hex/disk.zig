@@ -198,6 +198,37 @@ pub fn anyMounted(infos: []const Info, path: []const u8) bool {
     return false;
 }
 
+/// Whether two device paths are the same disk or one is a partition of the
+/// other (`/dev/sda` and `/dev/sda1`, `/dev/nvme0n1` and `/dev/nvme0n1p2`),
+/// but not `/dev/sda1` and `/dev/sda10`, which are unrelated partitions.
+pub fn sameDisk(a: []const u8, b: []const u8) bool {
+    if (std.mem.eql(u8, a, b)) return true;
+    const short = if (a.len <= b.len) a else b;
+    const long = if (a.len <= b.len) b else a;
+    if (!std.mem.startsWith(u8, long, short)) return false;
+    var rest = long[short.len..];
+    // Partition suffix: digits, after a `p` when the disk name itself ends in a digit.
+    if (rest.len > 0 and rest[0] == 'p' and short.len > 0 and std.ascii.isDigit(short[short.len - 1])) rest = rest[1..];
+    if (rest.len == 0) return false;
+    // `sda` vs `sda1`: the short name must be a whole disk, so it must not end in a digit unless `p` was used.
+    const used_p = rest.len + 1 == long.len - short.len;
+    if (!used_p and short.len > 0 and std.ascii.isDigit(short[short.len - 1])) return false;
+    for (rest) |c| if (!std.ascii.isDigit(c)) return false;
+    return true;
+}
+
+test "disks and their partitions are told from unrelated devices" {
+    try std.testing.expect(sameDisk("/dev/sda", "/dev/sda"));
+    try std.testing.expect(sameDisk("/dev/sda", "/dev/sda1"));
+    try std.testing.expect(sameDisk("/dev/sda12", "/dev/sda"));
+    try std.testing.expect(sameDisk("/dev/nvme0n1", "/dev/nvme0n1p2"));
+    try std.testing.expect(!sameDisk("/dev/sda1", "/dev/sda10"));
+    try std.testing.expect(!sameDisk("/dev/sda", "/dev/sdb"));
+    try std.testing.expect(!sameDisk("/dev/sda", "/dev/sdaa"));
+    try std.testing.expect(!sameDisk("/dev/nvme0n1", "/dev/nvme0n10"));
+    try std.testing.expect(!sameDisk("/dev/sda1", "/dev/sda2"));
+}
+
 // -- raw access ---------------------------------------------------------------------------
 
 extern fn open(path: [*:0]const u8, flags: c_int, ...) c_int;

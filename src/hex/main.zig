@@ -154,6 +154,7 @@ const Host = struct {
                 mb.item("_Write changes…", "disk-write", null),
                 .separator,
                 mb.item("Save as _image…", "disk-image", null),
+                mb.item("C_lone to another disk…", "disk-clone", null),
                 mb.item("Cancel _imaging", "disk-image-cancel", null),
                 .separator,
                 mb.item("_Close disk or process", "disk-close", null),
@@ -318,6 +319,8 @@ const HexEditor = struct {
     /// Copying the whole device into an image file.
     copier: ?image.Copier = null,
     copier_source: c_uint = 0,
+    /// The disk a clone will overwrite, held while the confirmation is open.
+    clone_target: ?[:0]u8 = null,
     /// True while a click in the structure panel moves the view, so the view
     /// does not answer by re-selecting in the panel.
     picking: bool = false,
@@ -425,6 +428,7 @@ const HexEditor = struct {
         self.stopImaging();
         self.closeDisk();
         if (self.pending_device) |p| self.allocator.free(p);
+        if (self.clone_target) |t| self.allocator.free(t);
         self.proc_guard.kill();
         self.panel.destroy();
         self.allocator.free(self.ranges);
@@ -935,7 +939,7 @@ const HexEditor = struct {
         var buf: [160]u8 = undefined;
         switch (c.step()) {
             .more => {
-                self.status.setText(std.fmt.bufPrintSentinel(&buf, "Writing image\u{2026} {d}%  (Disk \u{25B8} Cancel imaging to stop)", .{c.percent()}, 0) catch "");
+                self.status.setText(std.fmt.bufPrintSentinel(&buf, "Copying\u{2026} {d}%  (Disk \u{25B8} Cancel imaging to stop)", .{c.percent()}, 0) catch "");
                 return 1;
             },
             .done => {
@@ -943,7 +947,7 @@ const HexEditor = struct {
                 const total = c.total;
                 self.copier_source = 0;
                 self.stopImaging();
-                self.status.setText(std.fmt.bufPrintSentinel(&buf, "Image written: {d} bytes, {d} unreadable (stored as zeros).", .{ total, bad }, 0) catch "");
+                self.status.setText(std.fmt.bufPrintSentinel(&buf, "Copy finished: {d} bytes, {d} unreadable (written as zeros).", .{ total, bad }, 0) catch "");
             },
             .write_failed => {
                 self.copier_source = 0;
@@ -1901,16 +1905,28 @@ const HexEditor = struct {
         editor: *HexEditor,
         window: *gtk.Window,
         infos: []disk_mod.Info,
+        clone: bool = false,
     };
 
     fn chooseDisk(self: *HexEditor) void {
+        self.showDiskPicker(false);
+    }
+
+    fn chooseCloneTarget(self: *HexEditor) void {
+        const d = self.disk orelse return self.status.setText(common.tr("Open the disk to copy from first."));
+        if (d.process != null) return self.status.setText(common.tr("Process memory can be saved as an image, not cloned onto a disk."));
+        if (self.copier != null) return self.status.setText(common.tr("An image is already being written."));
+        self.showDiskPicker(true);
+    }
+
+    fn showDiskPicker(self: *HexEditor, clone: bool) void {
         const infos = disk_mod.list(self.allocator) catch return;
         const dlg = self.allocator.create(DiskPicker) catch {
             disk_mod.freeInfos(self.allocator, infos);
             return;
         };
         const window = gtk.Window.new();
-        window.setTitle(common.tr("Open a disk"));
+        window.setTitle(if (clone) common.tr("Clone to which disk?") else common.tr("Open a disk"));
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
         window.setDefaultSize(560, 420);
@@ -1921,7 +1937,7 @@ const HexEditor = struct {
         box.as(gtk.Widget).setMarginStart(12);
         box.as(gtk.Widget).setMarginEnd(12);
         window.setChild(box.as(gtk.Widget));
-        const intro = gtk.Label.new(common.tr("Double-click a disk or partition. It opens read-only; writing is a separate step."));
+        const intro = gtk.Label.new(if (clone) common.tr("Double-click the disk or partition to OVERWRITE with a copy of the open disk. Everything on it is lost. Mounted disks and the source itself are refused.") else common.tr("Double-click a disk or partition. It opens read-only; writing is a separate step."));
         intro.setXalign(0);
         intro.setWrap(1);
         box.append(intro.as(gtk.Widget));
@@ -1954,7 +1970,7 @@ const HexEditor = struct {
             none.setWrap(1);
             box.append(none.as(gtk.Widget));
         }
-        dlg.* = .{ .editor = self, .window = window, .infos = infos };
+        dlg.* = .{ .editor = self, .window = window, .infos = infos, .clone = clone };
         _ = gtk.ListBox.signals.row_activated.connect(list, *DiskPicker, &onDiskPicked, dlg, .{});
         _ = gtk.Widget.signals.destroy.connect(window, *DiskPicker, &onDiskPickerDestroy, dlg, .{});
         window.present();
@@ -1966,8 +1982,72 @@ const HexEditor = struct {
         const editor = dlg.editor;
         const path = editor.allocator.dupe(u8, dlg.infos[@intCast(i)].path) catch return;
         defer editor.allocator.free(path);
+        const size = dlg.infos[@intCast(i)].size_bytes;
+        const clone = dlg.clone;
         dlg.window.destroy();
+        if (clone) return editor.askClone(path, size);
         editor.host.tabFor(editor).openDevice(path);
+    }
+
+    // ---- cloning ------------------------------------------------------------------------------
+
+    /// Checks the chosen target and asks for confirmation. Nothing is written yet.
+    fn askClone(self: *HexEditor, target: []const u8, target_size: u64) void {
+        const d = self.disk orelse return;
+        const win = self.window.as(gtk.Window);
+        if (self.buffer.isModified()) {
+            return common.dialogs.showError(win, common.tr("Unsaved changes"), common.tr("Write or discard your changes first; a clone copies what is on the disk."));
+        }
+        if (disk_mod.sameDisk(target, d.path)) {
+            return common.dialogs.showError(win, common.tr("Cannot clone onto the source"), common.tr("That is the disk being copied, or a partition of it (or the other way round)."));
+        }
+        if (target_size < d.handle.size) {
+            return common.dialogs.showError(win, common.tr("Target too small"), common.tr("The target is smaller than the disk being copied."));
+        }
+        if (disk_mod.list(self.allocator)) |infos| {
+            defer disk_mod.freeInfos(self.allocator, infos);
+            if (disk_mod.anyMounted(infos, target)) {
+                return common.dialogs.showError(win, common.tr("Target is mounted"), common.tr("The target, or one of its partitions, is in use. Unmount it first."));
+            }
+        } else |_| {
+            return common.dialogs.showError(win, common.tr("Cannot check the target"), common.tr("The list of disks could not be read, so mounted disks cannot be ruled out."));
+        }
+        const owned = self.allocator.dupeSentinel(u8, target, 0) catch return;
+        if (self.clone_target) |old| self.allocator.free(old);
+        self.clone_target = owned;
+        var buf: [640]u8 = undefined;
+        const text = std.fmt.bufPrintSentinel(&buf, "Everything on {s} ({d} bytes) will be replaced by a copy of {s} ({d} bytes). This cannot be undone. The copy starts as soon as you confirm.", .{ target, target_size, d.path, d.handle.size }, 0) catch return;
+        // The destructive button is second and the default is Cancel.
+        common.dialogs.choose(win, common.tr("Overwrite this disk?"), text, &.{ "Cancel", "Overwrite" }, 0, HexEditor, onCloneAnswer, self);
+    }
+
+    fn onCloneAnswer(self: *HexEditor, index: c_int) void {
+        const target = self.clone_target orelse return;
+        defer {
+            self.allocator.free(target);
+            self.clone_target = null;
+        }
+        if (index != 1) return;
+        const d = self.disk orelse return;
+        const win = self.window.as(gtk.Window);
+        const dest = disk_mod.Handle.openPath(target, true) catch |err| {
+            return common.dialogs.showError(win, common.tr("Cannot write to the target"), if (err == error.AccessDenied)
+                common.tr("Writing to a disk needs administrator rights. Start dkde-hex as administrator and try again.")
+            else
+                common.tr("The target could not be opened."));
+        };
+        if (dest.size < d.handle.size) {
+            var h = dest;
+            h.closeHandle();
+            return common.dialogs.showError(win, common.tr("Target too small"), common.tr("The target is smaller than the disk being copied."));
+        }
+        self.stopImaging();
+        self.copier = image.Copier.init(self.allocator, d.handle, d.origin, dest) catch {
+            var h = dest;
+            h.closeHandle();
+            return;
+        };
+        self.copier_source = glib.idleAdd(onImageTick, self);
     }
 
     fn onDiskPickerDestroy(_: *gtk.Window, dlg: *DiskPicker) callconv(.c) void {
@@ -2904,10 +2984,11 @@ const HexEditor = struct {
         if (eql(u8, action, "disk-writing")) return self.enableWriting();
         if (eql(u8, action, "disk-write")) return self.diskWrite();
         if (eql(u8, action, "disk-image")) return self.imageDialog();
+        if (eql(u8, action, "disk-clone")) return self.chooseCloneTarget();
         if (eql(u8, action, "disk-image-cancel")) {
             if (self.copier == null) return;
             self.stopImaging();
-            return self.status.setText(common.tr("Imaging cancelled. The partial file was kept."));
+            return self.status.setText(common.tr("Copy cancelled. What was already written stays; a half-cloned disk is not usable."));
         }
         if (eql(u8, action, "disk-close")) {
             self.closeDisk();
