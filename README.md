@@ -17,6 +17,17 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 | `dkde-snip` | Screenshots |
 | `dkde-setup` | First-run check and fixes |
 
+## Screenshots
+
+![The desktop: Files and the terminal, with the taskbar, desktop switcher and system area](docs/screenshots/desktop.png)
+
+![The start menu](docs/screenshots/start-menu.png)
+
+![Settings, in the style of Windows 11](docs/screenshots/settings.png)
+
+Taken in a nested labwc session during development, so the icons and the
+folders shown are whatever was on that machine.
+
 ## Dependencies
 
 ### Toolchain
