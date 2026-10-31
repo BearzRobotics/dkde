@@ -1390,3 +1390,29 @@ test "line breaks in the format box" {
     defer a.free(back);
     try std.testing.expectEqualStrings("%-I:%M %p\n%Y", back);
 }
+
+// ============================================================================================
+// Power & lock
+// ============================================================================================
+
+pub const PowerPage = struct {
+    pub fn build(window: *SettingsWindow) *gtk.Box {
+        const page = win.SettingsWindow.newPage(common.tr("Power & lock"));
+
+        const lock_found = common.power.detectLock(common.power.system_probe);
+        const sleep_found = common.power.detectSleep(common.power.system_probe);
+        var buf: [256]u8 = undefined;
+        const lock_text = std.fmt.bufPrintSentinel(&buf, "Detected: {s}. dkde has no lock screen of its own, so it runs one you install (swaylock, gtklock or waylock).", .{lock_found orelse "none found"}, 0) catch "";
+        _ = note(page, lock_text);
+
+        win.SettingsWindow.addRowDesc(page, common.tr("Lock after (minutes idle)"), common.tr("0 never locks. Needs dkde-idle running (the labwc autostart starts it)."), window.spin(&window.panel, "power", "lock-after", 0, 600, 0).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("Turn the screen off after (minutes)"), common.tr("Needs wlr-randr. 0 never."), window.spin(&window.panel, "power", "screen-off-after", 0, 600, 0).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("Sleep after (minutes)"), common.tr("0 never. The machine must be able to suspend without a password."), window.spin(&window.panel, "power", "sleep-after", 0, 1440, 0).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("Lock before sleeping"), common.tr("So the machine wakes locked."), window.toggle(&window.panel, "power", "lock-before-sleep", true).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("Lock command"), common.tr("Leave empty to use the detected one."), window.textEntry(&window.panel, "menu", "lock-command", "").as(gtk.Widget));
+        var sleep_buf: [160]u8 = undefined;
+        const sleep_desc = std.fmt.bufPrintSentinel(&sleep_buf, "Detected: {s}. Leave empty to use it.", .{sleep_found orelse "none found"}, 0) catch "";
+        win.SettingsWindow.addRowDesc(page, common.tr("Sleep command"), sleep_desc, window.textEntry(&window.panel, "menu", "sleep-command", "").as(gtk.Widget));
+        return page;
+    }
+};

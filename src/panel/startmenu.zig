@@ -396,6 +396,19 @@ pub const StartMenu = struct {
         const popover = gtk.Popover.new();
         const items = gtk.Box.new(.vertical, 0);
         popover.setChild(items.as(gtk.Widget));
+        // Lock and Sleep appear only when there is something to run for them.
+        if (self.powerCommand("lock-command", common.power.detectLock) != null) {
+            const lock = gtk.Button.newWithLabel(common.tr("Lock"));
+            lock.setHasFrame(0);
+            items.append(lock.as(gtk.Widget));
+            _ = gtk.Button.signals.clicked.connect(lock, *StartMenu, &onLock, self, .{});
+        }
+        if (self.powerCommand("sleep-command", common.power.detectSleep) != null) {
+            const sleep = gtk.Button.newWithLabel(common.tr("Sleep"));
+            sleep.setHasFrame(0);
+            items.append(sleep.as(gtk.Widget));
+            _ = gtk.Button.signals.clicked.connect(sleep, *StartMenu, &onSleep, self, .{});
+        }
         const restart = gtk.Button.newWithLabel(common.tr("Restart"));
         const logoff = gtk.Button.newWithLabel(common.tr("Log Off"));
         for ([_]*gtk.Button{ restart, logoff }) |b| {
@@ -671,6 +684,39 @@ pub const StartMenu = struct {
 
     fn onRestart(_: *gtk.Button, self: *StartMenu) callconv(.c) void {
         self.power("restart-command", "reboot");
+    }
+
+    fn onLock(_: *gtk.Button, self: *StartMenu) callconv(.c) void {
+        self.runPowerCommand("lock-command", common.power.detectLock);
+    }
+
+    fn onSleep(_: *gtk.Button, self: *StartMenu) callconv(.c) void {
+        self.runPowerCommand("sleep-command", common.power.detectSleep);
+    }
+
+    /// The configured command, else the detected one; the caller frees it.
+    fn powerCommand(self: *StartMenu, key: [:0]const u8, detect: *const fn (common.power.Probe) ?[]const u8) ?[]u8 {
+        const configured = self.config.getString(self.allocator, "menu", key, "") catch return null;
+        if (configured.len > 0) return configured;
+        self.allocator.free(configured);
+        const found = detect(common.power.system_probe) orelse return null;
+        return self.allocator.dupe(u8, found) catch null;
+    }
+
+    fn runPowerCommand(self: *StartMenu, key: [:0]const u8, detect: *const fn (common.power.Probe) ?[]const u8) void {
+        const command = self.powerCommand(key, detect) orelse return;
+        defer self.allocator.free(command);
+        const commandz = self.allocator.dupeSentinel(u8, command, 0) catch return;
+        defer self.allocator.free(commandz);
+        var argc: c_int = 0;
+        var argv: [*:null]?[*:0]u8 = undefined;
+        if (glib.shellParseArgv(commandz, &argc, &argv, null) == 0) return;
+        defer glib.strfreev(argv);
+        var list: std.ArrayList([]const u8) = .empty;
+        defer list.deinit(self.allocator);
+        for (argv[0..@intCast(argc)]) |arg| list.append(self.allocator, std.mem.span(arg.?)) catch return;
+        common.appinfo.spawn(self.allocator, list.items);
+        self.close();
     }
 
     fn onLogoff(_: *gtk.Button, self: *StartMenu) callconv(.c) void {

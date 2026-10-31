@@ -27,6 +27,7 @@ const pages = [_]Page{
     .{ .id = "startmenu", .title = "Start menu", .icon = "start-here-symbolic" },
     .{ .id = "terminal", .title = "Terminal", .icon = "utilities-terminal-symbolic" },
     .{ .id = "datetime", .title = "Date & time", .icon = "preferences-system-time-symbolic" },
+    .{ .id = "power", .title = "Power & lock", .icon = "system-shutdown-symbolic" },
     .{ .id = "keyboard", .title = "Keyboard", .icon = "input-keyboard-symbolic" },
     .{ .id = "audio", .title = "Sound", .icon = "audio-volume-high-symbolic" },
     .{ .id = "network", .title = "Network", .icon = "network-wireless-symbolic" },
@@ -241,6 +242,8 @@ pub const SettingsWindow = struct {
                 hwpages.NetworkPage.build(self)
             else if (std.mem.eql(u8, id, "bluetooth"))
                 hwpages.BluetoothPage.build(self)
+            else if (std.mem.eql(u8, id, "power"))
+                hwpages.PowerPage.build(self)
             else if (std.mem.eql(u8, id, "datetime"))
                 hwpages.DateTimePage.build(self)
             else if (std.mem.eql(u8, id, "printers"))
@@ -319,7 +322,7 @@ pub const SettingsWindow = struct {
         b.config.setString(b.group, b.key, text) catch |err| log.warn("cannot save {s}: {s}", .{ b.key, @errorName(err) });
     }
 
-    fn spin(self: *SettingsWindow, config: *common.Config, group: [:0]const u8, key: [:0]const u8, min: f64, max: f64, default: i32) *gtk.SpinButton {
+    pub fn spin(self: *SettingsWindow, config: *common.Config, group: [:0]const u8, key: [:0]const u8, min: f64, max: f64, default: i32) *gtk.SpinButton {
         const button = gtk.SpinButton.newWithRange(min, max, 1);
         button.setValue(@floatFromInt(config.getInt(group, key, default)));
         _ = gtk.SpinButton.signals.value_changed.connect(button, *Binding, &onSpinChanged, self.bind(config, group, key), .{});
@@ -330,7 +333,7 @@ pub const SettingsWindow = struct {
         b.config.setInt(b.group, b.key, button.getValueAsInt()) catch |err| log.warn("cannot save {s}: {s}", .{ b.key, @errorName(err) });
     }
 
-    fn toggle(self: *SettingsWindow, config: *common.Config, group: [:0]const u8, key: [:0]const u8, default: bool) *gtk.Switch {
+    pub fn toggle(self: *SettingsWindow, config: *common.Config, group: [:0]const u8, key: [:0]const u8, default: bool) *gtk.Switch {
         const sw = gtk.Switch.new();
         sw.setActive(@intFromBool(config.getBool(group, key, default)));
         _ = gtk.Switch.signals.state_set.connect(sw, *Binding, &onSwitch, self.bind(config, group, key), .{});

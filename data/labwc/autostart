@@ -3,3 +3,5 @@
 (while true; do dkde-panel; sleep 1; done) &
 # Display layout saved by Settings > Display (needs wlr-randr).
 [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/dkde/display.sh" ] && sh "${XDG_CONFIG_HOME:-$HOME/.config}/dkde/display.sh" &
+# Lock, screen off and sleep after the idle times set in Settings > Power & lock.
+dkde-idle &

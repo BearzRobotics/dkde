@@ -1,7 +1,7 @@
 const std = @import("std");
 const Scanner = @import("wayland").Scanner;
 
-const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks", "pdf" };
+const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks", "idle", "pdf" };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -28,6 +28,7 @@ pub fn build(b: *std.Build) void {
     scanner.addCustomProtocol(b.path("protocols/wlr-screencopy-unstable-v1.xml"));
     scanner.addCustomProtocol(b.path("protocols/wlr-virtual-pointer-unstable-v1.xml"));
     scanner.addCustomProtocol(b.path("protocols/ext-workspace-v1.xml"));
+    scanner.addCustomProtocol(b.path("protocols/ext-idle-notify-v1.xml"));
     scanner.generate("wl_seat", 1);
     scanner.generate("wl_output", 1);
     scanner.generate("zwlr_foreign_toplevel_manager_v1", 3);
@@ -35,6 +36,7 @@ pub fn build(b: *std.Build) void {
     scanner.generate("zwlr_screencopy_manager_v1", 3);
     scanner.generate("zwlr_virtual_pointer_manager_v1", 2);
     scanner.generate("ext_workspace_manager_v1", 1);
+    scanner.generate("ext_idle_notifier_v1", 1);
     const wayland_module = b.createModule(.{ .root_source_file = scanner.result, .target = target, .optimize = optimize });
 
     const test_step = b.step("test", "Run unit tests");
@@ -71,7 +73,7 @@ pub fn build(b: *std.Build) void {
             if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "hex") or std.mem.eql(u8, name, "color") or std.mem.eql(u8, name, "pdf")) mod.addImport("cairo1", gobject.module("cairo1"));
             if (std.mem.eql(u8, name, "pdf")) mod.linkSystemLibrary("poppler-glib", .{});
             if (std.mem.eql(u8, name, "hex")) mod.addImport("pangocairo1", gobject.module("pangocairo1"));
-            if (std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "pointer")) {
+            if (std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "pointer") or std.mem.eql(u8, name, "idle")) {
                 mod.addImport("gdkwayland4", gobject.module("gdkwayland4"));
                 mod.addImport("wayland", wayland_module);
                 mod.linkSystemLibrary("wayland-client", .{});

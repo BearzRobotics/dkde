@@ -4,6 +4,7 @@ pub const apps = @import("apps.zig");
 pub const audio = @import("audio.zig");
 pub const proc = @import("proc.zig");
 pub const notify = @import("notify.zig");
+pub const power = @import("power.zig");
 pub const runapp = @import("runapp.zig");
 pub const appinfo = @import("appinfo.zig");
 pub const config = @import("config.zig");

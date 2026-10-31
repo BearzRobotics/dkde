@@ -214,13 +214,15 @@ pub fn mergeKeybinds(allocator: std.mem.Allocator, xml_in: []const u8, wanted: [
 pub fn ensureAutostart(allocator: std.mem.Allocator, content: []const u8) !?[]u8 {
     const need_panel = std.mem.indexOf(u8, content, "dkde-panel") == null;
     const need_display = std.mem.indexOf(u8, content, "display.sh") == null;
-    if (!need_panel and !need_display) return null;
+    const need_idle = std.mem.indexOf(u8, content, "dkde-idle") == null;
+    if (!need_panel and !need_display and !need_idle) return null;
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, content);
     if (content.len > 0 and content[content.len - 1] != '\n') try out.append(allocator, '\n');
     if (need_panel) try out.appendSlice(allocator, "# dkde: the panel is restarted if it exits.\n(while true; do dkde-panel; sleep 1; done) &\n");
     if (need_display) try out.appendSlice(allocator, "# dkde: the display layout saved by Settings > Display.\n[ -f \"${XDG_CONFIG_HOME:-$HOME/.config}/dkde/display.sh\" ] && sh \"${XDG_CONFIG_HOME:-$HOME/.config}/dkde/display.sh\" &\n");
+    if (need_idle) try out.appendSlice(allocator, "# dkde: lock, screen off and sleep after the idle times set in Settings.\ndkde-idle &\n");
     return try out.toOwnedSlice(allocator);
 }
 

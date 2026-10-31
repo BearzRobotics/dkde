@@ -270,6 +270,21 @@ screen on the overlay layer (icon, level bar, percentage) for 1.5 s; it takes no
 pointer input. Wayland only. Not done: microphone mute, keyboard backlight,
 holding the key down repeats only as fast as labwc repeats the binding.
 
+**Lock, screen off and sleep:** dkde has no lock screen of its own. A secure
+one needs `ext-session-lock-v1`, which GTK 4 cannot be a client of (it sets its
+own window role), so it would have to be a separate non-GTK program; until
+then dkde runs a locker you install. `[menu] lock-command` and `sleep-command`
+(panel.conf) name the commands; empty means detect: `swaylock`, `gtklock`,
+`waylock` for locking, and for sleep `loginctl suspend` when logind runs, then
+`zzz`, `pm-suspend`, `systemctl suspend`. The start menu's power list shows Lock
+and Sleep when a command exists. `dkde-idle`, started by the labwc autostart,
+uses `ext-idle-notify-v1` and runs the commands after `[power] lock-after`,
+`screen-off-after` and `sleep-after` minutes without input (0 = never; sleep
+locks first unless `lock-before-sleep=false`). Screen off is
+`wlr-randr --off` for every output and `--on` when input resumes, which
+disables the outputs rather than powering them down with DPMS. It reloads
+panel.conf when Settings > Power & lock changes it.
+
 **Start button:** opens and closes the start menu. Super is bound in labwc to
 `dkde-panel msg toggle-menu`. labwc can bind a lone modifier released by
 itself; labwc 0.9.3 documents this (`<keybind key="Super_L" onRelease="yes">` in
