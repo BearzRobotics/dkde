@@ -535,6 +535,11 @@ default apps and the start menu find it.
 | `dkde-tasks` | Task Manager | Processes from `/proc`, CPU and memory, end process. Opened with Ctrl+Shift+Esc. |
 | `dkde-snip` | Screenshots | `wlr-screencopy-unstable-v1`. Full screen, window, or region. Print Screen. (if possible a scroll option for webpage) |
 | `dkde-hex` | Hex editor | Whole file in memory (up to 1 GiB). Offsets, hex and text panes; overwrite and insert; undo and redo; select, copy as hex or text, paste hex; find (text or hex bytes, both directions, wrapping); go to offset; 8, 16 or 32 bytes per row; data inspector (8 to 64-bit integers, floats, bits, in either byte order). Saves with `g_file_set_contents`, which replaces the file and does not keep unusual permissions. Not done: huge files, bookmarks, comparing two files, structure templates. |
+| `dkde-charmap` | Character Map | Unicode blocks (Latin, Greek, Cyrillic, arrows, maths, box drawing, symbols, emoji and more) as a grid of at most 256 characters; click to collect into a box, copy. Hover shows the code point and UTF-8 bytes. No search by character name (GLib has no name table). |
+| `dkde-clock` | Clock | Stopwatch with laps, countdown timer, and a one-shot alarm. A finished timer or alarm sends a desktop notification (session bus) and a beep. Timers and alarms run only while the window is open: there is no background service. |
+| `dkde-calendar` | Calendar | Month view with week numbers and a free-text note for any day, saved as you type to `~/.config/dkde/calendar.conf` (`[notes] YYYY-MM-DD`). Days with notes are marked. No events, reminders or sync. |
+| `dkde-color` | Colour | Red, green and blue sliders, a hex box that accepts `#rgb` and `#rrggbb`, and rgb() and hsl() read-outs with copy buttons. It cannot pick a colour from the screen. |
+| `dkde-disks` | Disk Usage | Mounted real filesystems (from `/proc/self/mounts`, pseudo filesystems hidden) with usage bars, and a folder scanner that lists the largest entries of any folder with sizes and percentages. The scan runs one folder per main-loop step, so the window stays usable; it reports allocated size, like `du`. |
 
 **Implementation notes (accessories):**
 

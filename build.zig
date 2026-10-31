@@ -1,7 +1,7 @@
 const std = @import("std");
 const Scanner = @import("wayland").Scanner;
 
-const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex" };
+const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks" };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -64,7 +64,7 @@ pub fn build(b: *std.Build) void {
             mod.linkSystemLibrary("x11", .{});
             mod.addImport("gdkx114", gobject.module("gdkx114"));
         }
-        if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "hex")) mod.addImport("cairo1", gobject.module("cairo1"));
+        if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "hex") or std.mem.eql(u8, name, "color")) mod.addImport("cairo1", gobject.module("cairo1"));
         if (std.mem.eql(u8, name, "hex")) mod.addImport("pangocairo1", gobject.module("pangocairo1"));
         if (std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "pointer")) {
             mod.addImport("gdkwayland4", gobject.module("gdkwayland4"));
@@ -84,7 +84,7 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
     }
 
-    for ([_][]const u8{ "dkde-files", "dkde-term", "dkde-settings", "dkde-calc", "dkde-edit", "dkde-view", "dkde-tasks", "dkde-snip", "dkde-hex" }) |name| {
+    for ([_][]const u8{ "dkde-files", "dkde-term", "dkde-settings", "dkde-calc", "dkde-edit", "dkde-view", "dkde-tasks", "dkde-snip", "dkde-hex", "dkde-charmap", "dkde-clock", "dkde-calendar", "dkde-color", "dkde-disks" }) |name| {
         b.getInstallStep().dependOn(&b.addInstallFileWithDir(
             b.path(b.fmt("data/{s}.desktop", .{name})),
             .prefix,

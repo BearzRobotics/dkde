@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Colour
+Comment=Mix a colour and copy it as hex, rgb or hsl
+Exec=dkde-color
+Icon=applications-graphics
+Terminal=false
+Categories=Graphics;Utility;

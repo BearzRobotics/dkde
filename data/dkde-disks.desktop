@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Disk Usage
+Comment=See how full your disks are and what takes the space
+Exec=dkde-disks
+Icon=drive-harddisk
+Terminal=false
+Categories=System;Utility;

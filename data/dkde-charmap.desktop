@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Character Map
+Comment=Pick and copy Unicode characters
+Exec=dkde-charmap
+Icon=accessories-character-map
+Terminal=false
+Categories=Utility;

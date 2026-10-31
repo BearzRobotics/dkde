@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Clock
+Comment=Stopwatch, timer and alarm
+Exec=dkde-clock
+Icon=preferences-system-time
+Terminal=false
+Categories=Utility;

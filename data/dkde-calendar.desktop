@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Calendar
+Comment=A month calendar with notes for each day
+Exec=dkde-calendar
+Icon=x-office-calendar
+Terminal=false
+Categories=Office;Calendar;

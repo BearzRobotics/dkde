@@ -598,3 +598,21 @@ window.dkde-panel button.dkde-quick-button {
   border-radius: 6px;
   margin: 5px 2px;
 }
+
+/* Small utilities. */
+.dkde-clock-big {
+  font-size: 40pt;
+  font-weight: 200;
+}
+button.dkde-charmap-cell {
+  font-size: 15pt;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+}
+button.dkde-charmap-cell:hover {
+  background: alpha(@dkde_accent, 0.25);
+}
+progressbar.dkde-bar-full progress {
+  background-color: #e01b24;
+}
