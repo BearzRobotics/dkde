@@ -151,9 +151,29 @@ const Parted = struct {
         inline for (labels, 0..) |text, i| {
             const b = gtk.Button.newWithLabel(common.tr(text));
             _ = gtk.Button.signals.clicked.connect(b, *Parted, &onButton(i), self, .{});
-            bar.append(b.as(gtk.Widget));
             self.buttons[i] = b;
         }
+        // The everyday actions in the bar, the rest under "More".
+        const primary = [_]usize{ b_rescan, b_table, b_new, b_delete, b_resize, b_format };
+        for (primary) |i| bar.append(self.buttons[i].as(gtk.Widget));
+        const more = gtk.MenuButton.new();
+        more.setLabel(common.tr("More"));
+        const more_pop = gtk.Popover.new();
+        const more_box = gtk.Box.new(.vertical, 2);
+        more_pop.setChild(more_box.as(gtk.Widget));
+        more.setPopover(more_pop);
+        const secondary = [_]usize{ b_label, b_flag, b_new_image, b_open_image, b_mount, b_unmount, b_check, b_wipe, b_support, b_log };
+        for (secondary) |i| {
+            self.buttons[i].setHasFrame(0);
+            if (self.buttons[i].getChild()) |child| {
+                const l: *gtk.Label = @ptrCast(@alignCast(child));
+                l.setXalign(0);
+            }
+            more_box.append(self.buttons[i].as(gtk.Widget));
+        }
+        more.as(gtk.Widget).setValign(.start);
+        more.as(gtk.Widget).setMarginTop(8);
+        more.as(gtk.Widget).setMarginEnd(6);
         bar.append(self.probe);
         self.probe.setVisible(0);
 
@@ -199,6 +219,7 @@ const Parted = struct {
         bar.as(gtk.Widget).setHexpand(1);
         const top = gtk.Box.new(.horizontal, 0);
         top.append(bar.as(gtk.Widget));
+        top.append(more.as(gtk.Widget));
         top.append(self.disk_drop.as(gtk.Widget));
 
         // Pending operations, as in GParted: shown here until applied.
