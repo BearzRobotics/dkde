@@ -548,29 +548,6 @@ button.dkde-desktop.urgent {
 
 /* ---- Task Manager ---- */
 
-.dkde-card {
-  background-color: alpha(@dkde_fg, 0.05);
-  border: 1px solid alpha(@dkde_fg, 0.1);
-  border-radius: 8px;
-  padding: 12px 14px;
-}
-.dkde-card-title {
-  font-weight: 600;
-  opacity: 0.8;
-}
-.dkde-card-value {
-  font-size: 26pt;
-  font-weight: 300;
-}
-.dkde-card-detail {
-  font-size: 90%;
-  opacity: 0.65;
-  margin-bottom: 6px;
-}
-.dkde-card-graph {
-  border-radius: 4px;
-  border: 1px solid alpha(@dkde_accent, 0.35);
-}
 columnview.dkde-process-table > listview > row > cell {
   padding: 5px 10px;
 }
@@ -840,3 +817,17 @@ notebook > header.top > tabs > tab:checked {
 .dkde-ev-dot.ev-pink { background-color: #e66a9a; }
 .dkde-cal-event.ev-gray { background-color: alpha(#77767b, 0.35); border-left: 3px solid #77767b; }
 .dkde-ev-dot.ev-gray { background-color: #77767b; }
+
+/* ---- Task Manager: Performance tab ---- */
+
+.dkde-perf-list row {
+  border-radius: 6px;
+  margin: 1px 4px;
+}
+.dkde-perf-row-title { font-weight: 600; }
+.dkde-perf-row-sub { font-size: 90%; opacity: 0.65; }
+.dkde-perf-title { font-size: 20pt; font-weight: 300; }
+.dkde-perf-model { font-size: 12pt; opacity: 0.7; }
+.dkde-perf-key { font-size: 90%; opacity: 0.65; }
+.dkde-perf-big { font-size: 18pt; font-weight: 300; }
+.dkde-perf-value { font-size: 100%; }

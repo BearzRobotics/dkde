@@ -10,6 +10,7 @@ const gtk = @import("gtk4");
 const common = @import("common");
 
 const proc = @import("proc.zig");
+const perfview = @import("perfview.zig");
 
 extern fn kill(pid: c_int, sig: c_int) c_int;
 extern fn sysconf(name: c_int) c_long;
@@ -55,92 +56,6 @@ const Process = struct {
     }
 };
 
-/// A summary tile: a title, a big number, a detail line and a history graph.
-const Card = struct {
-    allocator: std.mem.Allocator,
-    box: *gtk.Box,
-    value: *gtk.Label,
-    detail: *gtk.Label,
-    graph: *gtk.DrawingArea,
-    /// Gives the graph the accent colour; see `common.style.accentProbe`.
-    probe: *gtk.Widget,
-    /// Most recent samples, 0 to 1, oldest first; 60 of them.
-    history: [history_len]f64 = @splat(0),
-    filled: usize = 0,
-
-    const history_len = 60;
-
-    fn create(allocator: std.mem.Allocator, title: [:0]const u8) *Card {
-        const self = allocator.create(Card) catch @panic("OOM");
-        const box = gtk.Box.new(.vertical, 2);
-        box.as(gtk.Widget).addCssClass("dkde-card");
-        box.as(gtk.Widget).setHexpand(1);
-        const heading = gtk.Label.new(title);
-        heading.setXalign(0);
-        heading.as(gtk.Widget).addCssClass("dkde-card-title");
-        const value = gtk.Label.new("0%");
-        value.setXalign(0);
-        value.as(gtk.Widget).addCssClass("dkde-card-value");
-        const detail = gtk.Label.new("");
-        detail.setXalign(0);
-        detail.as(gtk.Widget).addCssClass("dkde-card-detail");
-        const graph = gtk.DrawingArea.new();
-        graph.setContentHeight(56);
-        graph.as(gtk.Widget).setHexpand(1);
-        graph.as(gtk.Widget).addCssClass("dkde-card-graph");
-        box.append(heading.as(gtk.Widget));
-        box.append(value.as(gtk.Widget));
-        box.append(detail.as(gtk.Widget));
-        box.append(graph.as(gtk.Widget));
-        const probe = common.style.accentProbe();
-        box.append(probe);
-        self.* = .{ .allocator = allocator, .box = box, .value = value, .detail = detail, .graph = graph, .probe = probe };
-        graph.setDrawFunc(onDraw, self, null);
-        _ = gtk.Widget.signals.destroy.connect(box, *Card, &onDestroy, self, .{});
-        return self;
-    }
-
-    fn onDestroy(_: *gtk.Box, self: *Card) callconv(.c) void {
-        self.allocator.destroy(self);
-    }
-
-    fn push(self: *Card, fraction: f64) void {
-        std.mem.copyForwards(f64, self.history[0 .. history_len - 1], self.history[1..history_len]);
-        self.history[history_len - 1] = std.math.clamp(fraction, 0, 1);
-        self.filled = @min(self.filled + 1, history_len);
-        self.graph.as(gtk.Widget).queueDraw();
-    }
-
-    /// Fills the area under the line, in the accent colour.
-    fn onDraw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, data: ?*anyopaque) callconv(.c) void {
-        const self: *Card = @ptrCast(@alignCast(data.?));
-        const w: f64 = @floatFromInt(width);
-        const h: f64 = @floatFromInt(height);
-        const step = w / @as(f64, @floatFromInt(history_len - 1));
-        const accent = common.style.accentOf(self.probe);
-        cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, 0.12);
-        cr.rectangle(0, 0, w, h);
-        cr.fill();
-
-        cr.moveTo(0, h);
-        for (self.history, 0..) |v, i| cr.lineTo(@as(f64, @floatFromInt(i)) * step, h - v * (h - 2) - 1);
-        cr.lineTo(w, h);
-        cr.closePath();
-        cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, 0.28);
-        cr.fillPreserve();
-
-        cr.newPath();
-        for (self.history, 0..) |v, i| {
-            const x = @as(f64, @floatFromInt(i)) * step;
-            const y = h - v * (h - 2) - 1;
-            if (i == 0) cr.moveTo(x, y) else cr.lineTo(x, y);
-        }
-        cr.setSourceRgba(accent.f_red, accent.f_green, accent.f_blue, 1);
-        cr.setLineWidth(1.5);
-        cr.stroke();
-    }
-};
-
 const SortBy = enum { cpu, memory, name, pid };
 const Column = enum { name, pid, user, cpu, memory, threads };
 const columns = [_]Column{ .name, .pid, .user, .cpu, .memory, .threads };
@@ -153,8 +68,7 @@ const TaskManager = struct {
     /// The table; context menus attach here because rows are rebuilt on every refresh.
     table: ?*gtk.ColumnView = null,
     summary: *gtk.Label,
-    cpu_card: *Card,
-    mem_card: *Card,
+    perf: *perfview.Perf,
     search: *gtk.SearchEntry,
     /// Lower-cased search text; empty shows everything.
     query: [64]u8 = undefined,
@@ -185,8 +99,7 @@ const TaskManager = struct {
             .list = list,
             .selection = gtk.SingleSelection.new(list.as(gio.ListModel)),
             .summary = gtk.Label.new(""),
-            .cpu_card = Card.create(allocator, common.tr("CPU")),
-            .mem_card = Card.create(allocator, common.tr("Memory")),
+            .perf = perfview.Perf.create(allocator),
             .search = gtk.SearchEntry.new(),
             .cpu_count = @intCast(@max(1, sysconf(SC_NPROCESSORS_ONLN))),
             .clock_ticks = @floatFromInt(@max(1, sysconf(SC_CLK_TCK))),
@@ -226,16 +139,7 @@ const TaskManager = struct {
         };
         const menu_bar = mb.build(app, window, &menus, TaskManager, onMenuAction, self);
 
-        // Summary cards, then the toolbar with search and End Task.
-        const summary_box = gtk.Box.new(.horizontal, 12);
-        summary_box.as(gtk.Widget).setMarginStart(12);
-        summary_box.as(gtk.Widget).setMarginEnd(12);
-        summary_box.as(gtk.Widget).setMarginTop(12);
-        summary_box.as(gtk.Widget).setMarginBottom(6);
-        summary_box.append(self.cpu_card.box.as(gtk.Widget));
-        summary_box.append(self.mem_card.box.as(gtk.Widget));
-        self.cpu_card.detail.setText(std.fmt.allocPrintSentinel(allocator, "{d} logical processors", .{self.cpu_count}, 0) catch "");
-
+        // Toolbar with search and End Task.
         const toolbar = gtk.Box.new(.horizontal, 8);
         toolbar.as(gtk.Widget).setMarginStart(12);
         toolbar.as(gtk.Widget).setMarginEnd(12);
@@ -301,12 +205,19 @@ const TaskManager = struct {
         toolbar.append(force.as(gtk.Widget));
 
         const root = gtk.Box.new(.vertical, 0);
-        root.append(menu_bar.as(gtk.Widget));
-        root.append(summary_box.as(gtk.Widget));
         root.append(toolbar.as(gtk.Widget));
         root.append(scroller.as(gtk.Widget));
         root.append(bottom.as(gtk.Widget));
-        window.as(gtk.Window).setChild(root.as(gtk.Widget));
+
+        // Two tabs, as in Windows: the process table and the Performance page.
+        const notebook = gtk.Notebook.new();
+        notebook.as(gtk.Widget).setVexpand(1);
+        _ = notebook.appendPage(root.as(gtk.Widget), gtk.Label.new(common.tr("Processes")).as(gtk.Widget));
+        _ = notebook.appendPage(self.perf.widget, gtk.Label.new(common.tr("Performance")).as(gtk.Widget));
+        const outer = gtk.Box.new(.vertical, 0);
+        outer.append(menu_bar.as(gtk.Widget));
+        outer.append(notebook.as(gtk.Widget));
+        window.as(gtk.Window).setChild(outer.as(gtk.Widget));
 
         // Delete ends the selected task; Escape closes.
         const keys = gtk.EventControllerKey.new();
@@ -325,6 +236,7 @@ const TaskManager = struct {
         self.processes.deinit(self.allocator);
         self.order.deinit(self.allocator);
         if (self.passwd) |p| self.allocator.free(p);
+        self.perf.destroy();
         self.allocator.destroy(self);
     }
 
@@ -352,27 +264,8 @@ const TaskManager = struct {
         if (readFile(a, "/proc/stat")) |content| {
             defer a.free(content);
             if (proc.parseCpuTimes(content)) |now| {
-                if (self.prev_cpu) |prev| {
-                    total_delta = now.total -| prev.total;
-                    const idle_delta = now.idle -| prev.idle;
-                    const busy: f64 = if (total_delta > 0) 1.0 - @as(f64, @floatFromInt(idle_delta)) / @as(f64, @floatFromInt(total_delta)) else 0;
-                    self.cpu_card.push(busy);
-                    var buf: [32]u8 = undefined;
-                    self.cpu_card.value.setText(std.fmt.bufPrintSentinel(&buf, "{d:.0}%", .{std.math.clamp(busy, 0, 1) * 100}, 0) catch "");
-                }
+                if (self.prev_cpu) |prev| total_delta = now.total -| prev.total;
                 self.prev_cpu = now;
-            }
-        }
-        if (readFile(a, "/proc/meminfo")) |content| {
-            defer a.free(content);
-            if (proc.parseMeminfo(content)) |mem| {
-                const used = mem.total_kb -| mem.available_kb;
-                const fraction = @as(f64, @floatFromInt(used)) / @as(f64, @floatFromInt(@max(1, mem.total_kb)));
-                self.mem_card.push(fraction);
-                var buf: [32]u8 = undefined;
-                self.mem_card.value.setText(std.fmt.bufPrintSentinel(&buf, "{d:.0}%", .{fraction * 100}, 0) catch "");
-                var detail: [96]u8 = undefined;
-                self.mem_card.detail.setText(std.fmt.bufPrintSentinel(&detail, "{d:.1} of {d:.1} GB in use", .{ @as(f64, @floatFromInt(used)) / 1048576.0, @as(f64, @floatFromInt(mem.total_kb)) / 1048576.0 }, 0) catch "");
             }
         }
 
@@ -397,6 +290,11 @@ const TaskManager = struct {
         var all = self.processes.iterator();
         while (all.next()) |entry| if (!entry.value_ptr.seen) dead.append(a, entry.key_ptr.*) catch {};
         for (dead.items) |pid| _ = self.processes.remove(pid);
+
+        var threads: usize = 0;
+        var counted = self.processes.valueIterator();
+        while (counted.next()) |p| threads += p.threads;
+        self.perf.update(self.processes.count(), threads);
 
         self.rebuildList();
     }
@@ -726,4 +624,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
 test {
     _ = @import("proc.zig");
+    _ = @import("perf.zig");
+    _ = @import("perfview.zig");
 }
