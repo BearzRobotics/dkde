@@ -18,6 +18,7 @@ pub const Diag = @import("diag.zig").Diag;
 
 extern fn stbi_load_from_memory(buffer: [*]const u8, len: c_int, x: *c_int, y: *c_int, comp: *c_int, req_comp: c_int) ?[*]u8;
 extern fn stbi_image_free(data: *anyopaque) void;
+extern var stbi_jpeg_raw_cmyk: c_int;
 
 const Object = zpdf.Object;
 const Operand = zpdf.interpreter.Operand;
@@ -303,6 +304,17 @@ fn setStroke(c: *Ctx) void {
     c.cr.setSourceRgba(c.state.stroke[0], c.state.stroke[1], c.state.stroke[2], c.state.stroke_alpha);
 }
 
+/// A line thinner than one device pixel (PDF's "0 w" asks for the thinnest line
+/// there is) is drawn one pixel wide, as other viewers do, rather than fading away.
+fn hairlineMinimum(cr: *cairo.Context) void {
+    const w = cr.getLineWidth();
+    var dx: f64 = w;
+    var dy: f64 = 0;
+    cr.userToDeviceDistance(&dx, &dy);
+    const device = @sqrt(dx * dx + dy * dy);
+    if (device > 0 and device < 1.0) cr.setLineWidth(w / device);
+}
+
 fn paint(c: *Ctx, fill: ?cairo.FillRule, stroke: bool) void {
     const cr = c.cr;
     if (fill) |rule| {
@@ -312,6 +324,7 @@ fn paint(c: *Ctx, fill: ?cairo.FillRule, stroke: bool) void {
     }
     if (stroke) {
         setStroke(c);
+        hairlineMinimum(cr);
         if (c.pending_clip != null) cr.strokePreserve() else cr.stroke();
     }
     if (c.pending_clip) |rule| {
@@ -999,14 +1012,30 @@ fn drawImage(c: *Ctx, st: Object.Stream, name: []const u8) void {
             pixels = image.fromRgba8(c.gpa, w, h, dec.rgba, alpha) catch |e| return c.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", name);
         } else |_| {
             c.diag.note("jpeg-fallback-stb", name);
-            var x: c_int = 0;
-            var y: c_int = 0;
-            var n: c_int = 0;
-            const px = stbi_load_from_memory(data.ptr, @intCast(@min(data.len, std.math.maxInt(c_int))), &x, &y, &n, 3) orelse return c.diag.note("image-jpeg-failed", name);
-            defer stbi_image_free(px);
-            w = @intCast(x);
-            h = @intCast(y);
-            pixels = image.fromRgb8(c.gpa, w, h, px[0 .. w * h * 3], alpha) catch |e| return c.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", name);
+            if (!is_mask and csOf(c, d.get("ColorSpace") orelse .null, 0) == .cmyk) {
+                // A CMYK JPEG: take the four components raw and let the PDF's /Decode apply.
+                var cx: c_int = 0;
+                var cy: c_int = 0;
+                var cn: c_int = 0;
+                stbi_jpeg_raw_cmyk = 1;
+                const raw = stbi_load_from_memory(data.ptr, @intCast(@min(data.len, std.math.maxInt(c_int))), &cx, &cy, &cn, 4);
+                stbi_jpeg_raw_cmyk = 0;
+                const px4 = raw orelse return c.diag.note("image-jpeg-failed", name);
+                defer stbi_image_free(px4);
+                w = @intCast(cx);
+                h = @intCast(cy);
+                const spec: image.Spec = .{ .width = @intCast(w), .height = @intCast(h), .bpc = 8, .cs = .cmyk, .decode = decodeArray(c, d.get("Decode")), .mask = false };
+                pixels = image.toArgb(c.gpa, spec, px4[0 .. w * h * 4], fill8, alpha) catch |e| return c.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", name);
+            } else {
+                var x: c_int = 0;
+                var y: c_int = 0;
+                var n: c_int = 0;
+                const px = stbi_load_from_memory(data.ptr, @intCast(@min(data.len, std.math.maxInt(c_int))), &x, &y, &n, 3) orelse return c.diag.note("image-jpeg-failed", name);
+                defer stbi_image_free(px);
+                w = @intCast(x);
+                h = @intCast(y);
+                pixels = image.fromRgb8(c.gpa, w, h, px[0 .. w * h * 3], alpha) catch |e| return c.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", name);
+            }
         }
     } else {
         const data = decoded(c, st) orelse return;
@@ -1051,9 +1080,69 @@ fn decodeArray(c: *Ctx, o: ?Object) ?[]const f64 {
     return out;
 }
 
+/// The inline image key and value abbreviations of PDF 32000-1 table 93-94.
+fn inlineKey(k: []const u8) []const u8 {
+    const pairs = [_][2][]const u8{
+        .{ "BPC", "BitsPerComponent" }, .{ "CS", "ColorSpace" }, .{ "D", "Decode" },
+        .{ "DP", "DecodeParms" },       .{ "F", "Filter" },      .{ "H", "Height" },
+        .{ "IM", "ImageMask" },         .{ "I", "Interpolate" }, .{ "W", "Width" },
+    };
+    for (pairs) |p| if (std.mem.eql(u8, k, p[0])) return p[1];
+    return k;
+}
+
+fn inlineName(v: []const u8) []const u8 {
+    const pairs = [_][2][]const u8{
+        .{ "G", "DeviceGray" },       .{ "RGB", "DeviceRGB" },      .{ "CMYK", "DeviceCMYK" }, .{ "I", "Indexed" },
+        .{ "AHx", "ASCIIHexDecode" }, .{ "A85", "ASCII85Decode" },  .{ "LZW", "LZWDecode" },   .{ "Fl", "FlateDecode" },
+        .{ "RL", "RunLengthDecode" }, .{ "CCF", "CCITTFaxDecode" }, .{ "DCT", "DCTDecode" },
+    };
+    for (pairs) |p| if (std.mem.eql(u8, v, p[0])) return p[1];
+    return v;
+}
+
+fn inlineValue(c: *Ctx, tok: anytype) ?Object {
+    return switch (tok) {
+        .number => |n| if (n == @floor(n) and @abs(n) < 1e15) Object{ .integer = @intFromFloat(n) } else Object{ .real = n },
+        .name => |n| Object{ .name = inlineName(n) },
+        .string => |v| Object{ .string = v },
+        .hex_string => |v| Object{ .hex_string = v },
+        .operator => |o| if (std.mem.eql(u8, o, "true")) Object{ .boolean = true } else if (std.mem.eql(u8, o, "false")) Object{ .boolean = false } else null,
+        .array => |items| blk: {
+            const out = c.arena.alloc(Object, items.len) catch return null;
+            for (items, out) |it, *o| o.* = switch (it) {
+                .number => |n| if (n == @floor(n) and @abs(n) < 1e15) Object{ .integer = @intFromFloat(n) } else Object{ .real = n },
+                .name => |n| Object{ .name = inlineName(n) },
+                .string => |v| Object{ .string = v },
+                .hex_string => |v| Object{ .hex_string = v },
+                else => .null,
+            };
+            break :blk Object{ .array = out };
+        },
+    };
+}
+
+/// Draws an inline image (BI ... ID ... EI): its dictionary uses abbreviated
+/// keys; the rest is an ordinary image.
+fn inlineImage(c: *Ctx, lexer: *Lexer) void {
+    var dl = Lexer.init(c.arena, lexer.inline_dict);
+    var entries: std.ArrayList(Object.Dict.Entry) = .empty;
+    while (dl.next() catch null) |key_tok| {
+        const key = switch (key_tok) {
+            .name => |n| inlineKey(n),
+            else => continue,
+        };
+        const val_tok = (dl.next() catch null) orelse break;
+        const value = inlineValue(c, val_tok) orelse continue;
+        entries.append(c.arena, .{ .key = key, .value = value }) catch return;
+    }
+    drawImage(c, .{ .dict = .{ .entries = entries.items }, .data = lexer.inline_data }, "inline");
+}
+
 /// Runs one content stream (a page, or a form) against the context.
 fn runContent(c: *Ctx, content: []const u8) void {
     var lexer = Lexer.init(c.arena, content);
+    lexer.capture_inline = true;
     var args: std.ArrayList(Operand) = .empty;
     while (lexer.next() catch null) |tok| {
         switch (tok) {
@@ -1063,7 +1152,11 @@ fn runContent(c: *Ctx, content: []const u8) void {
             .name => |v| args.append(c.arena, .{ .name = v }) catch return,
             .array => |v| args.append(c.arena, .{ .array = c.arena.dupe(Operand, v) catch return }) catch return,
             .operator => |op| {
-                operatorStep(c, op, args.items);
+                if (std.mem.eql(u8, op, "BI")) {
+                    inlineImage(c, &lexer);
+                } else {
+                    operatorStep(c, op, args.items);
+                }
                 args.clearRetainingCapacity();
             },
         }
@@ -1219,6 +1312,38 @@ test "paths, colours and text are drawn" {
     defer surface.destroy();
     savePng(surface, "paths");
     try std.testing.expectEqual(@as(u32, 0), diag.total());
+}
+
+test "inline images are drawn, with their abbreviated keys" {
+    const a = std.testing.allocator;
+    // A 2x1 RGB inline image (red, blue) and a 1-bit stencil painted in green; the page is 200x100 at scale 2.
+    const pdf = try buildPdf(a,
+        "q 40 0 0 20 10 60 cm\nBI /W 2 /H 1 /CS /RGB /BPC 8 ID \xFF\x00\x00\x00\x00\xFF EI Q\n" ++
+            "0 0.6 0 rg q 30 0 0 20 100 60 cm\nBI /IM true /W 1 /H 1 /BPC 1 ID \x00 EI Q\n" ++
+            "0 0 0 rg 10 10 20 20 re f", "", 0, &.{});
+    defer a.free(pdf);
+    var diag = Diag.init(a);
+    diag.verbose = false;
+    defer diag.deinit();
+    const surface = try renderTest(a, pdf, &diag, 400, 200);
+    defer surface.destroy();
+    savePng(surface, "inline-images");
+    try std.testing.expectEqual(@as(u32, 0), diag.total());
+    const data = surface.imageGetData() orelse return error.TestUnexpectedResult;
+    const stride: usize = @intCast(surface.imageGetStride());
+    const at = struct {
+        fn px(d: [*]u8, st: usize, x: usize, y: usize) [3]u8 {
+            const o = y * st + x * 4; // BGRA
+            return .{ d[o + 2], d[o + 1], d[o] };
+        }
+    }.px;
+    // Page y 60..80 is image rows 40..80 at scale 2 from the top of a 200-high surface: y = 200 - 2*70.
+    const red = at(data, stride, 30, 60);
+    const blue = at(data, stride, 70, 60);
+    try std.testing.expect(red[0] > 200 and red[1] < 60 and red[2] < 60);
+    try std.testing.expect(blue[2] > 200 and blue[0] < 60);
+    const green = at(data, stride, 230, 60);
+    try std.testing.expect(green[1] > 100 and green[0] < 60);
 }
 
 test "images, forms, transparency and rotation" {

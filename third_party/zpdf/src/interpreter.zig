@@ -502,6 +502,12 @@ pub const ContentLexer = struct {
     // Temporary storage for arrays
     array_buffer: [512]Operand = undefined,
 
+    // dkde: with `capture_inline` set, a BI block is not skipped: `next` returns
+    // the operator "BI" and leaves the image dictionary text and its data here.
+    capture_inline: bool = false,
+    inline_dict: []const u8 = "",
+    inline_data: []const u8 = "",
+
     pub const Token = union(enum) {
         number: f64,
         string: []const u8,
@@ -570,6 +576,10 @@ pub const ContentLexer = struct {
         if (isAlpha(c) or c == '\'' or c == '"' or c == '*') {
             const op = self.scanOperator();
             if (std.mem.eql(u8, op, "BI")) {
+                if (self.capture_inline) {
+                    self.captureInlineImage();
+                    return Token{ .operator = op };
+                }
                 self.skipInlineImage();
                 return self.next();
             }
@@ -778,6 +788,44 @@ pub const ContentLexer = struct {
         }
 
         return self.data[start..self.pos];
+    }
+
+    /// Splits a BI ... ID <data> EI block into its dictionary text and data.
+    fn captureInlineImage(self: *ContentLexer) void {
+        const d = self.data;
+        const start = self.pos;
+        var i = start;
+        while (i + 1 < d.len) : (i += 1) {
+            if (d[i] == 'I' and d[i + 1] == 'D' and (i == start or isWhitespace(d[i - 1])) and (i + 2 >= d.len or isWhitespace(d[i + 2]))) break;
+        } else {
+            self.inline_dict = d[start..];
+            self.inline_data = "";
+            self.pos = d.len;
+            return;
+        }
+        self.inline_dict = d[start..i];
+        var from = i + 2;
+        if (from < d.len and d[from] == '\r' and from + 1 < d.len and d[from + 1] == '\n') {
+            from += 2;
+        } else if (from < d.len and isWhitespace(d[from])) {
+            from += 1;
+        }
+        var j = from;
+        while (j + 1 < d.len) : (j += 1) {
+            if (d[j] == 'E' and d[j + 1] == 'I') {
+                const prev_ws = j == from or isWhitespace(d[j - 1]);
+                const next_ws = j + 2 >= d.len or isWhitespace(d[j + 2]) or isDelimiter(d[j + 2]);
+                if (prev_ws and next_ws) break;
+            }
+        } else {
+            self.inline_data = d[from..];
+            self.pos = d.len;
+            return;
+        }
+        var end = j;
+        if (end > from and isWhitespace(d[end - 1])) end -= 1;
+        self.inline_data = d[from..end];
+        self.pos = j + 2;
     }
 
     fn skipInlineImage(self: *ContentLexer) void {

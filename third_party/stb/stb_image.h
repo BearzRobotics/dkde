@@ -546,6 +546,9 @@ STBIDEF int   stbi_zlib_decode_noheader_buffer(char *obuffer, int olen, const ch
 
 #ifdef STB_IMAGE_IMPLEMENTATION
 
+/* dkde: set to 1 before decoding a 4-component JPEG to get raw CMYK (4 bytes per pixel). */
+int stbi_jpeg_raw_cmyk = 0;
+
 #if defined(STBI_ONLY_JPEG) || defined(STBI_ONLY_PNG) || defined(STBI_ONLY_BMP) \
   || defined(STBI_ONLY_TGA) || defined(STBI_ONLY_GIF) || defined(STBI_ONLY_PSD) \
   || defined(STBI_ONLY_HDR) || defined(STBI_ONLY_PIC) || defined(STBI_ONLY_PNM) \
@@ -3952,6 +3955,27 @@ static stbi_uc *load_jpeg_image(stbi__jpeg *z, int *out_x, int *out_y, int *comp
                   }
                } else {
                   z->YCbCr_to_RGB_kernel(out, y, coutput[1], coutput[2], z->s->img_x, n);
+               }
+            } else if (z->s->img_n == 4 && stbi_jpeg_raw_cmyk && n == 4) {
+               // dkde: hand back the four components as stored (after the YCCK
+               // transform), so the PDF's own /Decode and colour space apply.
+               if (z->app14_color_transform == 2) {
+                  z->YCbCr_to_RGB_kernel(out, y, coutput[1], coutput[2], z->s->img_x, n);
+                  for (i=0; i < z->s->img_x; ++i) {
+                     out[0] = 255 - out[0];
+                     out[1] = 255 - out[1];
+                     out[2] = 255 - out[2];
+                     out[3] = coutput[3][i];
+                     out += n;
+                  }
+               } else {
+                  for (i=0; i < z->s->img_x; ++i) {
+                     out[0] = coutput[0][i];
+                     out[1] = coutput[1][i];
+                     out[2] = coutput[2][i];
+                     out[3] = coutput[3][i];
+                     out += n;
+                  }
                }
             } else if (z->s->img_n == 4) {
                if (z->app14_color_transform == 0) { // CMYK
