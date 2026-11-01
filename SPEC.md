@@ -609,6 +609,8 @@ timer) are their own explicit actions and are not held back.
   environment. User-supplied values reach the privileged scripts only as
   positional parameters, never as script text. "Run as administrator" is in
   the start menu's item menu and "Open Folder as Administrator" in Files.
+  **polkit is deliberately not used** (it needs `polkitd` and a tracked login
+  session, which dkde does without; see `docs/desktop-setup-checklist.md`).
 - The Sound page sets the default output's volume and mute through `wpctl`
   (PipeWire) or `pactl` (PulseAudio). It tries `wpctl` first and uses the
   first tool that is installed and can reach a running sound server (so WSL,
