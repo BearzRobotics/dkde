@@ -1,0 +1,10 @@
+# Lines for /etc/inittab (SysV init: Slackware, LFS) that run the dkde text
+# console in place of agetty. Replace the "c1:..." to "c6:..." lines you have:
+#
+# The id (c1, c2 ...) and the runlevels are the same as for your getty lines.
+# `respawn` restarts a console that exits; after three starts inside one minute
+# the console hands the VT to /sbin/agetty itself (see /etc/dkde/console.conf).
+c1:12345:respawn:/usr/bin/dkde-console --vt 1
+c2:12345:respawn:/usr/bin/dkde-console --vt 2
+c3:12345:respawn:/usr/bin/dkde-console --vt 3
+c4:12345:respawn:/usr/bin/dkde-console --vt 4

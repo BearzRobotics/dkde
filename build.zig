@@ -1,5 +1,4 @@
 const std = @import("std");
-const Scanner = @import("wayland").Scanner;
 
 const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks", "idle", "pdf", "parted" };
 
@@ -12,7 +11,15 @@ pub fn build(b: *std.Build) void {
     const build_options = b.addOptions();
     build_options.addOption(bool, "x11", x11);
 
-    const gobject = b.dependency("gobject", .{ .target = target, .optimize = optimize });
+    // The console and termcore come first and need no GTK-side dependency
+    // (SPEC.md 5.11, *Build*). With -Dgui=false nothing below is configured, so
+    // gobject and zig-wayland, which are lazy, are never fetched.
+    const gui = b.option(bool, "gui", "Build the GTK programs (default). -Dgui=false builds only the console") orelse true;
+    addConsole(b, target, optimize);
+    if (!gui) return;
+
+    const Scanner = (b.lazyImport(@This(), "wayland") orelse return).Scanner;
+    const gobject = b.lazyDependency("gobject", .{ .target = target, .optimize = optimize }) orelse return;
 
     const common = b.addModule("common", .{
         .root_source_file = b.path("src/common/root.zig"),
@@ -95,6 +102,8 @@ pub fn build(b: *std.Build) void {
                 // which makes a screenful of output take seconds. Always build it fast.
                 const ghostty = b.dependency("ghostty", .{ .target = target, .optimize = .ReleaseFast });
                 mod.addImport("ghostty-vt", ghostty.module("ghostty-vt"));
+                // termcore must use the same libghostty-vt as the program that imports it.
+                mod.addImport("termcore", termcoreModule(b, target, optimize, ghostty));
                 mod.addImport("cairo1", gobject.module("cairo1"));
                 mod.addImport("pangocairo1", gobject.module("pangocairo1"));
             }
@@ -168,4 +177,50 @@ fn addGtk(mod: *std.Build.Module, gobject: *std.Build.Dependency) void {
     inline for (.{ "glib2", "gobject2", "gio2", "giounix2", "gtk4", "gdk4", "pango1", "gdkpixbuf2" }) |name| {
         mod.addImport(name, gobject.module(name));
     }
+}
+
+/// termcore, dkde-console and their tests. Imports only std and libghostty-vt.
+fn termcoreModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, ghostty: *std.Build.Dependency) *std.Build.Module {
+    const m = b.createModule(.{
+        .root_source_file = b.path("src/termcore/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    m.addImport("ghostty-vt", ghostty.module("ghostty-vt"));
+    return m;
+}
+
+fn addConsole(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
+    // Debug builds of libghostty-vt run integrity checks on every linefeed, so
+    // it is always built fast (as for dkde-term).
+    // simd=false leaves out simdutf and highway, which are C++ (SPEC.md 5.11,
+    // *Dependencies*).
+    const ghostty = b.dependency("ghostty", .{ .target = target, .optimize = .ReleaseFast, .simd = false });
+    const termcore = termcoreModule(b, target, optimize, ghostty);
+
+    const mod = b.createModule(.{
+        .root_source_file = b.path("src/console/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    mod.addImport("termcore", termcore);
+    mod.addImport("ghostty-vt", ghostty.module("ghostty-vt"));
+    mod.addAnonymousImport("terminus16", .{ .root_source_file = b.path("third_party/terminus/Uni3-Terminus16.psf") });
+    mod.addAnonymousImport("terminus24", .{ .root_source_file = b.path("third_party/terminus/Uni3-Terminus24x12.psf") });
+    mod.addAnonymousImport("terminus32", .{ .root_source_file = b.path("third_party/terminus/Uni3-Terminus32x16.psf") });
+
+    const exe = b.addExecutable(.{ .name = "dkde-console", .root_module = mod });
+    // A rescue system must not need a dynamic loader (SPEC.md 5.11).
+    if (target.result.abi.isMusl()) exe.linkage = .static;
+    const install = b.addInstallArtifact(exe, .{});
+    b.getInstallStep().dependOn(&install.step);
+    b.step("console", "Build only dkde-console").dependOn(&install.step);
+
+    // Both modules are tested with nothing else in the graph: if either
+    // imports GTK, GLib or a system library, this step stops building.
+    const test_console = b.step("test-console", "Run the tests of termcore and the console");
+    test_console.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = termcore })).step);
+    test_console.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
 }

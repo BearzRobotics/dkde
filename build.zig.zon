@@ -8,10 +8,12 @@
         .gobject = .{
             .url = "https://deps.files.ghostty.org/gobject-2026-10-02-38-1.tar.zst",
             .hash = "gobject-0.3.2-Skun7LuIogBbEh-6WrLeEzMaRCnOMB3eOf__RaPYSMCZ",
+            .lazy = true,
         },
         .wayland = .{
             .url = "https://deps.files.ghostty.org/zig_wayland-27dda01712ddf3cb46ebd93380d88b01a7c828f8.tar.gz",
             .hash = "wayland-0.7.0-dev-lQa1klz9AQB87V0pMKMdm8JvyOx32XR9FxcWnw9wh6XZ",
+            .lazy = true,
         },
         .ghostty = .{
             .url = "https://github.com/ghostty-org/ghostty/archive/ce787fc18a7782e81585beb63f0d905ccaf69284.tar.gz",

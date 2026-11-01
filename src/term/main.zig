@@ -65,7 +65,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
 }
 
 test {
-    _ = @import("keymap.zig");
     _ = @import("profile.zig");
     _ = @import("pty.zig");
     _ = @import("view.zig");

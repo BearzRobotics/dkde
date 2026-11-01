@@ -1,0 +1,29 @@
+# systemd unit for the dkde text console on one virtual terminal. It replaces
+# getty@.service: copy to /etc/systemd/system/dkde-console@.service, then
+#
+#   systemctl disable getty@tty1.service
+#   systemctl enable dkde-console@1.service
+#
+# The console falls back to agetty by itself when it cannot start (see
+# /etc/dkde/console.conf), so a broken console never leaves a VT without a login
+# prompt. Under logind the console still takes its VT directly: it needs no seat.
+[Unit]
+Description=dkde console on tty%I
+After=systemd-user-sessions.service plymouth-quit-wait.service
+Conflicts=getty@tty%I.service
+After=getty@tty%I.service
+
+[Service]
+Type=idle
+ExecStart=/usr/bin/dkde-console --vt %I
+Restart=always
+RestartSec=1
+UtmpIdentifier=tty%I
+IgnoreSIGPIPE=no
+SendSIGHUP=yes
+# The console is started as root and keeps no state of its own.
+KillMode=process
+
+[Install]
+WantedBy=getty.target
+DefaultInstance=1

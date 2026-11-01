@@ -8,6 +8,7 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 |---|---|
 | `dkde-panel` | Taskbar, start menu, clock, wallpaper |
 | `dkde-term` | Terminal (libghostty-vt) |
+| `dkde-console` | Text console that replaces agetty on the virtual terminals: draws through DRM, links nothing but libghostty-vt, falls back to agetty (see SPEC 5.11) |
 | `dkde-files` | File manager |
 | `dkde-settings` | Settings |
 | `dkde-edit` | Text editor |

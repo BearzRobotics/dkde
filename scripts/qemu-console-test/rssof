@@ -1,0 +1,4 @@
+#!/bin/sh
+# rssof N: print the resident memory of the console on VT N.
+set -- $(/bin/busybox ps | /bin/busybox grep "[v]t $1")
+/bin/busybox grep VmRSS /proc/$1/status > /dev/ttyS0

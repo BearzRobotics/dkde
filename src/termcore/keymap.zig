@@ -1,5 +1,6 @@
-//! Physical key mapping for the kitty keyboard protocol: GTK reports Linux
-//! evdev codes (+ 8), libghostty-vt wants W3C-style key names.
+//! Physical key mapping for the kitty keyboard protocol: Linux evdev codes to
+//! the W3C-style key names libghostty-vt wants. GTK reports the evdev code + 8;
+//! dkde-console reads evdev codes directly.
 
 const std = @import("std");
 const vt = @import("ghostty-vt");
@@ -9,8 +10,12 @@ const Key = vt.input.Key;
 /// GTK/Wayland hardware keycode -> key, or `.unidentified`.
 pub fn fromHardwareKeycode(keycode: u32) Key {
     if (keycode < 8) return .unidentified;
-    const evdev = keycode - 8;
-    return if (evdev < table.len) table[evdev] else .unidentified;
+    return fromEvdev(keycode - 8);
+}
+
+/// Linux evdev key code (`KEY_*`) -> key, or `.unidentified`.
+pub fn fromEvdev(code: u32) Key {
+    return if (code < table.len) table[code] else .unidentified;
 }
 
 const table = blk: {

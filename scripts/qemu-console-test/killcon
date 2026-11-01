@@ -1,0 +1,4 @@
+#!/bin/sh
+# killcon N: kill -9 the console on VT N, as a crash would.
+set -- $(/bin/busybox ps | /bin/busybox grep "[v]t $1")
+kill -9 $1

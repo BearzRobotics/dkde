@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# Boots dkde-console in QEMU and checks the M8 scenarios (SPEC.md 5.11, 8, 9):
+# login on DRM, typing, VT switching, memory, kill -9 recovery, the fallback after
+# repeated crashes, and the fallback with no display device.
+#
+#   scripts/qemu-console-test/run [setup|test|boot|clean]
+#
+#   (no argument)  setup if needed, then run every check
+#   setup          build the console (static musl), fetch a kernel and busybox, make the initramfs
+#   test           run the checks
+#   boot           just boot a VM and leave it running, to look around by hand
+#   clean          remove the cache directory
+#
+# Needs: qemu-system-x86_64, zig, python3, and `apt-get download` (Debian or Ubuntu)
+# for the kernel and busybox. No root, no KVM, no VM image. Everything goes in
+# $DKDE_QEMU_CACHE (default ~/.cache/dkde-qemu); the repository is not touched.
+# Screenshots of each step are kept there as PNG files for looking at.
+set -u
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+REPO=$(cd "$HERE/../.." && pwd)
+CACHE=${DKDE_QEMU_CACHE:-$HOME/.cache/dkde-qemu}
+TOOLS="python3 -I $HERE/tools.py"
+QEMU=${QEMU:-qemu-system-x86_64}
+
+# Two runs would share one QEMU, one serial log and one monitor socket.
+mkdir -p "$CACHE"
+exec 9>"$CACHE/lock"
+flock -n 9 || { echo "another qemu-console-test is already using $CACHE" >&2; exit 1; }
+
+pass=0; fail=0
+ok()  { echo "  PASS  $*"; pass=$((pass + 1)); }
+bad() { echo "  FAIL  $*"; fail=$((fail + 1)); }
+check() { local what=$1; shift; if "$@"; then ok "$what"; else bad "$what"; fi; }
+
+setup() {
+    mkdir -p "$CACHE/debs" "$CACHE/root" && cd "$CACHE" || exit 1
+    if [ ! -f root/boot/vmlinuz* ] 2>/dev/null && ! ls root/boot/vmlinuz-* >/dev/null 2>&1; then
+        echo "== fetching a kernel and busybox"
+        local k
+        k=$(apt-cache search --names-only '^linux-image-[0-9.]*-[0-9]*-generic$' | sort -V | tail -1 | cut -d' ' -f1)
+        (cd debs && apt-get download "$k" busybox-static) || { echo "apt-get download failed" >&2; exit 1; }
+        for d in debs/*.deb; do dpkg-deb -x "$d" root; done
+    fi
+    echo "== building dkde-console (static musl, ReleaseSafe)"
+    (cd "$REPO" && zig build console -Dgui=false -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe --prefix "$CACHE/out") || exit 1
+    echo "== making the initramfs"
+    rm -rf initrd && mkdir -p initrd/{bin,sbin,etc/dkde,proc,sys,dev,run,tmp,root,usr/bin}
+    cp root/usr/bin/busybox initrd/bin/busybox 2>/dev/null || cp root/bin/busybox initrd/bin/busybox
+    cp out/bin/dkde-console initrd/usr/bin/
+    for a in sh mount ls cat login getty sleep echo ps kill grep; do ln -sf busybox "initrd/bin/$a"; done
+    ln -sf ../bin/busybox initrd/sbin/getty
+    cp "$HERE/init" initrd/init; cp "$HERE/killcon" "$HERE/rssof" initrd/bin/
+    printf 'root::0:0:root:/root:/bin/sh\n' > initrd/etc/passwd
+    printf 'root:x:0:\n' > initrd/etc/group; printf '/bin/sh\n' > initrd/etc/shells
+    printf '\\n \\s \\r (\\l)\nwelcome to dkde-console test\n\n' > initrd/etc/issue
+    # The fallback getty is busybox's, since the image has no agetty.
+    printf '[console]\nfallback=/bin/busybox getty -L 0 tty%%N linux\n' > initrd/etc/dkde/console.conf
+    $TOOLS cpio initrd initrd.gz
+}
+
+boot() { # boot [extra qemu args...]
+    stop
+    cd "$CACHE" || exit 1
+    rm -f mon.sock serial.log
+    local vmlinuz; vmlinuz=$(ls root/boot/vmlinuz-* | head -1)
+    # /dev/kvm can exist and still be unusable (WSL, nested VMs), so ask QEMU.
+    local accel=""
+    echo quit | "$QEMU" -enable-kvm -M none -display none -nodefaults -monitor stdio >/dev/null 2>&1 && accel="-enable-kvm"
+    "$QEMU" $accel -m 512 -kernel "$vmlinuz" -initrd initrd.gz -no-reboot \
+        -append "console=ttyS0 vga=792 panic=-1 loglevel=4" \
+        -display none -serial file:serial.log -monitor unix:mon.sock,server,nowait "$@" \
+        > qemu.out 2>&1 &
+    QPID=$!
+    for _ in $(seq 60); do [ -S mon.sock ] && break; sleep 0.5; done
+}
+
+stop() { [ -n "${QPID:-}" ] && kill "$QPID" 2>/dev/null; QPID=; sleep 0.5; return 0; }
+
+# wait_serial PATTERN [SECONDS]
+wait_serial() {
+    local t=${2:-120}
+    for _ in $(seq "$t"); do grep -q -- "$1" "$CACHE/serial.log" 2>/dev/null && return 0; sleep 1; done
+    return 1
+}
+
+shot() { # shot NAME: screendump to NAME.ppm and NAME.png
+    $TOOLS mon "screendump $CACHE/$1.ppm" && sleep 0.5 && $TOOLS png "$CACHE/$1.ppm" "$CACHE/$1.png"
+}
+
+# wait_lit NAME MIN [SECONDS]: wait until the screen shows more than MIN non-background pixels
+wait_lit() {
+    local t=${3:-90} n
+    for _ in $(seq "$t"); do
+        shot "$1"; n=$($TOOLS lit "$CACHE/$1.ppm" 2>/dev/null || echo 0)
+        [ "$n" -gt "$2" ] && return 0
+        sleep 1
+    done
+    return 1
+}
+
+settle() { sleep "${1:-4}"; }
+
+tests() {
+    cd "$CACHE" || exit 1
+    echo "== boot with a display (simpledrm)"
+    boot -vga std
+    check "init ran"                       wait_serial "init: starting" 120
+    check "a DRM device appeared"          wait_serial "card0" 5
+    check "login prompt is drawn on tty1"  wait_lit s1_login 200 120
+
+    echo "== keyboard and login"
+    $TOOLS type 'root\n'
+    check "root logged in through the console's pty" wait_serial "root login on" 60
+    settle 5; $TOOLS type 'echo AB1\n'; settle 4; shot s2_typed
+    check "typing changed the screen"      bash -c "! $TOOLS same '$CACHE/s1_login.ppm' '$CACHE/s2_typed.ppm'"
+
+    echo "== memory"
+    $TOOLS type 'rssof 1\n'; wait_serial "VmRSS" 60
+    rss=$(grep -o 'VmRSS:[[:space:]]*[0-9]*' serial.log | tail -1 | grep -o '[0-9]*$')
+    check "idle RSS ${rss:-?} kB is under 8192 kB" bash -c "[ '${rss:-99999}' -lt 8192 ]"
+
+    echo "== VT switching"
+    shot v1_tty1
+    $TOOLS mon "sendkey ctrl-alt-f2"; settle 4; shot v2_tty2
+    check "tty2 shows its own console"     wait_lit v2_tty2 200 30
+    check "tty2 differs from tty1"         bash -c "! $TOOLS same '$CACHE/v1_tty1.ppm' '$CACHE/v2_tty2.ppm'"
+    $TOOLS mon "sendkey ctrl-alt-f1"; settle 4; shot v3_tty1
+    check "tty1 comes back unchanged"      $TOOLS same "$CACHE/v1_tty1.ppm" "$CACHE/v3_tty1.ppm"
+
+    echo "== kill -9 recovery"
+    $TOOLS mon "sendkey ctrl-alt-f2"; settle 3; $TOOLS type 'root\n'; settle 5
+    $TOOLS type 'killcon 1\n'
+    check "console 1 died"                 wait_serial "console 1 exited 137" 30
+    settle 6; $TOOLS mon "sendkey ctrl-alt-f1"; settle 4
+    check "tty1 shows a login again"       wait_lit k1_restart 200 60
+
+    echo "== fallback after repeated crashes"
+    $TOOLS mon "sendkey ctrl-alt-f2"; settle 3
+    $TOOLS type 'killcon 1; sleep 3; killcon 1; sleep 3; killcon 1; sleep 3; killcon 1\n'
+    check "console gave tty1 to the plain getty" wait_serial "too many recent crashes" 60
+    settle 5; $TOOLS mon "sendkey ctrl-alt-f1"; settle 4
+    check "tty1 shows a readable text login"     wait_lit k2_getty 50 60
+
+    echo "== no display device"
+    boot -vga none
+    check "falls back when there is no display"  wait_serial "no usable display; using the plain getty" 120
+    stop
+}
+
+case "${1:-all}" in
+    setup) setup ;;
+    test) tests ;;
+    boot) boot -vga std; echo "booted; drive it with tools.py from $CACHE (stop with: kill $QPID)"; exit 0 ;;
+    clean) rm -rf "$CACHE" ;;
+    all) [ -f "$CACHE/initrd.gz" ] || setup; tests ;;
+    *) sed -n '2,15p' "$0"; exit 2 ;;
+esac
+stop
+echo; echo "passed $pass, failed $fail"
+[ "$fail" -eq 0 ]

@@ -57,6 +57,10 @@ must link for `x86_64-linux-musl` as well as glibc.
   `dbus-run-session`). dkde talks to it through GIO's built-in GDBus, so there
   is no new library dependency.
 
+- A text console (`dkde-console`) that replaces `agetty` on the VTs, with
+  the terminal features of `dkde-term`, and falls back to a plain login
+  when it can't start.
+
 ### Non-goals (v1)
 
 These are explicitly out of scope. Adding any of them requires changing this
@@ -83,6 +87,7 @@ spec first.
 | Text rendering (terminal) | **Pango** into a GTK drawing area (v1) | A GPU renderer can replace it later behind the same interface. |
 | Compositor | **labwc** | Needs `wlr-layer-shell` and `wlr-foreign-toplevel-management`. |
 | Build | `zig build` | No meson, cmake or make in this repo. |
+| Console | **Kernel interfaces only**: DRM/KMS, evdev and VT ioctls, PSF2 fonts | libghostty-vt is its only library. See 5.11. |
 
 ### 3.1 Version pinning
 
@@ -118,6 +123,12 @@ Runtime libraries allowed in v1:
   `field_names`/`field_types`, and the error bundle is created with `Wip.init`.
   Its own `build.zig` is not used. See `third_party/zig-yaml/README.dkde.md`.
 
+- `dkde-console` uses **none** of the libraries above except
+  libghostty-vt, and links nothing else: no libdrm, libinput, udev,
+  xkbcommon, FreeType or HarfBuzz. Its display, input, keymap, fonts and
+  configuration reader are written in this repository (5.11). The built-in
+  Terminus font (SIL OFL 1.1) is vendored in `third_party/terminus/`.
+
 Anything not on this list needs a spec change explaining why.
 
 ## 4. Architecture
@@ -125,12 +136,17 @@ Anything not on this list needs a spec change explaining why.
 Each component is a separate program. They share one Zig module, `common`,
 and never link to each other.
 
+`dkde-console` is the exception to "they share one Zig module": it uses
+`termcore` (4.3) and nothing from `common` that touches GTK or GLib. See
+5.11.
+
 | Binary | Purpose |
 |---|---|
 | `dkde-panel` | Taskbar, start menu, clock, wallpaper. The shell. |
 | `dkde-term` | Terminal emulator |
 | `dkde-files` | File manager |
-| `dkde-settings` | Settings | 
+| `dkde-settings` | Settings |
+| `dkde-console` | Text console on the VTs, replacing agetty |
 
 ### 4.1 Process model
 
@@ -158,6 +174,14 @@ and never link to each other.
 - `app_id` → desktop entry matching (used by the taskbar and start menu)
 - Error dialog helper
 - String helper for future i18n
+
+### 4.3 Terminal core (`termcore`)
+
+The terminal code `dkde-term` and `dkde-console` have in common: the pty
+(`openpty`, `fork`/`exec`, `TIOCSWINSZ`), the libghostty-vt setup,
+key-encoding glue, colour schemes, and the INI reader. `termcore` imports
+only `std` and libghostty-vt: no GTK, GLib or Pango. Only code both
+programs use as written moves here (see 5.11 *Shared code*).
 
 ## 5. Components
 
@@ -651,6 +675,11 @@ timer) are their own explicit actions and are not held back.
 **Editing labwc files:** only dkde's own sections and keys are changed, and
 the rest of the file is preserved. A backup is written before the first edit.
 
+**Console page.** Font, size, colour scheme and scrollback for `dkde-console`,
+with a live preview drawn by the console's own renderer code. It never writes
+`/etc` itself: **Apply** runs `sudo dkde-console config set …` for each change
+(see 5.11 *Configuration tools*).
+
 ### 5.6 Accessories (v1.1)
 
 Small apps that share `common`, the stylesheet and the config conventions.
@@ -662,7 +691,7 @@ default apps and the start menu find it.
 | `dkde-edit` | Text editor (Notepad) | Open/save, find/replace, word wrap, font. Default `text/plain` handler. |
 | `dkde-calc` | Calculator | Standard and scientific modes, full keyboard entry. Evaluation logic unit-tested. |
 | `dkde-view` | Image viewer | Zoom, fit, rotate, previous/next in folder, set as wallpaper. |
-| `dkde-tasks` | Task Manager | Processes from `/proc`, CPU and memory, end process. Opened with Ctrl+Shift+Esc. Right-click a process for End Task, Force Quit (with a confirmation), Copy PID and Copy name; Delete also ends the selected one. |
+| `dkde-tasks` | Task Manager | Processes tab (from `/proc`, end process) and a Performance tab (CPU, memory, disks, network, GPU). Opened with Ctrl+Shift+Esc. Right-click a process for End Task, Force Quit (with a confirmation), Copy PID and Copy name; Delete also ends the selected one. |
 | `dkde-snip` | Screenshots | `wlr-screencopy-unstable-v1`. Full screen, window, or region. Print Screen. (if possible a scroll option for webpage) |
 | `dkde-hex` | Hex editor | Whole file in memory (up to 1 GiB). Offsets, hex and text panes; overwrite and insert; undo and redo; select, copy as hex or text, paste hex; find (text or hex bytes, both directions, wrapping); go to offset; 8, 16 or 32 bytes per row; data inspector (8 to 64-bit integers, floats, bits, in either byte order). Saves with `g_file_set_contents`, which replaces the file and does not keep unusual permissions. **Structure (reverse engineering):** reads [Kaitai Struct](https://kaitai.io) `.ksy` descriptions, parses the open file with them and shows a tree of fields with values and byte ranges. Selecting a field selects its bytes, the cursor selects the field it is in (breadcrumb in the status bar), and fields are coloured in the hex view. A format is picked automatically from the file's magic bytes (or a unique file extension), by Structure ▸ Choose format…, or loaded by hand (Load definition…). Formats are **not bundled** (their licences are mixed): point `[hex] formats-dir` in `hex.conf` (or Structure ▸ Formats folder…) at a folder of `.ksy` files such as a clone of kaitai_struct_formats; the default is `~/.local/share/dkde/formats`. Structure ▸ Get formats… shows the project link (https://github.com/kaitai-io/kaitai_struct_formats) and, when `git` (or `curl` or `wget` together with `tar`) is installed, a Download button that fetches the formats into that folder; without those tools it says what to install. Nothing is downloaded without that click. Find strings lists ASCII and UTF-16 text with offsets. Not done: huge files, bookmarks, comparing two files, writing back through a format, `process` (xor, zlib), `valid` checks, `params` types, user-defined methods, `_io` seeking inside substreams of other objects beyond `pos`/`io`. A parse that fails keeps what it read and shows the error as a node. **ImHex patterns:** `.hexpat` files are a second front end feeding the same tree, panel and colours (patterns can set their own with `[[color]]`). Understood: `struct`, `union`, `enum`, `bitfield` (including computed values), `using`, templates, inheritance, `namespace`, `fn` with parameters and defaults, `if`/`else`/`while`/`for`/`match`, `be`/`le`, `@` placement, pointers, arrays (counted, `while(...)`, null-terminated), expressions with `$`, `this`, `parent`, `sizeof`, `addressof`, the attributes `name`, `color`, `hidden`, `inline`, `sealed` and `no_unique_address`, `#define`, `#ifdef`, `#pragma endian`, `import` of files from the `includes/` folder, and a built-in subset of the `std::` library (`mem`, `string`, `math`, `core`, `ctype`, `format`). Not understood, shown as an error: `try`/`catch`, sections, array initialisers, `[[format]]`/`[[transform]]` and visualisers (ignored), `std::time` and hashing, and function-like `#define`. Patterns are **not bundled**: the community collection (https://github.com/WerWolv/ImHex-Patterns) is GPL-2.0, which does not fit dkde's MIT licence. Point `[hex] patterns-dir` in `hex.conf` at a clone (it has `patterns/` and `includes/` inside; default `~/.local/share/dkde/patterns`). A pattern is picked automatically from its `#pragma magic` at offset 0, or a file name matching the extension; a Kaitai format wins a tie. Structure ▸ Get ImHex patterns… shows the link and downloads the collection like the Kaitai one. **Analysis tools** (Analyze menu and Edit menu): Checksums (MD5, SHA-1, SHA-256, CRC-32 of the selection or the file); Entropy and histogram (entropy per block across the file, click to jump, and byte-value counts); Compare with file (differences in red, F7/Shift+F7 to step, Clear comparison); Disassemble selection (through `objdump -D -b binary` when installed, for x86-64, x86, ARM, AArch64, MIPS, RISC-V, PowerPC if that objdump supports them); Follow value as offset (Ctrl+J, reads 2, 4 or 8 bytes in the inspector's byte order) and Back (Alt+Left); Bookmarks with names and comments (Ctrl+B to add; underlined in the view; kept per file in `$XDG_STATE_HOME/dkde/hex-bookmarks/`, written only when changed); Find modes Text, Hex with `??` wildcards, and Number (u8 to u64, signed, float, double, either byte order); Copy as C array, Python bytes, Base64 or an escaped string; Fill, XOR, Reverse and byte-swap on the selection. Patterns are also found by content type (`#pragma MIME`) and by magic at any offset, not only at 0. **Tabs:** each file, disk or process opens in its own tab in one window (File ▸ New tab Ctrl+N, Close tab Ctrl+W, Ctrl+PageUp/PageDown to switch); every tab has its own undo history, view, structure, bookmarks and comparison; Open, Open disk and Open process memory use the current tab when it is empty and a new tab otherwise; closing the window asks about each tab with unsaved changes. Not done: scripting, dragging tabs between windows. **Process memory** (Disk ▸ Open process memory…): pick a process, then one of its readable regions from `/proc/PID/maps`; the region opens **read-only** through `/proc/PID/mem` as a 4 MiB window with the real address in the left column and in the status line (Go to takes an address; Follow value as offset follows pointers). Reading another user's process, or any process where `ptrace_scope` forbids it, needs dkde-hex started as administrator; it says so. Not done: writing to a process, searching all regions at once, following a region as it changes. **Disk mode** (Disk menu, or `dkde-hex --device /dev/sdX`): opens a disk, a partition or any device or image file **read-only**, as a 4 MiB window with the real device offset in the left column, a status line with the sector (LBA) and offset, Go to sector…, and Previous/Next window; the size cannot change (no insert, delete or append). Reading a device that needs root offers to reopen `dkde-hex --device` as administrator through the sudo dialog. **Writing is gated:** Disk ▸ Enable writing (with a warning) reopens the device read-write; Write changes (Ctrl+S) lists how many sectors differ from what was read and which, warns when the disk or one of its partitions is mounted, and only writes the changed sectors after you confirm. The Structure view works on the window, so a Kaitai format such as an MBR or GPT shows partition tables. **Find searches the whole device** (or process region), not only the 4 MiB window, in 8 MiB steps with a percentage in the status line, both directions, wrapping; starting another search cancels the running one, and with unwritten edits it searches the window only. The window is 4 MiB unless `[hex] disk-window-mib` (1 to 512) says otherwise; it is held in memory, so that is the limit on what can be edited at once. **Disk ▸ Save as image…** copies the whole device or process region into a regular file (4 MiB at a time with a percentage; Cancel imaging stops it and keeps the partial file). The source is only read; unreadable stretches are stored as zeros and counted; a device, or the file being read, is refused as the destination. **Disk ▸ Clone to another disk…** copies the open disk onto another device the same way, after a picker and a confirmation naming both; it refuses the source or a partition of it, a target smaller than the source, a mounted target (or one with a mounted partition), and process memory, and needs administrator rights to open the target for writing. Not done: verifying the copy afterwards, resuming, undo after a write. See `docs/hex-structure.md`. |
 | `dkde-pdfcheck` | Renderer checker | Headless. `dkde-pdfcheck [--pages N] [--scale S] [--out DIR] [--report FILE] [--trail FILE --resume] [--shard I/N] [--max-mb N] [-v] PATH...` draws the pages of every PDF in the given files and folders and prints one JSON line per file (pages, time, error, and counts of what was not drawn, such as `font-embedded-not-read` or `image-jpx`), then a summary sorted by how many files are affected. The trail file is written before each file, so after a crash the last `BEGIN` without an `END` names the file, and `--resume` skips past it. Events are also logged through `DKDE_LOG=debug` (scope `pdfrender`) or `-v`. |
@@ -688,10 +717,22 @@ default apps and the start menu find it.
   first) fall back to gdk-pixbuf and whatever loaders are installed (WebP
   needs `webp-pixbuf-loader`, SVG needs `librsvg2-common`). "Set as
   wallpaper" writes `[wallpaper] image` and clears `slideshow-dir`.
-- `dkde-tasks`: processes from `/proc`, refreshed every 1.5 s. Two summary
-  cards (CPU, memory) show the current value and a 60-sample history graph;
-  a search box filters by name; busy CPU and memory cells are tinted. End Task
-  sends SIGTERM, Force Quit SIGKILL after confirmation.
+- `dkde-tasks`: two tabs. **Processes** lists processes from `/proc`, refreshed
+  every 1.5 s; a search box filters by name; busy CPU and memory cells are
+  tinted. End Task sends SIGTERM, Force Quit SIGKILL after confirmation.
+  **Performance** is laid out like the Windows 11 Task Manager: a list of CPU,
+  Memory, each disk, each Ethernet and Wi-Fi adapter and each GPU, each with a
+  60-sample thumbnail, and for the selected one a large graph and its figures.
+  CPU: utilization, speed, processes, threads, up time, base speed, sockets,
+  cores, logical processors, virtualization, L1 to L3 cache, and a per-logical-
+  processor graph view. Memory: in use, available, committed, cached, slab,
+  swap, and a composition bar. Disk: active time, response time, read and write
+  speed, capacity, type (SSD, HDD, NVMe), system disk. Network: send and
+  receive in Kbps/Mbps, IPv4 and IPv6, MAC, link speed, driver, and for Wi-Fi
+  the SSID (via `nmcli`) and signal strength. GPU: from sysfs; AMD shows
+  utilization, VRAM, temperature, power and clock; Intel shows clock speed
+  only. NVIDIA's proprietary driver exposes nothing in sysfs, so it is listed
+  without figures. Devices are found when the program starts.
 - `dkde-snip`: full screen and region, for the first output. The picture is
   saved to `<Pictures>/Screenshots/` and copied to the clipboard. **Window
   capture and scrolling capture are not offered:** wlr-screencopy and
@@ -757,7 +798,7 @@ dkde does not write a display manager. The login screen is a greeter for
   optional services can be started by any of them. `data/dinit.d/` (dinit),
   `data/systemd/` (systemd) and `data/sysvinit/` (SysV init: Slackware, LFS)
   hold service files, and `data/pam/greetd` an example PAM service. The dinit
-  files, for `greetd`, `seatd`, `dbus`,
+  files, for `dkde-console@N` (see 5.11), `greetd`, `seatd`, `dbus`,
   `networkmanager`, `bluetooth` and `cupsd`. Copy those you want to
   `/etc/dinit.d/` and enable them with `dinitctl enable`.
 
@@ -805,6 +846,307 @@ console with `startx`.
 The taskbar-button and start-menu-item menus also open from the keyboard
 (Menu key or Shift+F10).
 
+### 5.11 Console (`dkde-console`)
+
+**Model:** the Linux text console, rebuilt. It replaces `agetty` on a virtual
+terminal (VT): it shows a login prompt, runs `login`, and gives the session
+the terminal features of `dkde-term`. It draws through KMS/DRM, not through
+the kernel's framebuffer console.
+
+**Why it exists.** The kernel console only does what VT100-era terminals
+did: 16 colours (or 256 at best), one font of at most 512 glyphs, and no
+graphics protocols. On a machine without a working desktop, or before one
+starts, that's the only terminal there is. fbterm, the usual way around
+this, has been unmaintained for over a decade.
+
+**The rule above all others:** the console must work when everything above
+it doesn't. It never needs GTK, GLib, a compositor, a session D-Bus, seatd
+or udev. When it can't start, the user still gets a login prompt (see
+*Fallback*).
+
+#### Dependencies
+
+A program this low in the system depends on as little as possible. The
+console's dependencies are, in full:
+
+- **libghostty-vt**, for terminal emulation
+- **libc** (musl or glibc), through Zig's standard library
+- **The kernel's user-space API**: DRM/KMS, evdev and VT ioctls, inotify,
+  and netlink
+
+Everything else is written in this repository, in Zig: the DRM mode
+setting, VT handling, input, keymap, font loading and rendering, the
+login loop, and the configuration reader. None of those jobs is large, and
+each one is a well-documented kernel interface or file format. Doing them
+here means the console can't be broken by a library it doesn't need.
+
+**Static linking.** On musl, `dkde-console` is linked statically, like the
+other programs a rescue system can't do without (shells, coreutils, dinit).
+It keeps working when the shared libraries on the system are damaged.
+
+**libghostty-vt's own dependencies:** Ghostty's build pulls in simdutf and
+highway, which are C++, unless it is built with `simd=false`. The console
+passes `.simd = false` to the `ghostty` dependency (`build.zig`, `addConsole`),
+so it has no C++ code and no C++ runtime. Its parser takes the scalar path
+instead of the SIMD one. `dkde-term` keeps the default build. The rule is to depend on no more than
+necessary, not on nothing.
+
+#### Process model
+
+- **One process per VT.** The init system starts `dkde-console --vt N` on
+  each VT where `agetty` would otherwise run. dinit, systemd and SysV init
+  service files are in `data/` (see 5.10). For dinit it's one templated
+  service, `dkde-console@N`.
+- **Login.** The console opens a pty, prints `/etc/issue` (with agetty's
+  `\n`, `\l`, `\s`, `\r` and `\m` escapes), and starts `login` in it. When
+  `login` exits (the user logged out), it clears the screen and starts it
+  again. It never runs a shell itself.
+- **Privileges.** It runs as root, as a getty does: `login` needs that, and
+  it lets the console open the display and input devices itself. It reads
+  configuration only from system paths (see *Configuration*), never from a
+  user's home directory.
+
+#### VT handling
+
+The console manages its VT directly through the kernel's VT layer. That
+layer is also the protocol every other display program uses, so the
+console coexists with labwc under seatd, or any other compositor, on
+another VT.
+
+- **Taking the VT:** `VT_SETMODE` with `VT_PROCESS`, so the kernel asks
+  before switching away; `KDSETMODE KD_GRAPHICS`, so the kernel stops
+  drawing text on it; and `KDSKBMODE K_OFF`, so keystrokes reach only the
+  console.
+- **Switching:** the console handles Ctrl+Alt+F1…F12 itself and calls
+  `VT_ACTIVATE`.
+- **Release request** (another VT is about to be shown): drop DRM master,
+  close the input devices, free the frame buffers, then acknowledge with
+  `VT_RELDISP 1`. The console **acknowledges every release request**, even
+  in the middle of a redraw. If it doesn't, the kernel refuses the switch
+  and the user can't leave the VT.
+- **Acquire** (its VT is shown again): acknowledge with
+  `VT_RELDISP VT_ACKACQ`, take DRM master, probe the outputs again, reopen
+  the input devices, and redraw.
+- **Restoring the VT on exit.** On a normal exit and on SIGTERM, SIGINT and
+  SIGHUP, the console sets `KD_TEXT`, `K_UNICODE` and `VT_AUTO` again and
+  drops DRM master. SIGKILL and crashes can't be caught, so **every start
+  first resets the VT to text mode**, and so does the fallback path before
+  it `exec`s agetty. agetty doesn't reset the VT mode itself; without this,
+  a crash would leave a blank screen even after the fallback.
+- Magic SysRq keeps working in every mode, because the kernel handles it
+  before the VT layer.
+
+#### Fallback
+
+The console falls back to a plain text login whenever it can't do its job:
+
+- **At start-up:** no DRM device, or no usable display mode. It resets the
+  VT to text mode and `exec`s the fallback getty (`[console] fallback`,
+  default `/sbin/agetty --noclear tty%N linux`, with `%N` replaced by the VT
+  number). Because it `exec`s, the init system still sees the same process.
+  A missing font is not a reason to fall back: a default font is built into
+  the program (see *Fonts*).
+- **After repeated crashes:** each start writes a counter to
+  `/run/dkde-console/ttyN.starts` and clears it once the console has run
+  for 60 seconds. On the third start within that window, it goes straight
+  to the fallback. A console that crashes in a loop must never lock the
+  user out.
+- **Kernel messages and panics** are not the console's job. They stay with
+  the kernel's own console (fbcon), which takes the screen back when the
+  console exits. `dmesg` shows them inside a session.
+
+#### Display
+
+- **KMS directly, through the DRM ioctls** (`DRM_IOCTL_MODE_GETRESOURCES`,
+  `GETCONNECTOR`, `CREATE_DUMB`, `MAP_DUMB`, `ADDFB2`, `SETCRTC`,
+  `PAGE_FLIP`, and `SET_MASTER`/`DROP_MASTER`), with the structures from
+  the kernel's `drm.h` and `drm_mode.h`. No libdrm.
+- **CPU rendering** into two dumb buffers, swapped with page flips. The
+  flip-done events are read from the DRM file descriptor. No GPU API, so
+  the console works with any kernel DRM driver, `simpledrm` included.
+- **Outputs:** v1 uses the first connected connector in its preferred mode
+  and shows nothing on the others. Outputs are probed again on every VT
+  acquire. **Post-v1:** mirror to every output, and react to hotplug
+  through the kernel's uevent netlink socket.
+- **Damage:** per row, as in `dkde-term`. Nothing is redrawn that hasn't
+  changed, and an idle console doesn't wake up (see *Low-resource*).
+
+#### Fonts
+
+- **v1: PSF bitmap fonts**, the format of the kernel console's own fonts
+  and the kbd package's `consolefonts`. The reader takes PSF2 and PSF1 (the
+  older format, 8 pixels wide, 256 or 512 glyphs; the built-in 16-pixel
+  Terminus is one). A PSF font is a header, a glyph bitmap array and a
+  Unicode table, so the reader is short. Drawing a glyph is copying bits;
+  there's no rasterizer. Gzipped fonts (`.psf.gz`) are not read; unpack them
+  first.
+- **A default font is built in** with `@embedFile`: Terminus at 16, 24 and
+  32 pixels. The console therefore always has a font, whatever is on disk.
+  Terminus is under the SIL Open Font License, which allows bundling it;
+  `third_party/terminus/` holds it with its licence (see 6.5). The files are
+  the `Uni3-Terminus` conversions from Debian's console-setup, which cover
+  Latin, Greek, Cyrillic and many symbols.
+- **Size:** chosen from the output's physical size in its EDID, aiming for
+  the same physical size on every screen: the largest built-in size that
+  keeps at least 80×24 cells. `[console] font-size` overrides it, and
+  `[console] scale` (1 or 2) doubles pixels for very dense screens.
+- **Other fonts:** `[console] font` takes the path to a PSF2 file, and
+  `[console] fallback-fonts` lists PSF2 files used for characters the main
+  font lacks. A character no font has is drawn as a box.
+- **Post-v1 (M9): TrueType outlines**, read and rasterized in Zig: the
+  `glyf` table's quadratic outlines, filled with anti-aliasing, at any size.
+  That covers common monospace fonts.
+- **Later, unscheduled:** colour emoji (colour bitmap tables such as
+  `CBDT`) and ligatures (the `GSUB` table). Both would be welcome, but
+  neither is needed soon, and each is a sizeable piece of work. They get a
+  milestone when they're wanted, written in Zig like the rest. CFF/OpenType
+  outlines and hinting are not planned.
+
+Wide characters and grapheme clusters follow libghostty-vt's cell model.
+
+#### Input
+
+- **evdev directly:** the console opens `/dev/input/event*` itself and
+  reads `struct input_event`s. Each device is classified by its
+  capabilities (`EVIOCGBIT`): keyboards, relative pointers (mice), and
+  absolute pointers (tablets, and touchpads through their single-touch
+  `ABS_X`/`ABS_Y` axes). No libinput, libevdev, mtdev or udev.
+- **Hotplug:** inotify on `/dev/input`, so a keyboard plugged in later
+  works. `devtmpfs` creates the nodes itself, so this doesn't need udev.
+- **Key repeat** comes from the kernel (the `value == 2` repeat events),
+  so the console needs no repeat timer.
+- **Keymap: the kernel's own.** The console reads the keymap loaded with
+  `loadkeys` from the kernel (`KDGKBENT`, `KDGKBSENT`, `KDGKBDIACRUC` for
+  dead keys) and translates key codes with it. The console then follows
+  the system's console keymap with no keymap setting of its own, and no
+  xkbcommon or XKB data. Reading it again is cheap, so it's done on every
+  VT acquire, and a `loadkeys` run takes effect at the next switch.
+- **Key encoding** to the program goes through libghostty-vt, as in
+  `dkde-term`, including the Kitty keyboard protocol.
+- **Mouse:** the pointer is drawn only once the mouse moves, and hides
+  again on the next key press. Programs that ask for mouse reporting get
+  it. Otherwise, dragging selects text.
+- **Selection and paste** work within one console: selecting copies, and
+  Shift+Insert and the middle button paste. OSC 52 writes go to the same
+  buffer. There's no clipboard shared between VTs or with the desktop.
+
+#### Terminal features (v1)
+
+The same libghostty-vt core as `dkde-term` (5.3), and the same features
+wherever they make sense without a window:
+
+- 24-bit colour, Kitty keyboard protocol, mouse reporting (SGR mode),
+  bracketed paste, synchronized output
+- Scrollback (Shift+PageUp/PageDown), with `[console] scrollback-lines`
+  (default 2000, lower than `dkde-term` to keep memory small)
+- The colour schemes from 5.3 (`[console] colors`, default `campbell`)
+- OSC 8 hyperlinks are shown, but there's nothing to open them with
+- Not applicable: window titles (OSC 0/2), tabs, focus events, opacity
+
+**Images (kitty graphics protocol)** are the main reason this console
+exists beside fbcon, so they're milestone M10. They depend on what
+libghostty-vt exposes, the same open point as 5.3. Image data is decoded
+with the PNG and raw RGB(A) formats the protocol requires; dkde's vendored
+zigimg (3.2) does the PNG decoding, so no system image library is added.
+Image memory per console is capped by `[console] image-memory` (default
+32 MB), and the oldest images are evicted first.
+
+#### Configuration
+
+The console starts before anyone logs in, so its settings are
+system-wide: an exception to 6.1's per-user files.
+
+- **File:** `/etc/dkde/console.conf`. Defaults with a comment for every key
+  are in `$PREFIX/share/dkde/console.conf`, and `/etc` holds only what was
+  changed, as in 6.1.
+- **Format:** the same INI format as every other dkde file, read with an
+  INI reader written in Zig, in `termcore` (see *Shared code*), because the
+  console must not link GLib. A test reads and writes the same files with
+  both this reader and `GKeyFile`, so the two never drift apart.
+- **Sections:** `[console]` for everything above. `[vt:N]` overrides keys
+  for one VT, for example a larger font on `tty1` only.
+- **Changes apply live:** the console watches the file with inotify. Fonts
+  and colours change on the next frame. `fallback` takes effect the next
+  time the console starts.
+- **Missing or invalid values** fall back to the default with a warning,
+  never a crash (6.1). An invalid file is not a reason to fall back to
+  agetty.
+
+#### Configuration tools
+
+There are two front ends to the same file, so they can never disagree:
+
+- **`dkde-console config`**, a text tool, because the console matters most
+  when there's no GUI:
+  - `dkde-console config list` shows every key, its value and where it came
+    from (default, `/etc`, or `[vt:N]`).
+  - `dkde-console config get KEY`
+  - `dkde-console config set [--vt N] KEY VALUE` validates the value before
+    writing: a font file must exist and load, and a colour scheme must
+    exist.
+  - `dkde-console config reset [--vt N] KEY` removes the key, so the
+    default applies again.
+  - `dkde-console config fonts` lists the built-in fonts and the PSF2 files
+    found in the usual console-font directories.
+
+  It follows 6.1's static-files rule: setting a value that's already in
+  effect writes nothing. It needs root to write and says so plainly when
+  run without it.
+
+  The keymap is set with `loadkeys` as on any Linux console, not with this
+  tool (see *Input*).
+- **A Console page in `dkde-settings`** (5.5): font, size, colour scheme
+  and scrollback, with a live preview drawn by the console's own renderer
+  code. It never writes `/etc` itself. **Apply** runs
+  `sudo dkde-console config set …` for each change. When sudo needs a
+  password, it runs in `dkde-term`, so the user sees and answers the
+  prompt. **OPEN:** whether to use `sudo -A` with an askpass helper
+  instead.
+
+#### Shared code
+
+The terminal code `dkde-term` and the console have in common moves into a
+new module, **`termcore`**: the pty (`openpty`, `fork`/`exec`,
+`TIOCSWINSZ`), the libghostty-vt setup, key-encoding glue, colour schemes,
+and the INI reader. `termcore` imports only `std` and libghostty-vt: **no
+GTK, GLib or Pango**. `dkde-term` keeps its GTK and Pango code in
+`src/term/`.
+
+Move only code that both programs actually use as written. Anything that
+would need a flag or a callback to fit both stays where it is, until the
+two uses show what the shared form should be.
+
+#### Low-resource operation
+
+dkrescue's budget is under 150 MB in use at the login prompt, with several
+consoles running. So:
+
+- **Inactive VTs hold no frame buffers.** Only the console on the visible
+  VT has them.
+- **Idle footprint:** under 8 MB RSS per console at a login prompt. A
+  static binary with no shared libraries helps here.
+- **No idle wake-ups:** cursor blink is off by default (`[console]
+  cursor-blink`). When it's on, the timer runs only on the active VT.
+- Release builds use plain `malloc`, as `common.perf.Gpa` does elsewhere.
+
+#### Build
+
+- `zig build console -Dgui=false` builds only `dkde-console`. It must
+  succeed on a system with nothing installed but libc and the kernel
+  headers. With `-Dgui=false`, `build.zig` configures only the console and
+  `termcore`, and never asks for the GTK-side dependencies in
+  `build.zig.zon` (zig-gobject and zig-wayland, which are lazy). Zig has no
+  way for `build.zig` to see which step was asked for, so the flag is how
+  the console build says it. `zig build console` alone also works where the
+  GTK dependencies are present; it only builds less.
+- `zig build` still builds everything, the console included.
+- `zig build test-console -Dgui=false` runs the console's and `termcore`'s
+  tests with no GTK, GLib or other system library in the build graph. If
+  either imports one, the build fails. That enforces the dependency list
+  above.
+- The portability rule in section 1 applies as everywhere else: this links
+  for `x86_64-linux-musl` (statically) and glibc.
+
 ## 6. Shared conventions
 
 ### 6.1 Configuration
@@ -818,6 +1160,8 @@ The taskbar-button and start-menu-item menus also open from the keyboard
   hold what they changed.
 - **State:** recent apps and window sizes go in `$XDG_STATE_HOME/dkde/`,
   never mixed into config.
+- **Exception:** `dkde-console` reads `/etc/dkde/console.conf`, because it
+  runs before anyone logs in. See 5.11.
 - Missing or invalid values fall back to the default and log a warning; they
   never crash a component.
 - **Complete defaults:** the system files in `$PREFIX/share/dkde/` list every
@@ -911,6 +1255,10 @@ dkde is MIT-licensed (`LICENSE`). New source files need no header. Do not copy
 code from GPL or LGPL projects into the tree; link such libraries dynamically
 instead.
 
+Fonts bundled into a binary must be under a licence that allows it (the
+SIL Open Font License does), with the licence file next to the font in
+`third_party/`.
+
 ### 6.6 Documentation
 
 Code is written to be read. A milestone is not done until its code is
@@ -962,6 +1310,15 @@ src/
   term/
   files/
   settings/
+  termcore/          pty, libghostty-vt setup, key glue, colour schemes, INI reader (no GTK)
+  console/           dkde-console: drm, vt, evdev, keymap, psf, render, login, config
+third_party/
+  terminus/          built-in console font (PSF2) and its licence
+data/
+  console.conf       console defaults
+  dinit.d/dkde-console@
+  systemd/dkde-console@.service
+  sysvinit/          inittab line for dkde-console
 ```
 
 **Build steps:**
@@ -972,12 +1329,24 @@ src/
 | `zig build test` | Runs unit tests |
 | `zig build run-<component>` | Builds and runs one component |
 | `zig build install --prefix /usr` | Installs binaries and data |
+| `zig build console` | Builds only `dkde-console`, with no system libraries |
+| `zig build test-console` | Tests `termcore` and the console with no GTK or system libraries in the graph |
 
 ## 8. Testing
 
 - **Unit tests** cover all pure logic: desktop entry parsing and filtering,
   search ranking, config read/write and defaults, `app_id` matching, and
   labwc `rc.xml` editing (round-trip without losing other content).
+- Unit tests for the PSF2 reader, the kernel-keymap translation (against
+  keymap tables captured from `loadkeys`), the INI reader (round-trips
+  against `GKeyFile`), and `/etc/issue` escapes.
+- The console is tested in QEMU on dkrescue: on `virtio-vga`; on
+  `simpledrm` (`-vga std` with no DRM driver); and with no display device
+  at all, where it must fall back to agetty.
+- **Crash recovery:** `kill -9` on a running console. The next start, or
+  the fallback agetty, must show a readable text login.
+- **Static check:** on musl, `readelf -l dkde-console` shows no `INTERP`
+  header (no dynamic loader needed).
 - **Development loop:** labwc runs nested inside an existing Wayland session
   in a window, so the shell can be tested without logging out.
 - **Platform check:** each milestone is also verified in a dkrescue QEMU
@@ -1044,6 +1413,33 @@ Each milestone is merged only when all its acceptance criteria pass.
   pass.
 - **Done when:** a dkrescue image boots into a complete dkde session.
 
+### M8 — Console
+
+- 5.11 except TrueType and images: login on DRM, evdev input with the
+  kernel keymap, VT switching, fallback, the built-in Terminus font and
+  PSF2 files, `console.conf` and `dkde-console config`.
+- `termcore` extracted, and `dkde-term` moved onto it with no change in
+  behaviour.
+- **Done when:** in a dkrescue QEMU image with `dkde-console` on tty1 and
+  tty2, `vim`, `htop` and `tmux` run correctly; Ctrl+Alt+F1/F2 switches
+  between them and to labwc and back; `kill -9` followed by a restart
+  leaves a readable login; with no display device it falls back to
+  agetty; `free -m` at the login prompt stays within dkrescue's 150 MB
+  budget; and `zig build console` succeeds on a system with only libc.
+
+### M9 — Console fonts and settings page
+
+- TrueType (`glyf`) fonts, rendered in Zig.
+- The Console page in `dkde-settings`.
+- **Done when:** a TrueType monospace font renders cleanly at several
+  sizes, and a change made in Settings reaches a running console without
+  a restart.
+
+### M10 — Console images
+
+- Kitty graphics protocol, within `image-memory`.
+- **Done when:** flow shows its images on the console.
+
 ## 10. Working agreement (AI-assisted development)
 
 - One milestone (or part of one) per branch. Every change is reviewed
@@ -1064,3 +1460,7 @@ Each milestone is merged only when all its acceptance criteria pass.
    look.
 6. Naming convention: Zig's official style
 7. Minimum labwc version:  0.9.3-1
+8. ~~Console: which libghostty-vt build options leave out simdutf and
+   highway.~~ Answered: `simd=false` (5.11 *Dependencies*).
+9. Console settings page: `sudo` in `dkde-term`, or `sudo -A` with an
+   askpass helper.

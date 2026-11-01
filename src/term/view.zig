@@ -18,7 +18,7 @@ const pangocairo = @import("pangocairo1");
 const vt = @import("ghostty-vt");
 const common = @import("common");
 
-const keymap = @import("keymap.zig");
+const keymap = @import("termcore").keymap;
 const profile_mod = @import("profile.zig");
 const Pty = @import("pty.zig").Pty;
 
