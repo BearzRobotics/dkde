@@ -465,7 +465,7 @@ pub const term_profile_template =
     \\environment=
     \\# windowed, maximized or fullscreen
     \\startup=windowed
-    \\# always, never or on-success
+    \\# always, success (only when the program ended normally) or never
     \\close-on-exit=always
     \\# Let programs set the clipboard (OSC 52).
     \\osc52=true

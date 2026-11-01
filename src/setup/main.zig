@@ -455,7 +455,7 @@ fn writeMarker(allocator: std.mem.Allocator) void {
 
 /// `--write-config`: complete, hand-editable files in the user's config folder.
 fn writeConfig(allocator: std.mem.Allocator) void {
-    const names = [_][]const u8{ "dkde.conf", "panel.conf", "term.conf", "files.conf", "hex.conf", "edit.conf" };
+    const names = [_][]const u8{ "dkde.conf", "panel.conf", "term.conf", "files.conf", "hex.conf", "edit.conf", "calendar.conf" };
     for (names) |name| {
         const extra = if (std.mem.eql(u8, name, "term.conf")) common.config.term_profile_template else "";
         if (common.config.writeAllDefaults(allocator, name, extra)) |result| {
