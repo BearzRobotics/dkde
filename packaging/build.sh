@@ -38,6 +38,9 @@ PAM_FORM=${PAM_FORM:-system}
 INIT=${INIT:-dinit}
 GREETD_USER=${GREETD_USER:-_greetd}
 
+# zig build install adds DESTDIR itself, so it must be in the environment.
+export DESTDIR
+
 say() { printf 'dkde: %s\n' "$*"; }
 die() { printf 'dkde: %s\n' "$*" >&2; exit 1; }
 
@@ -60,7 +63,7 @@ build() {
     # --system: never touch the network, read dependencies from zig-pkg/.
     # shellcheck disable=SC2086
     "$ZIG" build --release="$MODE" -Dcpu="$CPU" ${TARGET:+-Dtarget="$TARGET"} \
-        --system zig-pkg --prefix "$DESTDIR$PREFIX" $FLAGS install
+        --system zig-pkg --prefix "$PREFIX" $FLAGS install
 }
 
 install_extras() {
