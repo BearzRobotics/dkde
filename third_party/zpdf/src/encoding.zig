@@ -1338,7 +1338,7 @@ const mac_roman_encoding = blk: {
     break :blk table;
 };
 
-const standard_encoding = blk: {
+pub const standard_encoding = blk: {
     var table: [256]u21 = undefined;
 
     // Initialize all to 0

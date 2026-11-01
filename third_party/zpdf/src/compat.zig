@@ -171,6 +171,8 @@ pub fn mmapFileReadOnlyCwd(allocator: std.mem.Allocator, path: []const u8) ![]al
         defer file.close();
 
         const stat = try file.stat();
+        // dkde: mmap of zero bytes is EINVAL, which std treats as unreachable.
+        if (stat.size == 0) return error.EmptyFile;
         return std.posix.mmap(
             null,
             stat.size,
@@ -188,6 +190,8 @@ pub fn mmapFileReadOnlyCwd(allocator: std.mem.Allocator, path: []const u8) ![]al
         defer file.close(io);
 
         const stat = try file.stat(io);
+        // dkde: mmap of zero bytes is EINVAL, which std treats as unreachable.
+        if (stat.size == 0) return error.EmptyFile;
         return std.posix.mmap(
             null,
             stat.size,

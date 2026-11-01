@@ -29,6 +29,8 @@ pub const layout = @import("layout.zig");
 pub const structtree = @import("structtree.zig");
 pub const markdown = @import("markdown.zig");
 pub const outline = @import("outline.zig");
+pub const agl = @import("agl.zig");
+pub const cff_std_strings = @import("cff_std_strings.zig");
 
 // Re-exports
 pub const Object = parser.Object;

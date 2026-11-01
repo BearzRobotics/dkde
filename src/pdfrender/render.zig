@@ -12,6 +12,7 @@ const cairo = @import("cairo1");
 const zpdf = @import("zpdf");
 const image = @import("image.zig");
 const truetype = @import("truetype.zig");
+const cff = @import("cff.zig");
 const imgcodec = @import("imgcodec");
 pub const Diag = @import("diag.zig").Diag;
 
@@ -38,6 +39,33 @@ fn has(haystack: []const u8, needle: []const u8) ?usize {
 
 const Family = enum { sans, serif, mono };
 
+/// The embedded font program: TrueType outlines (quadratic) or CFF (cubic).
+const Program = union(enum) {
+    tt: truetype.Font,
+    cff: cff.Font,
+
+    fn unitsPerEm(self: Program) f64 {
+        return switch (self) {
+            .tt => |t| @floatFromInt(t.units_per_em),
+            .cff => |c| @floatFromInt(c.units_per_em),
+        };
+    }
+
+    fn advance(self: Program, gid: u16) f64 {
+        return switch (self) {
+            .tt => |t| @floatFromInt(t.advance(gid)),
+            .cff => |c| @floatFromInt(c.advance(gid)),
+        };
+    }
+
+    fn outline(self: Program, gid: u16, sink: *CairoSink) void {
+        switch (self) {
+            .tt => |t| t.outline(gid, sink) catch {},
+            .cff => |c| c.outline(gid, sink) catch {},
+        }
+    }
+};
+
 const Font = struct {
     family: Family = .sans,
     bold: bool = false,
@@ -49,8 +77,8 @@ const Font = struct {
     enc: ?*FontEncoding = null,
     /// A Type0 font: codes are CIDs and widths come from /W. (zpdf also marks some simple TrueType fonts with a ToUnicode map as CID.)
     composite: bool = false,
-    /// The embedded TrueType program, when there is one we can read.
-    tt: ?truetype.Font = null,
+    /// The embedded font program, when there is one we can read.
+    prog: ?Program = null,
     symbolic: bool = false,
 
     fn width(self: Font, code: u8) f64 {
@@ -143,9 +171,31 @@ const Ctx = struct {
         const raw = decoded(self, st) orelse return;
         defer self.gpa.free(raw);
         const kept = self.arena.dupe(u8, raw) catch return;
-        f.tt = truetype.Font.parse(kept) catch |e| {
-            self.diag.note(if (e == error.Unsupported) "font-cff-not-read" else "font-truetype-damaged", name);
-            return;
+        const tag: u32 = if (kept.len >= 4) (@as(u32, kept[0]) << 24) | (@as(u32, kept[1]) << 16) | (@as(u32, kept[2]) << 8) | kept[3] else 0;
+        if (tag == 0x4F54544F) { // OTTO: OpenType with CFF outlines
+            const table = cff.tableOfSfnt(kept) orelse {
+                // OpenType with TrueType outlines is also allowed under this tag by some producers.
+                f.prog = if (truetype.Font.parse(kept)) |t| .{ .tt = t } else |_| null;
+                if (f.prog == null) self.diag.note("font-opentype-damaged", name);
+                return;
+            };
+            self.loadCff(f, table, name);
+        } else if (tag == 0x00010000 or tag == 0x74727565 or tag == 0x74746366) {
+            f.prog = if (truetype.Font.parse(kept)) |t| .{ .tt = t } else |e| blk: {
+                self.diag.note(if (e == error.Unsupported) "font-cff-not-read" else "font-truetype-damaged", name);
+                break :blk null;
+            };
+        } else if (kept.len > 4 and kept[0] == 1 and kept[1] == 0) { // a bare CFF (Type1C, CIDFontType0C)
+            self.loadCff(f, kept, name);
+        } else {
+            self.diag.note("font-program-unknown", name);
+        }
+    }
+
+    fn loadCff(self: *Ctx, f: *Font, data: []const u8, name: []const u8) void {
+        f.prog = if (cff.Font.parse(self.arena, data)) |c| .{ .cff = c } else |_| blk: {
+            self.diag.note("font-cff-damaged", name);
+            break :blk null;
         };
     }
 
@@ -325,30 +375,54 @@ const CairoSink = struct {
         self.x = x;
         self.y = y;
     }
+    pub fn curveTo(self: *CairoSink, x1: f64, y1: f64, x2: f64, y2: f64, x: f64, y: f64) void {
+        self.cr.curveTo(x1, y1, x2, y2, x, y);
+        self.x = x;
+        self.y = y;
+    }
     pub fn close(self: *CairoSink) void {
         self.cr.closePath();
     }
 };
 
 /// Which glyph of the embedded program draws character `code` (whose Unicode, as UTF-8, is `utf8`).
-fn glyphFor(f: *const Font, tt: truetype.Font, code: u32, utf8: []const u8) ?u16 {
+fn glyphFor(f: *const Font, prog: Program, code: u32, utf8: []const u8) ?u16 {
     if (f.composite) {
-        const e = f.enc orelse return @intCast(@min(code, 0xFFFF));
-        return @intCast(@min(e.cid_to_gid_map.getGID(code), 0xFFFF));
+        switch (prog) {
+            .tt => {
+                const e = f.enc orelse return @intCast(@min(code, 0xFFFF));
+                return @intCast(@min(e.cid_to_gid_map.getGID(code), 0xFFFF));
+            },
+            .cff => |c| return c.glyphForCid(code),
+        }
     }
     var cp: u32 = 0;
     if (utf8.len > 0) {
-        if (std.unicode.utf8Decode(utf8[0..std.unicode.utf8ByteSequenceLength(utf8[0]) catch 1])) |v| cp = v else |_| {}
+        if (std.unicode.utf8Decode(utf8[0 .. std.unicode.utf8ByteSequenceLength(utf8[0]) catch 1])) |v| cp = v else |_| {}
     }
-    if (f.symbolic or cp == 0) {
-        if (tt.glyphForCode(code)) |g| return g;
-        if (cp != 0) if (tt.glyphForUnicode(cp)) |g| return g;
-    } else {
-        if (tt.glyphForUnicode(cp)) |g| return g;
-        if (tt.glyphForCode(code)) |g| return g;
+    switch (prog) {
+        .tt => |tt| {
+            if (f.symbolic or cp == 0) {
+                if (tt.glyphForCode(code)) |g| return g;
+                if (cp != 0) if (tt.glyphForUnicode(cp)) |g| return g;
+            } else {
+                if (tt.glyphForUnicode(cp)) |g| return g;
+                if (tt.glyphForCode(code)) |g| return g;
+            }
+            // A subset with no usable cmap usually numbers its glyphs by character code.
+            if (!tt.hasCmap() and code < tt.num_glyphs) return @intCast(code);
+        },
+        .cff => |c| {
+            // Prefer the font's own encoding for a symbolic subset, Unicode otherwise.
+            if (f.symbolic or cp == 0) {
+                if (c.glyphForCode(code)) |g| return g;
+                if (cp != 0) if (c.glyphForUnicode(cp)) |g| return g;
+            } else {
+                if (c.glyphForUnicode(cp)) |g| return g;
+                if (c.glyphForCode(code)) |g| return g;
+            }
+        },
     }
-    // A subset with no usable cmap usually numbers its glyphs by character code.
-    if (!tt.hasCmap() and code < tt.num_glyphs) return @intCast(code);
     return null;
 }
 
@@ -397,16 +471,17 @@ fn showString(c: *Ctx, s: []const u8) void {
         // The embedded font's own outline, when we can read it.
         var drewOutline = false;
         var program_advance: f64 = -1;
-        if (f.tt) |tt| {
-            if (glyphFor(f, tt, code, one.buf[0..one.len])) |gid| {
-                program_advance = @as(f64, @floatFromInt(tt.advance(gid))) / @as(f64, @floatFromInt(tt.units_per_em));
+        if (f.prog) |prog| {
+            if (glyphFor(f, prog, code, one.buf[0..one.len])) |gid| {
+                const upm = prog.unitsPerEm();
+                program_advance = prog.advance(gid) / upm;
                 if (c.state.render_mode != 3 and c.state.render_mode != 7) {
                     // Undo the y flip used for substitute glyphs: outlines are y up like text space.
                     cr.scale(1, -1);
-                    cr.scale(fs / @as(f64, @floatFromInt(tt.units_per_em)), fs / @as(f64, @floatFromInt(tt.units_per_em)));
+                    cr.scale(fs / upm, fs / upm);
                     var sink: CairoSink = .{ .cr = cr };
                     cr.newPath();
-                    tt.outline(gid, &sink) catch {};
+                    prog.outline(gid, &sink);
                     setFill(c);
                     cr.fill();
                 }
@@ -855,7 +930,7 @@ fn grayOf(c: *Ctx, st: Object.Stream) ?Gray8 {
         var n: c_int = 0;
         const px = stbi_load_from_memory(data.ptr, @intCast(@min(data.len, std.math.maxInt(c_int))), &x, &y, &n, 1) orelse return null;
         defer stbi_image_free(px);
-        const out = c.gpa.dupe(u8, px[0..@as(usize, @intCast(x)) * @as(usize, @intCast(y))]) catch return null;
+        const out = c.gpa.dupe(u8, px[0 .. @as(usize, @intCast(x)) * @as(usize, @intCast(y))]) catch return null;
         return .{ .w = @intCast(x), .h = @intCast(y), .data = out };
     };
     const px = image.toArgb(c.gpa, .{ .width = @intCast(w), .height = @intCast(h), .bpc = @intCast(intOf(c, d.get("BitsPerComponent"), 8)), .cs = .gray }, data, .{ 0, 0, 0 }, null) catch return null;
@@ -1195,4 +1270,5 @@ test {
     _ = @import("truetype.zig");
     _ = @import("image.zig");
     _ = @import("diag.zig");
+    _ = @import("cff.zig");
 }
