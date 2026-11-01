@@ -305,6 +305,23 @@ const Detail = struct {
 
 const Kind = enum { cpu, memory, disk, ethernet, wifi, gpu };
 
+/// What a rescan looks at: names are unique within a group.
+const Group = enum {
+    disks,
+    network,
+    gpus,
+    devices,
+
+    fn of(self: Group, kind: Kind) bool {
+        return switch (self) {
+            .disks => kind == .disk,
+            .network => kind == .ethernet or kind == .wifi,
+            .gpus => kind == .gpu,
+            .devices => kind == .disk or kind == .ethernet or kind == .wifi or kind == .gpu,
+        };
+    }
+};
+
 const Resource = struct {
     kind: Kind,
     name: [32]u8 = undefined,
@@ -312,6 +329,11 @@ const Resource = struct {
     detail: *Detail,
     row_title: *gtk.Label,
     row_sub: *gtk.Label,
+    /// The row's content; its parent is the list row, hidden while the device is gone.
+    row: *gtk.Widget,
+    /// Whether the device is there now, and whether the last scan saw it.
+    present: bool = true,
+    seen: bool = true,
     // Disks.
     prev_disk: ?perf.DiskStat = null,
     // Network.
@@ -593,7 +615,7 @@ pub const Perf = struct {
         row_box.append(text.as(gtk.Widget));
         self.list.append(row_box.as(gtk.Widget));
 
-        r.* = .{ .kind = kind, .detail = detail, .row_title = title, .row_sub = sub };
+        r.* = .{ .kind = kind, .detail = detail, .row_title = title, .row_sub = sub, .row = row_box.as(gtk.Widget) };
         const n = @min(name.len, r.name.len);
         @memcpy(r.name[0..n], name[0..n]);
         r.name_len = n;
@@ -602,6 +624,55 @@ pub const Perf = struct {
         const page = std.fmt.bufPrintSentinel(&buf, "{d}", .{self.resources.items.len - 1}, 0) catch "x";
         _ = self.stack.addNamed(detail.root.as(gtk.Widget), page);
         return r;
+    }
+
+    /// The resource for a device, if one was made before.
+    fn find(self: *Perf, group: Group, name: []const u8) ?*Resource {
+        for (self.resources.items) |r| {
+            if (group.of(r.kind) and std.mem.eql(u8, r.id(), name)) return r;
+        }
+        return null;
+    }
+
+    fn count(self: *Perf, group: Group) usize {
+        var n: usize = 0;
+        for (self.resources.items) |r| {
+            if (group.of(r.kind)) n += 1;
+        }
+        return n;
+    }
+
+    /// Hides the row of a device that was unplugged, and shows it again if it
+    /// comes back. Rows are kept, not removed, so the pages stay numbered as
+    /// their rows are.
+    fn setPresent(self: *Perf, r: *Resource, present: bool) void {
+        if (r.present == present) return;
+        r.present = present;
+        if (r.row.getParent()) |row| row.setVisible(@intFromBool(present));
+        // Counters from before the gap would make one huge first sample.
+        if (present) {
+            r.prev_disk = null;
+            r.prev_net = null;
+        }
+        std.log.info("{s} {s}", .{ r.id(), if (present) "is back" else "is gone" });
+        if (!present) {
+            // Never leave a vanished device selected.
+            if (self.list.getSelectedRow()) |sel| {
+                if (sel.as(gtk.Widget) == r.row.getParent()) {
+                    if (self.list.getRowAtIndex(0)) |first| self.list.selectRow(first);
+                }
+            }
+        }
+    }
+
+    /// Looks for disks, network adapters and GPUs that came or went since the
+    /// last scan: a USB disk, a dock, Wi-Fi that was switched on.
+    fn rescan(self: *Perf) void {
+        for (self.resources.items) |r| r.seen = !Group.devices.of(r.kind);
+        self.discoverDisks();
+        self.discoverNetwork();
+        self.discoverGpus();
+        for (self.resources.items) |r| self.setPresent(r, r.seen);
     }
 
     fn discover(self: *Perf) void {
@@ -736,9 +807,13 @@ pub const Perf = struct {
 
         var root_disk_buf: [32]u8 = undefined;
         const root_disk = rootDisk(&root_disk_buf);
-        for (names.items, 0..) |name, n| {
+        for (names.items) |name| {
+            if (self.find(.disks, name)) |known| {
+                known.seen = true;
+                continue;
+            }
             var tbuf: [48]u8 = undefined;
-            const title = std.fmt.bufPrintSentinel(&tbuf, "Disk {d} ({s})", .{ n, name }, 0) catch "Disk";
+            const title = std.fmt.bufPrintSentinel(&tbuf, "Disk {d} ({s})", .{ self.count(.disks), name }, 0) catch "Disk";
             const d = self.buildDetail(.{
                 .title = "Disk",
                 .caption_a = "Active time",
@@ -830,6 +905,10 @@ pub const Perf = struct {
         }.lt);
 
         for (names.items) |name| {
+            if (self.find(.network, name)) |known| {
+                known.seen = true;
+                continue;
+            }
             const wifi = pathExists("/sys/class/net/{s}/wireless", .{name}) or pathExists("/sys/class/net/{s}/phy80211", .{name});
             var tbuf: [48]u8 = undefined;
             const title = std.fmt.bufPrintSentinel(&tbuf, "{s} ({s})", .{ if (wifi) "Wi-Fi" else "Ethernet", name }, 0) catch "Network";
@@ -870,8 +949,16 @@ pub const Perf = struct {
 
     fn discoverGpus(self: *Perf) void {
         var index: u32 = 0;
-        var shown: u32 = 0;
         while (index < 8) : (index += 1) {
+            var known_name: [16]u8 = undefined;
+            // Before reading the PCI id list, which is a megabyte: a card seen
+            // before is only marked as still there.
+            if (std.fmt.bufPrint(&known_name, "card{d}", .{index})) |kn| {
+                if (self.find(.gpus, kn)) |known| {
+                    known.seen = true;
+                    continue;
+                }
+            } else |_| {}
             var vb: [16]u8 = undefined;
             var db: [16]u8 = undefined;
             var p: [96]u8 = undefined;
@@ -929,7 +1016,7 @@ pub const Perf = struct {
             });
             if (!busy) d.caption_a.setText(if (has_freq) common.tr("Clock speed (% of maximum)") else common.tr("Utilization (not reported by this driver)"));
             var tbuf: [32]u8 = undefined;
-            const title = std.fmt.bufPrintSentinel(&tbuf, "GPU {d}", .{shown}, 0) catch "GPU";
+            const title = std.fmt.bufPrintSentinel(&tbuf, "GPU {d}", .{self.count(.gpus)}, 0) catch "GPU";
             setSlice(d.title, title);
             setSlice(d.model, full);
 
@@ -957,11 +1044,20 @@ pub const Perf = struct {
             setSlice(d.info[4].?, if (vendor_name.len > 0) vendor_name else vtext);
             setText(d.info[5].?, "{x:0>4}:{x:0>4}", .{ vendor, device });
             r.row_sub.setText("");
-            shown += 1;
         }
     }
 
     // ---- sampling ------------------------------------------------------------------
+
+    /// Shows the page of the resource with this id (`cpu`, `memory`, `sda`,
+    /// `eth0`, `card0`); an unknown id changes nothing.
+    pub fn select(self: *Perf, name: []const u8) void {
+        for (self.resources.items, 0..) |r, i| {
+            if (!std.mem.eql(u8, r.id(), name)) continue;
+            if (self.list.getRowAtIndex(@intCast(i))) |row| self.list.selectRow(row);
+            return;
+        }
+    }
 
     /// Called on every refresh of the Task Manager.
     pub fn update(self: *Perf, process_count: usize, thread_count: usize) void {
@@ -969,7 +1065,9 @@ pub const Perf = struct {
         const dt: f64 = if (self.prev_us == 0) 0 else @as(f64, @floatFromInt(now_us - self.prev_us)) / 1e6;
         self.prev_us = now_us;
         self.tick +%= 1;
-        for (self.resources.items) |r| switch (r.kind) {
+        // Every sixth refresh (about nine seconds), look for devices that came or went.
+        if (self.tick % 6 == 0) self.rescan();
+        for (self.resources.items) |r| if (r.present) switch (r.kind) {
             .cpu => self.updateCpu(r, process_count, thread_count),
             .memory => self.updateMemory(r),
             .disk => self.updateDisk(r, dt),

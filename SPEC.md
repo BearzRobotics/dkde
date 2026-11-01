@@ -727,8 +727,25 @@ default apps and the start menu find it.
   needs `webp-pixbuf-loader`, SVG needs `librsvg2-common`). "Set as
   wallpaper" writes `[wallpaper] image` and clears `slideshow-dir`.
 - `dkde-tasks`: two tabs. **Processes** lists processes from `/proc`, refreshed
-  every 1.5 s; a search box filters by name; busy CPU and memory cells are
-  tinted. End Task sends SIGTERM, Force Quit SIGKILL after confirmation.
+  every 1.5 s; a search box filters by name, command line or PID; busy CPU,
+  memory and disk cells are tinted. The name is the program's file name
+  (`/proc/<pid>/exe`), else the first word of its command line, else the
+  kernel's thread name, so a program that renamed its main thread still reads
+  as itself; files named by a version number (`.../versions/2.1.316`) are
+  skipped. Columns: Name, PID, User, Status, CPU %, Memory, Disk, Threads,
+  Priority and Command; the View menu shows and hides all but Name, and the
+  choice is kept in `$XDG_STATE_HOME/dkde/tasks.state`. Every header sorts.
+  **Disk** is read and written bytes per second from `/proc/<pid>/io`, which only
+  the owner and root may read: other processes, and every process on a kernel
+  built without task I/O accounting (WSL2), show a dash. There is no
+  per-process network column: Linux has no unprivileged per-process traffic
+  counters. End Task sends SIGTERM, Force Quit SIGKILL after confirmation.
+  The right-click menu adds **Open file location** (the folder of the program
+  file, for processes whose file is known), **Priority** (High, Above normal,
+  Normal, Below normal, Low, which are nice -10, -5, 0, 5 and 15; raising a
+  priority needs root, as on any Linux system) and Copy command line.
+  `--tab processes|performance` and `--resource cpu|memory|sda|eth0|card0` choose
+  what opens first.
   **Performance** is laid out like the Windows 11 Task Manager: a list of CPU,
   Memory, each disk, each Ethernet and Wi-Fi adapter and each GPU, each with a
   60-sample thumbnail, and for the selected one a large graph and its figures.
@@ -741,7 +758,9 @@ default apps and the start menu find it.
   the SSID (via `nmcli`) and signal strength. GPU: from sysfs; AMD shows
   utilization, VRAM, temperature, power and clock; Intel shows clock speed
   only. NVIDIA's proprietary driver exposes nothing in sysfs, so it is listed
-  without figures. Devices are found when the program starts.
+  without figures. Disks, network adapters and GPUs are looked for again every
+  nine seconds: a device that appears gets a row, and one that disappears
+  loses its row (and comes back with it).
 - `dkde-snip`: full screen and region, for the first output. The picture is
   saved to `<Pictures>/Screenshots/` and copied to the clipboard. **Window
   capture and scrolling capture are not offered:** wlr-screencopy and

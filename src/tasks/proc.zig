@@ -12,6 +12,8 @@ pub const Stat = struct {
     cpu_ticks: u64,
     threads: u32,
     rss_pages: u64,
+    /// Nice value, -20 (greediest) to 19.
+    nice: i32,
 };
 
 /// Parses `/proc/<pid>/stat`. The command name may contain spaces and
@@ -29,12 +31,14 @@ pub fn parseStat(content: []const u8) ?Stat {
     var stime: u64 = 0;
     var threads: u32 = 0;
     var rss: u64 = 0;
+    var nice: i32 = 0;
     // After "(comm)": state is field 3, utime 14, stime 15, threads 20, rss 24.
     while (fields.next()) |field| : (index += 1) {
         switch (index) {
             0 => state = field[0],
             11 => utime = std.fmt.parseInt(u64, field, 10) catch return null,
             12 => stime = std.fmt.parseInt(u64, field, 10) catch return null,
+            16 => nice = std.fmt.parseInt(i32, field, 10) catch 0,
             17 => threads = std.fmt.parseInt(u32, field, 10) catch 0,
             21 => {
                 rss = std.fmt.parseInt(u64, field, 10) catch 0;
@@ -51,6 +55,7 @@ pub fn parseStat(content: []const u8) ?Stat {
         .cpu_ticks = utime + stime,
         .threads = threads,
         .rss_pages = rss,
+        .nice = nice,
     };
 }
 
@@ -125,6 +130,87 @@ pub fn cpuPercent(proc_ticks_delta: u64, total_ticks_delta: u64, cpu_count: usiz
     return @as(f64, @floatFromInt(proc_ticks_delta)) / @as(f64, @floatFromInt(total_ticks_delta)) * 100.0 * @as(f64, @floatFromInt(cpu_count));
 }
 
+/// Bytes a process has read from and written to storage, from `/proc/<pid>/io`.
+/// Only the owner (or root) may read that file.
+pub const Io = struct { read: u64, write: u64 };
+
+pub fn parseIo(content: []const u8) ?Io {
+    var read: ?u64 = null;
+    var write: ?u64 = null;
+    var lines = std.mem.splitScalar(u8, content, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, line, "read_bytes:")) read = std.fmt.parseInt(u64, std.mem.trim(u8, line["read_bytes:".len..], " \t"), 10) catch null;
+        if (std.mem.startsWith(u8, line, "write_bytes:")) write = std.fmt.parseInt(u64, std.mem.trim(u8, line["write_bytes:".len..], " \t"), 10) catch null;
+    }
+    return .{ .read = read orelse return null, .write = write orelse return null };
+}
+
+fn baseName(path: []const u8) []const u8 {
+    const end = std.mem.indexOfScalar(u8, path, 0) orelse path.len;
+    const p = path[0..end];
+    return if (std.mem.lastIndexOfScalar(u8, p, '/')) |i| p[i + 1 ..] else p;
+}
+
+/// The name to show for a process, as the Windows Task Manager shows the
+/// program rather than whatever a thread called itself: the executable's file
+/// name, else the first word of the command line, else the kernel's `comm`
+/// (which is all a kernel thread has). `exe` is the target of `/proc/<pid>/exe`
+/// (not readable for other users' processes), `cmdline` the raw
+/// `/proc/<pid>/cmdline` with its NULs.
+pub fn displayName(exe: []const u8, cmdline: []const u8, comm: []const u8) []const u8 {
+    var name = baseName(exe);
+    // A replaced executable reads "/usr/bin/foo (deleted)".
+    if (std.mem.endsWith(u8, name, " (deleted)")) name = name[0 .. name.len - " (deleted)".len];
+    // Some programs are installed as a file named by their version
+    // (".../claude/versions/2.1.316"): that says nothing, so look further.
+    const versioned = name.len > 0 and std.ascii.isDigit(name[0]);
+    if (name.len > 0 and !versioned) return name;
+    // argv[0], or the first word of a title the program set for itself ("sshd: user").
+    const first = baseName(cmdline);
+    var word = first;
+    if (std.mem.indexOfScalar(u8, word, ' ')) |i| word = word[0..i];
+    word = std.mem.trimEnd(u8, word, ":");
+    // A login shell is run as "-bash".
+    word = std.mem.trimStart(u8, word, "-");
+    if (word.len > 0 and !std.ascii.isDigit(word[0])) return word;
+    // Nothing better: the version-named file, or the kernel's name.
+    return if (versioned) name else comm;
+}
+
+/// The command line with its NULs shown as spaces, into `out`.
+pub fn cmdlineText(cmdline: []const u8, out: []u8) []const u8 {
+    const n = @min(cmdline.len, out.len);
+    for (cmdline[0..n], 0..) |c, i| out[i] = if (c == 0) ' ' else c;
+    return std.mem.trimEnd(u8, out[0..n], " ");
+}
+
+test "io counters" {
+    const io = parseIo("rchar: 1\nwchar: 2\nsyscr: 3\nsyscw: 4\nread_bytes: 4096\nwrite_bytes: 8192\ncancelled_write_bytes: 0\n").?;
+    try std.testing.expectEqual(@as(u64, 4096), io.read);
+    try std.testing.expectEqual(@as(u64, 8192), io.write);
+    try std.testing.expect(parseIo("") == null);
+}
+
+test "display name: the program, not the thread" {
+    // A thread renamed itself; the executable still says what the program is.
+    try std.testing.expectEqualStrings("claude", displayName("/home/u/.local/bin/claude", "claude\x00--resume\x00", "MainThread"));
+    try std.testing.expectEqualStrings("foo", displayName("/usr/bin/foo (deleted)", "", "x"));
+    // Another user's process: no exe, so the command line.
+    try std.testing.expectEqualStrings("sshd", displayName("", "sshd: dakota [priv]", "sshd"));
+    try std.testing.expectEqualStrings("bash", displayName("", "-bash\x00", "bash"));
+    try std.testing.expectEqualStrings("python3", displayName("", "/usr/bin/python3\x00-m\x00x\x00", "MainThread"));
+    // Installed under its version number: the command line has the real name.
+    try std.testing.expectEqualStrings("claude", displayName("/home/u/.local/share/claude/versions/2.1.316", "claude\x00", "MainThread"));
+    try std.testing.expectEqualStrings("2.1.316", displayName("/x/2.1.316", "", "MainThread"));
+    // A kernel thread has neither.
+    try std.testing.expectEqualStrings("kworker/0:1", displayName("", "", "kworker/0:1"));
+}
+
+test "command line text" {
+    var buf: [32]u8 = undefined;
+    try std.testing.expectEqualStrings("a -b c", cmdlineText("a\x00-b\x00c\x00", &buf));
+}
+
 test "stat with awkward command name" {
     const line = "1234 (my (odd) app) S 1 1234 1234 0 -1 4194304 100 0 0 0 250 50 0 0 20 0 3 0 5000 1000000 700 18446744073709551615";
     const stat = parseStat(line).?;
@@ -134,6 +220,7 @@ test "stat with awkward command name" {
     try std.testing.expectEqual(@as(u64, 300), stat.cpu_ticks);
     try std.testing.expectEqual(@as(u32, 3), stat.threads);
     try std.testing.expectEqual(@as(u64, 700), stat.rss_pages);
+    try std.testing.expectEqual(@as(i32, 0), stat.nice);
 }
 
 test "stat rejects garbage" {
