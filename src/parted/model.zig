@@ -281,6 +281,49 @@ fn addGap(arena: Allocator, out: *std.ArrayList(Gap), from: u64, to: u64, per_mi
 
 // -- tests --------------------------------------------------------------------------------
 
+/// The programs the partition tool drives, what each is for, and the package
+/// to install. dkde-parted links no partitioning library.
+const core_tools = [_]struct { cmd: [:0]const u8, why: []const u8, package: []const u8 }{
+    .{ .cmd = "parted", .why = "changing partitions", .package = "parted" },
+    .{ .cmd = "lsblk", .why = "listing disks", .package = "util-linux" },
+    .{ .cmd = "losetup", .why = "disk image files", .package = "util-linux" },
+    .{ .cmd = "sudo", .why = "applying changes", .package = "sudo" },
+};
+
+/// A message naming the programs that are not installed and the packages that
+/// provide them, or null when all are present. `have` says whether a command exists.
+pub fn missingCoreTools(have: *const fn ([:0]const u8) bool, buf: []u8) ?[]const u8 {
+    var len: usize = 0;
+    var packages: [core_tools.len][]const u8 = undefined;
+    var n_packages: usize = 0;
+    var any = false;
+    const head = "Not installed: ";
+    @memcpy(buf[0..head.len], head);
+    len = head.len;
+    for (core_tools) |t| {
+        if (have(t.cmd)) continue;
+        const part = std.fmt.bufPrint(buf[len..], "{s}{s} ({s})", .{ if (any) ", " else "", t.cmd, t.why }) catch break;
+        len += part.len;
+        any = true;
+        var seen = false;
+        for (packages[0..n_packages]) |p| if (std.mem.eql(u8, p, t.package)) {
+            seen = true;
+        };
+        if (!seen) {
+            packages[n_packages] = t.package;
+            n_packages += 1;
+        }
+    }
+    if (!any) return null;
+    const tail = std.fmt.bufPrint(buf[len..], ". Install: ", .{}) catch return buf[0..len];
+    len += tail.len;
+    for (packages[0..n_packages], 0..) |p, i| {
+        const part = std.fmt.bufPrint(buf[len..], "{s}{s}", .{ if (i > 0) ", " else "", p }) catch break;
+        len += part.len;
+    }
+    return buf[0..len];
+}
+
 const sample =
     \\{"blockdevices":[
     \\ {"name":"sda","path":"/dev/sda","type":"disk","size":1000000000000,"start":null,"fstype":null,"label":null,"mountpoints":[null],"pttype":"gpt","model":"Samsung SSD  ","rm":false,"ro":false,"log-sec":512,
@@ -397,4 +440,27 @@ test "fuzz: lsblk and parted output" {
         "BYT;\n/tmp/x.img:268435456B:file:512:512:gpt:;\n1:1048576B:105906175B:104857600B:ext4:name:boot, esp;\n",
         "BYT;\n/tmp/x.img:1B:file:0:0:unknown:;\n9:xB:yB:zB:;\n",
     } });
+}
+
+fn haveNone(_: [:0]const u8) bool {
+    return false;
+}
+
+fn haveAllButLosetup(cmd: [:0]const u8) bool {
+    return !std.mem.eql(u8, cmd, "losetup");
+}
+
+fn haveAll(_: [:0]const u8) bool {
+    return true;
+}
+
+test "missing core tools are named with the packages to install" {
+    var buf: [400]u8 = undefined;
+    try std.testing.expect(missingCoreTools(haveAll, &buf) == null);
+    const one = missingCoreTools(haveAllButLosetup, &buf).?;
+    try std.testing.expectEqualStrings("Not installed: losetup (disk image files). Install: util-linux", one);
+    const all = missingCoreTools(haveNone, &buf).?;
+    try std.testing.expect(std.mem.indexOf(u8, all, "parted (changing partitions)") != null);
+    // util-linux is named once although two of its programs are missing.
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, all[std.mem.indexOf(u8, all, "Install:").?..], "util-linux"));
 }

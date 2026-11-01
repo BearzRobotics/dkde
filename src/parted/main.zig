@@ -52,6 +52,8 @@ const Parted = struct {
     part_list: *gtk.ListBox,
     bar: *gtk.DrawingArea,
     status: *gtk.Label,
+    /// Shown above everything when a program the tool drives is not installed.
+    notice: *gtk.Label,
     probe: *gtk.Widget,
     buttons: [16]*gtk.Button = undefined,
     /// Image files opened or created in this session.
@@ -115,6 +117,7 @@ const Parted = struct {
             .part_list = gtk.ListBox.new(),
             .bar = gtk.DrawingArea.new(),
             .status = gtk.Label.new(""),
+            .notice = gtk.Label.new(""),
             .probe = undefined,
             .arena = std.heap.ArenaAllocator.init(allocator),
             .pending_arena = std.heap.ArenaAllocator.init(allocator),
@@ -263,7 +266,17 @@ const Parted = struct {
         self.status.as(gtk.Widget).setMarginBottom(6);
         self.status.as(gtk.Widget).addCssClass("dim-label");
 
+        self.notice.setXalign(0);
+        self.notice.setWrap(1);
+        self.notice.as(gtk.Widget).setMarginStart(12);
+        self.notice.as(gtk.Widget).setMarginEnd(12);
+        self.notice.as(gtk.Widget).setMarginTop(6);
+        self.notice.as(gtk.Widget).setMarginBottom(2);
+        self.notice.as(gtk.Widget).addCssClass("error");
+        self.notice.as(gtk.Widget).setVisible(0);
+
         const root = gtk.Box.new(.vertical, 0);
+        root.append(self.notice.as(gtk.Widget));
         root.append(top.as(gtk.Widget));
         root.append(self.bar.as(gtk.Widget));
         root.append(header.as(gtk.Widget));
@@ -595,7 +608,20 @@ const Parted = struct {
         };
     }
 
+    /// Tells the user which programs are missing and what to install.
+    fn updateNotice(self: *Parted) void {
+        var buf: [400:0]u8 = undefined;
+        if (model.missingCoreTools(common.proc.hasProgram, buf[0 .. buf.len - 1])) |text| {
+            buf[text.len] = 0;
+            self.notice.setText(buf[0..text.len :0]);
+            self.notice.as(gtk.Widget).setVisible(1);
+        } else {
+            self.notice.as(gtk.Widget).setVisible(0);
+        }
+    }
+
     fn updateButtons(self: *Parted) void {
+        self.updateNotice();
         const d = self.selectedDisk();
         const writable = d != null and !self.busy and model.refuseReason(d.?) == null;
         const part = self.selectedPart();
