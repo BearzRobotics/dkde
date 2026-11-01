@@ -180,7 +180,7 @@ pub const ConsolePage = struct {
         defer preview.deinit();
         self.status.setText(if (failed) common.tr("That font cannot be read; the preview shows the built-in one.") else "");
 
-        const w: u32 = 720;
+        const w: u32 = 560;
         const h: u32 = 16 + preview.cell_h * @as(u32, cf.sample.Preview.rows);
         const px = gpa.alloc(u32, w * h) catch return;
         defer gpa.free(px);

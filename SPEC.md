@@ -553,7 +553,15 @@ cancel button, password-protected archives, opening an archive as a folder.
 
 ### 5.5 Settings (`dkde-settings`)
 
-**Window:** a category list on the left and a page on the right. Changes are
+**Window:** major categories on the left (Personalization, System, Network &
+devices, Apps, Time & language, Accounts). A category opens a list of its pages,
+each with an icon and a line on what it is for; a page opens below a breadcrumb
+(`Apps › Console`) with a back arrow. `--page <id>` opens a page or a category.
+Search narrows the categories and their lists. Terminal and Console are
+side by side under Apps, and their descriptions say which is which: Terminal
+is the desktop window (per user, with profiles), Console is the full-screen
+text login with no desktop (system-wide, needs an administrator password).
+Changes are
 **not** written as you make them: they are held in memory (the controls show
 them) and a bar at the bottom says "N changes not applied yet" with **Revert**
 and **Apply**. Apply writes the config files once, and the components pick the
@@ -575,7 +583,8 @@ timer) are their own explicit actions and are not held back.
 | Bluetooth | Power, scan, pair, connect, remove | `bluetoothctl` |
 | Printers | List, default, test page, add, remove | CUPS (`lpstat`, `lpoptions`, `lpadmin`) |
 | Start menu | Pinned apps, recent-apps count, power commands | dkde config |
-| Terminal | Default profile, editing profiles | dkde-term config |
+| Terminal | Default profile, editing profiles, with a preview of font, scheme, cursor, opacity and padding | dkde-term config |
+| Console | Font (PSF or TrueType), size, colour scheme, scrollback, with a preview | `/etc/dkde/console.conf`, through `dkde-console config set` (administrator) |
 | Keyboard | Layout | labwc `environment`, then `labwc --reconfigure` |
 | Keyboard shortcuts | Rebind dkde's own shortcuts | labwc `rc.xml` `<keybind>` blocks, then reconfigure |
 | Mouse & touchpad | Pointer speed, natural scrolling, tap to click | labwc `rc.xml` `<libinput>` section, then reconfigure |

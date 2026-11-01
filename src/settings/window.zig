@@ -1,4 +1,4 @@
-//! The settings window (SPEC.md 5.5): categories on the left, a page on the
+//! The settings window (SPEC.md 5.5): major categories on the left, a list of pages and then a page on the
 //! right. Every control writes its config file the moment it changes; the
 //! running components pick the change up through their file monitors.
 
@@ -17,28 +17,42 @@ const audio = common.audio;
 const users = @import("users.zig");
 const hwpages = @import("hwpages.zig");
 const consolepage = @import("consolepage.zig");
+const termpreview = @import("termpreview.zig");
 
 const log = std.log.scoped(.settings);
 
-const Page = struct { id: [:0]const u8, title: [:0]const u8, icon: [:0]const u8 };
+const Page = struct { id: [:0]const u8, title: [:0]const u8, icon: [:0]const u8, category: usize, desc: [:0]const u8 };
+const Section = struct { id: [:0]const u8, title: [:0]const u8, icon: [:0]const u8 };
+
+/// The sidebar: major categories. Each opens a list of its pages (SPEC.md 5.5).
+const sections = [_]Section{
+    .{ .id = "personalization", .title = "Personalization", .icon = "applications-graphics-symbolic" },
+    .{ .id = "system", .title = "System", .icon = "computer-symbolic" },
+    .{ .id = "devices", .title = "Network & devices", .icon = "network-wireless-symbolic" },
+    .{ .id = "apps", .title = "Apps", .icon = "view-app-grid-symbolic" },
+    .{ .id = "time", .title = "Time & language", .icon = "preferences-system-time-symbolic" },
+    .{ .id = "accounts", .title = "Accounts", .icon = "avatar-default-symbolic" },
+};
+
+/// The pages. `id` is what `--page` takes; `category` indexes `sections`.
 const pages = [_]Page{
-    .{ .id = "appearance", .title = "Appearance", .icon = "applications-graphics-symbolic" },
-    .{ .id = "display", .title = "Display", .icon = "video-display-symbolic" },
-    .{ .id = "taskbar", .title = "Taskbar", .icon = "view-list-symbolic" },
-    .{ .id = "startmenu", .title = "Start menu", .icon = "start-here-symbolic" },
-    .{ .id = "terminal", .title = "Terminal", .icon = "utilities-terminal-symbolic" },
-    .{ .id = "console", .title = "Console", .icon = "computer-symbolic" },
-    .{ .id = "datetime", .title = "Date & time", .icon = "preferences-system-time-symbolic" },
-    .{ .id = "power", .title = "Power & lock", .icon = "system-shutdown-symbolic" },
-    .{ .id = "keyboard", .title = "Keyboard", .icon = "input-keyboard-symbolic" },
-    .{ .id = "shortcuts", .title = "Keyboard shortcuts", .icon = "preferences-desktop-keyboard-shortcuts-symbolic" },
-    .{ .id = "audio", .title = "Sound", .icon = "audio-volume-high-symbolic" },
-    .{ .id = "network", .title = "Network", .icon = "network-wireless-symbolic" },
-    .{ .id = "bluetooth", .title = "Bluetooth", .icon = "bluetooth-symbolic" },
-    .{ .id = "printers", .title = "Printers", .icon = "printer-symbolic" },
-    .{ .id = "mouse", .title = "Mouse & touchpad", .icon = "input-mouse-symbolic" },
-    .{ .id = "defaults", .title = "Default apps", .icon = "preferences-other-symbolic" },
-    .{ .id = "users", .title = "User", .icon = "avatar-default-symbolic" },
+    .{ .id = "appearance", .title = "Appearance", .icon = "applications-graphics-symbolic", .category = 0, .desc = "Dark mode, accent colour, icons, wallpaper" },
+    .{ .id = "taskbar", .title = "Taskbar", .icon = "view-list-symbolic", .category = 0, .desc = "The panel: position, size, clock and tray" },
+    .{ .id = "startmenu", .title = "Start menu", .icon = "start-here-symbolic", .category = 0, .desc = "Pinned apps and how the menu looks" },
+    .{ .id = "display", .title = "Display", .icon = "video-display-symbolic", .category = 1, .desc = "Resolution, scale, arrangement and night light" },
+    .{ .id = "audio", .title = "Sound", .icon = "audio-volume-high-symbolic", .category = 1, .desc = "Volume and the input and output devices" },
+    .{ .id = "power", .title = "Power & lock", .icon = "system-shutdown-symbolic", .category = 1, .desc = "Sleep, screen lock and the power button" },
+    .{ .id = "network", .title = "Network", .icon = "network-wireless-symbolic", .category = 2, .desc = "Wi-Fi and wired connections" },
+    .{ .id = "bluetooth", .title = "Bluetooth", .icon = "bluetooth-symbolic", .category = 2, .desc = "Pair and manage Bluetooth devices" },
+    .{ .id = "printers", .title = "Printers", .icon = "printer-symbolic", .category = 2, .desc = "Printers and print queues" },
+    .{ .id = "mouse", .title = "Mouse & touchpad", .icon = "input-mouse-symbolic", .category = 2, .desc = "Pointer speed, scrolling and tapping" },
+    .{ .id = "keyboard", .title = "Keyboard", .icon = "input-keyboard-symbolic", .category = 2, .desc = "Layouts for typing" },
+    .{ .id = "shortcuts", .title = "Keyboard shortcuts", .icon = "preferences-desktop-keyboard-shortcuts-symbolic", .category = 2, .desc = "Keys that open apps and manage windows" },
+    .{ .id = "defaults", .title = "Default apps", .icon = "preferences-other-symbolic", .category = 3, .desc = "Which app opens which kind of file" },
+    .{ .id = "terminal", .title = "Terminal", .icon = "utilities-terminal-symbolic", .category = 3, .desc = "The terminal window you open on the desktop (dkde-term). Your own settings, with profiles" },
+    .{ .id = "console", .title = "Console", .icon = "computer-symbolic", .category = 3, .desc = "The full-screen text login on Ctrl+Alt+F1 to F6, with no desktop (dkde-console). System-wide, needs an administrator password" },
+    .{ .id = "datetime", .title = "Date & time", .icon = "preferences-system-time-symbolic", .category = 4, .desc = "Time zone, clock and calendar system" },
+    .{ .id = "users", .title = "User", .icon = "avatar-default-symbolic", .category = 5, .desc = "Your account and the other accounts on this computer" },
 };
 
 /// Ties one control to one config key.
@@ -68,6 +82,8 @@ pub const SettingsWindow = struct {
     icon_themes: std.ArrayList([:0]u8) = .empty,
     pinned_box: ?*gtk.Box = null,
     profile_box: ?*gtk.Box = null,
+    /// The previews in the profile cards; they follow the staged values.
+    term_previews: std.ArrayList(*termpreview.TermPreview) = .empty,
     profile_name: ?[]u8 = null,
     debounce_source: c_uint = 0,
     /// The sound tool that answered, found when the Sound page is built.
@@ -76,6 +92,14 @@ pub const SettingsWindow = struct {
     /// The Sound page runs external tools, so it is built on first visit.
     audio_built: bool = false,
     sidebar: ?*gtk.ListBox = null,
+    /// The bar above a page: back to its category, and where you are.
+    crumb_bar: *gtk.Box = undefined,
+    crumb_label: *gtk.Label = undefined,
+    /// The page being shown, or null while a category's list is shown.
+    current_sub: ?usize = null,
+    current_cat: usize = 0,
+    /// Set while the code selects a sidebar row itself.
+    nav_busy: bool = false,
     search_text: [64]u8 = undefined,
     search_len: usize = 0,
     account_names: std.ArrayList([:0]u8) = .empty,
@@ -110,7 +134,7 @@ pub const SettingsWindow = struct {
         const sidebar = gtk.ListBox.new();
         self.sidebar = sidebar;
         sidebar.as(gtk.Widget).addCssClass("navigation-sidebar");
-        inline for (pages) |page| {
+        inline for (sections) |page| {
             const row = gtk.Box.new(.horizontal, 12);
             row.as(gtk.Widget).setMarginTop(8);
             row.as(gtk.Widget).setMarginBottom(8);
@@ -131,6 +155,25 @@ pub const SettingsWindow = struct {
         scroller.as(gtk.Widget).setHexpand(1);
         scroller.as(gtk.Widget).addCssClass("dkde-settings-content");
 
+        const crumb_bar = gtk.Box.new(.horizontal, 8);
+        crumb_bar.as(gtk.Widget).setMarginTop(8);
+        crumb_bar.as(gtk.Widget).setMarginStart(16);
+        const back = gtk.Button.newFromIconName("go-previous-symbolic");
+        back.as(gtk.Widget).addCssClass("flat");
+        back.as(gtk.Widget).setTooltipText(common.tr("Back"));
+        _ = gtk.Button.signals.clicked.connect(back, *SettingsWindow, &onBack, self, .{});
+        crumb_bar.append(back.as(gtk.Widget));
+        self.crumb_label = gtk.Label.new("");
+        self.crumb_label.as(gtk.Widget).addCssClass("dim-label");
+        crumb_bar.append(self.crumb_label.as(gtk.Widget));
+        crumb_bar.as(gtk.Widget).setVisible(0);
+        self.crumb_bar = crumb_bar;
+        const content = gtk.Box.new(.vertical, 0);
+        content.append(crumb_bar.as(gtk.Widget));
+        scroller.as(gtk.Widget).setVexpand(1);
+        content.append(scroller.as(gtk.Widget));
+        content.as(gtk.Widget).setHexpand(1);
+
         const paned = gtk.Paned.new(.horizontal);
         const side_scroller = gtk.ScrolledWindow.new();
         side_scroller.setChild(sidebar.as(gtk.Widget));
@@ -149,7 +192,7 @@ pub const SettingsWindow = struct {
         side.append(search.as(gtk.Widget));
         side.append(side_scroller.as(gtk.Widget));
         paned.setStartChild(side.as(gtk.Widget));
-        paned.setEndChild(scroller.as(gtk.Widget));
+        paned.setEndChild(content.as(gtk.Widget));
         paned.setShrinkStartChild(0);
         paned.setResizeStartChild(0);
         paned.as(gtk.Widget).setVexpand(1);
@@ -205,6 +248,7 @@ pub const SettingsWindow = struct {
     }
 
     fn onStaged(self: *SettingsWindow) void {
+        for (self.term_previews.items) |p| p.refresh();
         const n = self.pendingCount();
         self.apply_bar.as(gtk.Widget).setVisible(@intFromBool(n > 0));
         var buf: [96]u8 = undefined;
@@ -239,7 +283,8 @@ pub const SettingsWindow = struct {
         while (self.stack.as(gtk.Widget).getFirstChild()) |child| self.stack.remove(child);
         self.audio_built = false;
         self.addEagerPages();
-        if (sidebar.getSelectedRow()) |row| onCategory(sidebar, row, self);
+        _ = sidebar;
+        if (self.current_sub) |i| self.openSub(i) else self.openCategory(self.current_cat);
     }
 
     fn onCloseRequest(_: *gtk.Window, self: *SettingsWindow) callconv(.c) c_int {
@@ -292,12 +337,19 @@ pub const SettingsWindow = struct {
         return card;
     }
 
+    fn matches(self: *const SettingsWindow, title: []const u8) bool {
+        return self.search_len == 0 or std.ascii.findIgnoreCase(title, self.search_text[0..self.search_len]) != null;
+    }
+
+    /// A category shows while searching if it or any of its pages matches.
     fn filterPages(row: *gtk.ListBoxRow, data: ?*anyopaque) callconv(.c) c_int {
         const self: *SettingsWindow = @ptrCast(@alignCast(data.?));
         if (self.search_len == 0) return 1;
         const index: usize = @intCast(row.getIndex());
-        if (index >= pages.len) return 1;
-        return @intFromBool(std.ascii.findIgnoreCase(pages[index].title, self.search_text[0..self.search_len]) != null);
+        if (index >= sections.len) return 1;
+        if (self.matches(sections[index].title)) return 1;
+        for (pages) |p| if (p.category == index and self.matches(p.title)) return 1;
+        return 0;
     }
 
     fn onSearch(entry: *gtk.SearchEntry, self: *SettingsWindow) callconv(.c) void {
@@ -305,16 +357,31 @@ pub const SettingsWindow = struct {
         self.search_len = @min(text.len, self.search_text.len);
         @memcpy(self.search_text[0..self.search_len], text[0..self.search_len]);
         if (self.sidebar) |sb| sb.invalidateFilter();
+        // A category list shows only the pages that match.
+        if (self.current_sub == null) self.openCategory(self.current_cat);
     }
 
-    /// Opens the page with this id (`users`, `taskbar`, ...); unknown ids are ignored.
+    /// Opens the page with this id (`users`, `taskbar`, ...) or the category
+    /// with this id; unknown ids are ignored.
     pub fn showPage(self: *SettingsWindow, id: []const u8) void {
-        const sidebar = self.sidebar orelse return;
         for (pages, 0..) |page, i| {
             if (!std.mem.eql(u8, page.id, id)) continue;
-            if (sidebar.getRowAtIndex(@intCast(i))) |row| sidebar.selectRow(row);
+            self.selectCategory(page.category);
+            self.openSub(i);
             return;
         }
+        for (sections, 0..) |c, i| {
+            if (!std.mem.eql(u8, c.id, id)) continue;
+            self.selectCategory(i);
+            self.openCategory(i);
+        }
+    }
+
+    fn selectCategory(self: *SettingsWindow, index: usize) void {
+        const sidebar = self.sidebar orelse return;
+        self.nav_busy = true;
+        defer self.nav_busy = false;
+        if (sidebar.getRowAtIndex(@intCast(index))) |row| sidebar.selectRow(row);
     }
 
     pub fn present(self: *SettingsWindow) void {
@@ -342,16 +409,80 @@ pub const SettingsWindow = struct {
     }
 
     fn onCategory(_: *gtk.ListBox, row: ?*gtk.ListBoxRow, self: *SettingsWindow) callconv(.c) void {
+        if (self.nav_busy) return;
         const r = row orelse return;
         const index: usize = @intCast(r.getIndex());
+        if (index >= sections.len) return;
+        self.openCategory(index);
+    }
+
+    fn onBack(_: *gtk.Button, self: *SettingsWindow) callconv(.c) void {
+        self.openCategory(self.current_cat);
+    }
+
+    /// The list of a category's pages, each with its icon and a line on what it is for.
+    fn openCategory(self: *SettingsWindow, index: usize) void {
+        self.current_cat = index;
+        self.current_sub = null;
+        self.crumb_bar.as(gtk.Widget).setVisible(0);
+
+        // Built again each time, so a search narrows it.
+        var name_buf: [64]u8 = undefined;
+        const name = std.fmt.bufPrintSentinel(&name_buf, "cat:{s}", .{sections[index].id}, 0) catch return;
+        if (self.stack.getChildByName(name)) |old| self.stack.remove(old);
+
+        const page = newPage(sections[index].title);
+        for (pages, 0..) |p, i| {
+            if (p.category != index) continue;
+            if (!self.matches(p.title) and !self.matches(sections[index].title)) continue;
+            const button = gtk.Button.new();
+            button.as(gtk.Widget).addCssClass("flat");
+            button.as(gtk.Widget).addCssClass("dkde-setting-row");
+            const row = gtk.Box.new(.horizontal, 12);
+            row.append(gtk.Image.newFromIconName(p.icon).as(gtk.Widget));
+            const texts = gtk.Box.new(.vertical, 2);
+            texts.as(gtk.Widget).setHexpand(1);
+            const title = gtk.Label.new(p.title);
+            title.setXalign(0);
+            texts.append(title.as(gtk.Widget));
+            const sub = gtk.Label.new(p.desc);
+            sub.setXalign(0);
+            sub.setWrap(1);
+            sub.as(gtk.Widget).addCssClass("dkde-setting-desc");
+            texts.append(sub.as(gtk.Widget));
+            row.append(texts.as(gtk.Widget));
+            row.append(gtk.Image.newFromIconName("go-next-symbolic").as(gtk.Widget));
+            button.setChild(row.as(gtk.Widget));
+            const ctx = self.allocator.create(OpenCtx) catch continue;
+            ctx.* = .{ .window = self, .index = i };
+            _ = gtk.Button.signals.clicked.connect(button, *OpenCtx, &onOpenPage, ctx, .{});
+            _ = gtk.Widget.signals.destroy.connect(button, *OpenCtx, &onOpenDestroy, ctx, .{});
+            page.append(button.as(gtk.Widget));
+        }
+        _ = self.stack.addNamed(page.as(gtk.Widget), name);
+        self.stack.setVisibleChildName(name);
+    }
+
+    const OpenCtx = struct { window: *SettingsWindow, index: usize };
+
+    fn onOpenPage(_: *gtk.Button, ctx: *OpenCtx) callconv(.c) void {
+        ctx.window.openSub(ctx.index);
+    }
+
+    fn onOpenDestroy(_: *gtk.Button, ctx: *OpenCtx) callconv(.c) void {
+        ctx.window.allocator.destroy(ctx);
+    }
+
+    /// Shows one page, with the way back to its category above it.
+    fn openSub(self: *SettingsWindow, index: usize) void {
         if (index >= pages.len) return;
-        if (std.mem.eql(u8, pages[index].id, "audio") and !self.audio_built) {
+        const id = pages[index].id;
+        if (std.mem.eql(u8, id, "audio") and !self.audio_built) {
             self.audio_built = true;
             _ = self.stack.addNamed(self.audioPage().as(gtk.Widget), "audio");
         }
         // These pages run external tools, so they are built on first visit.
-        if (self.stack.getChildByName(pages[index].id) == null) {
-            const id = pages[index].id;
+        if (self.stack.getChildByName(id) == null) {
             const built: ?*gtk.Box = if (std.mem.eql(u8, id, "display"))
                 hwpages.DisplayPage.build(self)
             else if (std.mem.eql(u8, id, "network"))
@@ -372,7 +503,12 @@ pub const SettingsWindow = struct {
                 null;
             if (built) |b| _ = self.stack.addNamed(b.as(gtk.Widget), id);
         }
-        self.stack.setVisibleChildName(pages[index].id);
+        self.current_sub = index;
+        self.current_cat = pages[index].category;
+        var buf: [160]u8 = undefined;
+        self.crumb_label.setText(std.fmt.bufPrintSentinel(&buf, "{s}  \u{203A}  {s}", .{ sections[pages[index].category].title, pages[index].title }, 0) catch "");
+        self.crumb_bar.as(gtk.Widget).setVisible(1);
+        self.stack.setVisibleChildName(id);
     }
 
     // ---- page building blocks -------------------------------------------
@@ -1570,6 +1706,8 @@ pub const SettingsWindow = struct {
     fn rebuildProfiles(self: *SettingsWindow) void {
         const box = self.profile_box orelse return;
         while (box.as(gtk.Widget).getFirstChild()) |child| box.remove(child);
+        for (self.term_previews.items) |p| p.destroy();
+        self.term_previews.clearRetainingCapacity();
         const names = self.term.groupsWithPrefix(self.allocator, "profile:") catch return;
         defer common.config.freeStringList(self.allocator, names);
 
@@ -1619,6 +1757,9 @@ pub const SettingsWindow = struct {
             addRowDesc(inner, common.tr("Tab colour"), "A colour such as #e74856 or orange", self.textEntry(&self.term, group, "tab-color", "").as(gtk.Widget));
 
             sub.section(inner, common.tr("Appearance"));
+            const preview = termpreview.TermPreview.create(&self.term, group);
+            self.term_previews.append(self.allocator, preview) catch preview.destroy();
+            inner.append(preview.widget());
             addRow(inner, common.tr("Font"), self.fontButton(&self.term, group, "font", "Monospace 11").as(gtk.Widget));
             addRow(inner, common.tr("Colour scheme"), self.choice(&self.term, group, "color-scheme", &.{ "campbell", "one-half-dark", "solarized-dark", "solarized-light" }, "campbell").as(gtk.Widget));
             addRow(inner, common.tr("Cursor"), self.choice(&self.term, group, "cursor-style", &.{ "block", "bar", "underline" }, "block").as(gtk.Widget));
