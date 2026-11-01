@@ -13,6 +13,7 @@ const zpdf = @import("zpdf");
 const image = @import("image.zig");
 const truetype = @import("truetype");
 const cff = @import("cff.zig");
+const type1 = @import("type1.zig");
 const imgcodec = @import("imgcodec");
 pub const Diag = @import("diag.zig").Diag;
 
@@ -1395,4 +1396,5 @@ test {
     _ = @import("image.zig");
     _ = @import("diag.zig");
     _ = @import("cff.zig");
+    _ = @import("type1.zig");
 }
