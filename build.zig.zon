@@ -1,7 +1,7 @@
 .{
     .name = .dkde,
     .fingerprint = 0xedcba0fd02e2c514,
-    .version = "0.0.1",
+    .version = "0.0.2",
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .zigimg = .{ .path = "third_party/zigimg" },
