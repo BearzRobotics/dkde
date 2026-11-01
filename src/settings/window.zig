@@ -67,6 +67,7 @@ pub const SettingsWindow = struct {
     allocator: std.mem.Allocator,
     window: *gtk.ApplicationWindow,
     stack: *gtk.Stack,
+    scroller: *gtk.ScrolledWindow = undefined,
 
     shared: common.Config, // dkde.conf
     panel: common.Config, // panel.conf
@@ -154,6 +155,9 @@ pub const SettingsWindow = struct {
         scroller.setChild(self.stack.as(gtk.Widget));
         scroller.as(gtk.Widget).setHexpand(1);
         scroller.as(gtk.Widget).addCssClass("dkde-settings-content");
+        self.scroller = scroller;
+        // Each page is as tall as it is, not as tall as the tallest one.
+        self.stack.setVhomogeneous(0);
 
         const crumb_bar = gtk.Box.new(.horizontal, 8);
         crumb_bar.as(gtk.Widget).setMarginTop(8);
@@ -420,6 +424,11 @@ pub const SettingsWindow = struct {
         self.openCategory(self.current_cat);
     }
 
+    /// Back to the top: a page left scrolled down must not hide the next one.
+    fn scrollToTop(self: *SettingsWindow) void {
+        self.scroller.getVadjustment().setValue(0);
+    }
+
     /// The list of a category's pages, each with its icon and a line on what it is for.
     fn openCategory(self: *SettingsWindow, index: usize) void {
         self.current_cat = index;
@@ -461,6 +470,7 @@ pub const SettingsWindow = struct {
         }
         _ = self.stack.addNamed(page.as(gtk.Widget), name);
         self.stack.setVisibleChildName(name);
+        self.scrollToTop();
     }
 
     const OpenCtx = struct { window: *SettingsWindow, index: usize };
@@ -509,6 +519,7 @@ pub const SettingsWindow = struct {
         self.crumb_label.setText(std.fmt.bufPrintSentinel(&buf, "{s}  \u{203A}  {s}", .{ sections[pages[index].category].title, pages[index].title }, 0) catch "");
         self.crumb_bar.as(gtk.Widget).setVisible(1);
         self.stack.setVisibleChildName(id);
+        self.scrollToTop();
     }
 
     // ---- page building blocks -------------------------------------------
