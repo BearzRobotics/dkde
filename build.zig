@@ -10,6 +10,8 @@ pub fn build(b: *std.Build) void {
     const x11 = b.option(bool, "x11", "Build the optional X11 backend (needs libx11-dev)") orelse false;
     const build_options = b.addOptions();
     build_options.addOption(bool, "x11", x11);
+    // Shown on the About page.
+    build_options.addOption([]const u8, "version", @import("build.zig.zon").version);
 
     // The console and termcore come first and need no GTK-side dependency
     // (SPEC.md 5.11, *Build*). With -Dgui=false nothing below is configured, so

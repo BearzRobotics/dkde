@@ -589,6 +589,8 @@ timer) are their own explicit actions and are not held back.
 | Keyboard shortcuts | Rebind dkde's own shortcuts | labwc `rc.xml` `<keybind>` blocks, then reconfigure |
 | Mouse & touchpad | Pointer speed, natural scrolling, tap to click | labwc `rc.xml` `<libinput>` section, then reconfigure |
 | Default apps | Browser, file manager, terminal, text editor | `mimeapps.list` |
+| Language & region | Language and the formats (dates, numbers, currency, paper, measurements), from the UTF-8 locales `locale -a` lists | `~/.config/locale.conf`, read by `dkde-session` at sign-in (applies to the next session; no password) |
+| About | Device name, OS, kernel, architecture, processor, memory, storage, up time, dkde version, with a Copy button | nothing |
 
 **Implementation notes (M6):**
 

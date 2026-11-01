@@ -27,6 +27,18 @@ fi
 [ -f /etc/profile ] && . /etc/profile
 [ -f "$HOME/.profile" ] && . "$HOME/.profile"
 
+# The language and formats chosen in Settings > Language & region: plain
+# KEY=value lines in ~/.config/locale.conf. Read line by line, not sourced, and
+# only for the locale variables, so the file cannot run anything.
+locale_conf="${XDG_CONFIG_HOME:-$HOME/.config}/locale.conf"
+if [ -f "$locale_conf" ]; then
+    while IFS='=' read -r key value; do
+        case "$key" in
+            LANG|LANGUAGE|LC_TIME|LC_NUMERIC|LC_MONETARY|LC_PAPER|LC_MEASUREMENT) export "$key=$value" ;;
+        esac
+    done < "$locale_conf"
+fi
+
 # The first login only: put dkde's labwc config, folders and keybindings in
 # place. It never runs again by itself; run `dkde-setup` by hand to re-check.
 command -v dkde-setup >/dev/null 2>&1 && dkde-setup --once >/dev/null 2>&1

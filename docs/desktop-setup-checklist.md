@@ -83,10 +83,9 @@ running. Choose per ISO:
 
 Work in dkde itself, in the order that matters most:
 
-1. **About page** in Settings: computer name, OS and kernel version, memory,
-   disk.
-2. **Language and region** page: locale and the keyboard language; today only
-   the labwc keyboard layout is set.
+1. ~~About page~~ and ~~Language & region page~~: done. Language & region writes
+   `~/.config/locale.conf` for the user and needs generated UTF-8 locales on the
+   system (`locale -a`); the ISO must ship some besides `C.UTF-8`.
 3. **Low battery warning.** The panel shows the battery (quick settings) but
    nothing warns when it is low, and nothing suspends at critical.
 4. **A notification when a disk is mounted or removed**, from the automounter's

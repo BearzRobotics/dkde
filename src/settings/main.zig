@@ -56,6 +56,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 }
 
 test {
+    _ = @import("sysinfo.zig");
     _ = @import("hardware.zig");
     _ = @import("hwpages.zig");
 }
