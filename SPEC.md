@@ -27,6 +27,16 @@ The reference platform is **dkrescue**: musl libc, LLVM/Clang, dinit, no
 systemd. dkde must run there. It must also run on ordinary glibc
 distributions.
 
+**Portability rule:** use only libc interfaces that both musl and glibc provide
+(POSIX, plus the few GNU names musl also has, such as `program_invocation_short_name`).
+Do not call glibc-only extensions: `mallopt`, `malloc_trim`, `malloc_usable_size`,
+`mallinfo`/`mallinfo2`, `backtrace` (`execinfo.h`), `gnu_get_libc_version`,
+`error`/`error_at_line`, or the GNU `strerror_r`; do not test `__GLIBC__`; and
+do not hardcode `/lib64` or `ld-linux` paths. If a glibc feature is worth having,
+guard it with `comptime builtin.target.isGnuLibC()` so it is never referenced
+when linking against musl (as `common.perf` does for `mallopt`). Every change
+must link for `x86_64-linux-musl` as well as glibc.
+
 ## 2. Goals and non-goals
 
 ### Goals (v1)
@@ -927,7 +937,7 @@ documented to this standard.
 dkde targets old, low-memory machines. Measured under WSLg (Mesa llvmpipe), an idle panel went from 228 MB RSS and 31 threads to 53 MB and 14, and a small app from about 270 MB to 43 MB, by:
 
 - **GTK renderer.** `common.perf.init()` runs first in every program and sets `GSK_RENDERER` from `[performance] renderer` in `dkde.conf` (default `cairo`: CPU only, no graphics-driver or GL context; `auto` lets GTK use OpenGL/Vulkan). An explicit `GSK_RENDERER` in the environment wins.
-- **malloc.** glibc arenas are capped at 2 (`M_ARENA_MAX`), since GTK and Mesa start many threads.
+- **malloc.** On glibc only, arenas are capped at 2 (`M_ARENA_MAX`, behind `isGnuLibC()`), since GTK and Mesa start many threads. musl's allocator has no per-thread arenas and no `mallopt`, so nothing is done there.
 - **Allocator.** Release builds use plain `malloc` through `common.perf.Gpa`; only Debug builds use `DebugAllocator`.
 - **No idle wake-ups.** Timers run only while there is something to update (the clock's 50 ms tick runs only while the stopwatch or timer is running).
 - **Release builds.** Plain `zig build` is a Debug build (about 60 times the size). Install with `zig build --release=small` (or `safe`).
