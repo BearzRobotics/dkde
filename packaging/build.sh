@@ -60,7 +60,7 @@ build() {
     # --system: never touch the network, read dependencies from zig-pkg/.
     # shellcheck disable=SC2086
     "$ZIG" build --release="$MODE" -Dcpu="$CPU" ${TARGET:+-Dtarget="$TARGET"} \
-        --system "$src/zig-pkg" --prefix "$DESTDIR$PREFIX" $FLAGS install
+        --system zig-pkg --prefix "$DESTDIR$PREFIX" $FLAGS install
 }
 
 install_extras() {
