@@ -6,8 +6,11 @@
 const std = @import("std");
 const configtool = @import("configtool.zig");
 const console = @import("console.zig");
+const sys = @import("sys.zig");
 
-pub const std_options: std.Options = .{ .log_level = .warn };
+// The compiled-in level lets everything through; `sys.log_level` filters while
+// running, so `[console] log-level=debug` needs no rebuild.
+pub const std_options: std.Options = .{ .log_level = .debug, .logFn = sys.logFn };
 
 pub fn main(init: std.process.Init.Minimal) !void {
     var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);

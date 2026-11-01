@@ -34,6 +34,10 @@ const AbsInfo = extern struct { value: i32, minimum: i32, maximum: i32, fuzz: i3
 fn eviocgbit(ev: u32, len: u32) c_ulong {
     return (@as(c_ulong, 2) << 30) | (@as(c_ulong, len) << 16) | (@as(c_ulong, 'E') << 8) | (0x20 + ev);
 }
+/// EVIOCGNAME(len): the device's name.
+fn eviocgname(len: u32) c_ulong {
+    return (@as(c_ulong, 2) << 30) | (@as(c_ulong, len) << 16) | (@as(c_ulong, 'E') << 8) | 0x06;
+}
 fn eviocgabs(axis: u32) c_ulong {
     return (@as(c_ulong, 2) << 30) | (@as(c_ulong, @sizeOf(AbsInfo)) << 16) | (@as(c_ulong, 'E') << 8) | (0x40 + axis);
 }
@@ -139,6 +143,7 @@ pub const Input = struct {
         _ = sys.ioctl(fd, eviocgbit(EV_REL, rel_bits.len), &rel_bits);
         _ = sys.ioctl(fd, eviocgbit(EV_ABS, abs_bits.len), &abs_bits);
         const kind = classify(&ev_bits, &key_bits, &rel_bits, &abs_bits) orelse {
+            log.debug("event{d}: not a keyboard or pointer, skipped", .{number});
             _ = sys.close(fd);
             return;
         };
@@ -147,6 +152,7 @@ pub const Input = struct {
             _ = sys.ioctl(fd, eviocgabs(ABS_X), &dev.abs_x);
             _ = sys.ioctl(fd, eviocgabs(ABS_Y), &dev.abs_y);
             if (dev.abs_x.maximum <= dev.abs_x.minimum or dev.abs_y.maximum <= dev.abs_y.minimum) {
+                log.warn("event{d}: absolute pointer with an empty axis range, skipped", .{number});
                 _ = sys.close(fd);
                 return;
             }
@@ -155,6 +161,9 @@ pub const Input = struct {
             _ = sys.close(fd);
             return;
         };
+        var name: [64]u8 = @splat(0);
+        _ = sys.ioctl(fd, eviocgname(name.len), &name);
+        log.info("input: event{d} {s} ({s})", .{ number, @tagName(kind), std.mem.sliceTo(&name, 0) });
     }
 
     /// Fill `fds` with the descriptors to poll (the hotplug watch first, then

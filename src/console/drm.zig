@@ -197,18 +197,24 @@ pub const Device = struct {
             var pb: [32]u8 = undefined;
             const path = std.fmt.bufPrintSentinel(&pb, "/dev/dri/card{d}", .{n}, 0) catch continue;
             const fd = sys.open(path.ptr, sys.O_RDWR | sys.O_CLOEXEC);
-            if (fd < 0) continue;
+            if (fd < 0) {
+                if (sys.errno() != 2) log.warn("{s}: cannot open (errno {d})", .{ path, sys.errno() });
+                continue;
+            }
             var dev: Device = .{ .fd = fd };
             var cap: GetCap = .{ .capability = DRM_CAP_DUMB_BUFFER };
             if (!call(fd, IOCTL_GET_CAP, &cap) or cap.value == 0) {
+                log.info("{s}: no dumb buffers, skipped", .{path});
                 _ = sys.close(fd);
                 continue;
             }
             dev.setMaster();
             if (dev.probe(allocator)) |_| {
+                log.info("{s}: in use", .{path});
                 if (best) |old| _ = sys.close(old.fd);
                 return dev;
-            } else |_| {
+            } else |e| {
+                log.info("{s}: no usable output ({s})", .{ path, @errorName(e) });
                 // No display on this card (a render-only or empty GPU).
                 if (best == null) best = dev else _ = sys.close(fd);
             }

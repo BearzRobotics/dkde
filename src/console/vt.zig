@@ -64,9 +64,15 @@ pub const Vt = struct {
     /// on it, and keystrokes reach only us.
     pub fn take(self: *const Vt) bool {
         const mode: VtMode = .{ .mode = VT_PROCESS, .waitv = 0, .relsig = SIGUSR1, .acqsig = SIGUSR2, .frsig = 0 };
-        if (sys.ioctl(self.fd, VT_SETMODE, &mode) != 0) return false;
-        _ = sys.ioctl(self.fd, KDSETMODE, @as(c_ulong, KD_GRAPHICS));
-        _ = sys.ioctl(self.fd, KDSKBMODE, @as(c_ulong, K_OFF));
+        if (sys.ioctl(self.fd, VT_SETMODE, &mode) != 0) {
+            log.err("tty{d}: VT_SETMODE failed (errno {d}); switching away will not be announced", .{ self.num, sys.errno() });
+            return false;
+        }
+        if (sys.ioctl(self.fd, KDSETMODE, @as(c_ulong, KD_GRAPHICS)) != 0)
+            log.warn("tty{d}: KDSETMODE KD_GRAPHICS failed (errno {d}); the kernel may draw over the screen", .{ self.num, sys.errno() });
+        if (sys.ioctl(self.fd, KDSKBMODE, @as(c_ulong, K_OFF)) != 0)
+            log.warn("tty{d}: KDSKBMODE K_OFF failed (errno {d}); keys may also reach the kernel console", .{ self.num, sys.errno() });
+        log.debug("tty{d}: taken (VT_PROCESS, KD_GRAPHICS, K_OFF)", .{self.num});
         return true;
     }
 
@@ -80,15 +86,16 @@ pub const Vt = struct {
     /// Acknowledge a release request. Always sent, even mid-redraw: without it
     /// the kernel refuses the switch and the user cannot leave.
     pub fn ackRelease(self: *const Vt) void {
-        _ = sys.ioctl(self.fd, VT_RELDISP, @as(c_ulong, 1));
+        if (sys.ioctl(self.fd, VT_RELDISP, @as(c_ulong, 1)) != 0) log.warn("tty{d}: VT_RELDISP (release) failed, errno {d}", .{ self.num, sys.errno() });
     }
 
     pub fn ackAcquire(self: *const Vt) void {
-        _ = sys.ioctl(self.fd, VT_RELDISP, @as(c_ulong, VT_ACKACQ));
+        if (sys.ioctl(self.fd, VT_RELDISP, @as(c_ulong, VT_ACKACQ)) != 0) log.warn("tty{d}: VT_RELDISP (acquire) failed, errno {d}", .{ self.num, sys.errno() });
     }
 
     pub fn activate(self: *const Vt, n: u32) void {
-        _ = sys.ioctl(self.fd, VT_ACTIVATE, @as(c_ulong, n));
+        log.debug("switching to tty{d}", .{n});
+        if (sys.ioctl(self.fd, VT_ACTIVATE, @as(c_ulong, n)) != 0) log.warn("VT_ACTIVATE {d} failed, errno {d}", .{ n, sys.errno() });
     }
 };
 

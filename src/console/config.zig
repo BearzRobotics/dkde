@@ -32,6 +32,7 @@ pub const keys = [_]Key{
     .{ .name = "scrollback-lines", .kind = .int, .default = "2000", .min = 0, .max = 100000 },
     .{ .name = "cursor-blink", .kind = .boolean, .default = "false" },
     .{ .name = "fallback", .kind = .string, .default = "/sbin/agetty --noclear tty%N linux" },
+    .{ .name = "log-level", .kind = .string, .default = "info", .choices = &.{ "error", "warn", "info", "debug" } },
     .{ .name = "image-memory", .kind = .int, .default = "32", .min = 0, .max = 4096 },
 };
 
@@ -100,6 +101,7 @@ pub const Settings = struct {
     cursor_blink: bool,
     fallback: []const u8,
     image_memory_mb: u32,
+    log_level: []const u8,
 
     pub fn resolve(layers: Layers, vt: u32) Settings {
         const L = struct {
@@ -120,6 +122,7 @@ pub const Settings = struct {
             .cursor_blink = ini.parseBool(L.get(layers, vt, "cursor-blink")) orelse false,
             .fallback = L.get(layers, vt, "fallback"),
             .image_memory_mb = L.int(layers, vt, "image-memory"),
+            .log_level = L.get(layers, vt, "log-level"),
         };
     }
 };

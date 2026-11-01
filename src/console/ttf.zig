@@ -25,11 +25,13 @@ pub const Face = struct {
     cell_h: u32,
     /// Distance from the top of the cell to the baseline.
     baseline: u32,
-    cache: std.AutoHashMapUnmanaged(Key, ?[]u8) = .empty,
+    cache: std.AutoHashMapUnmanaged(Key, Entry) = .empty,
     /// The font file bytes when the face owns them.
     owned: ?[]u8 = null,
 
     pub const Key = struct { cp: u21, wide: bool, bold: bool, cell_w: u16 };
+    /// What was found for a key, kept so a missing glyph is looked up once.
+    const Entry = union(enum) { missing, blank, bitmap: []u8 };
 
     /// A face whose cell is `cell_h` pixels tall. `data` must outlive the face.
     pub fn init(allocator: std.mem.Allocator, data: []const u8, cell_h: u32) Error!Face {
@@ -44,18 +46,31 @@ pub const Face = struct {
             asc = @as(f32, @floatFromInt(font.units_per_em)) * 0.8;
             desc = -@as(f32, @floatFromInt(font.units_per_em)) * 0.2;
         }
-        const h = @max(cell_h, 4);
-        const scale = @as(f32, @floatFromInt(h)) / (asc - desc);
-        const m = font.glyphForUnicode('M') orelse font.glyphForUnicode('0') orelse 0;
-        const w: f32 = @as(f32, @floatFromInt(font.advance(m))) * scale;
-        return .{
-            .allocator = allocator,
-            .font = font,
-            .scale = scale,
-            .cell_w = @max(2, @as(u32, @intFromFloat(@round(w)))),
-            .cell_h = h,
-            .baseline = @min(h, @as(u32, @intFromFloat(@round(asc * scale)))),
-        };
+        var f: Face = .{ .allocator = allocator, .font = font, .scale = 1, .cell_w = 0, .cell_h = 0, .baseline = 0 };
+        f.setSize(cell_h, asc, desc);
+        return f;
+    }
+
+    fn setSize(self: *Face, cell_h: u32, asc: f32, desc: f32) void {
+        const h = std.math.clamp(cell_h, 4, 512);
+        self.scale = @as(f32, @floatFromInt(h)) / (asc - desc);
+        const m = self.font.glyphForUnicode('M') orelse self.font.glyphForUnicode('0') orelse 0;
+        const w: f32 = @as(f32, @floatFromInt(self.font.advance(m))) * self.scale;
+        self.cell_w = std.math.clamp(@as(u32, @intFromFloat(@round(w))), 2, 1024);
+        self.cell_h = h;
+        self.baseline = @min(h, @as(u32, @intFromFloat(@round(asc * self.scale))));
+    }
+
+    /// The same face at another cell height, without reading the file again.
+    pub fn resize(self: *Face, cell_h: u32) void {
+        self.clear();
+        var asc: f32 = @floatFromInt(self.font.ascender);
+        var desc: f32 = @floatFromInt(self.font.descender);
+        if (asc - desc < 1) {
+            asc = @as(f32, @floatFromInt(self.font.units_per_em)) * 0.8;
+            desc = -@as(f32, @floatFromInt(self.font.units_per_em)) * 0.2;
+        }
+        self.setSize(cell_h, asc, desc);
     }
 
     pub fn deinit(self: *Face) void {
@@ -66,7 +81,10 @@ pub const Face = struct {
 
     fn clear(self: *Face) void {
         var it = self.cache.valueIterator();
-        while (it.next()) |v| if (v.*) |b| self.allocator.free(b);
+        while (it.next()) |v| switch (v.*) {
+            .bitmap => |b| self.allocator.free(b),
+            else => {},
+        };
         self.cache.clearRetainingCapacity();
     }
 
@@ -80,15 +98,20 @@ pub const Face = struct {
     /// another width is centred in it and clipped.
     pub fn coverage(self: *Face, cp: u21, wide: bool, bold: bool, grid_w: u32) ?[]const u8 {
         const key: Key = .{ .cp = cp, .wide = wide, .bold = bold, .cell_w = @intCast(grid_w) };
-        if (self.cache.get(key)) |hit| return hit;
-        const gid = self.font.glyphForUnicode(cp) orelse return null;
+        if (self.cache.get(key)) |hit| return switch (hit) {
+            .bitmap => |b| b,
+            else => null,
+        };
         if (self.cache.count() >= max_cached) self.clear();
-        const bm = self.render(gid, if (wide) grid_w * 2 else grid_w, bold) catch null;
-        self.cache.put(self.allocator, key, bm) catch {
-            if (bm) |b| self.allocator.free(b);
+        const entry: Entry = if (self.font.glyphForUnicode(cp)) |gid|
+            (if (self.render(gid, if (wide) grid_w * 2 else grid_w, bold) catch null) |b| Entry{ .bitmap = b } else .blank)
+        else
+            .missing;
+        self.cache.put(self.allocator, key, entry) catch {
+            if (entry == .bitmap) self.allocator.free(entry.bitmap);
             return null;
         };
-        return bm;
+        return if (entry == .bitmap) entry.bitmap else null;
     }
 
     fn render(self: *Face, gid: u16, w: u32, bold: bool) !?[]u8 {
@@ -232,8 +255,7 @@ const Sink = struct {
         const p0 = if (a[1] < b[1]) a else b;
         const p1 = if (a[1] < b[1]) b else a;
         const dxdy = (p1[0] - p0[0]) / (p1[1] - p0[1]);
-        var x = p0[0];
-        if (p0[1] < 0) x -= p0[1] * dxdy;
+        var x = std.math.clamp(p0[0] - @min(p0[1], 0) * dxdy, 0, self.w);
         const y0: usize = @intFromFloat(@max(0, @floor(p0[1])));
         const y1: usize = @intFromFloat(@min(self.h, @ceil(@max(p1[1], 0))));
         var y = y0;
@@ -241,7 +263,8 @@ const Sink = struct {
             const row = y * self.stride;
             const yf: f32 = @floatFromInt(y);
             const dy = @min(yf + 1, p1[1]) - @max(yf, p0[1]);
-            const xnext = x + dxdy * dy;
+            // Rounding must never carry x outside the buffer.
+            const xnext = std.math.clamp(x + dxdy * dy, 0, self.w);
             const d = dy * dir;
             const lo = @min(x, xnext);
             const hi = @max(x, xnext);
@@ -357,4 +380,21 @@ test "a real monospace font gets a cell and draws letters" {
     var ink2: u32 = 0;
     for (bold) |v| ink2 += v;
     try testing.expect(ink2 > ink);
+}
+
+test "resize gives a new cell and drops the cache; a missing glyph is remembered" {
+    const a = testing.allocator;
+    const data = readSystemFont(a, "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf") orelse return;
+    defer a.free(data);
+    var face = try Face.init(a, data, 24);
+    defer face.deinit();
+    _ = face.coverage('A', false, false, face.cell_w).?;
+    try testing.expect(face.cache.count() == 1);
+    face.resize(16);
+    try testing.expectEqual(@as(u32, 16), face.cell_h);
+    try testing.expectEqual(@as(usize, 0), face.cache.count());
+    // U+10FFFD has no glyph: the answer is cached, not asked again.
+    try testing.expect(face.coverage(0x10FFFD, false, false, face.cell_w) == null);
+    try testing.expect(face.coverage(0x10FFFD, false, false, face.cell_w) == null);
+    try testing.expectEqual(@as(usize, 1), face.cache.count());
 }

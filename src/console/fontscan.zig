@@ -30,6 +30,33 @@ pub fn readFile(allocator: std.mem.Allocator, path: [:0]const u8, max: usize) ?[
     return list.toOwnedSlice(allocator) catch null;
 }
 
+extern fn mmap(addr: ?*anyopaque, len: usize, prot: c_int, flags: c_int, fd: c_int, off: c_long) ?*anyopaque;
+extern fn munmap(addr: *anyopaque, len: usize) c_int;
+extern "c" fn open(path: [*:0]const u8, flags: c_int, ...) c_int;
+extern "c" fn close(fd: c_int) c_int;
+extern fn lseek(fd: c_int, off: c_long, whence: c_int) c_long;
+
+/// A file read-only in memory, paged in as it is touched: checking whether a
+/// font is monospace reads a few tables, not the whole 20 MB of a CJK font.
+const Mapped = struct {
+    data: []const u8,
+
+    fn map(path: [:0]const u8, max: usize) ?Mapped {
+        const fd = open(path.ptr, 0); // O_RDONLY
+        if (fd < 0) return null;
+        defer _ = close(fd);
+        const size = lseek(fd, 0, 2); // SEEK_END
+        if (size <= 0 or @as(usize, @intCast(size)) > max) return null;
+        const p = mmap(null, @intCast(size), 1, 2, fd, 0) orelse return null; // PROT_READ, MAP_PRIVATE
+        if (@intFromPtr(p) == std.math.maxInt(usize)) return null; // MAP_FAILED
+        return .{ .data = @as([*]const u8, @ptrCast(p))[0..@intCast(size)] };
+    }
+
+    fn unmap(self: Mapped) void {
+        _ = munmap(@ptrCast(@constCast(self.data.ptr)), self.data.len);
+    }
+};
+
 /// Absolute paths, sorted. The caller frees each and the list.
 pub fn scan(allocator: std.mem.Allocator) ![][]u8 {
     var out: std.ArrayList([]u8) = .empty;
@@ -61,8 +88,9 @@ fn walk(allocator: std.mem.Allocator, dir: [:0]const u8, depth: u32, want_ttf: b
         }
         if (want_ttf) {
             if (!std.ascii.endsWithIgnoreCase(name, ".ttf") and !std.ascii.endsWithIgnoreCase(name, ".otf")) continue;
-            const data = readFile(allocator, path, 32 << 20) orelse continue;
-            defer allocator.free(data);
+            const mapped = Mapped.map(path, 64 << 20) orelse continue;
+            defer mapped.unmap();
+            const data = mapped.data;
             if (!ttf.looksLikeTrueType(data) or !ttf.isMonospace(data)) continue;
             // CFF outlines are not read.
             var face = ttf.Face.init(allocator, data, 16) catch continue;

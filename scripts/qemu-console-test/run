@@ -111,6 +111,7 @@ tests() {
     check "init ran"                       wait_serial "init: starting" 120
     check "a DRM device appeared"          wait_serial "card0" 5
     check "login prompt is drawn on tty1"  wait_lit s1_login 200 120
+    check "the log says what was set up"    bash -c "grep -q 'display: connector' serial.log && grep -q 'layout: ' serial.log && grep -q 'login started' serial.log && grep -q 'input: event' serial.log"
 
     echo "== keyboard and login"
     $TOOLS type 'root\n'
@@ -157,7 +158,7 @@ tests() {
 
     echo "== no display device"
     boot -vga none
-    check "falls back when there is no display"  wait_serial "no usable display; using the plain getty" 120
+    check "falls back when there is no display"  wait_serial "no usable display (see the drm lines above); using the plain getty" 120
     stop
 }
 

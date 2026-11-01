@@ -9,6 +9,7 @@
 
 const std = @import("std");
 const sys = @import("sys.zig");
+const log = std.log.scoped(.kbd);
 
 // linux/keyboard.h
 const KT_LATIN = 0;
@@ -88,6 +89,11 @@ pub const Keymap = struct {
         if (sys.ioctl(fd, KDGKBDIACRUC, &dt) == 0 and dt.count <= 256) {
             km.diacr = try allocator.dupe(Diacr, dt.entries[0..dt.count]);
         }
+        var n: usize = 0;
+        for (km.tables) |t| {
+            if (t != null) n += 1;
+        }
+        log.debug("keymap: {d} table(s) read from the kernel", .{n});
         return km;
     }
 

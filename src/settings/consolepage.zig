@@ -40,8 +40,9 @@ pub const ConsolePage = struct {
     scrollback: *gtk.SpinButton,
     picture: *gtk.Picture,
     status: *gtk.Label,
-    /// The loaded font file the preview borrows from.
+    /// The loaded font file the preview borrows from, and the path it came from.
     font_data: ?[]u8 = null,
+    font_data_path: ?[]u8 = null,
 
     pub fn build(window: *SettingsWindow) *gtk.Box {
         const page = SettingsWindow.newPage(common.tr("Console"));
@@ -161,17 +162,24 @@ pub const ConsolePage = struct {
 
     /// Draws the preview again with the chosen font, size and scheme.
     fn refresh(self: *ConsolePage) void {
-        if (self.font_data) |d| gpa.free(d);
-        self.font_data = null;
         const path = self.selectedFont();
         var failed = false;
-        if (path.len > 0) {
-            if (gpa.dupeSentinel(u8, path, 0)) |z| {
-                defer gpa.free(z);
-                self.font_data = cf.fontscan.readFile(gpa, z, 32 << 20);
-            } else |_| {}
-            failed = self.font_data == null;
+        // The file is read again only when another one is chosen: the size
+        // spin button refreshes on every click.
+        const same = if (self.font_data_path) |p| std.mem.eql(u8, p, path) else false;
+        if (!same) {
+            if (self.font_data) |d| gpa.free(d);
+            if (self.font_data_path) |p| gpa.free(p);
+            self.font_data = null;
+            self.font_data_path = gpa.dupe(u8, path) catch null;
+            if (path.len > 0) {
+                if (gpa.dupeSentinel(u8, path, 0)) |z| {
+                    defer gpa.free(z);
+                    self.font_data = cf.fontscan.readFile(gpa, z, 32 << 20);
+                } else |_| {}
+            }
         }
+        if (path.len > 0 and self.font_data == null) failed = true;
         const size: u32 = @intCast(self.size.getValueAsInt());
         var preview = cf.sample.Preview.init(gpa, self.font_data, if (size == 0) 20 else size) catch blk: {
             failed = true;

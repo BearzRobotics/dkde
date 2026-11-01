@@ -107,16 +107,22 @@ const FontSet = struct {
 
     /// A PSF or TrueType font file. TrueType gets `cell_h` pixels of height.
     fn addFile(self: *FontSet, a: std.mem.Allocator, path: []const u8, cell_h: u32) bool {
-        const bytes = sys.readFile(a, path, 32 << 20) catch return false;
+        const bytes = sys.readFile(a, path, 32 << 20) catch |e| {
+            log.warn("font {s}: cannot read ({s}); using another", .{ path, @errorName(e) });
+            return false;
+        };
         if (ttf.looksLikeTrueType(bytes)) {
             if (self.addTrueType(a, bytes, cell_h)) return true;
+            log.warn("font {s}: not a usable TrueType font (CFF outlines and damaged files are refused); using another", .{path});
             a.free(bytes);
             return false;
         }
-        self.add(a, bytes, bytes) catch {
+        self.add(a, bytes, bytes) catch |e| {
+            log.warn("font {s}: not a PSF or TrueType font ({s}); using another", .{ path, @errorName(e) });
             a.free(bytes);
             return false;
         };
+        log.debug("font {s}: loaded as PSF", .{path});
         return true;
     }
 
@@ -194,26 +200,32 @@ pub const Console = struct {
 
     fn main(self: *Console) u8 {
         const a = self.allocator;
+        sys.log_vt = self.vt_num;
         self.vtdev = vtmod.Vt.open(self.vt_num) orelse {
-            sys.print(2, "dkde-console: cannot open /dev/tty{d}\n", .{self.vt_num});
+            log.err("cannot open /dev/tty{d}: errno {d}", .{ self.vt_num, sys.errno() });
             return 1;
         };
         // A crash cannot restore the VT, so every start does (SPEC.md 5.11).
         self.vtdev.restoreText();
 
         self.loadSettings();
-        const decision = fallback.decide(fallback.readCounter(a, self.vt_num));
+        const starts = fallback.readCounter(a, self.vt_num);
+        log.info("starting on tty{d}: {d} start(s) in the last {d} s, euid {d}", .{ self.vt_num, starts, fallback.healthy_seconds, std.c.geteuid() });
+        const decision = fallback.decide(starts);
         if (decision.fall_back) {
-            sys.print(2, "dkde-console: too many recent crashes on tty{d}; using the plain getty\n", .{self.vt_num});
+            log.err("too many recent crashes ({d} starts); using the plain getty: {s}", .{ starts, self.settings.fallback });
             fallback.execFallback(a, self.settings.fallback, &self.vtdev);
             return 1;
         }
         if (decision.write_count) |n| fallback.writeCounter(self.vt_num, n);
 
-        self.sig_fd = vtmod.installSignals() orelse -1;
+        self.sig_fd = vtmod.installSignals() orelse blk: {
+            log.err("cannot set up signal handling; VT switching and shutdown will not work", .{});
+            break :blk -1;
+        };
 
         if (!self.openDisplay()) {
-            sys.print(2, "dkde-console: no usable display; using the plain getty\n", .{});
+            log.err("no usable display (see the drm lines above); using the plain getty: {s}", .{self.settings.fallback});
             fallback.execFallback(a, self.settings.fallback, &self.vtdev);
             return 1;
         }
@@ -223,14 +235,14 @@ pub const Console = struct {
         self.decoder = kbd.Decoder.init(&self.keymap);
 
         self.setupTerminal() catch |e| {
-            sys.print(2, "dkde-console: terminal setup failed ({s}); using the plain getty\n", .{@errorName(e)});
+            log.err("terminal setup failed ({s}); using the plain getty: {s}", .{ @errorName(e), self.settings.fallback });
             self.closeDisplay();
             fallback.execFallback(a, self.settings.fallback, &self.vtdev);
             return 1;
         };
         self.startLogin();
 
-        _ = self.vtdev.take();
+        if (!self.vtdev.take()) log.err("could not take the VT; running anyway", .{});
         if (self.vtdev.isActive()) {
             self.acquire();
         } else if (self.dev) |*d| {
@@ -242,7 +254,9 @@ pub const Console = struct {
 
         self.healthy_at = nowSeconds() + fallback.healthy_seconds;
         self.watchConfig();
+        log.info("running: {d}x{d} cells, login {s}", .{ self.cols, self.rows, if (self.login_running) "started" else "NOT running" });
         self.loop();
+        log.info("stopping", .{});
         self.shutdown();
         return 0;
     }
@@ -270,6 +284,26 @@ pub const Console = struct {
         self.docs_loaded = true;
         self.settings = config.Settings.resolve(.{ .etc = &self.etc_doc, .defaults = &self.defs_doc }, self.vt_num);
         self.scheme = termcore.schemes.scheme(self.settings.colors);
+        sys.log_level = sys.parseLevel(self.settings.log_level);
+        self.warnInvalidSettings();
+        log.info("settings: font='{s}' size={d} scale={d} colors={s} scrollback={d} log-level={s}", .{
+            self.settings.font,                                         self.settings.font_size, self.settings.scale,
+            self.settings.colors,                                       self.settings.scrollback_lines,
+            self.settings.log_level,
+        });
+    }
+
+    /// A value that fails its check is skipped (a typo must never break the
+    /// console), so say which one and why, where the administrator will see it.
+    fn warnInvalidSettings(self: *Console) void {
+        var gbuf: [24]u8 = undefined;
+        const vt_group = std.fmt.bufPrint(&gbuf, "vt:{d}", .{self.vt_num}) catch "";
+        for ([_][]const u8{ config.group, vt_group }) |g| {
+            for (&config.keys) |*k| {
+                const v = self.etc_doc.get(g, k.name) orelse continue;
+                if (config.check(k, v)) |why| log.warn("{s}: [{s}] {s}={s} is ignored: {s}", .{ configtool.etcPath(), g, k.name, v, why });
+            }
+        }
     }
 
     fn watchConfig(self: *Console) void {
@@ -289,11 +323,16 @@ pub const Console = struct {
     // ---- display -------------------------------------------------------------------
 
     fn openDisplay(self: *Console) bool {
-        var d = drm.Device.openFirst(self.allocator) catch return false;
-        const out = d.probe(self.allocator) catch {
+        var d = drm.Device.openFirst(self.allocator) catch |e| {
+            log.err("no DRM device usable: {s}", .{@errorName(e)});
+            return false;
+        };
+        const out = d.probe(self.allocator) catch |e| {
+            log.err("no connected display: {s}", .{@errorName(e)});
             d.close();
             return false;
         };
+        log.info("display: connector {d}, {d}x{d}, {d}x{d} mm", .{ out.connector_id, out.width(), out.height(), out.mm_width, out.mm_height });
         self.dev = d;
         self.out = out;
         self.buildLayout() catch {
@@ -318,15 +357,21 @@ pub const Console = struct {
         var h = self.settings.font_size * self.settings.scale;
         if (h == 0) h = drm.chooseFontHeight(self.out.width(), self.out.height(), self.out.mm_height) * self.settings.scale;
         var main_ok = false;
-        if (self.settings.font.len > 0) main_ok = set.addFile(a, self.settings.font, h);
-        // A TrueType cell is not half as wide as it is tall: shrink until 80 columns fit.
-        while (main_ok and set.faces.items.len > 0 and h > 8 and self.out.width() / set.faces.items[0].cell_w < 80) {
-            h -= 1;
-            set.deinit(a);
-            set = .{};
-            main_ok = set.addFile(a, self.settings.font, h);
+        var builtin_height: ?u32 = null;
+        // `config fonts` lists the built-in fonts by name: terminus-16, -24 and -32.
+        for (psf.builtin_data) |b| {
+            if (std.mem.eql(u8, b.name, self.settings.font)) builtin_height = std.fmt.parseInt(u32, b.name["terminus-".len..], 10) catch null;
         }
-        if (!main_ok) try set.addBuiltin(a, if (self.settings.font_size == 0) h / self.settings.scale else self.settings.font_size);
+        if (builtin_height == null and self.settings.font.len > 0) main_ok = set.addFile(a, self.settings.font, h);
+        // A TrueType cell is not half as wide as it is tall: shrink until 80 columns fit.
+        if (main_ok and set.faces.items.len > 0) {
+            const face = set.faces.items[0];
+            const wanted = h;
+            while (face.cell_h > 8 and self.out.width() / face.cell_w < 80) face.resize(face.cell_h - 1);
+            h = face.cell_h;
+            if (h != wanted) log.info("font size {d} is too large for 80 columns on this screen; using {d}", .{ wanted, h });
+        }
+        if (!main_ok) try set.addBuiltin(a, builtin_height orelse if (self.settings.font_size == 0) h / self.settings.scale else self.settings.font_size);
         var it = std.mem.tokenizeAny(u8, self.settings.fallback_fonts, ", ");
         while (it.next()) |path| _ = set.addFile(a, path, h);
         // The built-in fonts of the same size back up a font from disk.
@@ -343,11 +388,17 @@ pub const Console = struct {
         self.rows = @intCast(@max(1, @min(rows, 1000)));
         self.origin_x = (self.out.width() - @as(u32, self.cols) * self.renderer.cell_w) / 2;
         self.origin_y = (self.out.height() - @as(u32, self.rows) * self.renderer.cell_h) / 2;
+        log.info("layout: {s} font, cell {d}x{d}, {d} columns x {d} rows, margin {d},{d}", .{
+            if (self.fonts.faces.items.len > 0) "TrueType" else "PSF", self.renderer.cell_w, self.renderer.cell_h,
+            self.cols,                                                  self.rows,                                self.origin_x,
+            self.origin_y,
+        });
     }
 
     /// Frame buffers, input devices and the keymap: what only the visible VT holds.
     fn acquire(self: *Console) void {
         const d = &(self.dev orelse return);
+        log.debug("acquire: taking the display", .{});
         d.setMaster();
         // Outputs are probed again on every acquire (SPEC.md 5.11).
         if (d.probe(self.allocator)) |o| {
@@ -358,19 +409,23 @@ pub const Console = struct {
                 self.resizeTerminal();
                 self.layout_stale = false;
             }
-        } else |_| {}
+        } else |e| log.warn("acquire: probing the outputs failed ({s}); keeping the old mode", .{@errorName(e)});
 
         for (0..2) |i| {
-            self.bufs[i] = d.createBuffer(self.out.width(), self.out.height()) catch null;
+            self.bufs[i] = d.createBuffer(self.out.width(), self.out.height()) catch |e| blk: {
+                log.err("acquire: cannot create frame buffer {d} ({s}); the screen stays blank", .{ i, @errorName(e) });
+                break :blk null;
+            };
             if (self.bufs[i] == null) {
                 self.releaseDisplayResources();
                 return;
             }
         }
-        if (d.setMode(&self.out, &self.bufs[0].?)) {} else |_| {
+        d.setMode(&self.out, &self.bufs[0].?) catch |e| {
+            log.err("acquire: cannot set the mode ({s}); the screen stays blank", .{@errorName(e)});
             self.releaseDisplayResources();
             return;
-        }
+        };
         self.back = 1;
         self.flip_pending = false;
         self.have_display = true;
@@ -381,7 +436,8 @@ pub const Console = struct {
             self.keymap.deinit();
             self.keymap = km;
             self.decoder = kbd.Decoder.init(&self.keymap);
-        } else |_| {}
+        } else |e| log.warn("acquire: cannot read the keymap ({s}); keeping the previous one", .{@errorName(e)});
+        log.debug("acquire: done, {d} input device(s)", .{self.input.devices.items.len});
         self.draw(0);
     }
 
@@ -403,6 +459,7 @@ pub const Console = struct {
     /// The kernel asks to switch away: let go of everything, then say yes. The
     /// acknowledgement is sent no matter what, or the user cannot leave.
     fn release(self: *Console) void {
+        log.debug("release: another VT is being shown", .{});
         if (self.dev) |*d| {
             d.dropMaster();
         }
@@ -502,6 +559,7 @@ pub const Console = struct {
         const path: [:0]const u8 = for (login_paths) |p| {
             if (sys.exists(p)) break p;
         } else {
+            log.err("no login program found (tried {s}, ...)", .{login_paths[0]});
             self.stream.nextSlice("dkde-console: no login program found\r\n");
             return;
         };
@@ -510,11 +568,13 @@ pub const Console = struct {
             .argv = &.{"login"},
             .env = &.{ "TERM=xterm-256color", "COLORTERM=truecolor" },
             .size = self.ptySize(),
-        }) catch {
+        }) catch |e| {
+            log.err("cannot start {s}: {s}", .{ path, @errorName(e) });
             self.stream.nextSlice("dkde-console: cannot start login\r\n");
             return;
         };
         self.login_running = true;
+        log.info("login started: {s}, pid {d}", .{ path, self.pty.pid });
     }
 
     fn printIssue(self: *Console) void {
@@ -534,6 +594,7 @@ pub const Console = struct {
     /// `login` ended: clear the screen and start it again. It never runs a
     /// shell itself.
     fn loginExited(self: *Console) void {
+        log.info("login ended; starting it again", .{});
         self.pty.deinit();
         self.login_running = false;
         self.stream.nextSlice("\x1b[0m\x1b[H\x1b[2J\x1b[3J");
@@ -568,6 +629,7 @@ pub const Console = struct {
             const r = poll(&fds, n, self.timeoutMs());
             if (r < 0) {
                 if (sys.errno() == sys.EINTR) continue;
+                log.err("poll failed (errno {d}); stopping", .{sys.errno()});
                 break;
             }
             const now = nowSeconds();
@@ -647,17 +709,27 @@ pub const Console = struct {
     fn reloadConfig(self: *Console, dirty: *bool) void {
         var buf: [512]u8 align(4) = undefined;
         while (sys.read(self.conf_watch, &buf, buf.len) > 0) {}
-        const old = self.settings;
-        const old_scheme = self.scheme;
+        // The strings of the old settings live in documents that loadSettings
+        // frees, so keep copies of the ones compared below.
+        const a = self.allocator;
+        const old_font = a.dupe(u8, self.settings.font) catch return;
+        defer a.free(old_font);
+        const old_fallbacks = a.dupe(u8, self.settings.fallback_fonts) catch return;
+        defer a.free(old_fallbacks);
+        const old_size = self.settings.font_size;
+        const old_scale = self.settings.scale;
+        log.info("{s} changed; reading it again", .{configtool.etcPath()});
         self.loadSettings();
-        _ = old_scheme;
         // Fonts and colours change on the next frame; `fallback` is read at start-up.
-        const font_changed = !std.mem.eql(u8, old.font, self.settings.font) or
-            !std.mem.eql(u8, old.fallback_fonts, self.settings.fallback_fonts) or
-            old.font_size != self.settings.font_size or old.scale != self.settings.scale;
+        const font_changed = !std.mem.eql(u8, old_font, self.settings.font) or
+            !std.mem.eql(u8, old_fallbacks, self.settings.fallback_fonts) or
+            old_size != self.settings.font_size or old_scale != self.settings.scale;
         if (font_changed) {
             if (self.have_display) {
-                self.buildLayout() catch return;
+                self.buildLayout() catch |e| {
+                    log.err("cannot rebuild the layout after a font change: {s}", .{@errorName(e)});
+                    return;
+                };
                 self.resizeTerminal();
             } else self.layout_stale = true;
         }

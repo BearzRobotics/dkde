@@ -132,3 +132,43 @@ pub fn print(fd: c_int, comptime fmt: []const u8, args: anytype) void {
     const s = std.fmt.bufPrint(&buf, fmt, args) catch &buf;
     writeAllFd(fd, s) catch {};
 }
+
+// ---- logging -----------------------------------------------------------------
+
+/// The runtime level; `[console] log-level` sets it, live. Messages go to
+/// standard error, which the init system collects (dinit's log, the journal).
+pub var log_level: std.log.Level = .info;
+/// The VT this process is on, shown in every line; 0 for the config tool.
+pub var log_vt: u32 = 0;
+
+const Timespec = extern struct { sec: c_long, nsec: c_long };
+extern fn clock_gettime(clock: c_int, ts: *Timespec) c_int;
+
+pub fn parseLevel(text: []const u8) std.log.Level {
+    if (std.mem.eql(u8, text, "error")) return .err;
+    if (std.mem.eql(u8, text, "warn")) return .warn;
+    if (std.mem.eql(u8, text, "debug")) return .debug;
+    return .info;
+}
+
+/// `std_options.logFn`: `dkde-console[tty1] [   12.345] info(drm): message`.
+/// The time is seconds since boot, as in dmesg, so lines can be lined up with
+/// the kernel's.
+pub fn logFn(
+    comptime level: std.log.Level,
+    comptime scope: @EnumLiteral(),
+    comptime fmt: []const u8,
+    args: anytype,
+) void {
+    if (@backingInt(level) > @backingInt(log_level)) return;
+    var buf: [1024]u8 = undefined;
+    var ts: Timespec = undefined;
+    _ = clock_gettime(7, &ts); // CLOCK_BOOTTIME
+    var w: std.Io.Writer = .fixed(&buf);
+    w.print("dkde-console", .{}) catch {};
+    if (log_vt != 0) w.print("[tty{d}]", .{log_vt}) catch {};
+    w.print(" [{d:>6}.{d:0>3}] {s}", .{ @as(u64, @intCast(ts.sec)), @as(u64, @intCast(@divTrunc(ts.nsec, 1_000_000))), @tagName(level) }) catch {};
+    if (scope != .default) w.print("({s})", .{@tagName(scope)}) catch {};
+    w.print(": " ++ fmt ++ "\n", args) catch {};
+    writeAllFd(2, w.buffered()) catch {};
+}

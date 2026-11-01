@@ -1089,6 +1089,19 @@ system-wide: an exception to 6.1's per-user files.
   never a crash (6.1). An invalid file is not a reason to fall back to
   agetty.
 
+#### Logging
+
+The console writes to standard error, which the init system collects (dinit's
+log, the journal, a serial console). Each line has the VT, the time since boot
+as in `dmesg`, the level and the part: `dkde-console[tty1] [    12.345] info(drm): ...`.
+`[console] log-level` (`error`, `warn`, `info` (default), `debug`) sets how
+much, and applies at once. `info` records what was set up (the display and its
+mode, the font and the grid, each input device, the login and every restart of
+it, a changed configuration file) and every problem, including each setting
+that is ignored because its value is invalid and each step that leaves the screen
+blank. `debug` adds VT take, release and acquire, keymap reads and font loads.
+The fallback to agetty always logs why.
+
 #### Configuration tools
 
 There are two front ends to the same file, so they can never disagree:
