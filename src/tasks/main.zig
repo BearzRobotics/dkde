@@ -24,6 +24,8 @@ const SIGKILL = 9;
 const App = struct {
     allocator: std.mem.Allocator,
     appearance: ?*common.style.Appearance = null,
+    /// Tab to open first, from `--tab processes|performance`.
+    tab: c_int = 0,
 
     fn activate(app: *gtk.Application, self: *App) callconv(.c) void {
         common.style.load(self.allocator) catch |err|
@@ -33,6 +35,7 @@ const App = struct {
             std.log.err("cannot create the window: {s}", .{@errorName(err)});
             return;
         };
+        manager.notebook.setCurrentPage(self.tab);
         manager.window.as(gtk.Window).present();
     }
 };
@@ -69,6 +72,7 @@ const TaskManager = struct {
     table: ?*gtk.ColumnView = null,
     summary: *gtk.Label,
     perf: *perfview.Perf,
+    notebook: *gtk.Notebook = undefined,
     search: *gtk.SearchEntry,
     /// Lower-cased search text; empty shows everything.
     query: [64]u8 = undefined,
@@ -211,6 +215,7 @@ const TaskManager = struct {
 
         // Two tabs, as in Windows: the process table and the Performance page.
         const notebook = gtk.Notebook.new();
+        self.notebook = notebook;
         notebook.as(gtk.Widget).setVexpand(1);
         _ = notebook.appendPage(root.as(gtk.Widget), gtk.Label.new(common.tr("Processes")).as(gtk.Widget));
         _ = notebook.appendPage(self.perf.widget, gtk.Label.new(common.tr("Performance")).as(gtk.Widget));
@@ -613,12 +618,20 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const allocator = debug_allocator.allocator();
 
     var app: App = .{ .allocator = allocator };
+    const args = init.args.vector;
+    var i: usize = 1;
+    while (i + 1 < args.len) : (i += 1) {
+        if (std.mem.eql(u8, std.mem.span(args[i]), "--tab"))
+            app.tab = if (std.ascii.eqlIgnoreCase(std.mem.span(args[i + 1]), "performance")) 1 else 0;
+    }
     defer if (app.appearance) |a| a.destroy();
 
     const gtk_app = gtk.Application.new("org.dkde.tasks", .{ .non_unique = true });
     defer gtk_app.as(gobject.Object).unref();
     _ = gio.Application.signals.activate.connect(gtk_app, *App, &App.activate, &app, .{});
-    const status = gio.Application.run(gtk_app.as(gio.Application), @intCast(init.args.vector.len), @ptrCast(@constCast(init.args.vector.ptr)));
+    // GApplication only gets the program name; --tab is ours.
+    var argv = [_]?[*:0]const u8{ init.args.vector[0], null };
+    const status = gio.Application.run(gtk_app.as(gio.Application), 1, @ptrCast(&argv));
     if (status != 0) std.process.exit(@intCast(status));
 }
 
