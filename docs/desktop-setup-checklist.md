@@ -32,7 +32,7 @@ or by the page that needs them.
 
 | Gap | What to add | Notes |
 |---|---|---|
-| **Lock screen** | `swaylock` (or `gtklock`) | dkde has no lock screen of its own (SPEC.md 5.7). Without one, Lock does nothing. `swaylock` installs its own PAM file. |
+| **Lock screen** | `swaylock` (or `gtklock`) | dkde has no lock screen of its own (SPEC.md 5.1). Without one, Lock does nothing. `swaylock` installs its own PAM file. |
 | **USB sticks and cards mounting** | `udevil` (its `devmon`) | Mounts without polkit, D-Bus or logind. Autostart it: `devmon &` in the labwc autostart. *Verify* the options of the shipped version, and that Files lists the mounted disk. udisks2 is the alternative, but it needs polkit (see section 4). |
 | **Power button and laptop lid** | `acpid` | With no logind, nothing acts on the lid or the power button. `acpid` runs a script; one that calls `loginctl`-free commands (`poweroff`, or a suspend command) is enough. *Verify* on a laptop. |
 | **Clock** | `chrony` (or `ntpsec`, or `busybox ntpd`) | Without systemd-timesyncd nothing keeps the time right. |
