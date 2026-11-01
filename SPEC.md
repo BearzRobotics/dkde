@@ -318,6 +318,19 @@ screen on the overlay layer (icon, level bar, percentage) for 1.5 s; it takes no
 pointer input. Wayland only. Not done: microphone mute, keyboard backlight,
 holding the key down repeats only as fast as labwc repeats the binding.
 
+**Low battery:** on a machine with a battery the panel watches it itself (no
+daemon, no timer outside the panel): every 60 seconds, every 15 when within
+5 points of the low level, and every 2 minutes on mains power. `[power]
+low-battery` (default 15) shows a notification once while discharging;
+`critical-battery` (default 5) shows a second one that stays until dismissed and
+starts a 30-second grace period, after which, if the machine is still on the
+battery and still that low, `critical-battery-action` runs: `sleep` (the same
+sleep command as the start menu), `poweroff` or `none`. The action runs once per
+discharge; plugging in resets everything. A level that wobbles around the limit
+warns once. `low-battery=0` turns the warnings off; a computer without a
+battery never starts the watcher. The thresholds are read each time, so
+Settings > Power & lock applies at once.
+
 **Lock, screen off and sleep:** dkde has no lock screen of its own. A secure
 one needs `ext-session-lock-v1`, which GTK 4 cannot be a client of (it sets its
 own window role), so it would have to be a separate non-GTK program; until

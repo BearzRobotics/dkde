@@ -86,15 +86,14 @@ Work in dkde itself, in the order that matters most:
 1. ~~About page~~ and ~~Language & region page~~: done. Language & region writes
    `~/.config/locale.conf` for the user and needs generated UTF-8 locales on the
    system (`locale -a`); the ISO must ship some besides `C.UTF-8`.
-3. **Low battery warning.** The panel shows the battery (quick settings) but
-   nothing warns when it is low, and nothing suspends at critical.
+3. ~~Low battery warning~~: done (SPEC.md 5.1). Warns, then sleeps or powers off
+   after a grace period. Not tried on a real laptop.
 4. **A notification when a disk is mounted or removed**, from the automounter's
    hook.
 5. **Do Not Disturb** for the notification toasts.
 6. **Input methods** (Chinese, Japanese, Korean typing): not wired up
    (SPEC.md 5.3). Needs `fcitx5` and the Wayland text-input protocol.
-7. **Screen recording.** `dkde-snip` takes pictures only.
-8. **Accessibility:** the session sets `NO_AT_BRIDGE=1`, so screen readers
+7. **Accessibility:** the session sets `NO_AT_BRIDGE=1`, so screen readers
    cannot see dkde apps.
 
 ## 6. Autostart, in one place

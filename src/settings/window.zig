@@ -621,7 +621,7 @@ pub const SettingsWindow = struct {
     }
 
     /// A dropdown over fixed string `options`, stored by name.
-    fn choice(self: *SettingsWindow, config: *common.Config, group: [:0]const u8, key: [:0]const u8, comptime options: []const [:0]const u8, default: []const u8) *gtk.DropDown {
+    pub fn choice(self: *SettingsWindow, config: *common.Config, group: [:0]const u8, key: [:0]const u8, comptime options: []const [:0]const u8, default: []const u8) *gtk.DropDown {
         const terminated = comptime blk: {
             var t: [options.len + 1]?[*:0]const u8 = undefined;
             for (options, 0..) |o, i| t[i] = o.ptr;

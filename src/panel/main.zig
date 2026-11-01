@@ -15,6 +15,7 @@ const Position = @import("position.zig").Position;
 const Wallpaper = @import("wallpaper.zig").Wallpaper;
 const Notifications = @import("notifications.zig").Notifications;
 const Reminders = @import("reminders.zig").Reminders;
+const PowerWatch = @import("powerwatch.zig").PowerWatch;
 const Tray = @import("tray.zig").Tray;
 const Quick = @import("quick.zig").Quick;
 const Osd = @import("osd.zig").Osd;
@@ -41,6 +42,7 @@ const App = struct {
     clock_source: c_uint = 0,
     notifications: ?*Notifications = null,
     reminders: ?*Reminders = null,
+    power_watch: ?*PowerWatch = null,
     tray: ?*Tray = null,
     quick: ?*Quick = null,
     osd: ?*Osd = null,
@@ -91,6 +93,9 @@ const App = struct {
             std.log.warn("no calendar reminders: {s}", .{@errorName(err)});
             break :blk null;
         };
+        // Warnings read the thresholds from panel.conf each time, so a change in
+        // Settings applies without a restart.
+        self.power_watch = PowerWatch.create(self.allocator, &self.config);
         self.ipc_server = ipc.Server.start(self.allocator, onCommand, self) catch |err| blk: {
             std.log.warn("IPC unavailable: {s}", .{@errorName(err)});
             break :blk null;
@@ -395,6 +400,7 @@ const App = struct {
         if (self.manager) |m| m.destroy();
         if (self.clock_source != 0) _ = glib.Source.remove(self.clock_source);
         if (self.reminders) |r| r.destroy();
+        if (self.power_watch) |w| w.destroy();
         if (self.notifications) |n| n.destroy();
         if (self.tray) |tray| tray.destroy();
         if (self.quick) |q| q.destroy();
@@ -463,6 +469,7 @@ test {
 test {
     _ = @import("notifications.zig");
     _ = @import("reminders.zig");
+    _ = @import("powerwatch.zig");
 }
 
 test {

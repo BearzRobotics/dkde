@@ -8,6 +8,11 @@ const gio = @import("gio2");
 const glib = @import("glib2");
 
 pub fn send(summary: [:0]const u8, body: [:0]const u8, icon: [:0]const u8) void {
+    sendTimed(summary, body, icon, -1);
+}
+
+/// `timeout_ms`: -1 for the server's default, 0 to stay until dismissed.
+pub fn sendTimed(summary: [:0]const u8, body: [:0]const u8, icon: [:0]const u8, timeout_ms: i32) void {
     var err: ?*glib.Error = null;
     const connection = gio.busGetSync(.session, null, &err) orelse {
         if (err) |e| {
@@ -25,7 +30,7 @@ pub fn send(summary: [:0]const u8, body: [:0]const u8, icon: [:0]const u8) void 
         glib.Variant.newString(body),
         glib.Variant.newStrv(&no_actions, 0),
         emptyHints(),
-        glib.Variant.newInt32(-1),
+        glib.Variant.newInt32(timeout_ms),
     };
     connection.call(
         "org.freedesktop.Notifications",
