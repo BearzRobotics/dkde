@@ -100,6 +100,13 @@ on first use; `dkde-setup --once` runs from `dkde-session` on first login.
 `wlr-randr`, `swaylock` (or `gtklock`, `waylock`), `lpadmin`/`lpstat` (CUPS),
 `zip`/`unzip`/`tar`/`7z`, `parted` and the filesystem tools, `git`/`curl`.
 
+**The partition tool (`dkde-parted`)** drives command-line programs and links no
+partitioning library (deliberately: libparted would mean vendoring it and its
+dependencies). It needs `parted`, and util-linux's `lsblk` (with `-J`) and
+`losetup` (with `-P`, for disk image files), plus `sudo` to apply changes. A
+filesystem is offered only when its tools are installed (`e2fsprogs`,
+`dosfstools`, `xfsprogs`, `btrfs-progs`, `exfatprogs`, `ntfs-3g`, ...).
+
 **Not needed:** systemd, logind, polkit, libadwaita, X11 (unless `-Dx11=true`),
 a D-Bus library, cron or any init-system timers. Calendar reminders run inside
 `dkde-panel`, so dinit needs no timer support.
