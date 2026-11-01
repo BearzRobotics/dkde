@@ -357,6 +357,19 @@ pub const Config = struct {
         try self.saveUserFile(user);
     }
 
+    pub const GroupItem = struct { group: [:0]const u8, pairs: []const Pair };
+
+    /// `setGroup` for many groups, in one write.
+    pub fn setGroups(self: *Config, items: []const GroupItem) !void {
+        const user = try self.loadUserFile();
+        defer user.file.free();
+        for (items) |item| {
+            _ = user.file.removeGroup(item.group, null);
+            for (item.pairs) |pair| user.file.setString(item.group, pair.key, pair.value);
+        }
+        try self.saveUserFile(user);
+    }
+
     /// Removes a whole group from the user's file, then reloads.
     pub fn removeGroup(self: *Config, group: [:0]const u8) !void {
         if (self.staged) return self.queue(.{ .remove_group = try self.allocator.dupeSentinel(u8, group, 0) });

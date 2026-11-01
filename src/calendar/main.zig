@@ -44,6 +44,7 @@ pub const CalendarApp = struct {
     show_ru: bool = false,
     named_only: bool = true,
     twelve_hour: bool = true,
+    sync_status: ?*gtk.Label = null,
     table_no: ?liturgy.Table = null,
     table_tlm: ?liturgy.Table = null,
     table_ru: ?liturgy.Table = null,
@@ -169,6 +170,30 @@ pub const CalendarApp = struct {
         const options_box = gtk.Box.new(.vertical, 6);
         options_box.append(named_check.as(gtk.Widget));
         options_box.append(clock_check.as(gtk.Widget));
+        options_box.append(gtk.Separator.new(.horizontal).as(gtk.Widget));
+        inline for (.{
+            .{ "Import calendar file…", FileMode.load_file },
+            .{ "Export calendar file…", FileMode.save_file },
+            .{ "Choose sync file…", FileMode.set_sync },
+        }) |item| {
+            const b = gtk.Button.newWithLabel(common.tr(item[0]));
+            b.as(gtk.Widget).addCssClass("flat");
+            const ctx = allocator.create(FileCtx) catch return error.OutOfMemory;
+            ctx.* = .{ .app = self, .mode = item[1] };
+            _ = gtk.Button.signals.clicked.connect(b, *FileCtx, &onFileButton, ctx, .{});
+            options_box.append(b.as(gtk.Widget));
+        }
+        const sync_now = gtk.Button.newWithLabel(common.tr("Sync now"));
+        sync_now.as(gtk.Widget).addCssClass("flat");
+        _ = gtk.Button.signals.clicked.connect(sync_now, *CalendarApp, &onSyncNow, self, .{});
+        options_box.append(sync_now.as(gtk.Widget));
+        const status = gtk.Label.new("");
+        status.setXalign(0);
+        status.setWrap(1);
+        status.setMaxWidthChars(32);
+        status.as(gtk.Widget).addCssClass("dim-label");
+        self.sync_status = status;
+        options_box.append(status.as(gtk.Widget));
         const options_popover = gtk.Popover.new();
         options_popover.setChild(options_box.as(gtk.Widget));
         const options = gtk.MenuButton.new();
@@ -239,8 +264,10 @@ pub const CalendarApp = struct {
         window.setChild(body.as(gtk.Widget));
 
         _ = gtk.Widget.signals.destroy.connect(self.window, *CalendarApp, &onDestroy, self, .{});
+        self.syncNow(false);
         self.rebuildGrid();
         self.showDay();
+        self.showSyncStatus();
         return self;
     }
 
@@ -756,8 +783,191 @@ pub const CalendarApp = struct {
         const fresh = events.load(self.allocator, &self.cfg) catch return;
         self.list.deinit();
         self.list = fresh;
+        self.exportToSyncFile();
         self.rebuildGrid();
         self.showEvents();
+    }
+
+    // ---- iCalendar import, export and the sync file ----------------------------------------
+
+    const FileMode = enum { load_file, save_file, set_sync };
+    const FileCtx = struct { app: *CalendarApp, mode: FileMode };
+
+    fn onFileButton(_: *gtk.Button, ctx: *FileCtx) callconv(.c) void {
+        const app = ctx.app;
+        const dialog = gtk.FileDialog.new();
+        defer dialog.as(gobject.Object).unref();
+        switch (ctx.mode) {
+            .load_file => dialog.setTitle(common.tr("Import a calendar file")),
+            .save_file => dialog.setTitle(common.tr("Export the calendar")),
+            .set_sync => dialog.setTitle(common.tr("Choose the file to keep in sync")),
+        }
+        if (ctx.mode != .load_file) dialog.setInitialName("dkde-calendar.ics");
+        if (ctx.mode == .load_file) {
+            dialog.open(app.window.as(gtk.Window), null, onFileChosen, ctx);
+        } else {
+            dialog.save(app.window.as(gtk.Window), null, onFileChosen, ctx);
+        }
+    }
+
+    fn onFileChosen(source: ?*gobject.Object, result: *gio.AsyncResult, raw: ?*anyopaque) callconv(.c) void {
+        const ctx: *FileCtx = @ptrCast(@alignCast(raw.?));
+        const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
+        var err: ?*glib.Error = null;
+        const file = (if (ctx.mode == .load_file) dialog.openFinish(result, &err) else dialog.saveFinish(result, &err)) orelse {
+            if (err) |e| e.free(); // cancelled
+            return;
+        };
+        defer file.as(gobject.Object).unref();
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        const app = ctx.app;
+        const p = std.mem.span(path);
+        switch (ctx.mode) {
+            .load_file => {
+                const n = app.importFrom(p) catch {
+                    app.say("The file could not be read as a calendar.");
+                    return;
+                };
+                var b: [64]u8 = undefined;
+                app.say(bufZ(&b, "Imported {d} events.", .{n}) catch "Imported.");
+            },
+            .save_file => {
+                app.exportTo(p) catch {
+                    app.say("The calendar could not be written.");
+                    return;
+                };
+                app.say("Calendar exported.");
+            },
+            .set_sync => {
+                const z = app.allocator.dupeSentinel(u8, p, 0) catch return;
+                defer app.allocator.free(z);
+                app.cfg.setString("sync", "ics-file", z) catch {};
+                app.syncNow(true);
+                app.showSyncStatus();
+            },
+        }
+    }
+
+    fn say(self: *CalendarApp, text: []const u8) void {
+        if (self.sync_status) |l| l.setText(zstr(text));
+    }
+
+    fn showSyncStatus(self: *CalendarApp) void {
+        const path = self.syncPath() orelse return self.say("");
+        defer self.allocator.free(path);
+        var b: [400]u8 = undefined;
+        self.say(bufZ(&b, "Syncing with {s}", .{path}) catch "");
+    }
+
+    fn onSyncNow(_: *gtk.Button, self: *CalendarApp) callconv(.c) void {
+        if (self.syncPath()) |p| {
+            self.allocator.free(p);
+            self.syncNow(true);
+        } else self.say("Choose a sync file first.");
+    }
+
+    /// The sync file's path (owned), or null when none is set.
+    fn syncPath(self: *CalendarApp) ?[]u8 {
+        const p = self.cfg.getString(self.allocator, "sync", "ics-file", "") catch return null;
+        if (p.len == 0) {
+            self.allocator.free(p);
+            return null;
+        }
+        return p;
+    }
+
+    fn utcToLocal(utc_minutes: i64) i64 {
+        const utc = glib.DateTime.newFromUnixUtc(utc_minutes * 60) orelse return utc_minutes;
+        defer utc.unref();
+        const local = utc.toLocal() orelse return utc_minutes;
+        defer local.unref();
+        const days = civil.daysFromCivil(local.getYear(), @intCast(local.getMonth()), @intCast(local.getDayOfMonth()));
+        return days * 1440 + local.getHour() * 60 + local.getMinute();
+    }
+
+    fn exportTo(self: *CalendarApp, path: []const u8) !void {
+        const now = glib.DateTime.newNowUtc() orelse return error.NoClock;
+        defer now.unref();
+        const stamp = now.format("%Y%m%dT%H%M%SZ") orelse return error.NoClock;
+        defer glib.free(stamp);
+        const text = try common.ics.write(self.allocator, self.list.items, std.mem.span(stamp));
+        defer self.allocator.free(text);
+        const z = try self.allocator.dupeSentinel(u8, path, 0);
+        defer self.allocator.free(z);
+        var err: ?*glib.Error = null;
+        if (glib.fileSetContents(z, text.ptr, @intCast(text.len), &err) == 0) {
+            if (err) |e| e.free();
+            return error.WriteFailed;
+        }
+    }
+
+    /// Merges the events of an iCalendar file in. An event with a UID already
+    /// here replaces that event; the rest are added. Returns how many were read.
+    fn importFrom(self: *CalendarApp, path: []const u8) !usize {
+        const z = try self.allocator.dupeSentinel(u8, path, 0);
+        defer self.allocator.free(z);
+        var contents: [*]u8 = undefined;
+        var len: usize = 0;
+        var err: ?*glib.Error = null;
+        if (glib.fileGetContents(z, &contents, &len, &err) == 0) {
+            if (err) |e| e.free();
+            return error.ReadFailed;
+        }
+        defer glib.free(contents);
+        var parsed = try common.ics.parse(self.allocator, contents[0..len], utcToLocal);
+        defer parsed.deinit();
+        const a = parsed.arena.allocator();
+        for (parsed.events) |*ev| {
+            var idbuf: [32]u8 = undefined;
+            var uid = ev.uid;
+            if (uid.len == 0) {
+                var gen: [96]u8 = undefined;
+                var db: [16]u8 = undefined;
+                uid = try a.dupe(u8, std.fmt.bufPrint(&gen, "{s}-{s}-{d}", .{ ev.title, events.formatDate(&db, ev.date), ev.start }) catch "x");
+                ev.uid = uid;
+            }
+            ev.id = try a.dupe(u8, common.ics.idForUid(&idbuf, uid));
+        }
+        try events.saveMany(self.allocator, &self.cfg, parsed.events);
+        self.reloadEvents();
+        return parsed.events.len;
+    }
+
+    fn reloadEvents(self: *CalendarApp) void {
+        const fresh = events.load(self.allocator, &self.cfg) catch return;
+        self.list.deinit();
+        self.list = fresh;
+    }
+
+    fn exportToSyncFile(self: *CalendarApp) void {
+        const path = self.syncPath() orelse return;
+        defer self.allocator.free(path);
+        self.exportTo(path) catch |err| {
+            std.log.warn("sync file not written: {s}", .{@errorName(err)});
+            self.say("The sync file could not be written.");
+        };
+    }
+
+    /// Brings in what changed in the sync file (a phone may have edited it),
+    /// then writes the merged calendar back.
+    fn syncNow(self: *CalendarApp, show: bool) void {
+        const path = self.syncPath() orelse return;
+        defer self.allocator.free(path);
+        const z = self.allocator.dupeSentinel(u8, path, 0) catch return;
+        defer self.allocator.free(z);
+        if (glib.fileTest(z, .{ .exists = true }) != 0) {
+            const n = self.importFrom(path) catch 0;
+            if (show) {
+                var b: [64]u8 = undefined;
+                self.say(bufZ(&b, "Synced: {d} events read.", .{n}) catch "Synced.");
+            }
+        }
+        self.exportToSyncFile();
+        if (show) {
+            self.rebuildGrid();
+            self.showEvents();
+        }
     }
 
     // ---- notes -----------------------------------------------------------------------------

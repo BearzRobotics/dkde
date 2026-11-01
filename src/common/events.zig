@@ -68,6 +68,8 @@ pub const Color = enum {
 
 pub const Event = struct {
     id: []const u8,
+    /// The iCalendar UID this event came from or goes out as; empty means "<id>@dkde".
+    uid: []const u8 = "",
     title: []const u8,
     location: []const u8 = "",
     notes: []const u8 = "",
@@ -269,8 +271,10 @@ pub fn load(allocator: std.mem.Allocator, cfg: *const config_mod.Config) !List {
         const title = try cfg.getString(a, group, "title", "");
         const location = try cfg.getString(a, group, "location", "");
         const notes = try cfg.getString(a, group, "notes", "");
+        const uid = try cfg.getString(a, group, "uid", "");
         try items.append(a, .{
             .id = try a.dupe(u8, id),
+            .uid = uid,
             .title = title,
             .location = location,
             .notes = notes,
@@ -287,22 +291,19 @@ pub fn load(allocator: std.mem.Allocator, cfg: *const config_mod.Config) !List {
     return .{ .arena = arena, .items = try items.toOwnedSlice(a) };
 }
 
-/// Writes (or replaces) one event.
-pub fn save(allocator: std.mem.Allocator, cfg: *config_mod.Config, ev: Event) !void {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
+/// The group name and key/value pairs that store `ev`, allocated from `a`.
+fn pairsFor(a: std.mem.Allocator, ev: Event) !config_mod.Config.GroupItem {
     const Pair = config_mod.Config.Pair;
-
     const group = try std.fmt.allocPrintSentinel(a, "{s}{s}", .{ group_prefix, ev.id }, 0);
     var db: [16]u8 = undefined;
     var de: [16]u8 = undefined;
     var tb: [8]u8 = undefined;
     var te: [8]u8 = undefined;
-    const pairs = [_]Pair{
+    const pairs = try a.dupe(Pair, &.{
         .{ .key = "title", .value = try a.dupeSentinel(u8, ev.title, 0) },
         .{ .key = "location", .value = try a.dupeSentinel(u8, ev.location, 0) },
         .{ .key = "notes", .value = try a.dupeSentinel(u8, ev.notes, 0) },
+        .{ .key = "uid", .value = try a.dupeSentinel(u8, ev.uid, 0) },
         .{ .key = "date", .value = try a.dupeSentinel(u8, formatDate(&db, ev.date), 0) },
         .{ .key = "end-date", .value = try a.dupeSentinel(u8, formatDate(&de, ev.end_date), 0) },
         .{ .key = "all-day", .value = if (ev.all_day) "true" else "false" },
@@ -311,8 +312,24 @@ pub fn save(allocator: std.mem.Allocator, cfg: *config_mod.Config, ev: Event) !v
         .{ .key = "repeat", .value = try a.dupeSentinel(u8, ev.repeat.name(), 0) },
         .{ .key = "color", .value = try a.dupeSentinel(u8, ev.color.name(), 0) },
         .{ .key = "remind", .value = try std.fmt.allocPrintSentinel(a, "{d}", .{ev.remind}, 0) },
-    };
-    try cfg.setGroup(group, &pairs);
+    });
+    return .{ .group = group, .pairs = pairs };
+}
+
+/// Writes (or replaces) one event.
+pub fn save(allocator: std.mem.Allocator, cfg: *config_mod.Config, ev: Event) !void {
+    try saveMany(allocator, cfg, &.{ev});
+}
+
+/// Writes (or replaces) several events in one file write, so the panel
+/// reloads its reminders once.
+pub fn saveMany(allocator: std.mem.Allocator, cfg: *config_mod.Config, evs: []const Event) !void {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const items = try a.alloc(config_mod.Config.GroupItem, evs.len);
+    for (evs, 0..) |ev, i| items[i] = try pairsFor(a, ev);
+    try cfg.setGroups(items);
 }
 
 pub fn remove(allocator: std.mem.Allocator, cfg: *config_mod.Config, id: []const u8) !void {

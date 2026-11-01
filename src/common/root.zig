@@ -10,6 +10,7 @@ pub const appinfo = @import("appinfo.zig");
 pub const civil = @import("civil.zig");
 pub const config = @import("config.zig");
 pub const events = @import("events.zig");
+pub const ics = @import("ics.zig");
 pub const contextmenu = @import("contextmenu.zig");
 pub const dialogs = @import("dialogs.zig");
 pub const header = @import("header.zig");
