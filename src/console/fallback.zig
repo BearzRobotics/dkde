@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const sys = @import("sys.zig");
-const config = @import("config.zig");
+const config = @import("consolefont").config;
 const Vt = @import("vt.zig").Vt;
 
 extern fn execv(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) c_int;

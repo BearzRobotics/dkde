@@ -5,7 +5,8 @@
 
 const std = @import("std");
 const vt = @import("ghostty-vt");
-const psf = @import("psf.zig");
+const psf = @import("consolefont").psf;
+const ttf = @import("consolefont").ttf;
 const drm = @import("drm.zig");
 
 pub const Rgb = vt.color.RGB;
@@ -22,27 +23,48 @@ pub const Cursor = struct {
 };
 
 pub const Renderer = struct {
-    /// The main font first, then the fallback fonts.
+    /// PSF fonts: the main font first when `faces` is empty, else fallbacks.
     fonts: []const *const psf.Font,
+    /// TrueType faces; when there are any, the first one is the main font.
+    faces: []const *ttf.Face = &.{},
     scale: u32,
     cell_w: u32,
     cell_h: u32,
 
     pub fn init(fonts: []const *const psf.Font, scale: u32) Renderer {
+        return initMixed(fonts, &.{}, scale);
+    }
+
+    /// `faces[0]`, if there is one, sets the cell; otherwise `fonts[0]` does.
+    /// A TrueType face is already sized in pixels, so `scale` applies to PSF only.
+    pub fn initMixed(fonts: []const *const psf.Font, faces: []const *ttf.Face, scale: u32) Renderer {
+        if (faces.len > 0) return .{ .fonts = fonts, .faces = faces, .scale = 1, .cell_w = faces[0].cell_w, .cell_h = faces[0].cell_h };
         const f = fonts[0];
         return .{ .fonts = fonts, .scale = scale, .cell_w = f.width * scale, .cell_h = f.height * scale };
     }
 
-    const Glyph = struct { font: *const psf.Font, bitmap: []const u8 };
+    const Glyph = union(enum) {
+        bitmap: struct { font: *const psf.Font, bitmap: []const u8 },
+        coverage: []const u8,
+    };
 
-    fn glyphFor(self: *const Renderer, cp: u21) ?Glyph {
-        const main = self.fonts[0];
+    fn glyphFor(self: *const Renderer, cp: u21, wide: bool, bold: bool) ?Glyph {
+        if (self.faces.len > 0) {
+            for (self.faces) |f| if (f.coverage(cp, wide, bold, self.cell_w)) |c| return .{ .coverage = c };
+            // A blank glyph in the main face (a space) has no coverage: not "missing".
+            if (self.faces[0].has(cp)) return null;
+        }
         for (self.fonts) |f| {
             // Only fonts with the same cell size can share a grid.
-            if (f.width != main.width or f.height != main.height) continue;
-            if (f.lookup(cp)) |bm| return .{ .font = f, .bitmap = bm };
+            if (f.width * self.scale != self.cell_w or f.height * self.scale != self.cell_h) continue;
+            if (f.lookup(cp)) |bm| return .{ .bitmap = .{ .font = f, .bitmap = bm } };
         }
         return null;
+    }
+
+    /// Whether the characters of the main face should never get a "missing" box.
+    fn blank(self: *const Renderer, cp: u21) bool {
+        return self.faces.len > 0 and self.faces[0].has(cp);
     }
 
     /// Colours of a cell after style, inverse, bold-as-bright and selection.
@@ -116,11 +138,14 @@ pub const Renderer = struct {
         fill(buf, px, py, w, self.cell_h, bg);
         if (flags.invisible) return;
 
-        const blank = cp == 0 or cp == ' ';
-        if (!blank) {
-            if (self.glyphFor(cp)) |g| {
-                self.blit(buf, px, py, g, fg, flags.bold);
-            } else self.box(buf, px, py, fg);
+        const is_blank = cp == 0 or cp == ' ';
+        if (!is_blank) {
+            if (self.glyphFor(cp, cells_wide > 1, flags.bold)) |g| {
+                switch (g) {
+                    .bitmap => |b| self.blit(buf, px, py, b.font, b.bitmap, fg, flags.bold),
+                    .coverage => |c| self.blend(buf, px, py, c, w, fg, bg),
+                }
+            } else if (!self.blank(cp)) self.box(buf, px, py, fg);
         }
         const s = self.scale;
         if (flags.underline != .none) fill(buf, px, py + self.cell_h - 2 * s, w, s, fg);
@@ -128,8 +153,24 @@ pub const Renderer = struct {
         if (flags.overline) fill(buf, px, py, w, s, fg);
     }
 
-    fn blit(self: *const Renderer, buf: *const drm.Buffer, px: u32, py: u32, g: Glyph, fg: u32, bold: bool) void {
-        const f = g.font;
+    /// Mix `fg` over `bg` by an 8-bit coverage bitmap `w` pixels wide.
+    fn blend(self: *const Renderer, buf: *const drm.Buffer, px: u32, py: u32, cov: []const u8, w: u32, fg: u32, bg: u32) void {
+        var gy: u32 = 0;
+        while (gy < self.cell_h) : (gy += 1) {
+            const y = py + gy;
+            if (y >= buf.height) return;
+            const row = buf.row(y);
+            const src = cov[gy * w ..][0..w];
+            for (src, 0..) |c, gx| {
+                if (c == 0) continue;
+                const x = px + @as(u32, @intCast(gx));
+                if (x >= buf.width) break;
+                row[x] = if (c == 255) fg else mix(bg, fg, c);
+            }
+        }
+    }
+
+    fn blit(self: *const Renderer, buf: *const drm.Buffer, px: u32, py: u32, f: *const psf.Font, bitmap: []const u8, fg: u32, bold: bool) void {
         const s = self.scale;
         var gy: u32 = 0;
         while (gy < f.height) : (gy += 1) {
@@ -140,9 +181,9 @@ pub const Renderer = struct {
                 const row = buf.row(y);
                 var gx: u32 = 0;
                 while (gx < f.width) : (gx += 1) {
-                    var on = f.pixel(g.bitmap, gx, gy);
+                    var on = f.pixel(bitmap, gx, gy);
                     // No bold font: smear the glyph one pixel to the right.
-                    if (!on and bold and gx > 0) on = f.pixel(g.bitmap, gx - 1, gy);
+                    if (!on and bold and gx > 0) on = f.pixel(bitmap, gx - 1, gy);
                     if (!on) continue;
                     var sx: u32 = 0;
                     while (sx < s) : (sx += 1) {
@@ -231,6 +272,16 @@ pub const Renderer = struct {
         if (below < buf.height) fill(buf, 0, below, buf.width, buf.height - below, bg);
     }
 };
+
+/// `bg` toward `fg` by `a`/255, per channel.
+pub inline fn mix(bg: u32, fg: u32, a: u8) u32 {
+    const al: u32 = a;
+    const inv = 255 - al;
+    const r = (((bg >> 16) & 255) * inv + ((fg >> 16) & 255) * al + 127) / 255;
+    const g = (((bg >> 8) & 255) * inv + ((fg >> 8) & 255) * al + 127) / 255;
+    const b = ((bg & 255) * inv + (fg & 255) * al + 127) / 255;
+    return (r << 16) | (g << 8) | b;
+}
 
 /// A 12x19 arrow, one bit per pixel: bit set means white, with a black outline
 /// where `outline` has it.

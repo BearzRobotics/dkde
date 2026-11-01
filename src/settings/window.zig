@@ -16,6 +16,7 @@ const labwc = common.labwc;
 const audio = common.audio;
 const users = @import("users.zig");
 const hwpages = @import("hwpages.zig");
+const consolepage = @import("consolepage.zig");
 
 const log = std.log.scoped(.settings);
 
@@ -26,6 +27,7 @@ const pages = [_]Page{
     .{ .id = "taskbar", .title = "Taskbar", .icon = "view-list-symbolic" },
     .{ .id = "startmenu", .title = "Start menu", .icon = "start-here-symbolic" },
     .{ .id = "terminal", .title = "Terminal", .icon = "utilities-terminal-symbolic" },
+    .{ .id = "console", .title = "Console", .icon = "computer-symbolic" },
     .{ .id = "datetime", .title = "Date & time", .icon = "preferences-system-time-symbolic" },
     .{ .id = "power", .title = "Power & lock", .icon = "system-shutdown-symbolic" },
     .{ .id = "keyboard", .title = "Keyboard", .icon = "input-keyboard-symbolic" },
@@ -358,6 +360,8 @@ pub const SettingsWindow = struct {
                 hwpages.BluetoothPage.build(self)
             else if (std.mem.eql(u8, id, "shortcuts"))
                 hwpages.ShortcutsPage.build(self)
+            else if (std.mem.eql(u8, id, "console"))
+                consolepage.ConsolePage.build(self)
             else if (std.mem.eql(u8, id, "power"))
                 hwpages.PowerPage.build(self)
             else if (std.mem.eql(u8, id, "datetime"))

@@ -11,7 +11,7 @@ const std = @import("std");
 const cairo = @import("cairo1");
 const zpdf = @import("zpdf");
 const image = @import("image.zig");
-const truetype = @import("truetype.zig");
+const truetype = @import("truetype");
 const cff = @import("cff.zig");
 const imgcodec = @import("imgcodec");
 pub const Diag = @import("diag.zig").Diag;
@@ -1392,7 +1392,6 @@ test "a JPEG image is decoded, and unsupported image types are counted" {
 }
 
 test {
-    _ = @import("truetype.zig");
     _ = @import("image.zig");
     _ = @import("diag.zig");
     _ = @import("cff.zig");

@@ -993,14 +993,22 @@ The console falls back to a plain text login whenever it can't do its job:
 - **Other fonts:** `[console] font` takes the path to a PSF2 file, and
   `[console] fallback-fonts` lists PSF2 files used for characters the main
   font lacks. A character no font has is drawn as a box.
-- **Post-v1 (M9): TrueType outlines**, read and rasterized in Zig: the
-  `glyf` table's quadratic outlines, filled with anti-aliasing, at any size.
-  That covers common monospace fonts.
+- **TrueType outlines (M9)**, read and rasterized in Zig: `[console] font`
+  takes a `.ttf` file as well as a PSF file (the type is told by the file's
+  first bytes). The `glyf` outlines come from the same `truetype` module
+  `dkde-pdfrender` uses (`src/truetype.zig`). Each glyph is filled with exact-area
+  anti-aliasing into an 8-bit coverage bitmap the first time it is drawn and
+  kept in a cache of at most 2048 glyphs per face. There is no hinting. The
+  cell is `font-size` pixels tall (0 chooses as for PSF), as wide as the
+  face's "M", and shrinks until 80 columns fit. Bold smears the glyph one pixel
+  to the right, as for PSF. A character the face lacks is looked up in
+  `fallback-fonts` (PSF or TrueType, centred in the cell), then drawn as a box.
+  Only monospace faces make a grid; `config fonts` and the Settings page list
+  the monospace ones. OpenType files with CFF outlines are refused.
 - **Later, unscheduled:** colour emoji (colour bitmap tables such as
   `CBDT`) and ligatures (the `GSUB` table). Both would be welcome, but
   neither is needed soon, and each is a sizeable piece of work. They get a
-  milestone when they're wanted, written in Zig like the rest. CFF/OpenType
-  outlines and hinting are not planned.
+  milestone when they're wanted, written in Zig like the rest. Hinting is not planned.
 
 Wide characters and grapheme clusters follow libghostty-vt's cell model.
 
@@ -1097,11 +1105,10 @@ There are two front ends to the same file, so they can never disagree:
   tool (see *Input*).
 - **A Console page in `dkde-settings`** (5.5): font, size, colour scheme
   and scrollback, with a live preview drawn by the console's own renderer
-  code. It never writes `/etc` itself. **Apply** runs
-  `sudo dkde-console config set …` for each change. When sudo needs a
-  password, it runs in `dkde-term`, so the user sees and answers the
-  prompt. **OPEN:** whether to use `sudo -A` with an askpass helper
-  instead.
+  code (`src/console/sample.zig`, shared as the `consolefont` module). It
+  never writes `/etc` itself. **Apply** asks for the password with the
+  elevation dialog the Users page uses and runs `dkde-console config set …`
+  for each value, so the console's own validation applies.
 
 #### Shared code
 
@@ -1429,8 +1436,9 @@ Each milestone is merged only when all its acceptance criteria pass.
 
 ### M9 — Console fonts and settings page
 
-- TrueType (`glyf`) fonts, rendered in Zig.
-- The Console page in `dkde-settings`.
+- TrueType (`glyf`) fonts, rendered in Zig. **Done.**
+- The Console page in `dkde-settings`. **Done**; the live change reaches a
+  running console through its inotify watch.
 - **Done when:** a TrueType monospace font renders cleanly at several
   sizes, and a change made in Settings reaches a running console without
   a restart.

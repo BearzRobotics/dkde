@@ -56,6 +56,9 @@ setup() {
     printf '\\n \\s \\r (\\l)\nwelcome to dkde-console test\n\n' > initrd/etc/issue
     # The fallback getty is busybox's, since the image has no agetty.
     printf '[console]\nfallback=/bin/busybox getty -L 0 tty%%N linux\n' > initrd/etc/dkde/console.conf
+    # A TrueType font for the M9 check, if the host has one.
+    local ttf; ttf=$(ls /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf /usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf 2>/dev/null | head -1)
+    [ -n "$ttf" ] && cp "$ttf" initrd/etc/dkde/test.ttf
     $TOOLS cpio initrd initrd.gz
 }
 
@@ -119,6 +122,16 @@ tests() {
     $TOOLS type 'rssof 1\n'; wait_serial "VmRSS" 60
     rss=$(grep -o 'VmRSS:[[:space:]]*[0-9]*' serial.log | tail -1 | grep -o '[0-9]*$')
     check "idle RSS ${rss:-?} kB is under 8192 kB" bash -c "[ '${rss:-99999}' -lt 8192 ]"
+
+    if [ -f "$CACHE/initrd/etc/dkde/test.ttf" ]; then
+        echo "== TrueType font, changed while the console runs"
+        shot t0_psf
+        $TOOLS type 'echo font=/etc/dkde/test.ttf >> /etc/dkde/console.conf; echo font-size=20 >> /etc/dkde/console.conf; ls -l /etc\n'
+        settle 5; shot t1_ttf
+        check "the screen changed after the font did" bash -c "! $TOOLS same '$CACHE/t0_psf.ppm' '$CACHE/t1_ttf.ppm'"
+        check "TrueType text is on the screen"        wait_lit t1_ttf 200 10
+        $TOOLS type 'echo font-size=0 >> /etc/dkde/console.conf; echo size reset\n'; settle 4
+    fi
 
     echo "== VT switching"
     shot v1_tty1

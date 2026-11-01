@@ -34,9 +34,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 }
 
 test {
-    _ = @import("psf.zig");
     _ = @import("issue.zig");
-    _ = @import("config.zig");
     _ = @import("configtool.zig");
     _ = @import("kbd.zig");
     _ = @import("drm.zig");

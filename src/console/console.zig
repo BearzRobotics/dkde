@@ -7,14 +7,15 @@ const std = @import("std");
 const vt = @import("ghostty-vt");
 const termcore = @import("termcore");
 const Pty = termcore.pty.Pty;
-const config = @import("config.zig");
+const config = @import("consolefont").config;
 const configtool = @import("configtool.zig");
 const drm = @import("drm.zig");
 const evdev = @import("evdev.zig");
 const fallback = @import("fallback.zig");
 const issue = @import("issue.zig");
 const kbd = @import("kbd.zig");
-const psf = @import("psf.zig");
+const psf = @import("consolefont").psf;
+const ttf = @import("consolefont").ttf;
 const render = @import("render.zig");
 const sys = @import("sys.zig");
 const vtmod = @import("vt.zig");
@@ -53,12 +54,18 @@ const FontSet = struct {
     data: std.ArrayList([]u8) = .empty,
     fonts: std.ArrayList(*psf.Font) = .empty,
     ptrs: std.ArrayList(*const psf.Font) = .empty,
+    faces: std.ArrayList(*ttf.Face) = .empty,
 
     fn deinit(self: *FontSet, a: std.mem.Allocator) void {
         for (self.fonts.items) |f| {
             f.deinit(a);
             a.destroy(f);
         }
+        for (self.faces.items) |f| {
+            f.deinit();
+            a.destroy(f);
+        }
+        self.faces.deinit(a);
         for (self.data.items) |d| a.free(d);
         self.data.deinit(a);
         self.fonts.deinit(a);
@@ -76,8 +83,36 @@ const FontSet = struct {
         if (owned) |o| try self.data.append(a, o);
     }
 
-    fn addFile(self: *FontSet, a: std.mem.Allocator, path: []const u8) bool {
-        const bytes = sys.readFile(a, path, 16 << 20) catch return false;
+    /// A TrueType file: a face `cell_h` pixels tall. The file data is kept
+    /// by the font set.
+    fn addTrueType(self: *FontSet, a: std.mem.Allocator, bytes: []u8, cell_h: u32) bool {
+        const f = a.create(ttf.Face) catch return false;
+        f.* = ttf.Face.init(a, bytes, cell_h) catch {
+            a.destroy(f);
+            return false;
+        };
+        self.faces.append(a, f) catch {
+            f.deinit();
+            a.destroy(f);
+            return false;
+        };
+        self.data.append(a, bytes) catch {
+            _ = self.faces.pop();
+            f.deinit();
+            a.destroy(f);
+            return false;
+        };
+        return true;
+    }
+
+    /// A PSF or TrueType font file. TrueType gets `cell_h` pixels of height.
+    fn addFile(self: *FontSet, a: std.mem.Allocator, path: []const u8, cell_h: u32) bool {
+        const bytes = sys.readFile(a, path, 32 << 20) catch return false;
+        if (ttf.looksLikeTrueType(bytes)) {
+            if (self.addTrueType(a, bytes, cell_h)) return true;
+            a.free(bytes);
+            return false;
+        }
         self.add(a, bytes, bytes) catch {
             a.free(bytes);
             return false;
@@ -280,21 +315,27 @@ pub const Console = struct {
         var set: FontSet = .{};
         errdefer set.deinit(a);
 
+        var h = self.settings.font_size * self.settings.scale;
+        if (h == 0) h = drm.chooseFontHeight(self.out.width(), self.out.height(), self.out.mm_height) * self.settings.scale;
         var main_ok = false;
-        if (self.settings.font.len > 0) main_ok = set.addFile(a, self.settings.font);
-        if (!main_ok) {
-            var h = self.settings.font_size;
-            if (h == 0) h = drm.chooseFontHeight(self.out.width(), self.out.height(), self.out.mm_height);
-            try set.addBuiltin(a, h);
+        if (self.settings.font.len > 0) main_ok = set.addFile(a, self.settings.font, h);
+        // A TrueType cell is not half as wide as it is tall: shrink until 80 columns fit.
+        while (main_ok and set.faces.items.len > 0 and h > 8 and self.out.width() / set.faces.items[0].cell_w < 80) {
+            h -= 1;
+            set.deinit(a);
+            set = .{};
+            main_ok = set.addFile(a, self.settings.font, h);
         }
+        if (!main_ok) try set.addBuiltin(a, if (self.settings.font_size == 0) h / self.settings.scale else self.settings.font_size);
         var it = std.mem.tokenizeAny(u8, self.settings.fallback_fonts, ", ");
-        while (it.next()) |path| _ = set.addFile(a, path);
+        while (it.next()) |path| _ = set.addFile(a, path, h);
         // The built-in fonts of the same size back up a font from disk.
-        if (main_ok) try set.addBuiltin(a, set.fonts.items[0].height);
+        if (main_ok and set.fonts.items.len > 0) try set.addBuiltin(a, set.fonts.items[0].height);
+        if (main_ok and set.fonts.items.len == 0) try set.addBuiltin(a, 16);
 
         self.fonts.deinit(a);
         self.fonts = set;
-        self.renderer = render.Renderer.init(self.fonts.ptrs.items, self.settings.scale);
+        self.renderer = render.Renderer.initMixed(self.fonts.ptrs.items, self.fonts.faces.items, self.settings.scale);
 
         const cols = self.out.width() / self.renderer.cell_w;
         const rows = self.out.height() / self.renderer.cell_h;

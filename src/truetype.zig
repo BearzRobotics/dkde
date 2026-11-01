@@ -36,6 +36,9 @@ pub const Font = struct {
     cmap: Table = .{},
     hmtx: Table = .{},
     num_hmetrics: u16 = 0,
+    /// From `hhea`, in font units: the ascender is positive, the descender negative.
+    ascender: i16 = 0,
+    descender: i16 = 0,
 
     pub fn parse(data: []const u8) Error!Font {
         if (data.len < 12) return error.BadFont;
@@ -63,6 +66,10 @@ pub const Font = struct {
         if (f.units_per_em == 0) return error.BadFont;
         f.long_loca = (try i16At(data, head.off + 50)) != 0;
         f.num_glyphs = try u16At(data, maxp.off + 4);
+        if (hhea.len >= 8) {
+            f.ascender = try i16At(data, hhea.off + 4);
+            f.descender = try i16At(data, hhea.off + 6);
+        }
         if (hhea.len >= 36) f.num_hmetrics = try u16At(data, hhea.off + 34);
         if (f.glyf.len == 0 or f.loca.len == 0) return error.BadFont;
         return f;

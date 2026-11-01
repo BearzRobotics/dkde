@@ -65,6 +65,7 @@ pub fn build(b: *std.Build) void {
     const zpdf_mod = b.createModule(.{ .root_source_file = b.path("third_party/zpdf/src/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
     const pdfrender = b.createModule(.{ .root_source_file = b.path("src/pdfrender/render.zig"), .target = target, .optimize = optimize, .link_libc = true });
     pdfrender.addImport("zpdf", zpdf_mod);
+    pdfrender.addImport("truetype", truetypeModule(b, target, optimize));
     pdfrender.addImport("imgcodec", imgcodec);
     pdfrender.addImport("cairo1", gobject.module("cairo1"));
     pdfrender.linkSystemLibrary("cairo", .{});
@@ -72,6 +73,7 @@ pub fn build(b: *std.Build) void {
     pdfrender.addCSourceFile(.{ .file = b.path("third_party/stb/stb_impl.c"), .flags = &.{"-O2"} });
     pdfrender.addIncludePath(b.path("third_party/stb"));
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = pdfrender })).step);
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = truetypeModule(b, target, optimize) })).step);
 
     // dkde-pdfcheck: draws many PDFs without a display and reports what was not drawn.
     const check_mod = b.createModule(.{ .root_source_file = b.path("src/pdfcheck/main.zig"), .target = target, .optimize = optimize, .link_libc = true });
@@ -97,6 +99,13 @@ pub fn build(b: *std.Build) void {
             // gtk4-layer-shell must be linked before libwayland, so before GTK.
             if (std.mem.eql(u8, name, "panel")) mod.linkSystemLibrary("gtk4-layer-shell-0", .{});
             addGtk(mod, gobject);
+            if (std.mem.eql(u8, name, "settings")) {
+                // The Console page draws its preview with the console's own font code.
+                const ghostty = b.dependency("ghostty", .{ .target = target, .optimize = .ReleaseFast });
+                const tc = termcoreModule(b, target, optimize, ghostty);
+                mod.addImport("termcore", tc);
+                mod.addImport("consolefont", consoleFontModule(b, target, optimize, tc));
+            }
             if (std.mem.eql(u8, name, "term")) {
                 // Debug builds of libghostty-vt run integrity checks on every linefeed,
                 // which makes a screenful of output take seconds. Always build it fast.
@@ -179,6 +188,27 @@ fn addGtk(mod: *std.Build.Module, gobject: *std.Build.Dependency) void {
     }
 }
 
+/// The TrueType reader, shared by the PDF renderer and the console. Pure Zig.
+fn truetypeModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Module {
+    return b.createModule(.{ .root_source_file = b.path("src/truetype.zig"), .target = target, .optimize = optimize, .link_libc = true });
+}
+
+/// The console's font readers and settings table, shared with dkde-settings.
+fn consoleFontModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, termcore: *std.Build.Module) *std.Build.Module {
+    const m = b.createModule(.{
+        .root_source_file = b.path("src/console/font.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    m.addImport("termcore", termcore);
+    m.addImport("truetype", truetypeModule(b, target, optimize));
+    m.addAnonymousImport("terminus16", .{ .root_source_file = b.path("third_party/terminus/Uni3-Terminus16.psf") });
+    m.addAnonymousImport("terminus24", .{ .root_source_file = b.path("third_party/terminus/Uni3-Terminus24x12.psf") });
+    m.addAnonymousImport("terminus32", .{ .root_source_file = b.path("third_party/terminus/Uni3-Terminus32x16.psf") });
+    return m;
+}
+
 /// termcore, dkde-console and their tests. Imports only std and libghostty-vt.
 fn termcoreModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, ghostty: *std.Build.Dependency) *std.Build.Module {
     const m = b.createModule(.{
@@ -199,6 +229,8 @@ fn addConsole(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
     const ghostty = b.dependency("ghostty", .{ .target = target, .optimize = .ReleaseFast, .simd = false });
     const termcore = termcoreModule(b, target, optimize, ghostty);
 
+    const font = consoleFontModule(b, target, optimize, termcore);
+
     const mod = b.createModule(.{
         .root_source_file = b.path("src/console/main.zig"),
         .target = target,
@@ -206,10 +238,8 @@ fn addConsole(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
         .link_libc = true,
     });
     mod.addImport("termcore", termcore);
+    mod.addImport("consolefont", font);
     mod.addImport("ghostty-vt", ghostty.module("ghostty-vt"));
-    mod.addAnonymousImport("terminus16", .{ .root_source_file = b.path("third_party/terminus/Uni3-Terminus16.psf") });
-    mod.addAnonymousImport("terminus24", .{ .root_source_file = b.path("third_party/terminus/Uni3-Terminus24x12.psf") });
-    mod.addAnonymousImport("terminus32", .{ .root_source_file = b.path("third_party/terminus/Uni3-Terminus32x16.psf") });
 
     const exe = b.addExecutable(.{ .name = "dkde-console", .root_module = mod });
     // A rescue system must not need a dynamic loader (SPEC.md 5.11).
@@ -223,4 +253,5 @@ fn addConsole(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
     const test_console = b.step("test-console", "Run the tests of termcore and the console");
     test_console.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = termcore })).step);
     test_console.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
+    test_console.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = font })).step);
 }

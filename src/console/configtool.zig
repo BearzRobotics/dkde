@@ -5,8 +5,10 @@
 const std = @import("std");
 const termcore = @import("termcore");
 const ini = termcore.ini;
-const config = @import("config.zig");
-const psf = @import("psf.zig");
+const config = @import("consolefont").config;
+const psf = @import("consolefont").psf;
+const fontscan = @import("consolefont").fontscan;
+const ttf = @import("consolefont").ttf;
 const sys = @import("sys.zig");
 
 const out_fd = 1;
@@ -108,18 +110,23 @@ fn unknownKey(name: []const u8) u8 {
 fn deepCheck(allocator: std.mem.Allocator, key: *const config.Key, value: []const u8) ?[]const u8 {
     if (config.check(key, value)) |why| return why;
     if (std.mem.eql(u8, key.name, "font")) {
-        if (value.len > 0 and !fontLoads(allocator, value)) return "font file not found or not a PSF font";
+        if (value.len > 0 and !fontLoads(allocator, value)) return "font file not found, or not a PSF or TrueType font";
     } else if (std.mem.eql(u8, key.name, "fallback-fonts")) {
         var it = std.mem.tokenizeAny(u8, value, ", ");
-        while (it.next()) |f| if (!fontLoads(allocator, f)) return "a listed font file is not found or not a PSF font";
+        while (it.next()) |f| if (!fontLoads(allocator, f)) return "a listed font file is not found, or not a PSF or TrueType font";
     }
     return null;
 }
 
 fn fontLoads(allocator: std.mem.Allocator, name: []const u8) bool {
     for (psf.builtin_data) |b| if (std.mem.eql(u8, b.name, name)) return true;
-    const data = sys.readFile(allocator, name, 16 << 20) catch return false;
+    const data = sys.readFile(allocator, name, 32 << 20) catch return false;
     defer allocator.free(data);
+    if (ttf.looksLikeTrueType(data)) {
+        var face = ttf.Face.init(allocator, data, 16) catch return false;
+        face.deinit();
+        return true;
+    }
     var f = psf.Font.parse(allocator, data) catch return false;
     f.deinit(allocator);
     return true;
@@ -169,8 +176,6 @@ fn reset(allocator: std.mem.Allocator, etc: *ini.Document, vt: u32, name: []cons
     return save(allocator, etc);
 }
 
-const font_dirs = [_][:0]const u8{ "/usr/share/consolefonts", "/usr/share/kbd/consolefonts", "/lib/kbd/consolefonts", "/usr/lib/kbd/consolefonts" };
-
 fn fonts(allocator: std.mem.Allocator) u8 {
     sys.print(out_fd, "Built in:\n", .{});
     for (psf.builtin_data) |b| {
@@ -178,20 +183,9 @@ fn fonts(allocator: std.mem.Allocator) u8 {
         defer f.deinit(allocator);
         sys.print(out_fd, "  {s}  ({d}x{d})\n", .{ b.name, f.width, f.height });
     }
-    for (font_dirs) |dir| {
-        const d = std.c.opendir(dir.ptr) orelse continue;
-        defer _ = std.c.closedir(d);
-        var header = false;
-        while (std.c.readdir(d)) |ent| {
-            const name = std.mem.sliceTo(@as([*:0]const u8, @ptrCast(&ent.name)), 0);
-            if (!std.mem.endsWith(u8, name, ".psf") and !std.mem.endsWith(u8, name, ".psfu")) continue;
-            if (!header) {
-                sys.print(out_fd, "{s}:\n", .{dir});
-                header = true;
-            }
-            sys.print(out_fd, "  {s}/{s}\n", .{ dir, name });
-        }
-    }
+    const found = fontscan.scan(allocator) catch &.{};
+    if (found.len > 0) sys.print(out_fd, "On this system (PSF, and monospace TrueType):\n", .{});
+    for (found) |p| sys.print(out_fd, "  {s}\n", .{p});
     sys.print(out_fd, "Fonts compressed with gzip (.psf.gz) must be unpacked first.\n", .{});
     return 0;
 }
