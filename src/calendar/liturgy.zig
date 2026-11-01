@@ -201,6 +201,8 @@ pub const Day = struct {
     /// Food emoji for a fast or abstinence day, and what they mean (empty on other days).
     fast_emoji: []const u8 = "",
     fast_text: []const u8 = "",
+    /// An ordinary weekday with no feast of its own; a month grid can leave it out.
+    plain: bool = false,
     also: [8]Line = undefined,
     n_also: usize = 0,
     buf: [768]u8 = undefined,
@@ -473,6 +475,7 @@ fn computeNo(table: *const Table, d: Date, out: *Day) void {
     out.color = main.color;
     out.season = season;
     out.rank = rankLabelNo(main.p, main.sanctoral);
+    out.plain = !main.sanctoral and (main.p == 8 or main.p == 11 or main.p == 12);
     if (optional_only or (!main.sanctoral and temporal.p == 8)) {
         for (list.items[1..list.n]) |c| if (c.p == 9 or c.p == 10) out.addAlso("Optional memorial", c.name);
     }
@@ -723,6 +726,7 @@ fn computeTlm(table: *const Table, d: Date, out: *Day) void {
     out.color = main.color;
     out.season = season;
     out.rank = classLabel(main.class);
+    out.plain = !main.sanctoral and main.p >= Tlm.feria_3;
     for (list.items[0..list.n], 0..) |c, i| {
         if (i == at or c.class == 0 or c.class > main.class) continue;
         if (c.sanctoral and c.movable) continue; // a first-class feast that moves, not commemorated

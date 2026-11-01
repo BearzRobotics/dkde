@@ -92,11 +92,12 @@ pub const Reminders = struct {
         const from = @max(self.checked, now - grace_minutes);
         const fires = events.firesBetween(self.allocator, self.list.items, from, now) catch return;
         defer self.allocator.free(fires);
-        for (fires) |f| send(&self.list.items[f.event], f.start, now);
+        const twelve = self.config.getBool("view", "twelve-hour", true);
+        for (fires) |f| send(&self.list.items[f.event], f.start, now, twelve);
         self.checked = now;
     }
 
-    fn send(ev: *const events.Event, start: events.Date, now_minute: i64) void {
+    fn send(ev: *const events.Event, start: events.Date, now_minute: i64, twelve: bool) void {
         var title_buf: [256]u8 = undefined;
         const title = std.fmt.bufPrintSentinel(&title_buf, "{s}", .{if (ev.title.len > 0) ev.title else "Calendar event"}, 0) catch "Calendar event";
 
@@ -113,7 +114,7 @@ pub const Reminders = struct {
         const when_text = if (ev.all_day)
             std.fmt.bufPrint(&when_buf, "{s}, all day", .{when}) catch ""
         else
-            std.fmt.bufPrint(&when_buf, "{s} at {s}", .{ when, events.formatTime(&tb, ev.start) }) catch "";
+            std.fmt.bufPrint(&when_buf, "{s} at {s}", .{ when, events.formatClock(&tb, ev.start, twelve) }) catch "";
 
         var body_buf: [512]u8 = undefined;
         const body = if (ev.location.len > 0)

@@ -42,6 +42,8 @@ pub const CalendarApp = struct {
     show_no: bool = false,
     show_tlm: bool = false,
     show_ru: bool = false,
+    named_only: bool = true,
+    twelve_hour: bool = true,
     table_no: ?liturgy.Table = null,
     table_tlm: ?liturgy.Table = null,
     table_ru: ?liturgy.Table = null,
@@ -100,6 +102,8 @@ pub const CalendarApp = struct {
         self.show_no = self.cfg.getBool("view", "novus-ordo", false);
         self.show_tlm = self.cfg.getBool("view", "tlm-1962", false);
         self.show_ru = self.cfg.getBool("view", "orthodox-ru", false);
+        self.named_only = self.cfg.getBool("view", "named-days-only", true);
+        self.twelve_hour = self.cfg.getBool("view", "twelve-hour", true);
         self.ensureTables();
 
         const window = self.window.as(gtk.Window);
@@ -138,6 +142,11 @@ pub const CalendarApp = struct {
         ru_check.as(gtk.Widget).setTooltipText(common.tr("Show the Russian Orthodox calendar (Old Calendar, Julian Pascha) and its fasts"));
         _ = gtk.CheckButton.signals.toggled.connect(ru_check, *CalendarApp, &onToggleRu, self, .{});
 
+        const named_check = gtk.CheckButton.newWithLabel(common.tr("Named days only"));
+        named_check.setActive(@intFromBool(self.named_only));
+        named_check.as(gtk.Widget).setTooltipText(common.tr("In the month grid, show only Sundays, feasts, memorials and other special days, not every plain weekday"));
+        _ = gtk.CheckButton.signals.toggled.connect(named_check, *CalendarApp, &onToggleNamed, self, .{});
+
         const add = gtk.Button.newWithLabel(common.tr("New event"));
         add.as(gtk.Widget).addCssClass("suggested-action");
         _ = gtk.Button.signals.clicked.connect(add, *CalendarApp, &onAdd, self, .{});
@@ -154,6 +163,18 @@ pub const CalendarApp = struct {
         bar.append(no_check.as(gtk.Widget));
         bar.append(tlm_check.as(gtk.Widget));
         bar.append(ru_check.as(gtk.Widget));
+        const clock_check = gtk.CheckButton.newWithLabel(common.tr("12-hour clock (AM/PM)"));
+        clock_check.setActive(@intFromBool(self.twelve_hour));
+        _ = gtk.CheckButton.signals.toggled.connect(clock_check, *CalendarApp, &onToggleClock, self, .{});
+        const options_box = gtk.Box.new(.vertical, 6);
+        options_box.append(named_check.as(gtk.Widget));
+        options_box.append(clock_check.as(gtk.Widget));
+        const options_popover = gtk.Popover.new();
+        options_popover.setChild(options_box.as(gtk.Widget));
+        const options = gtk.MenuButton.new();
+        options.setLabel(common.tr("Options"));
+        options.setPopover(options_popover);
+        bar.append(options.as(gtk.Widget));
         bar.append(add.as(gtk.Widget));
 
         // ---- month grid ----------------------------------------------------------------
@@ -278,6 +299,19 @@ pub const CalendarApp = struct {
         self.show_ru = button.getActive() != 0;
         self.cfg.setBool("view", "orthodox-ru", self.show_ru) catch {};
         self.overlaysChanged();
+    }
+
+    fn onToggleNamed(button: *gtk.CheckButton, self: *CalendarApp) callconv(.c) void {
+        self.named_only = button.getActive() != 0;
+        self.cfg.setBool("view", "named-days-only", self.named_only) catch {};
+        self.rebuildGrid();
+    }
+
+    fn onToggleClock(button: *gtk.CheckButton, self: *CalendarApp) callconv(.c) void {
+        self.twelve_hour = button.getActive() != 0;
+        self.cfg.setBool("view", "twelve-hour", self.twelve_hour) catch {};
+        self.rebuildGrid();
+        self.showEvents();
     }
 
     fn overlaysChanged(self: *CalendarApp) void {
@@ -441,17 +475,18 @@ pub const CalendarApp = struct {
             total += 1;
             if (shown >= 2) continue;
             shown += 1;
-            var tb: [8]u8 = undefined;
+            var tb: [12]u8 = undefined;
             var line: [160]u8 = undefined;
             const text = if (ev.all_day)
                 bufZ(&line, "{s}", .{ev.title}) catch ""
             else
-                bufZ(&line, "{s} {s}", .{ events.formatTime(&tb, ev.start), ev.title }) catch "";
+                bufZ(&line, "{s} {s}", .{ events.formatClock(&tb, ev.start, self.twelve_hour), ev.title }) catch "";
             const l = gtk.Label.new(text);
             l.setXalign(0);
             l.setEllipsize(.end);
             l.setWidthChars(4);
             l.as(gtk.Widget).addCssClass("dkde-cal-event");
+            l.as(gtk.Widget).addCssClass(zstr(ev.color.cssClass()));
             box.append(l.as(gtk.Widget));
         }
         if (total > shown) {
@@ -466,16 +501,21 @@ pub const CalendarApp = struct {
     }
 
     fn addLitLine(self: *CalendarApp, box: *gtk.Box, table: *const liturgy.Table, date: Date, day: *liturgy.Day) void {
-        _ = self;
         liturgy.compute(table, date, day);
+        const hide_name = self.named_only and day.plain;
+        // A plain weekday keeps only its fast emoji, if it has one.
+        if (hide_name and day.fast_emoji.len == 0) return;
         var buf: [256]u8 = undefined;
-        const l = gtk.Label.new(bufZ(&buf, "{s}{s}{s}", .{ day.fast_emoji, if (day.fast_emoji.len > 0) " " else "", day.name }) catch "");
+        const l = gtk.Label.new(if (hide_name)
+            (bufZ(&buf, "{s}", .{day.fast_emoji}) catch "")
+        else
+            (bufZ(&buf, "{s}{s}{s}", .{ day.fast_emoji, if (day.fast_emoji.len > 0) " " else "", day.name }) catch ""));
         l.setXalign(0);
         l.setEllipsize(.end);
         l.setWidthChars(4);
         l.as(gtk.Widget).addCssClass("dkde-cal-lit");
-        l.as(gtk.Widget).addCssClass(zstr(day.color.cssClass()));
-        l.as(gtk.Widget).setTooltipText(zstr(day.name));
+        if (!hide_name) l.as(gtk.Widget).addCssClass(zstr(day.color.cssClass()));
+        l.as(gtk.Widget).setTooltipText(zstr(if (hide_name) day.fast_text else day.name));
         box.append(l.as(gtk.Widget));
     }
 
@@ -597,6 +637,12 @@ pub const CalendarApp = struct {
 
     fn eventRow(self: *CalendarApp, ev: *const events.Event) *gtk.Box {
         const row = gtk.Box.new(.horizontal, 6);
+        const dot = gtk.Box.new(.horizontal, 0);
+        dot.as(gtk.Widget).addCssClass("dkde-ev-dot");
+        dot.as(gtk.Widget).addCssClass(zstr(ev.color.cssClass()));
+        dot.as(gtk.Widget).setValign(.start);
+        dot.as(gtk.Widget).setMarginTop(5);
+        row.append(dot.as(gtk.Widget));
         const text = gtk.Box.new(.vertical, 0);
         text.as(gtk.Widget).setHexpand(1);
 
@@ -606,8 +652,8 @@ pub const CalendarApp = struct {
         title.as(gtk.Widget).addCssClass("heading");
         text.append(title.as(gtk.Widget));
 
-        var a: [8]u8 = undefined;
-        var b: [8]u8 = undefined;
+        var a: [12]u8 = undefined;
+        var b: [12]u8 = undefined;
         var da: [16]u8 = undefined;
         var db: [16]u8 = undefined;
         var when: [160]u8 = undefined;
@@ -617,9 +663,9 @@ pub const CalendarApp = struct {
         else if (ev.all_day)
             "All day"
         else if (multi)
-            bufZ(&when, "{s} {s} to {s} {s}", .{ events.formatDate(&da, ev.date), events.formatTime(&a, ev.start), events.formatDate(&db, ev.end_date), events.formatTime(&b, ev.end) }) catch ""
+            bufZ(&when, "{s} {s} to {s} {s}", .{ events.formatDate(&da, ev.date), events.formatClock(&a, ev.start, self.twelve_hour), events.formatDate(&db, ev.end_date), events.formatClock(&b, ev.end, self.twelve_hour) }) catch ""
         else
-            bufZ(&when, "{s} to {s}", .{ events.formatTime(&a, ev.start), events.formatTime(&b, ev.end) }) catch "";
+            bufZ(&when, "{s} to {s}", .{ events.formatClock(&a, ev.start, self.twelve_hour), events.formatClock(&b, ev.end, self.twelve_hour) }) catch "";
         const when_label = gtk.Label.new(when_text);
         when_label.setXalign(0);
         text.append(when_label.as(gtk.Widget));

@@ -250,6 +250,7 @@ pub fn compute(table: *const liturgy.Table, d: Date, out: *Day) void {
     out.name = best_name;
     out.color = best_color;
     out.rank = rankLabel(best_p);
+    out.plain = winner_is_temporal and (best_p == 9 or best_p == 5);
     out.season = seasonOf(per, delta);
     var shown: usize = 0;
     if (!winner_is_temporal) {

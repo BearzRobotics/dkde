@@ -29,6 +29,43 @@ pub const Repeat = enum {
     }
 };
 
+/// A label colour for an event. `default` uses the accent colour.
+pub const Color = enum {
+    default,
+    red,
+    orange,
+    yellow,
+    green,
+    teal,
+    blue,
+    purple,
+    pink,
+    gray,
+
+    pub fn name(self: Color) []const u8 {
+        return @tagName(self);
+    }
+
+    pub fn parse(text: []const u8) Color {
+        return std.meta.stringToEnum(Color, text) orelse .default;
+    }
+
+    pub fn cssClass(self: Color) []const u8 {
+        return switch (self) {
+            .default => "ev-default",
+            .red => "ev-red",
+            .orange => "ev-orange",
+            .yellow => "ev-yellow",
+            .green => "ev-green",
+            .teal => "ev-teal",
+            .blue => "ev-blue",
+            .purple => "ev-purple",
+            .pink => "ev-pink",
+            .gray => "ev-gray",
+        };
+    }
+};
+
 pub const Event = struct {
     id: []const u8,
     title: []const u8,
@@ -42,6 +79,7 @@ pub const Event = struct {
     start: u16 = 9 * 60,
     end: u16 = 10 * 60,
     repeat: Repeat = .none,
+    color: Color = .default,
     /// Minutes before the start to send a reminder; negative for none.
     remind: i32 = -1,
 };
@@ -77,6 +115,18 @@ pub fn parseTime(text: []const u8) ?u16 {
 
 pub fn formatTime(buf: []u8, minute: u16) []const u8 {
     return std.fmt.bufPrint(buf, "{d:0>2}:{d:0>2}", .{ minute / 60, minute % 60 }) catch "";
+}
+
+/// "2:30 PM" for the 12-hour clock.
+pub fn formatTime12(buf: []u8, minute: u16) []const u8 {
+    const h24 = minute / 60;
+    const h12 = if (h24 % 12 == 0) 12 else h24 % 12;
+    return std.fmt.bufPrint(buf, "{d}:{d:0>2} {s}", .{ h12, minute % 60, if (h24 < 12) "AM" else "PM" }) catch "";
+}
+
+/// The time in the clock style the user chose.
+pub fn formatClock(buf: []u8, minute: u16, twelve_hour: bool) []const u8 {
+    return if (twelve_hour) formatTime12(buf, minute) else formatTime(buf, minute);
 }
 
 // ---- which days an event falls on ----------------------------------------------------------
@@ -214,6 +264,8 @@ pub fn load(allocator: std.mem.Allocator, cfg: *const config_mod.Config) !List {
         defer allocator.free(end_time_text);
         const repeat_text = try cfg.getString(allocator, group, "repeat", "none");
         defer allocator.free(repeat_text);
+        const color_text = try cfg.getString(allocator, group, "color", "default");
+        defer allocator.free(color_text);
         const title = try cfg.getString(a, group, "title", "");
         const location = try cfg.getString(a, group, "location", "");
         const notes = try cfg.getString(a, group, "notes", "");
@@ -228,6 +280,7 @@ pub fn load(allocator: std.mem.Allocator, cfg: *const config_mod.Config) !List {
             .start = parseTime(start_text) orelse 9 * 60,
             .end = parseTime(end_time_text) orelse 10 * 60,
             .repeat = Repeat.parse(repeat_text),
+            .color = Color.parse(color_text),
             .remind = cfg.getInt(group, "remind", -1),
         });
     }
@@ -256,6 +309,7 @@ pub fn save(allocator: std.mem.Allocator, cfg: *config_mod.Config, ev: Event) !v
         .{ .key = "start", .value = try a.dupeSentinel(u8, formatTime(&tb, ev.start), 0) },
         .{ .key = "end", .value = try a.dupeSentinel(u8, formatTime(&te, ev.end), 0) },
         .{ .key = "repeat", .value = try a.dupeSentinel(u8, ev.repeat.name(), 0) },
+        .{ .key = "color", .value = try a.dupeSentinel(u8, ev.color.name(), 0) },
         .{ .key = "remind", .value = try std.fmt.allocPrintSentinel(a, "{d}", .{ev.remind}, 0) },
     };
     try cfg.setGroup(group, &pairs);
@@ -276,6 +330,19 @@ pub fn newId(buf: []u8, micros: i64) []const u8 {
 
 fn testEvent(date: Date, repeat: Repeat, remind: i32) Event {
     return .{ .id = "t", .title = "t", .date = date, .end_date = date, .repeat = repeat, .remind = remind, .start = 10 * 60 };
+}
+
+test "12-hour times" {
+    var b: [16]u8 = undefined;
+    try std.testing.expectEqualStrings("12:00 AM", formatTime12(&b, 0));
+    try std.testing.expectEqualStrings("12:05 PM", formatTime12(&b, 12 * 60 + 5));
+    try std.testing.expectEqualStrings("2:30 PM", formatTime12(&b, 14 * 60 + 30));
+    try std.testing.expectEqualStrings("11:59 PM", formatTime12(&b, 23 * 60 + 59));
+}
+
+test "colours" {
+    try std.testing.expectEqual(Color.teal, Color.parse("teal"));
+    try std.testing.expectEqual(Color.default, Color.parse("no such colour"));
 }
 
 test "text forms" {

@@ -35,7 +35,28 @@ const repeats = [_]struct { label: [:0]const u8, value: events.Repeat }{
     .{ .label = "Every year", .value = .yearly },
 };
 
+const colors = [_]struct { label: [:0]const u8, value: events.Color }{
+    .{ .label = "Default", .value = .default },
+    .{ .label = "Red", .value = .red },
+    .{ .label = "Orange", .value = .orange },
+    .{ .label = "Yellow", .value = .yellow },
+    .{ .label = "Green", .value = .green },
+    .{ .label = "Teal", .value = .teal },
+    .{ .label = "Blue", .value = .blue },
+    .{ .label = "Purple", .value = .purple },
+    .{ .label = "Pink", .value = .pink },
+    .{ .label = "Gray", .value = .gray },
+};
+
+const ampm = [_]struct { label: [:0]const u8, pm: bool }{
+    .{ .label = "AM", .pm = false },
+    .{ .label = "PM", .pm = true },
+};
+
 const Editor = struct {
+    twelve: bool,
+    start_ampm: *gtk.DropDown,
+    end_ampm: *gtk.DropDown,
     app: *App,
     window: *gtk.Window,
     /// Empty for a new event.
@@ -53,6 +74,7 @@ const Editor = struct {
     end_times: *gtk.Box,
     repeat: *gtk.DropDown,
     remind: *gtk.DropDown,
+    color: *gtk.DropDown,
     notes: *gtk.TextView,
     error_label: *gtk.Label,
 };
@@ -70,16 +92,34 @@ fn dropDown(comptime items: anytype) *gtk.DropDown {
     return gtk.DropDown.newFromStrings(@ptrCast(&names));
 }
 
-fn timeRow(h: *gtk.SpinButton, m: *gtk.SpinButton) *gtk.Box {
+fn timeRow(h: *gtk.SpinButton, m: *gtk.SpinButton, half: *gtk.DropDown, twelve: bool) *gtk.Box {
     const row = gtk.Box.new(.horizontal, 4);
     row.append(h.as(gtk.Widget));
     row.append(gtk.Label.new(":").as(gtk.Widget));
     row.append(m.as(gtk.Widget));
+    if (twelve) row.append(half.as(gtk.Widget));
     return row;
 }
 
-fn spin(max: f64, value: u16) *gtk.SpinButton {
-    const s = gtk.SpinButton.newWithRange(0, max, 1);
+/// The minute of the day from the spin buttons (and AM/PM on the 12-hour clock).
+fn minuteOf(self: *const Editor, h: *gtk.SpinButton, m: *gtk.SpinButton, half: *gtk.DropDown) u16 {
+    var hour: i32 = h.getValueAsInt();
+    if (self.twelve) {
+        hour = @mod(hour, 12);
+        if (ampm[@min(half.getSelected(), 1)].pm) hour += 12;
+    }
+    return @intCast(hour * 60 + m.getValueAsInt());
+}
+
+/// The hour spin button: 0-23, or 1-12 on the 12-hour clock.
+fn hourSpin(twelve: bool, minute: u16) *gtk.SpinButton {
+    const h24 = minute / 60;
+    if (!twelve) return spin(0, 23, h24);
+    return spin(1, 12, if (h24 % 12 == 0) 12 else h24 % 12);
+}
+
+fn spin(min: f64, max: f64, value: u16) *gtk.SpinButton {
+    const s = gtk.SpinButton.newWithRange(min, max, 1);
     s.setValue(@floatFromInt(value));
     s.setWrap(1);
     s.setNumeric(1);
@@ -107,14 +147,18 @@ pub fn open(app: *App, existing: ?*const events.Event, date: Date) void {
         .all_day = gtk.CheckButton.newWithLabel(common.tr("All day")),
         .start_date = gtk.Entry.new(),
         .end_date = gtk.Entry.new(),
-        .start_h = spin(23, ev.start / 60),
-        .start_m = spin(59, ev.start % 60),
-        .end_h = spin(23, ev.end / 60),
-        .end_m = spin(59, ev.end % 60),
+        .twelve = app.twelve_hour,
+        .start_ampm = dropDown(ampm),
+        .end_ampm = dropDown(ampm),
+        .start_h = hourSpin(app.twelve_hour, ev.start),
+        .start_m = spin(0, 59, ev.start % 60),
+        .end_h = hourSpin(app.twelve_hour, ev.end),
+        .end_m = spin(0, 59, ev.end % 60),
         .times = gtk.Box.new(.vertical, 8),
         .end_times = gtk.Box.new(.vertical, 8),
         .repeat = dropDown(repeats),
         .remind = dropDown(reminders),
+        .color = dropDown(colors),
         .notes = gtk.TextView.new(),
         .error_label = gtk.Label.new(""),
     };
@@ -141,6 +185,9 @@ pub fn open(app: *App, existing: ?*const events.Event, date: Date) void {
     const hide_times = @intFromBool(!ev.all_day);
 
     for (repeats, 0..) |r, i| if (r.value == ev.repeat) self.repeat.setSelected(@intCast(i));
+    self.start_ampm.setSelected(if (ev.start >= 12 * 60) 1 else 0);
+    self.end_ampm.setSelected(if (ev.end >= 12 * 60) 1 else 0);
+    for (colors, 0..) |c, i| if (c.value == ev.color) self.color.setSelected(@intCast(i));
     var pick: usize = 0;
     for (reminders, 0..) |r, i| if (r.minutes == ev.remind) {
         pick = i;
@@ -187,6 +234,9 @@ pub fn open(app: *App, existing: ?*const events.Event, date: Date) void {
     grid.attach(label("Reminder"), 0, row, 1, 1);
     grid.attach(self.remind.as(gtk.Widget), 1, row, 1, 1);
     row += 1;
+    grid.attach(label("Colour"), 0, row, 1, 1);
+    grid.attach(self.color.as(gtk.Widget), 1, row, 1, 1);
+    row += 1;
     grid.attach(label("Notes"), 0, row, 1, 1);
     grid.attach(notes_scroll.as(gtk.Widget), 1, row, 1, 1);
 
@@ -230,7 +280,7 @@ pub fn open(app: *App, existing: ?*const events.Event, date: Date) void {
 /// The hour and minute spin buttons of the start or end time. The all-day
 /// check hides both rows.
 fn timeRowWrap(self: *Editor, start: bool) *gtk.Widget {
-    const r = if (start) timeRow(self.start_h, self.start_m) else timeRow(self.end_h, self.end_m);
+    const r = if (start) timeRow(self.start_h, self.start_m, self.start_ampm, self.twelve) else timeRow(self.end_h, self.end_m, self.end_ampm, self.twelve);
     if (start) self.times = r else self.end_times = r;
     return r.as(gtk.Widget);
 }
@@ -263,8 +313,8 @@ fn onSave(_: *gtk.Button, self: *Editor) callconv(.c) void {
     if (end_date.days() < start_date.days()) return fail(self, "The event cannot end before it starts.");
 
     const all_day = self.all_day.getActive() != 0;
-    const start: u16 = @intCast(self.start_h.getValueAsInt() * 60 + self.start_m.getValueAsInt());
-    const end: u16 = @intCast(self.end_h.getValueAsInt() * 60 + self.end_m.getValueAsInt());
+    const start = minuteOf(self, self.start_h, self.start_m, self.start_ampm);
+    const end = minuteOf(self, self.end_h, self.end_m, self.end_ampm);
     if (!all_day and end_date.eql(start_date) and end < start) return fail(self, "The event cannot end before it starts.");
 
     const buffer = self.notes.getBuffer();
@@ -287,6 +337,7 @@ fn onSave(_: *gtk.Button, self: *Editor) callconv(.c) void {
         .start = start,
         .end = end,
         .repeat = repeats[@min(self.repeat.getSelected(), repeats.len - 1)].value,
+        .color = colors[@min(self.color.getSelected(), colors.len - 1)].value,
         .remind = reminders[@min(self.remind.getSelected(), reminders.len - 1)].minutes,
     };
     events.save(a, &self.app.cfg, ev) catch return fail(self, "The event could not be saved.");
