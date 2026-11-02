@@ -89,8 +89,11 @@ Work in dkde itself, in the order that matters most:
 3. ~~Low battery warning~~: done (SPEC.md 5.1). Warns, then sleeps or powers off
    after a grace period. Not tried on a real laptop.
 4. ~~A notification when a disk is mounted or removed~~: `dkde-notify` exists
-   and works (tested against the panel's notification server). The devmon hook
-   line in section 6 is **not tried** with devmon itself.
+   and works (tested against the panel's notification server), including
+   `--mounted`, `--unmounted` and `--removed`, which show the label and mount
+   point. The devmon hook lines in section 6 are **not tried** with devmon itself,
+   and the label lookup has been seen only in unit tests (the test machine's
+   disk has no label).
 5. **Do Not Disturb** for the notification toasts.
 6. **Input methods** (Chinese, Japanese, Korean typing): not wired up
    (SPEC.md 5.3). Needs `fcitx5` and the Wayland text-input protocol.
@@ -115,7 +118,9 @@ wlsunset -l LATITUDE -L LONGITUDE &
 
 Only `%f` (the device, such as `/dev/sdd1`) is passed to the hook. devmon also
 offers `%l` (the volume label) and `%d` (the mount point), but it puts them
-through `eval`, and a label is text whoever made the stick chose.
+through `eval`, and a label is text whoever made the stick chose. `dkde-notify
+--mounted DEVICE` looks the label and mount point up itself (from
+`/dev/disk/by-label` and `/proc/self/mounts`) and only ever shows them.
 
 And as system services (dinit files for these do not exist yet; `data/dinit.d/`
 has the ones that do): `dbus`, `seatd`, `greetd`, `networkmanager`, `bluetooth`,
