@@ -33,7 +33,7 @@ or by the page that needs them.
 | Gap | What to add | Notes |
 |---|---|---|
 | **Lock screen** | `swaylock` (or `gtklock`) | dkde has no lock screen of its own (SPEC.md 5.1). Without one, Lock does nothing. `swaylock` installs its own PAM file. |
-| **USB sticks and cards mounting** | `udevil` (its `devmon`) | Mounts without polkit, D-Bus or logind. Autostart it: `devmon &` in the labwc autostart. *Verify* the options of the shipped version, and that Files lists the mounted disk. udisks2 is the alternative, but it needs polkit (see section 4). |
+| **USB sticks and cards mounting** | `udevil` (its `devmon`), `eudev` or another udev | Mounts without polkit or D-Bus. **udevil must be installed setuid root** (Debian asks at install; without it devmon needs udisks or pmount), and `udevd` must be running because devmon watches devices through libudev. Needs bash 4 or newer. Autostart: `devmon --no-gui &`. Events can run a command: `--exec-on-drive`, `--exec-on-unmount`, `--exec-on-remove`, with `%d` (mount point), `%f` (device) and `%l` (label), per its man page. *Verify* by running it: not tried yet. udisks2 is the alternative, but it needs polkit (see section 4). |
 | **Power button and laptop lid** | `acpid` | With no logind, nothing acts on the lid or the power button. `acpid` runs a script; one that calls `loginctl`-free commands (`poweroff`, or a suspend command) is enough. *Verify* on a laptop. |
 | **Clock** | `chrony` (or `ntpsec`, or `busybox ntpd`) | Without systemd-timesyncd nothing keeps the time right. |
 | **Night light** | `wlsunset` | Starts from the autostart with the user's coordinates. No dkde setting for it yet. |
