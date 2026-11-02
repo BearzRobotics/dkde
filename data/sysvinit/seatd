@@ -4,7 +4,8 @@
 # systemd-logind. Install like data/sysvinit/greetd (Slackware: rc.seatd).
 # The user needs to be in the group named below (dkde-setup checks this).
 
-SEATD=${SEATD:-/usr/bin/seatd}
+# dkde-seatd looks in /usr/sbin (Debian, Ubuntu) and /usr/bin (most others).
+SEATD=${SEATD:-/usr/bin/dkde-seatd}
 GROUP=${SEATD_GROUP:-video}
 PIDFILE=/run/seatd.pid
 
@@ -22,6 +23,13 @@ start)
     echo "Starting seatd"
     "$SEATD" -g "$GROUP" &
     echo $! >"$PIDFILE"
+    # Wait for the socket, so what starts next finds it.
+    n=0
+    while [ ! -S /run/seatd.sock ] && [ "$n" -lt 50 ]; do
+        sleep 0.1 2>/dev/null || sleep 1
+        n=$((n + 1))
+    done
+    [ -S /run/seatd.sock ] || echo "seatd: /run/seatd.sock did not appear" >&2
     ;;
 stop)
     if running; then

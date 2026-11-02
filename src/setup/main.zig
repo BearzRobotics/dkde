@@ -267,6 +267,31 @@ const Setup = struct {
         });
     }
 
+    /// Without logind the login screen's own labwc gets its seat from seatd too,
+    /// as the greetd user, and seatd's socket belongs to a group (video). If that
+    /// user is not in it, the screen stays black with "no seat" only in a log.
+    fn checkGreeterSeat(self: *Setup) void {
+        if (hasLogind()) return;
+        const passwd = self.readFile("/etc/passwd") orelse return;
+        const group_file = self.readFile("/etc/group") orelse return;
+        // The greetd package makes this user; no such user, no login screen to check.
+        const greeter = "_greetd";
+        var has_user = false;
+        var lines = std.mem.splitScalar(u8, passwd, '\n');
+        while (lines.next()) |line| {
+            if (std.mem.startsWith(u8, line, greeter ++ ":")) has_user = true;
+        }
+        if (!has_user) return;
+        const member = isMember(group_file, &.{}, greeter, "video") orelse return;
+        if (member) return self.add(.{ .title = "login screen seat access (greetd user in group video)", .status = .ok });
+        self.add(.{
+            .title = "login screen seat access (greetd user in group video)",
+            .status = .todo,
+            .command = "sudo usermod -aG video " ++ greeter,
+            .reason = "the login screen runs as the greetd user and reaches the display through seatd, whose socket belongs to group video. Without this it cannot start (the reason is in /tmp/dkde-greeter-<uid>.log).",
+        });
+    }
+
     /// null when the group does not exist; otherwise whether the user is in it,
     /// by the running process's groups or by the member list in /etc/group.
     fn isMember(group_file: []const u8, gids: []const u32, user: []const u8, name: []const u8) ?bool {
@@ -362,6 +387,7 @@ const Setup = struct {
         self.checkIcons();
         self.checkStickyBit();
         self.checkSeatGroups();
+        self.checkGreeterSeat();
         self.checkServiceGroups();
         self.checkSessionEntry();
         self.checkXSession();

@@ -7,6 +7,9 @@ type            = process
 command         = /usr/sbin/greetd
 restart         = true
 smooth-recovery = true
-# greetd itself needs no other service. Start seatd (without logind) and dbus
-# (for notifications' own session bus nothing is needed here) before it by
-# listing them in your boot service's waits-for.
+# The login screen and the session both need a seat. Without logind that is
+# seatd, so greetd starts only after it is ready (see the seatd service). Under
+# elogind or systemd there is no seatd service: remove the next line.
+depends-on      = seatd
+# dbus (the system bus) is not needed by greetd itself; list it in your boot
+# service's waits-for for NetworkManager and the rest.

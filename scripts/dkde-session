@@ -5,6 +5,18 @@
 # autostart (see data/labwc/autostart) starts the panel.
 
 export XDG_SESSION_TYPE=wayland
+
+# This session's own messages go to ~/.local/state/dkde/session.log (the last
+# session only). When labwc cannot start (no seat, no GPU), greetd just shows the
+# login screen again; without this log nothing says why. Run from a terminal,
+# the messages stay on the terminal.
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dkde"
+mkdir -p "$state_dir" 2>/dev/null
+session_log="$state_dir/session.log"
+if [ ! -t 2 ] && { : > "$session_log"; } 2>/dev/null; then
+    exec >>"$session_log" 2>&1
+fi
+echo "dkde-session: $(date) user $(id -un) ($(id -u)), groups: $(id -Gn)"
 # Keep each program's warnings and errors in ~/.local/state/dkde/<program>.log
 # (set DKDE_LOG=debug for more, or DKDE_LOG_FILE to somewhere else).
 export DKDE_LOG_FILE="${DKDE_LOG_FILE:-auto}"
@@ -43,8 +55,41 @@ fi
 # place. It never runs again by itself; run `dkde-setup` by hand to re-check.
 command -v dkde-setup >/dev/null 2>&1 && dkde-setup --once >/dev/null 2>&1
 
+# Without logind or elogind, the session's display and input devices come from
+# seatd, through /run/seatd.sock. Say what is wrong when that cannot work: labwc
+# only reports that it found no seat.
+seat_check() {
+    [ -d /run/systemd/seats ] && return 0            # logind or elogind
+    [ -n "$LIBSEAT_BACKEND" ] && [ "$LIBSEAT_BACKEND" != seatd ] && return 0
+    sock="${SEATD_SOCK:-/run/seatd.sock}"
+    waited=0
+    while [ ! -S "$sock" ] && [ "$waited" -lt 10 ]; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if [ ! -S "$sock" ]; then
+        echo "dkde-session: $sock does not exist, so seatd is not running."
+        echo "dkde-session: start it (dinit: dinitctl start seatd; SysV: the seatd script), and make"
+        echo "dkde-session: greetd depend on it so it is ready first. Debian and Ubuntu install seatd in /usr/sbin."
+        return 1
+    fi
+    if [ ! -r "$sock" ] || [ ! -w "$sock" ]; then
+        echo "dkde-session: $sock exists but $(id -un) cannot use it:"
+        ls -l "$sock"
+        echo "dkde-session: add the user to the socket's group (usually video): sudo usermod -aG video $(id -un), then sign in again."
+        return 1
+    fi
+    echo "dkde-session: seatd is at $sock"
+}
+seat_check
+
 # A session bus is optional (SPEC.md 2): notifications and the tray use it.
+started=$(date +%s)
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
-    exec dbus-run-session -- labwc "$@"
+    dbus-run-session -- labwc "$@"
+else
+    labwc "$@"
 fi
-exec labwc "$@"
+status=$?
+echo "dkde-session: labwc exited with status $status after $(( $(date +%s) - started )) s"
+exit "$status"

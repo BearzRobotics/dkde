@@ -3,10 +3,35 @@
 # dkde-greeter and exits with it.
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=dkde-greeter
+
+# The login screen runs as the greetd user, which has no home to log in. Its
+# messages go to /tmp/dkde-greeter-<uid>.log (the last start only): when labwc
+# cannot start, the screen stays black with nothing to read.
+greeter_log="/tmp/dkde-greeter-$(id -u).log"
+if [ ! -t 2 ] && { : > "$greeter_log"; } 2>/dev/null; then
+    exec >>"$greeter_log" 2>&1
+fi
+echo "dkde-greeter-session: $(date) user $(id -un) ($(id -u)), groups: $(id -Gn)"
+# Without logind or elogind the seat comes from seatd, whose socket belongs to
+# a group (video): the greetd user must be in it.
+if [ ! -d /run/systemd/seats ] && [ -z "$LIBSEAT_BACKEND" ]; then
+    sock="${SEATD_SOCK:-/run/seatd.sock}"
+    waited=0
+    while [ ! -S "$sock" ] && [ "$waited" -lt 10 ]; do sleep 1; waited=$((waited + 1)); done
+    if [ ! -S "$sock" ]; then
+        echo "dkde-greeter-session: $sock does not exist: seatd is not running (greetd should depend on it)"
+    elif [ ! -r "$sock" ] || [ ! -w "$sock" ]; then
+        echo "dkde-greeter-session: $(id -un) cannot use $sock:"; ls -l "$sock"
+        echo "dkde-greeter-session: add it to the socket's group: usermod -aG video $(id -un)"
+    fi
+fi
 export NO_AT_BRIDGE=1
 if [ -z "$XDG_RUNTIME_DIR" ]; then
     XDG_RUNTIME_DIR="${TMPDIR:-/tmp}/dkde-greeter-$(id -u)"
     mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
     export XDG_RUNTIME_DIR
 fi
-exec labwc -s dkde-greeter-start
+labwc -s dkde-greeter-start
+status=$?
+echo "dkde-greeter-session: labwc exited with status $status"
+exit "$status"

@@ -850,6 +850,20 @@ dkde does not write a display manager. The login screen is a greeter for
   `XDG_RUNTIME_DIR` when logind did not, reads the user's profile, and starts
   labwc under `dbus-run-session` when that exists (so notifications work).
   `data/dkde.desktop` installs to `share/wayland-sessions`.
+- **Seats without logind.** The session and the login screen both reach the
+  display and input devices through seatd's socket `/run/seatd.sock`, which
+  belongs to a group (`video`): the user and the greetd user (`_greetd`) must be
+  in it (`dkde-setup` checks both). seatd lives in `/usr/sbin` on Debian and
+  Ubuntu and in `/usr/bin` elsewhere, so the service files run
+  `dkde-seatd`, which looks in both. The dinit service tells dinit when the
+  socket exists (`ready-notification`, seatd's `-n`), and the greetd service
+  depends on it, so the login screen never starts before it.
+- **When the session does not start,** labwc's own error would vanish with the
+  login screen coming back. `dkde-session` writes its messages to
+  `~/.local/state/dkde/session.log` (the last session only) and the login
+  screen's to `/tmp/dkde-greeter-<uid>.log`. Each records the user and groups,
+  says whether seatd's socket is missing or unusable and how to fix it, and
+  ends with labwc's exit status and how long it ran.
 - **Init systems:** dkde needs none (SPEC 4.1); the login screen and the
   optional services can be started by any of them. `data/dinit.d/` (dinit),
   `data/systemd/` (systemd) and `data/sysvinit/` (SysV init: Slackware, LFS)

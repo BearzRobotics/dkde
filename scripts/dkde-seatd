@@ -1,0 +1,10 @@
+#!/bin/sh
+# Starts seatd, wherever this distribution put it (Debian and Ubuntu: /usr/sbin;
+# Arch, Void and Alpine: /usr/bin). Arguments go to seatd, for example
+#     dkde-seatd -n 3 -g video
+# The service files in data/ run it this way, so they do not hard-code a path.
+for seatd in /usr/sbin/seatd /usr/bin/seatd /sbin/seatd /bin/seatd /usr/local/sbin/seatd /usr/local/bin/seatd; do
+    [ -x "$seatd" ] && exec "$seatd" "$@"
+done
+echo "dkde-seatd: seatd is not installed (looked in /usr/sbin, /usr/bin, /sbin, /bin and /usr/local)" >&2
+exit 1

@@ -201,7 +201,7 @@ pub fn build(b: *std.Build) void {
 
     // The X11 session: scripts and the login-manager entry. Harmless on a
     // Wayland-only system, so they always install.
-    for ([_][]const u8{ "dkde-xsession", "dkde-startx", "dkde-session", "dkde-greeter-session", "dkde-greeter-start" }) |script| {
+    for ([_][]const u8{ "dkde-xsession", "dkde-startx", "dkde-session", "dkde-greeter-session", "dkde-greeter-start", "dkde-seatd" }) |script| {
         b.getInstallStep().dependOn(&b.addInstallBinFile(b.path(b.fmt("scripts/{s}", .{script})), script).step);
     }
     b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path("data/dkde-x11.desktop"), .prefix, "share/xsessions/dkde-x11.desktop").step);

@@ -1,5 +1,15 @@
 # seatd gives the session its display and input devices when there is no
 # logind (SPEC.md 4.1). Skip it under elogind or systemd.
-type    = process
-command = /usr/bin/seatd -g video
-restart = true
+#
+# dkde-seatd finds the program (Debian and Ubuntu keep it in /usr/sbin, most
+# others in /usr/bin). seatd writes to file descriptor 3 once its socket
+# /run/seatd.sock exists, so services that depend on this one (greetd) start
+# only after labwc can reach it. Without that, the login screen can start
+# before the socket does and labwc finds no seat.
+#
+# The socket belongs to the group named by -g: the user, and the greetd user
+# (_greetd) that runs the login screen, must be in it (dkde-setup checks).
+type               = process
+command            = /usr/bin/dkde-seatd -n 3 -g video
+ready-notification = pipefd:3
+restart            = true
