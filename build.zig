@@ -5,6 +5,11 @@ const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    // Debug information makes a release program ten times larger on disk (the
+    // programs together were 134 MB, and 19 MB without it) and is never loaded
+    // when the program runs. Debug builds keep it; every other build drops it,
+    // unless -Dstrip=false asks for it (for perf or a debugger).
+    const strip = b.option(bool, "strip", "Drop debug information from the programs (default: all builds but Debug)") orelse (optimize != .debug);
 
     const pdf = b.option(bool, "pdf", "Build dkde-pdf (needs libpoppler-glib-dev)") orelse false;
     const x11 = b.option(bool, "x11", "Build the optional X11 backend (needs libx11-dev)") orelse false;
@@ -17,7 +22,7 @@ pub fn build(b: *std.Build) void {
     // (SPEC.md 5.11, *Build*). With -Dgui=false nothing below is configured, so
     // gobject and zig-wayland, which are lazy, are never fetched.
     const gui = b.option(bool, "gui", "Build the GTK programs (default). -Dgui=false builds only the console") orelse true;
-    addConsole(b, target, optimize);
+    addConsole(b, target, optimize, strip);
     if (!gui) return;
 
     const Scanner = (b.lazyImport(@This(), "wayland") orelse return).Scanner;
@@ -78,7 +83,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = truetypeModule(b, target, optimize) })).step);
 
     // dkde-pdfcheck: draws many PDFs without a display and reports what was not drawn.
-    const check_mod = b.createModule(.{ .root_source_file = b.path("src/pdfcheck/main.zig"), .target = target, .optimize = optimize, .link_libc = true });
+    const check_mod = b.createModule(.{ .root_source_file = b.path("src/pdfcheck/main.zig"), .target = target, .optimize = optimize, .link_libc = true, .strip = strip });
     check_mod.addImport("zpdf", zpdf_mod);
     check_mod.addImport("pdfrender", pdfrender);
     check_mod.addImport("cairo1", gobject.module("cairo1"));
@@ -104,6 +109,7 @@ pub fn build(b: *std.Build) void {
                 .target = target,
                 .optimize = optimize,
                 .link_libc = true,
+                .strip = strip,
             });
             mod.addImport("common", common);
             // gtk4-layer-shell must be linked before libwayland, so before GTK.
@@ -172,6 +178,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .link_libc = true,
+            .strip = strip,
         });
         mod.addImport("polkitproto", polkitProtoModule);
         mod.linkSystemLibrary("gio-2.0", .{});
@@ -248,7 +255,7 @@ fn termcoreModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std
     return m;
 }
 
-fn addConsole(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
+fn addConsole(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, strip: bool) void {
     // Debug builds of libghostty-vt run integrity checks on every linefeed, so
     // it is always built fast (as for dkde-term).
     // simd=false leaves out simdutf and highway, which are C++ (SPEC.md 5.11,
@@ -263,6 +270,7 @@ fn addConsole(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        .strip = strip,
     });
     mod.addImport("termcore", termcore);
     mod.addImport("consolefont", font);

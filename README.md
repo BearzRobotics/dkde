@@ -237,6 +237,8 @@ zig build install --prefix /usr
 
 (For everyday use, build with `-Doptimize=ReleaseSafe`, or `-Doptimize=ReleaseSmall` for the smallest binaries on very old machines; see "Install" below.)
 
+Release builds drop debug information from the programs (all of them together are about 13 MB with `-Doptimize=ReleaseFast`; they were 134 MB with it). `-Dstrip=false` keeps it, for `perf` or a debugger. Debug builds always keep it.
+
 **PDF viewer (optional).** `dkde-pdf` needs poppler's GLib bindings, so it is
 built only on request: install `libpoppler-glib-dev` (Ubuntu; at run time
 `libpoppler-glib8`) and build with `zig build -Dpdf=true`. Without the flag the
