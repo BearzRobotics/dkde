@@ -41,7 +41,8 @@ printf 'dkde-panel\n' > "$work/labwc/autostart"
 # Desktop entries so the pinned apps resolve without installing.
 cp "$root"/data/*.desktop "$work/data/applications/"
 
-export PATH="$root/zig-out/bin:$PATH"
+# DKDE_BIN_DIR tries another build (a release one, say) in the nested session.
+export PATH="${DKDE_BIN_DIR:-$root/zig-out/bin}:$PATH"
 export XDG_DATA_HOME="$work/data"
 export XDG_STATE_HOME="$work/state"
 export DKDE_DATA_DIR="$root/data"

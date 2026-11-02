@@ -286,6 +286,7 @@ const TaskManager = struct {
         notebook.as(gtk.Widget).setVexpand(1);
         _ = notebook.appendPage(root.as(gtk.Widget), gtk.Label.new(common.tr("Processes")).as(gtk.Widget));
         _ = notebook.appendPage(self.perf.widget, gtk.Label.new(common.tr("Performance")).as(gtk.Widget));
+        _ = gtk.Notebook.signals.switch_page.connect(notebook, *TaskManager, &onSwitchPage, self, .{});
         const outer = gtk.Box.new(.vertical, 0);
         outer.append(menu_bar.as(gtk.Widget));
         outer.append(notebook.as(gtk.Widget));
@@ -328,6 +329,28 @@ const TaskManager = struct {
         }
         common.state.saveList(self.allocator, "tasks.state", "columns", "visible", names.items) catch |err|
             std.log.warn("cannot save the column choice: {s}", .{@errorName(err)});
+    }
+
+    /// Whether the process list can be seen: its tab is the open one and the
+    /// window is not minimized.
+    fn listVisible(self: *TaskManager) bool {
+        if (self.notebook.getCurrentPage() != 0) return false;
+        if (self.window.as(gtk.Native).getSurface()) |surface| {
+            const toplevel: *gdk.Toplevel = @ptrCast(surface);
+            if (toplevel.getState().minimized) return false;
+        }
+        return true;
+    }
+
+    fn onSwitchPage(_: *gtk.Notebook, _: *gtk.Widget, _: c_uint, self: *TaskManager) callconv(.c) void {
+        // The signal comes before the page changes: look again when the main loop is idle.
+        _ = glib.idleAdd(onShownIdle, self);
+    }
+
+    fn onShownIdle(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *TaskManager = @ptrCast(@alignCast(data.?));
+        if (self.listVisible()) self.rebuildList();
+        return 0;
     }
 
     fn onDestroy(_: *gtk.ApplicationWindow, self: *TaskManager) callconv(.c) void {
@@ -399,7 +422,11 @@ const TaskManager = struct {
         while (counted.next()) |p| threads += p.threads;
         self.perf.update(self.processes.count(), threads);
 
-        self.rebuildList();
+        // Nobody sees the list while the Performance tab is open or the window
+        // is minimized, so it is not touched then; GTK's work on a list that is
+        // replaced every refresh is most of this program's CPU. It is brought
+        // up to date when the tab is shown again.
+        if (self.listVisible()) self.rebuildList();
     }
 
     fn sample(self: *TaskManager, pid: u32, total_delta: u64, dt: f64) void {
