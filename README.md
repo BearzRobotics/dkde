@@ -148,7 +148,7 @@ sudo apt install \
     shared-mime-info papirus-icon-theme webp-pixbuf-loader librsvg2-common \
     fonts-noto-core fonts-noto-color-emoji \
     pipewire pipewire-pulse pipewire-bin wireplumber pulseaudio-utils \
-    network-manager bluez rfkill brightnessctl wlr-randr \
+    wpasupplicant dhcpcd iproute2 bluez rfkill brightnessctl wlr-randr \
     cups cups-client cups-filters \
     gvfs udisks2 zip unzip 7zip chrony sudo passwd \
     git curl tar parted e2fsprogs dosfstools exfatprogs xfsprogs btrfs-progs ntfs-3g \
@@ -165,7 +165,7 @@ Kaitai formats and ImHex patterns when you ask it to.
 | Login screen | `greetd` (then see `data/greetd/`, `data/pam/` and "Init systems" below) | log in on a tty and run `dkde-session` |
 | Notifications, system tray | `dbus` (provides `dbus-run-session`, which `dkde-session` uses) | both are off; the panel logs it |
 | Sound: volume, devices, test tone | `pipewire`, `pipewire-pulse`, `wireplumber` (`wpctl`), `pipewire-bin` (`pw-play`), or `pulseaudio-utils` (`pactl`, `paplay`) | the Sound page and quick-settings volume say what to install |
-| Network | `network-manager` (`nmcli`) | Network page and Wi-Fi tile hidden |
+| Network | `wpasupplicant` (`wpa_cli`), `dhcpcd`, `iproute2` (`ip`), `rfkill` | Network page and Wi-Fi tile hidden. Needs `data/wpa_supplicant.conf` (wheel group control socket) |
 | Bluetooth | `bluez` (`bluetoothctl`) | Bluetooth page and tile hidden |
 | Airplane mode | `rfkill` | tile hidden |
 | Brightness | `brightnessctl` (otherwise dkde writes the backlight in sysfs, which needs permission) | slider hidden on machines with no backlight |
@@ -191,18 +191,18 @@ starting, and only for the features that use them.
 
 | Init | Service files in this repo | Notes |
 |---|---|---|
-| dinit | `data/dinit.d/`: `greetd`, `seatd`, `dbus`, `networkmanager`, `bluetooth`, `cupsd` | copy to `/etc/dinit.d/`, then `dinitctl enable <name>` |
-| systemd | `data/systemd/greetd.service` | the other services (NetworkManager, bluez, cups, dbus) come with their distribution packages; logind provides seats, so no seatd |
-| SysV init | `data/sysvinit/greetd`, `data/sysvinit/seatd` | Slackware: install as `/etc/rc.d/rc.greetd` and `rc.seatd`; LFS/BLFS: `/etc/rc.d/init.d/` and link into your runlevel. Slackware and BLFS already have scripts for dbus, NetworkManager, bluez and cups |
+| dinit | `data/dinit.d/`: `greetd`, `seatd`, `dbus`, `wpa_supplicant`, `bluetooth`, `cupsd` | copy to `/etc/dinit.d/`, then `dinitctl enable <name>` |
+| systemd | `data/systemd/greetd.service` | the other services (bluez, cups, dbus; wpa_supplicant and dhcpcd for Wi-Fi) come with their distribution packages; logind provides seats, so no seatd |
+| SysV init | `data/sysvinit/greetd`, `data/sysvinit/seatd` | Slackware: install as `/etc/rc.d/rc.greetd` and `rc.seatd`; LFS/BLFS: `/etc/rc.d/init.d/` and link into your runlevel. Slackware and BLFS already have scripts for dbus, bluez and cups |
 | any | `data/pam/greetd` | greetd needs a PAM service named `greetd`; the file shows the Debian and the `system-auth` (Slackware, LFS) forms |
 
 Which services you need:
 
 - **greetd** and **seatd** (or elogind/systemd-logind): only for a graphical
   login. Without them, run `dkde-session` from a tty.
-- **dbus system bus**: NetworkManager and BlueZ need it. dkde's own session
+- **dbus system bus**: BlueZ needs it. dkde's own session
   bus comes from `dbus-run-session`, which `dkde-session` uses when present.
-- **NetworkManager, bluetoothd, cupsd**: only for the Network, Bluetooth and
+- **wpa_supplicant, dhcpcd, bluetoothd, cupsd**: only for the Network, Bluetooth and
   Printers pages and quick settings.
 
 `dkde-setup` recognises logind and elogind (it looks for `/run/systemd/seats`)
@@ -210,7 +210,7 @@ and skips the seat-group check when one is running.
 
 **Packages on other distributions.** The apt command above is Ubuntu-specific
 (and the only names I verified). Everywhere else, install the *programs* the
-table lists by their command names: `labwc`, `wlr-randr`, `nmcli`,
+table lists by their command names: `labwc`, `wlr-randr`, `wpa_cli`, `ip`,
 `bluetoothctl`, `rfkill`, `brightnessctl`, `wpctl` or `pactl` (and `pw-play`
 or `paplay`), `lpstat`/`lpadmin`/`lpoptions`/`lp`, `dbus-run-session`,
 `sudo`, plus `greetd` and `seatd` for a graphical login. Build-time you need

@@ -25,7 +25,7 @@ before they are discussed in public. There is no bug bounty.
   most valuable.
 - **The login screen** (`dkde-greeter`) talks to greetd over its socket and
   holds the password in memory only while signing in.
-- **Known limits.** The Network page passes a new Wi-Fi password to `nmcli` as
+- **Known limits.** The Network page passes a new Wi-Fi password to `wpa_cli` as
   an argument, so it is briefly visible in the process list to other local
   users. Bluetooth pairing uses a no-input agent and cannot handle PINs.
   These are listed in SPEC.md.

@@ -1,5 +1,5 @@
 //! Command-line front ends for the hardware pages (SPEC.md 5.5): display
-//! (`wlr-randr`), network (`nmcli`), Bluetooth (`bluetoothctl`), printers
+//! (`wlr-randr`), network (`wpa_cli`, `ip`, `rfkill`), Bluetooth (`bluetoothctl`), printers
 //! (CUPS' `lpstat`/`lpadmin`) and sound devices (`wpctl`/`pactl`). dkde has no
 //! session D-Bus, so every one of them is a tool the user installs; a page
 //! whose tool is missing says which package provides it.
@@ -150,6 +150,22 @@ pub fn currentMode(output: Output) ?Mode {
     return null;
 }
 
+/// `rfkill list`: true when every radio is soft-blocked, false when any is on,
+/// null when there are none.
+pub fn parseRfkill(text: []const u8) ?bool {
+    var seen = false;
+    var all_blocked = true;
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |raw| {
+        const line = std.mem.trim(u8, raw, " \t\r");
+        const key = "Soft blocked:";
+        if (!std.mem.startsWith(u8, line, key)) continue;
+        seen = true;
+        if (!std.mem.eql(u8, std.mem.trim(u8, line[key.len..], " "), "yes")) all_blocked = false;
+    }
+    return if (seen) all_blocked else null;
+}
+
 // ---- network ------------------------------------------------------------------------
 
 pub const Network = struct {
@@ -159,59 +175,47 @@ pub const Network = struct {
     secured: bool,
 };
 
-/// Splits one line of `nmcli -t` output on unescaped colons into `out`;
-/// `\:` and `\\` are unescaped in place into `scratch`. Returns the count.
-pub fn splitTerse(line: []const u8, scratch: []u8, out: [][]const u8) usize {
-    var count: usize = 0;
-    var used: usize = 0;
-    var start = used;
-    var i: usize = 0;
-    while (i < line.len and count < out.len) : (i += 1) {
-        const c = line[i];
-        if (c == '\\' and i + 1 < line.len) {
-            i += 1;
-            if (used < scratch.len) scratch[used] = line[i];
-            used += 1;
-        } else if (c == ':') {
-            out[count] = scratch[start..@min(used, scratch.len)];
-            count += 1;
-            start = used;
-        } else {
-            if (used < scratch.len) scratch[used] = c;
-            used += 1;
-        }
-    }
-    if (count < out.len) {
-        out[count] = scratch[start..@min(used, scratch.len)];
-        count += 1;
-    }
-    return count;
+/// dBm to a 0-100 quality, the usual linear mapping (-100 dBm is 0, -50 is 100).
+pub fn dbmToPercent(dbm: i32) u32 {
+    return @intCast(std.math.clamp(2 * (dbm + 100), 0, 100));
 }
 
-/// `nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY dev wifi list`, strongest first
-/// and without duplicates or hidden networks. SSIDs are copied into `arena`.
+/// Output of `wifi-list` (see `wifi_list_script`): an optional `CUR<TAB>ssid`
+/// line for the network in use, then `wpa_cli scan_results` lines
+/// `bssid<TAB>freq<TAB>signal<TAB>flags<TAB>ssid`. Strongest first, without
+/// duplicates or hidden networks. SSIDs are copied into `arena`.
 pub fn parseWifi(arena: std.mem.Allocator, text: []const u8) ![]Network {
     var list: std.ArrayList(Network) = .empty;
+    var current: []const u8 = "";
     var lines = std.mem.splitScalar(u8, text, '\n');
-    while (lines.next()) |line| {
-        if (line.len == 0) continue;
-        var scratch: [256]u8 = undefined;
-        var f: [4][]const u8 = undefined;
-        if (splitTerse(line, &scratch, &f) < 4) continue;
-        if (f[1].len == 0) continue;
+    while (lines.next()) |raw| {
+        const line = std.mem.trimEnd(u8, raw, "\r");
+        if (std.mem.startsWith(u8, line, "CUR\t")) {
+            current = line[4..];
+            continue;
+        }
+        var f = std.mem.splitScalar(u8, line, '\t');
+        const bssid = f.next() orelse continue;
+        if (bssid.len != 17) continue; // headers and status lines
+        _ = f.next() orelse continue;
+        const sig = f.next() orelse continue;
+        const flags = f.next() orelse continue;
+        const ssid = f.next() orelse continue;
+        if (ssid.len == 0 or std.mem.startsWith(u8, ssid, "\\x00")) continue;
         const net: Network = .{
-            .in_use = std.mem.eql(u8, f[0], "*"),
-            .ssid = try arena.dupe(u8, f[1]),
-            .signal = std.fmt.parseInt(u32, f[2], 10) catch 0,
-            .secured = f[3].len > 0 and !std.mem.eql(u8, f[3], "--"),
+            .in_use = false,
+            .ssid = try arena.dupe(u8, ssid),
+            .signal = dbmToPercent(std.fmt.parseInt(i32, sig, 10) catch -100),
+            .secured = std.mem.indexOf(u8, flags, "WPA") != null or std.mem.indexOf(u8, flags, "WEP") != null or std.mem.indexOf(u8, flags, "SAE") != null,
         };
         var dup = false;
         for (list.items) |*seen| if (std.mem.eql(u8, seen.ssid, net.ssid)) {
             dup = true;
-            if (net.in_use or net.signal > seen.signal) seen.* = net;
+            if (net.signal > seen.signal) seen.* = net;
         };
         if (!dup) try list.append(arena, net);
     }
+    for (list.items) |*n| n.in_use = current.len > 0 and std.mem.eql(u8, n.ssid, current);
     std.mem.sort(Network, list.items, {}, struct {
         fn less(_: void, a: Network, b: Network) bool {
             if (a.in_use != b.in_use) return a.in_use;
@@ -220,6 +224,48 @@ pub fn parseWifi(arena: std.mem.Allocator, text: []const u8) ![]Network {
     }.less);
     return list.items;
 }
+
+/// `sh -c <script>`: the network in use, then the scan results.
+pub const wifi_list_script =
+    \\s=$(wpa_cli status) || exit 1
+    \\case "$s" in *wpa_state=COMPLETED*) printf 'CUR\t%s\n' "$(printf '%s\n' "$s" | sed -n 's/^ssid=//p')";; esac
+    \\wpa_cli scan_results
+;
+
+/// `sh -c <script>`: ask for a fresh scan and give it time to finish.
+pub const wifi_scan_script =
+    \\wpa_cli scan >/dev/null || exit 1
+    \\sleep 4
+;
+
+/// `sh -c <script> sh $1=ssid $2=password (empty for an open or saved
+/// network) $3="secured" when the network needs a password, so a new one
+/// fails fast (exit 2) to be asked for it`. Reuses a saved network of that
+/// name, else adds one, selects it, and waits up to 20 seconds for the
+/// association; a new network that fails is removed so a wrong password is
+/// not remembered. The DHCP client (dhcpcd) takes it from there. The config
+/// is saved when wpa_supplicant has `update_config=1`.
+pub const wifi_connect_script =
+    \\w() { o=$(wpa_cli "$@") || return 1; case "$o" in *FAIL*) return 1;; esac; printf '%s\n' "$o"; }
+    \\id=$(w list_networks | awk -F'\t' -v s="$1" '$1 ~ /^[0-9]+$/ && $2 == s { print $1; exit }') || exit 1
+    \\new=
+    \\if [ -z "$id" ] && [ -z "$2" ] && [ -n "$3" ]; then exit 2; fi
+    \\if [ -z "$id" ]; then
+    \\  id=$(w add_network | tail -n 1) || exit 1
+    \\  new=yes
+    \\  w set_network "$id" ssid "\"$1\"" >/dev/null || exit 1
+    \\  if [ -z "$2" ]; then w set_network "$id" key_mgmt NONE >/dev/null || exit 1; fi
+    \\fi
+    \\if [ -n "$2" ]; then w set_network "$id" psk "\"$2\"" >/dev/null || exit 1; fi
+    \\w select_network "$id" >/dev/null || exit 1
+    \\i=0
+    \\while [ "$i" -lt 20 ]; do
+    \\  case "$(wpa_cli status)" in *wpa_state=COMPLETED*) w save_config >/dev/null; exit 0;; esac
+    \\  i=$((i + 1)); sleep 1
+    \\done
+    \\if [ -n "$new" ]; then w remove_network "$id" >/dev/null; fi
+    \\exit 1
+;
 
 // ---- bluetooth ------------------------------------------------------------------------
 
@@ -362,14 +408,19 @@ test "wlr-randr json" {
     try std.testing.expectEqual(@as(i64, 1920), currentMode(parsed.value[0]).?.width);
 }
 
-test "terse nmcli lines" {
+test "wpa_cli scan results" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
-    const text = "*:Home\\:5G:78:WPA2\n :Cafe:40:--\n :Home\\:5G:55:WPA2\n ::90:WPA2\n";
+    const text = "CUR\tHome 5G\nbssid / frequency / signal level / flags / ssid\n" ++
+        "aa:bb:cc:dd:ee:01\t5180\t-61\t[WPA2-PSK-CCMP][ESS]\tHome 5G\n" ++
+        "aa:bb:cc:dd:ee:02\t2412\t-80\t[ESS]\tCafe\n" ++
+        "aa:bb:cc:dd:ee:03\t2437\t-70\t[WPA2-PSK-CCMP][ESS]\tHome 5G\n" ++
+        "aa:bb:cc:dd:ee:04\t2437\t-40\t[WPA2-PSK-CCMP][ESS]\t\n";
     const nets = try parseWifi(arena_state.allocator(), text);
     try std.testing.expectEqual(@as(usize, 2), nets.len);
-    try std.testing.expectEqualStrings("Home:5G", nets[0].ssid);
+    try std.testing.expectEqualStrings("Home 5G", nets[0].ssid);
     try std.testing.expect(nets[0].in_use and nets[0].secured);
+    try std.testing.expectEqual(@as(u32, 78), nets[0].signal);
     try std.testing.expect(!nets[1].secured);
 }
 

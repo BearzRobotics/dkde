@@ -9,6 +9,7 @@ const gdk = @import("gdk4");
 const config_mod = @import("config.zig");
 
 const paths = @import("paths.zig");
+const icons = @import("icons.zig");
 
 const log = std.log.scoped(.style);
 
@@ -136,6 +137,9 @@ pub const Appearance = struct {
                 defer self.allocator.free(z);
                 settings.as(gobject.Object).set("gtk-icon-theme-name", z.ptr, @as(?*anyopaque, null));
             } else |_| {}
+        } else if (papirusInstalled(self.allocator)) {
+            // Papirus is the default icon theme; the system's own may lack our icons.
+            settings.as(gobject.Object).set("gtk-icon-theme-name", @as([*:0]const u8, "Papirus"), @as(?*anyopaque, null));
         } else if (self.system_icon_theme) |sys| {
             settings.as(gobject.Object).set("gtk-icon-theme-name", sys.ptr, @as(?*anyopaque, null));
         }
@@ -163,4 +167,11 @@ pub fn accentOf(probe: *gtk.Widget) gdk.RGBA {
     var color: gdk.RGBA = undefined;
     probe.getColor(&color);
     return color;
+}
+
+fn papirusInstalled(allocator: std.mem.Allocator) bool {
+    const names = icons.list(allocator) catch return false;
+    defer icons.free(allocator, names);
+    for (names) |n| if (std.mem.eql(u8, n, "Papirus")) return true;
+    return false;
 }

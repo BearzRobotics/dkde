@@ -74,7 +74,7 @@ Things worth knowing:
 | `$PREFIX/share/wayland-sessions/dkde.desktop` | the login-manager session entry |
 | `$PREFIX/share/dkde/` | defaults (`*.conf`, `style.css`), labwc config and keybindings, the service-file templates |
 | `/etc/greetd/config.toml`, `/etc/pam.d/greetd` | login screen (from `packaging/build.sh install`) |
-| `/etc/dinit.d/` | `greetd`, `seatd`, `dbus`, `networkmanager`, `bluetooth`, `cupsd` (with `INIT=dinit`) |
+| `/etc/dinit.d/` | `greetd`, `seatd`, `dbus`, `wpa_supplicant`, `bluetooth`, `cupsd` (with `INIT=dinit`) |
 
 The per-user config (`~/.config/dkde/`, including `calendar.conf`) is created
 on first use; `dkde-setup --once` runs from `dkde-session` on first login.
@@ -95,8 +95,8 @@ on first use; `dkde-setup --once` runs from `dkde-session` on first login.
 | `sudo`, `shadow`/`passwd` | run-as-administrator, user management | `useradd`, `usermod`, ... |
 
 **Optional** (each feature hides itself or says what is missing): see
-`README.md`, "Recommended software". The commands it looks for are `nmcli`
-(NetworkManager), `bluetoothctl`, `rfkill`, `brightnessctl`, `wpctl` or `pactl`,
+`README.md`, "Recommended software". The commands it looks for are `wpa_cli`
+(wpa_supplicant), `ip`, `bluetoothctl`, `rfkill`, `brightnessctl`, `wpctl` or `pactl`,
 `wlr-randr`, `swaylock` (or `gtklock`, `waylock`), `lpadmin`/`lpstat` (CUPS),
 `zip`/`unzip`/`tar`/`7z`, `parted` and the filesystem tools, `git`/`curl`.
 
@@ -117,7 +117,7 @@ a D-Bus library, cron or any init-system timers. Calendar reminders run inside
 - Users need these groups for full function: `audio`, `video`, `input`,
   `netdev`, `plugdev`, `bluetooth`, `lpadmin`. `dkde-setup` checks and prints
   the single `usermod` command that adds the missing ones.
-- Enable services: `dinitctl enable seatd dbus greetd` (and `networkmanager`,
+- Enable services: `dinitctl enable seatd dbus greetd` (and `wpa_supplicant`,
   `bluetooth`, `cupsd` if installed). greetd takes over the VT in
   `/etc/greetd/config.toml` (`vt = 1`): do not also run a getty there.
 - Set `XDG_RUNTIME_DIR` (`dkde-session` creates `/run/user/$UID` or a private

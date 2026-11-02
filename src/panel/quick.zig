@@ -4,7 +4,7 @@
 //! the battery level. `[panel] quick-settings` lists which are shown.
 //!
 //! Everything goes through small tools or sysfs and is optional: a control
-//! whose tool or hardware is missing (no battery, no `nmcli`, no backlight)
+//! whose tool or hardware is missing (no battery, no `ip`, no backlight)
 //! simply does not appear. See also hardware.zig in the Settings app.
 
 const std = @import("std");
@@ -29,17 +29,19 @@ pub fn kindName(kind: Kind) []const u8 {
 
 pub const Net = struct { wifi: bool = false, wired: bool = false };
 
-/// `nmcli -t -f TYPE,STATE dev`: "wifi:connected", "ethernet:unavailable", ...
+/// `ip -br addr`: "wlan0 UP 192.168.1.5/24 ...". An interface counts as
+/// connected when it is UP and has an address; wl* is Wi-Fi, en*/eth* is wired.
 pub fn parseNet(text: []const u8) Net {
     var net: Net = .{};
     var lines = std.mem.splitScalar(u8, text, '\n');
     while (lines.next()) |line| {
-        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
-        const state = std.mem.trim(u8, line[colon + 1 ..], " \r");
-        if (!std.mem.eql(u8, state, "connected")) continue;
-        const kind = line[0..colon];
-        if (std.mem.eql(u8, kind, "wifi")) net.wifi = true;
-        if (std.mem.eql(u8, kind, "ethernet")) net.wired = true;
+        var f = std.mem.tokenizeAny(u8, line, " \t\r");
+        const name = f.next() orelse continue;
+        const state = f.next() orelse continue;
+        if (!std.mem.eql(u8, state, "UP")) continue;
+        if (f.next() == null) continue;
+        if (std.mem.startsWith(u8, name, "wl")) net.wifi = true;
+        if (std.mem.startsWith(u8, name, "en") or std.mem.startsWith(u8, name, "eth")) net.wired = true;
     }
     return net;
 }
@@ -85,9 +87,10 @@ pub fn brightnessPercent(current: u32, max: u32) u32 {
 }
 
 test "network state" {
-    const n = parseNet("ethernet:connected\nwifi:disconnected\nloopback:unmanaged\n");
+    const n = parseNet("lo UNKNOWN 127.0.0.1/8\neth0 UP 10.0.0.2/24\nwlan0 DOWN\n");
     try std.testing.expect(n.wired and !n.wifi);
-    try std.testing.expect(parseNet("wifi:connected\n").wifi);
+    try std.testing.expect(parseNet("wlan0 UP 192.168.1.5/24 fe80::1/64\n").wifi);
+    try std.testing.expect(!parseNet("wlan0 UP\n").wifi);
     try std.testing.expect(!parseNet("").wifi);
 }
 
@@ -222,7 +225,7 @@ pub const Quick = struct {
         self.* = .{ .allocator = allocator, .config = config };
         self.guard = proc.Guard(Quick).create(self);
         self.reload();
-        // Each poll can start nmcli, rfkill and wpctl; once a minute (on a coarse
+        // Each poll can start ip, rfkill and wpctl; once a minute (on a coarse
         // timer the CPU can batch with other wake-ups) is plenty, and opening the
         // flyout polls at once.
         self.poll_source = glib.timeoutAddSeconds(60, onPoll, self);
@@ -268,8 +271,8 @@ pub const Quick = struct {
 
     pub fn poll(self: *Quick) void {
         self.battery = if (self.isEnabled(.battery)) readBattery(self.allocator) else null;
-        if (self.isEnabled(.network) and proc.hasProgram("nmcli")) {
-            proc.run(Quick, self.guard, &.{ "nmcli", "-t", "-f", "TYPE,STATE", "dev" }, onNet);
+        if (self.isEnabled(.network) and proc.hasProgram("ip")) {
+            proc.run(Quick, self.guard, &.{ "ip", "-br", "addr" }, onNet);
         }
         if (self.isEnabled(.airplane) and proc.hasProgram("rfkill")) {
             proc.run(Quick, self.guard, &.{ "rfkill", "list" }, onRfkill);
@@ -419,7 +422,7 @@ pub const Quick = struct {
         var buf: [48]u8 = undefined;
 
         // Network: wired wins over Wi-Fi in the icon; hidden when the widget is off.
-        const net_on = self.isEnabled(.network) and proc.hasProgram("nmcli");
+        const net_on = self.isEnabled(.network) and proc.hasProgram("ip");
         bar.network.as(gtk.Widget).setVisible(@intFromBool(net_on));
         bar.network.setFromIconName(if (self.net.wired) "network-wired-symbolic" else if (self.net.wifi) "network-wireless-symbolic" else "network-offline-symbolic");
 
@@ -507,7 +510,7 @@ const Flyout = struct {
         // Toggles in one row.
         const tiles = gtk.Box.new(.horizontal, 8);
         tiles.setHomogeneous(1);
-        if (quick.isEnabled(.network) and proc.hasProgram("nmcli")) self.wifi = self.tile(tiles, "network-wireless-symbolic", common.tr("Wi-Fi"), onWifi);
+        if (quick.isEnabled(.network) and proc.hasProgram("rfkill")) self.wifi = self.tile(tiles, "network-wireless-symbolic", common.tr("Wi-Fi"), onWifi);
         if (quick.isEnabled(.bluetooth) and proc.hasProgram("bluetoothctl")) self.bluetooth = self.tile(tiles, "bluetooth-symbolic", common.tr("Bluetooth"), onBluetooth);
         if (quick.isEnabled(.airplane) and proc.hasProgram("rfkill")) self.airplane = self.tile(tiles, "airplane-mode-symbolic", common.tr("Airplane mode"), onAirplane);
         if (tiles.as(gtk.Widget).getFirstChild() != null) box.append(tiles.as(gtk.Widget));
@@ -603,7 +606,7 @@ const Flyout = struct {
         defer self.syncing = false;
         const q = self.quick;
         if (self.wifi) |b| {
-            proc.run(Flyout, self.guard, &.{ "nmcli", "radio", "wifi" }, onWifiState);
+            proc.run(Flyout, self.guard, &.{ "rfkill", "list", "wifi" }, onWifiState);
             b.as(gtk.Widget).setSensitive(1);
         }
         if (self.bluetooth != null) proc.run(Flyout, self.guard, &.{ "bluetoothctl", "show" }, onBluetoothState);
@@ -625,7 +628,7 @@ const Flyout = struct {
     var icon_storage: [48]u8 = undefined;
     fn onWifiState(self: *Flyout, ok: bool, out: []const u8) void {
         if (!ok) return;
-        self.setToggle(self.wifi, std.mem.startsWith(u8, std.mem.trim(u8, out, " \n"), "enabled"));
+        self.setToggle(self.wifi, !(parseRfkill(out) orelse true));
     }
 
     fn onBluetoothState(self: *Flyout, ok: bool, out: []const u8) void {
@@ -650,7 +653,7 @@ const Flyout = struct {
 
     fn onWifi(button: *gtk.ToggleButton, self: *Flyout) callconv(.c) void {
         if (self.syncing) return;
-        proc.run(Flyout, self.guard, &.{ "nmcli", "radio", "wifi", if (button.as(gtk.ToggleButton).getActive() != 0) "on" else "off" }, onAfterChange);
+        proc.run(Flyout, self.guard, &.{ "rfkill", if (button.as(gtk.ToggleButton).getActive() != 0) "unblock" else "block", "wifi" }, onAfterChange);
     }
 
     fn onBluetooth(button: *gtk.ToggleButton, self: *Flyout) callconv(.c) void {

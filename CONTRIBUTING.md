@@ -13,7 +13,7 @@ as the code when the code changes the design.
 - **Tests ship with the logic they test.** Parsing, config handling, labwc
   `rc.xml` editing and similar pure logic need unit tests.
 - **Keep dependencies out.** dkde links GTK 4, GLib and little else. Optional
-  features drive command-line tools (`nmcli`, `wlr-randr`, ...) and hide
+  features drive command-line tools (`wpa_cli`, `wlr-randr`, ...) and hide
   themselves when the tool is missing; please follow that pattern.
 - **No init-system, libc or distribution assumptions.** It must work on musl
   and glibc, and under dinit, systemd and SysV init.

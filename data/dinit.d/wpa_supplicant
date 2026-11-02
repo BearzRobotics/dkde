@@ -1,0 +1,7 @@
+# wpa_supplicant, the Wi-Fi backend for the Network page of Settings and the
+# panel (wpa_cli). dhcpcd (a separate service) then fetches the address.
+# Adjust wlan0 to your interface name. Needs data/wpa_supplicant.conf
+# installed as /etc/wpa_supplicant/wpa_supplicant.conf.
+type       = process
+command    = /usr/sbin/wpa_supplicant -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
+restart    = true

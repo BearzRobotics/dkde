@@ -487,8 +487,8 @@ pub const NetworkPage = struct {
 
     pub fn build(window: *SettingsWindow) *gtk.Box {
         const page = win.SettingsWindow.newPage(common.tr("Network"));
-        if (!hw.hasProgram("nmcli")) {
-            _ = note(page, common.tr("Network settings need NetworkManager. Install the packages network-manager (provides nmcli) and start its service."));
+        if (!hw.hasProgram("wpa_cli") or !hw.hasProgram("ip")) {
+            _ = note(page, common.tr("Network settings need wpa_supplicant (provides wpa_cli) and iproute2 (provides ip). Start the wpa_supplicant and dhcpcd services."));
             return page;
         }
         const self = gpa.create(NetworkPage) catch @panic("OOM");
@@ -527,7 +527,7 @@ pub const NetworkPage = struct {
     }
 
     fn onRescan(self: *NetworkPage, _: []const u8, _: []const u8) void {
-        hw.run(NetworkPage, self.guard, &.{ "nmcli", "dev", "wifi", "rescan" }, onRescanned);
+        hw.run(NetworkPage, self.guard, &.{ "sh", "-c", hw.wifi_scan_script }, onRescanned);
     }
 
     fn onRescanned(self: *NetworkPage, _: bool, _: []const u8) void {
@@ -535,25 +535,26 @@ pub const NetworkPage = struct {
     }
 
     fn refresh(self: *NetworkPage) void {
-        hw.run(NetworkPage, self.guard, &.{ "nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "dev" }, onDevices);
-        hw.run(NetworkPage, self.guard, &.{ "nmcli", "radio", "wifi" }, onRadio);
-        hw.run(NetworkPage, self.guard, &.{ "nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list" }, onWifi);
+        hw.run(NetworkPage, self.guard, &.{ "ip", "-br", "addr" }, onDevices);
+        hw.run(NetworkPage, self.guard, &.{ "rfkill", "list", "wifi" }, onRadio);
+        hw.run(NetworkPage, self.guard, &.{ "sh", "-c", hw.wifi_list_script }, onWifi);
     }
 
     fn onDevices(self: *NetworkPage, ok: bool, out: []const u8) void {
         if (!ok) {
-            self.status.setText(common.tr("Cannot reach NetworkManager. Is it running?"));
+            self.status.setText(common.tr("Cannot list the network interfaces."));
             return;
         }
         var text: std.ArrayList(u8) = .empty;
         defer text.deinit(gpa);
         var lines = std.mem.splitScalar(u8, out, '\n');
         while (lines.next()) |line| {
-            var scratch: [256]u8 = undefined;
-            var f: [3][]const u8 = undefined;
-            if (hw.splitTerse(line, &scratch, &f) < 3) continue;
-            if (std.mem.eql(u8, f[0], "loopback") or std.mem.eql(u8, f[0], "bridge")) continue;
-            const entry = std.fmt.allocPrint(gpa, "{s}: {s}{s}{s}\n", .{ f[0], f[1], if (f[2].len > 0) " \u{2014} " else "", f[2] }) catch return;
+            var tok = std.mem.tokenizeAny(u8, line, " \t\r");
+            const name = tok.next() orelse continue;
+            if (std.mem.eql(u8, name, "lo")) continue;
+            const state = tok.next() orelse "";
+            const addr = tok.next() orelse "";
+            const entry = std.fmt.allocPrint(gpa, "{s}: {s}{s}{s}\n", .{ name, state, if (addr.len > 0) " \u{2014} " else "", addr }) catch return;
             defer gpa.free(entry);
             text.appendSlice(gpa, entry) catch return;
         }
@@ -565,13 +566,13 @@ pub const NetworkPage = struct {
     fn onRadio(self: *NetworkPage, ok: bool, out: []const u8) void {
         if (!ok) return;
         self.syncing = true;
-        self.wifi_switch.setActive(@intFromBool(std.mem.startsWith(u8, std.mem.trim(u8, out, " \n"), "enabled")));
+        self.wifi_switch.setActive(@intFromBool(!(hw.parseRfkill(out) orelse true)));
         self.syncing = false;
     }
 
     fn onWifiSwitch(_: *gtk.Switch, state: c_int, self: *NetworkPage) callconv(.c) c_int {
         if (self.syncing) return 0;
-        hw.run(NetworkPage, self.guard, &.{ "nmcli", "radio", "wifi", if (state != 0) "on" else "off" }, onRescanned);
+        hw.run(NetworkPage, self.guard, &.{ "rfkill", if (state != 0) "unblock" else "block", "wifi" }, onRescanned);
         return 0;
     }
 
@@ -595,7 +596,8 @@ pub const NetworkPage = struct {
     }
 
     fn onDisconnect(self: *NetworkPage, ssid: []const u8, _: []const u8) void {
-        hw.run(NetworkPage, self.guard, &.{ "nmcli", "con", "down", "id", ssid }, onRescanned);
+        _ = ssid;
+        hw.run(NetworkPage, self.guard, &.{ "wpa_cli", "disconnect" }, onRescanned);
     }
 
     /// Tries a saved profile (or an open network) first; asks for a password
@@ -604,7 +606,8 @@ pub const NetworkPage = struct {
         if (self.pending_ssid) |s| gpa.free(s);
         self.pending_ssid = gpa.dupe(u8, ssid) catch return;
         self.pending_secured = secured.len > 0;
-        hw.run(NetworkPage, self.guard, &.{ "nmcli", "dev", "wifi", "connect", ssid }, onConnectTried);
+        self.status.setText(common.tr("Connecting\u{2026}"));
+        hw.run(NetworkPage, self.guard, &.{ "sh", "-c", hw.wifi_connect_script, "sh", ssid, "", if (secured.len > 0) "secured" else "" }, onConnectTried);
     }
 
     fn onConnectTried(self: *NetworkPage, ok: bool, _: []const u8) void {
@@ -616,11 +619,12 @@ pub const NetworkPage = struct {
         openForm(NetworkPage, self.window.window.as(gtk.Window), self, common.tr("Wi-Fi password"), common.tr("Connect"), &.{.{ .label = common.tr("Password"), .secret = true }}, onPassword);
     }
 
-    /// nmcli takes the password as an argument, so it is visible to other
+    /// wpa_cli takes the password as an argument, so it is visible to other
     /// local users in the process list for the moment the command runs.
     fn onPassword(self: *NetworkPage, values: []const []const u8) void {
         const ssid = self.pending_ssid orelse return;
-        hw.run(NetworkPage, self.guard, &.{ "nmcli", "dev", "wifi", "connect", ssid, "password", values[0] }, onPasswordTried);
+        self.status.setText(common.tr("Connecting\u{2026}"));
+        hw.run(NetworkPage, self.guard, &.{ "sh", "-c", hw.wifi_connect_script, "sh", ssid, values[0] }, onPasswordTried);
     }
 
     fn onPasswordTried(self: *NetworkPage, ok: bool, _: []const u8) void {

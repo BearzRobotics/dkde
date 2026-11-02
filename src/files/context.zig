@@ -23,6 +23,32 @@ pub fn parseList(allocator: Allocator, text: []const u8) Allocator.Error![][]con
     return out.toOwnedSlice(allocator);
 }
 
+/// The themed icon for the quick row's button, so it shows even where no
+/// emoji font is installed. Null when there is no good match.
+pub fn iconName(id: []const u8) ?[:0]const u8 {
+    const table = [_]struct { []const u8, [:0]const u8 }{
+        .{ "cut", "edit-cut-symbolic" },
+        .{ "copy", "edit-copy-symbolic" },
+        .{ "paste", "edit-paste-symbolic" },
+        .{ "rename", "document-edit-symbolic" },
+        .{ "trash", "user-trash-symbolic" },
+        .{ "delete-permanent", "edit-delete-symbolic" },
+        .{ "restore", "edit-undo-symbolic" },
+        .{ "open", "document-open-symbolic" },
+        .{ "open-tab", "tab-new-symbolic" },
+        .{ "open-with-choose", "document-open-symbolic" },
+        .{ "open-window", "window-new-symbolic" },
+        .{ "properties", "document-properties-symbolic" },
+        .{ "new-folder", "folder-new-symbolic" },
+        .{ "run", "media-playback-start-symbolic" },
+        .{ "terminal-here", "utilities-terminal-symbolic" },
+        .{ "bookmark", "starred-symbolic" },
+        .{ "toggle-hidden", "view-reveal-symbolic" },
+    };
+    for (table) |row| if (std.mem.eql(u8, row[0], id)) return row[1];
+    return null;
+}
+
 /// The emoji on the quick row's button.
 pub fn emoji(id: []const u8) []const u8 {
     const table = [_][2][]const u8{

@@ -38,6 +38,7 @@ pub const TermWindow = struct {
     /// First button of the tab group, so new tabs can join it.
     group_leader: ?*gtk.ToggleButton = null,
     closing: bool = false,
+    menu_bar: ?*gtk.PopoverMenuBar = null,
 
     pub fn create(allocator: std.mem.Allocator, app: *gtk.Application, config: *common.Config, command: ?[]const []const u8) !*TermWindow {
         const self = try allocator.create(TermWindow);
@@ -115,6 +116,9 @@ pub const TermWindow = struct {
             } },
         };
         const menu_bar = mb.build(app, window, &menus, TermWindow, onMenubarAction, self);
+
+        self.menu_bar = menu_bar;
+        _ = gobject.Object.signals.notify.connect(window, *TermWindow, &onFullscreenChanged, self, .{ .detail = "fullscreened" });
 
         const body = gtk.Box.new(.vertical, 0);
         body.append(menu_bar.as(gtk.Widget));
@@ -392,6 +396,12 @@ pub const TermWindow = struct {
         var buf: [256]u8 = undefined;
         const text = std.fmt.bufPrintSentinel(&buf, "{s}", .{tab.view.title() orelse "Terminal"}, 0) catch return;
         self.window.as(gtk.Window).setTitle(text);
+    }
+
+    /// Full screen means the terminal alone: the menu bar goes away with it.
+    fn onFullscreenChanged(_: *gtk.ApplicationWindow, _: *gobject.ParamSpec, self: *TermWindow) callconv(.c) void {
+        const bar = self.menu_bar orelse return;
+        bar.as(gtk.Widget).setVisible(@intFromBool(self.window.as(gtk.Window).isFullscreen() == 0));
     }
 
     // ---- shortcuts -----------------------------------------------------------

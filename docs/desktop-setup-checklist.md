@@ -23,7 +23,7 @@ or by the page that needs them.
 |---|---|
 | Compositor, session, login | `labwc`, `greetd`, `seatd`, `dbus` |
 | Display page, screen off | `wlr-randr` |
-| Network, Bluetooth, printers | `network-manager`, `bluez`, `cups` |
+| Network, Bluetooth, printers | `wpasupplicant`, `dhcpcd`, `iproute2`, `bluez`, `cups` |
 | Sound | `pipewire`, `wireplumber` (`wpctl`), `pipewire-pulse` |
 | Brightness | `brightnessctl` (or sysfs access) |
 | Icons and fonts | `papirus-icon-theme`, `fonts-dejavu` or `fonts-noto` |
@@ -126,5 +126,5 @@ through `eval`, and a label is text whoever made the stick chose. `dkde-notify
 `/dev/disk/by-label` and `/proc/self/mounts`) and only ever shows them.
 
 And as system services (dinit files for these do not exist yet; `data/dinit.d/`
-has the ones that do): `dbus`, `seatd`, `greetd`, `networkmanager`, `bluetooth`,
+has the ones that do): `dbus`, `seatd`, `greetd`, `wpa_supplicant`, `bluetooth`,
 `cupsd`, `acpid`, `chrony`, `earlyoom`.

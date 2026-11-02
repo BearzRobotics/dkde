@@ -295,7 +295,7 @@ Bluetooth and Airplane mode toggles, volume with mute, a brightness slider and
 the battery level. `[panel] quick-settings` is the comma-separated list of
 items to show (`network,bluetooth,airplane,sound,brightness,battery`; unset
 means all), set by switches on the Settings Taskbar page and applied live. Each
-control needs its tool and appears only when it works: `nmcli` (Wi-Fi radio and
+control needs its tool and appears only when it works: `ip` and `rfkill` (Wi-Fi radio and
 connection state), `bluetoothctl`, `rfkill` (airplane mode blocks or unblocks
 all radios and needs access to `/dev/rfkill`), `wpctl` or `pactl`, and sysfs
 for the battery (`/sys/class/power_supply/BAT*`) and the backlight
@@ -602,7 +602,7 @@ timer) are their own explicit actions and are not held back.
 | Taskbar | Height, position, auto-hide, grouping, labels | dkde config |
 | Date & time | Clock style or custom format, time zone, set the clock | dkde config; `/etc/localtime`, `date` (administrator) |
 | Display | Resolution, refresh rate, scale per output | `wlr-randr`, then `display.sh` |
-| Network | Wi-Fi on/off, list, connect, disconnect | `nmcli` |
+| Network | Wi-Fi on/off, list, connect, disconnect | `wpa_cli`, `ip`, `rfkill` |
 | Bluetooth | Power, scan, pair, connect, remove | `bluetoothctl` |
 | Printers | List, default, test page, add, remove | CUPS (`lpstat`, `lpoptions`, `lpadmin`) |
 | Start menu | Pinned apps, recent-apps count, power commands | dkde config |
@@ -670,8 +670,8 @@ timer) are their own explicit actions and are not held back.
     reverts by itself after 15 seconds unless the user keeps it. Keeping it
     writes `$XDG_CONFIG_HOME/dkde/display.sh`, which the labwc autostart runs
     at login. Arranging several outputs and turning one off are not done yet.
-  - *Network* needs NetworkManager (`nmcli`). A new secured network asks for
-    its password; `nmcli` takes it as an argument, so it is briefly visible in
+  - *Network* needs wpa_supplicant (`wpa_cli`) with dhcpcd for the address, plus `ip` and `rfkill`. A new secured network asks for
+    its password; `wpa_cli` takes it as an argument, so it is briefly visible in
     the process list.
   - *Bluetooth* needs BlueZ (`bluetoothctl`) with `bluetoothd` on the system
     bus. Pairing uses a no-input agent, so devices that ask for a PIN fail.
@@ -783,7 +783,7 @@ default apps and the start menu find it.
   swap, and a composition bar. Disk: active time, response time, read and write
   speed, capacity, type (SSD, HDD, NVMe), system disk. Network: send and
   receive in Kbps/Mbps, IPv4 and IPv6, MAC, link speed, driver, and for Wi-Fi
-  the SSID (via `nmcli`) and signal strength. GPU: from sysfs; AMD shows
+  the SSID (via `wpa_cli`) and signal strength. GPU: from sysfs; AMD shows
   utilization, VRAM, temperature, power and clock; Intel shows clock speed
   only. NVIDIA's proprietary driver exposes nothing in sysfs, so it is listed
   without figures. Disks, network adapters and GPUs are looked for again every
@@ -849,7 +849,7 @@ the marker, and also leaves it in place; deleting the file lets the first-login
 run repeat.
 
 It also checks the groups that give a user without logind or polkit access
-to hardware and services: `audio`, `netdev` (NetworkManager and rfkill),
+to hardware and services: `audio`, `netdev` (rfkill),
 `plugdev`, `bluetooth` and `lpadmin`, asking only for those that exist on the
 system, plus `video` and `input` for the session. The fix is one `usermod -aG`
 command that runs only after an explicit yes.
@@ -897,7 +897,7 @@ dkde does not write a display manager. The login screen is a greeter for
   `data/systemd/` (systemd) and `data/sysvinit/` (SysV init: Slackware, LFS)
   hold service files, and `data/pam/greetd` an example PAM service. The dinit
   files, for `dkde-console@N` (see 5.11), `greetd`, `seatd`, `dbus`,
-  `networkmanager`, `bluetooth` and `cupsd`. Copy those you want to
+  `wpa_supplicant`, `bluetooth` and `cupsd`. Copy those you want to
   `/etc/dinit.d/` and enable them with `dinitctl enable`.
 
 ### 5.9 X11 backend (optional, `-Dx11=true`)

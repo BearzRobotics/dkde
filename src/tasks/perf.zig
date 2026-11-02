@@ -239,22 +239,15 @@ pub fn pciNames(content: []const u8, vendor: u16, device: u16) PciNames {
     return out;
 }
 
-/// The SSID of `device` from `nmcli -t -f ACTIVE,SSID,DEVICE dev wifi`. Colons
-/// inside the SSID are escaped as `\:`.
-pub fn parseNmcliSsid(output: []const u8, device: []const u8, buf: []u8) ?[]const u8 {
+/// The SSID from `wpa_cli status`, when the connection is complete.
+pub fn parseWpaSsid(output: []const u8, buf: []u8) ?[]const u8 {
+    if (std.mem.indexOf(u8, output, "wpa_state=COMPLETED") == null) return null;
     var lines = std.mem.splitScalar(u8, output, '\n');
     while (lines.next()) |line| {
-        if (!std.mem.startsWith(u8, line, "yes:")) continue;
-        const last = std.mem.lastIndexOfScalar(u8, line, ':') orelse continue;
-        if (!std.mem.eql(u8, line[last + 1 ..], device)) continue;
-        const raw = line[4..last];
-        var n: usize = 0;
-        var i: usize = 0;
-        while (i < raw.len and n < buf.len) : (i += 1) {
-            if (raw[i] == '\\' and i + 1 < raw.len) i += 1;
-            buf[n] = raw[i];
-            n += 1;
-        }
+        if (!std.mem.startsWith(u8, line, "ssid=")) continue;
+        const ssid = std.mem.trimEnd(u8, line[5..], "\r");
+        const n = @min(ssid.len, buf.len);
+        @memcpy(buf[0..n], ssid[0..n]);
         return buf[0..n];
     }
     return null;
@@ -407,11 +400,11 @@ test "pci names" {
     try std.testing.expect(pciNames(ids, 0x10de, 1).vendor == null);
 }
 
-test "nmcli ssid" {
+test "wpa_cli ssid" {
     var buf: [64]u8 = undefined;
-    const out = "no:Other:wlan1\nyes:Cafe\\: Free:wlan0\n";
-    try std.testing.expectEqualStrings("Cafe: Free", parseNmcliSsid(out, "wlan0", &buf).?);
-    try std.testing.expect(parseNmcliSsid(out, "wlan1", &buf) == null);
+    const out = "Selected interface 'wlan0'\nbssid=aa\nssid=Cafe: Free\nwpa_state=COMPLETED\n";
+    try std.testing.expectEqualStrings("Cafe: Free", parseWpaSsid(out, &buf).?);
+    try std.testing.expect(parseWpaSsid("ssid=X\nwpa_state=SCANNING\n", &buf) == null);
 }
 
 test "formatting" {

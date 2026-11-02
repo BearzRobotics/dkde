@@ -1656,9 +1656,12 @@ pub const FilesWindow = struct {
     }
 
     fn quickButton(self: *FilesWindow, row: *gtk.Box, popover: *gtk.Popover, id: []const u8, entry: Entry) void {
-        const button = gtk.Button.newWithLabel(@ptrCast(context.emoji(id).ptr));
+        const themed = if (context.iconName(id)) |n| (if (gdk.Display.getDefault()) |d| gtk.IconTheme.getForDisplay(d).hasIcon(n.ptr) != 0 else false) else false;
+        const button = if (themed)
+            gtk.Button.newFromIconName(context.iconName(id).?.ptr)
+        else
+            gtk.Button.newWithLabel(@ptrCast(context.emoji(id).ptr));
         button.setHasFrame(0);
-        button.as(gtk.Widget).setTooltipText(entry.label);
         button.as(gtk.Widget).setSensitive(@intFromBool(entry.enabled));
         button.as(gtk.Widget).setHexpand(1);
         const ctx = std.heap.c_allocator.create(MenuAction) catch return;
@@ -1667,6 +1670,11 @@ pub const FilesWindow = struct {
             return;
         };
         ctx.* = .{ .window = self, .popover = popover, .action = owned, .owned = true };
+        // Each button sets its own tip when asked; a plain tooltip-text shows the
+        // first button's text for every button in a popover.
+        ctx.tip = std.heap.c_allocator.dupeSentinel(u8, entry.label, 0) catch null;
+        button.as(gtk.Widget).setHasTooltip(1);
+        _ = gtk.Widget.signals.query_tooltip.connect(button, *MenuAction, &onQueryTooltip, ctx, .{});
         _ = gtk.Button.signals.clicked.connect(button, *MenuAction, &onMenuAction, ctx, .{});
         _ = gtk.Widget.signals.destroy.connect(button, *MenuAction, &onMenuActionDestroy, ctx, .{});
         row.append(button.as(gtk.Widget));
@@ -1679,7 +1687,14 @@ pub const FilesWindow = struct {
         app: ?*gio.AppInfo = null,
         /// `action` was allocated for this button.
         owned: bool = false,
+        tip: ?[:0]u8 = null,
     };
+
+    fn onQueryTooltip(_: *gtk.Button, _: c_int, _: c_int, _: c_int, tooltip: *gtk.Tooltip, ctx: *MenuAction) callconv(.c) c_int {
+        const tip = ctx.tip orelse return 0;
+        tooltip.setText(tip.ptr);
+        return 1;
+    }
 
     fn menuItem(self: *FilesWindow, box: *gtk.Box, popover: *gtk.Popover, label: [:0]const u8, action: []const u8, enabled: bool) void {
         const button = gtk.Button.newWithLabel(label);
@@ -1736,6 +1751,7 @@ pub const FilesWindow = struct {
     fn onMenuActionDestroy(_: *gtk.Button, ctx: *MenuAction) callconv(.c) void {
         if (ctx.app) |app| app.as(gobject.Object).unref();
         if (ctx.owned) std.heap.c_allocator.free(ctx.action);
+        if (ctx.tip) |t| std.heap.c_allocator.free(t);
         std.heap.c_allocator.destroy(ctx);
     }
 

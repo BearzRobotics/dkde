@@ -1277,15 +1277,15 @@ pub const Perf = struct {
 
     fn askSsid(self: *Perf) void {
         const guard = self.wifi_guard orelse return;
-        if (!common.proc.hasProgram("nmcli")) return;
-        common.proc.run(Perf, guard, &.{ "nmcli", "-t", "-f", "ACTIVE,SSID,DEVICE", "dev", "wifi" }, onSsid);
+        if (!common.proc.hasProgram("wpa_cli")) return;
+        common.proc.run(Perf, guard, &.{ "wpa_cli", "status" }, onSsid);
     }
 
     fn onSsid(self: *Perf, ok: bool, out: []const u8) void {
         if (!ok) return;
         for (self.resources.items) |r| {
             if (r.kind != .wifi) continue;
-            r.ssid_len = if (perf.parseNmcliSsid(out, r.id(), &r.ssid)) |s| s.len else 0;
+            r.ssid_len = if (perf.parseWpaSsid(out, &r.ssid)) |s| s.len else 0;
         }
     }
 };
