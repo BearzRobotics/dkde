@@ -634,8 +634,9 @@ timer) are their own explicit actions and are not held back.
   environment. User-supplied values reach the privileged scripts only as
   positional parameters, never as script text. "Run as administrator" is in
   the start menu's item menu and "Open Folder as Administrator" in Files.
-  **polkit is deliberately not used** (it needs `polkitd` and a tracked login
-  session, which dkde does without; see `docs/desktop-setup-checklist.md`).
+  **dkde's own tools do not use polkit** (it needs `polkitd` and a tracked login
+  session, which dkde does without); `dkde-polkit` (5.12) is the agent for the
+  other programs that do.
 - The Sound page sets the default output's volume and mute through `wpctl`
   (PipeWire) or `pactl` (PulseAudio). It tries `wpctl` first and uses the
   first tool that is installed and can reach a running sound server (so WSL,
@@ -1221,6 +1222,66 @@ consoles running. So:
   above.
 - The portability rule in section 1 applies as everywhere else: this links
   for `x86_64-linux-musl` (statically) and glibc.
+
+### 5.12 Polkit agent (`dkde-polkit`, `dkde-polkit-ui`)
+
+**Why it exists.** dkde's own tools run commands through `sudo` with their own
+password dialog (5.5), which needs no daemon. Other programs, such as GParted,
+NetworkManager, udisks and `pkexec`, ask **polkit**, and when no authentication
+agent is running they fail without a word. This is that agent. It is not part of
+a minimal system: it matters only where `polkitd` is installed.
+
+**Two programs.** `dkde-polkit` is the agent. It speaks only D-Bus and links GLib
+and GIO but not GTK, so while idle it uses about 10 MB (a single GTK program
+was 38 MB, and 220 MB with GTK's default renderer). For each request it starts
+`dkde-polkit-ui`, a GTK dialog, and answers polkitd with how that went. The two
+sit in the same directory and are started in the order: agent first, from the
+session.
+
+**What it needs.**
+- `polkitd` on the system bus, and a **login session** that logind or elogind
+  tracks: polkit sends an agent the requests of its session, found with
+  `org.freedesktop.login1.Manager.GetSessionByPID`, else `XDG_SESSION_ID`.
+  Without one the agent says so and exits (`--process-subject` registers for the
+  one process, which only helps testing with `pkcheck --process`).
+- polkit's authentication helper: the socket `/run/polkit/agent-helper.socket`
+  when it exists (systemd's socket activation, as on current Ubuntu, where the
+  helper is not setuid), else the setuid `polkit-agent-helper-1`.
+- Autostart, only where polkit is installed:
+  `command -v pkexec >/dev/null 2>&1 && dkde-polkit &`
+
+**Protocol** (polkit 127's sources, and checked against a running polkitd).
+The agent exports `org.freedesktop.PolicyKit1.AuthenticationAgent` at
+`/org/dkde/PolicyKit1/AuthenticationAgent` on the system bus and calls
+`RegisterAuthenticationAgent(subject, locale, path)` (the path is a string,
+not an object path). It registers again when polkitd restarts. Only the bus name
+that owns polkit's service may call it. `BeginAuthentication` brings the
+message, icon, details, a cookie and the identities (users, and groups that the
+agent turns into their members); `CancelAuthentication` ends a request.
+- The dialog sends the helper the user name and the cookie, one per line, and
+  receives lines: `PAM_PROMPT_ECHO_OFF`, `PAM_PROMPT_ECHO_ON`, `PAM_ERROR_MSG`,
+  `PAM_TEXT_INFO`, then `SUCCESS` or `FAILURE`. Other lines (the helper's own
+  diagnostics) are logged. An answer is the text and one newline. **The helper,
+  not the dialog, tells polkitd that authentication worked.**
+- The cookie travels to the dialog on its standard input, never in its
+  arguments. The password goes from the entry straight to the helper and the
+  entry is cleared.
+- The dialog shows polkit's message and icon, the program that asked when
+  polkit says (pkexec's `command_line`), "Authenticating as <user>" or a choice
+  of user, and the helper's own prompts and errors. A wrong password shows
+  "Sorry, that didn't work" and asks again with a fresh helper session. If the
+  helper never prompts, it gives up after three tries.
+- The dialog exits 0 (authenticated), 1 (not), 2 (cancelled). A request
+  that polkitd cancels ends the dialog; one that crashes is answered "failed".
+  Requests are served one at a time.
+
+**Tested** against polkitd 127 here with `pkcheck --process <agent pid>`:
+registration, the dialog with polkit's real message, the helper handshake
+through the socket (a live password prompt), cancelling from polkit, a crashed
+dialog, and a refused call from another bus name. **Not tested:** a successful
+login and a wrong password (they need the user's password), and the registration
+through a real logind session, because nothing started from this development
+machine belongs to one. Try both on real hardware before relying on it.
 
 ## 6. Shared conventions
 

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks", "idle", "pdf", "parted", "notify" };
+const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks", "idle", "pdf", "parted", "notify", "polkit-ui" };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -87,6 +87,14 @@ pub fn build(b: *std.Build) void {
     check_mod.linkSystemLibrary("glib-2.0", .{});
     b.installArtifact(b.addExecutable(.{ .name = "dkde-pdfcheck", .root_module = check_mod }));
 
+    // polkit's line protocol and session helpers, shared by the agent and its dialog.
+    const polkitProtoModule = b.createModule(.{
+        .root_source_file = b.path("src/polkit/proto.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = polkitProtoModule })).step);
+
     inline for (components) |name| {
         // dkde-pdf needs poppler, so it is only built when asked for.
         const is_pdf = comptime std.mem.eql(u8, name, "pdf");
@@ -101,6 +109,7 @@ pub fn build(b: *std.Build) void {
             // gtk4-layer-shell must be linked before libwayland, so before GTK.
             if (std.mem.eql(u8, name, "panel")) mod.linkSystemLibrary("gtk4-layer-shell-0", .{});
             addGtk(mod, gobject);
+            if (std.mem.eql(u8, name, "polkit-ui")) mod.addImport("polkitproto", polkitProtoModule);
             if (std.mem.eql(u8, name, "settings")) {
                 // The Console page draws its preview with the console's own font code.
                 const ghostty = b.dependency("ghostty", .{ .target = target, .optimize = .ReleaseFast });
@@ -153,6 +162,22 @@ pub fn build(b: *std.Build) void {
 
             test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
         }
+    }
+
+    // The polkit agent: D-Bus only, so it links GLib and GIO but not GTK and
+    // idles in a few megabytes (SPEC.md 5.12). Its dialog is `dkde-polkit-ui`.
+    {
+        const mod = b.createModule(.{
+            .root_source_file = b.path("src/polkit/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        });
+        mod.addImport("polkitproto", polkitProtoModule);
+        mod.linkSystemLibrary("gio-2.0", .{});
+        inline for (.{ "glib2", "gobject2", "gio2" }) |name| mod.addImport(name, gobject.module(name));
+        b.installArtifact(b.addExecutable(.{ .name = "dkde-polkit", .root_module = mod }));
+        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
     }
 
     for ([_][]const u8{ "dkde-files", "dkde-term", "dkde-settings", "dkde-calc", "dkde-edit", "dkde-view", "dkde-tasks", "dkde-snip", "dkde-hex", "dkde-charmap", "dkde-clock", "dkde-calendar", "dkde-color", "dkde-disks", "dkde-parted" }) |name| {

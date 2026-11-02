@@ -48,36 +48,37 @@ or by the page that needs them.
 | Portal environment | In the labwc autostart, before anything else: `dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP` | Portals are started by D-Bus; they need to see the session's variables. *Verify* with `dbus-run-session`. |
 | **Saved passwords** | `gnome-keyring`; autostart `gnome-keyring-daemon --start --components=secrets` | Browsers and NetworkManager use it for passwords. Without it, they ask every time (or store them in plain text). Unlocking it at login needs a PAM line in greetd's PAM file; *verify*. |
 
-## 4. Authentication agent: decision
+## 4. Authentication agent
 
-**dkde does not adopt polkit.** `common.elevate` keeps running commands through
-`sudo -S -k` with its own password dialog (SPEC.md 5.5).
+**dkde's own tools do not use polkit.** `common.elevate` keeps running commands
+through `sudo -S -k` with its own password dialog (SPEC.md 5.5). That needs no
+daemon, no policy files and no login-session tracking.
 
-Why:
+**Other programs that call polkit** (GParted, NetworkManager asking to change a
+system connection, udisks2, `pkexec`) fail quietly when no agent is running.
+For those, dkde ships **`dkde-polkit`** (SPEC.md 5.12): a small agent that only
+speaks D-Bus (about 10 MB idle) and starts `dkde-polkit-ui` for the dialog.
 
-- polkit needs `polkitd` on the system bus *and* a login session that something
-  tracks (logind, elogind or ConsoleKit). dkde runs without logind, so polkit
-  would see the user as having no session and its "active session" rules would
-  go wrong. The fix is another daemon (`elogind`) on every ISO.
-- Every dkde action is "run this command as root". sudo does that with no
-  daemon and no policy files. polkit would mean a `.policy` file per action.
-- It is a dependency the ISO would not otherwise carry, on the machines that
-  have the least room for it.
+What it needs on the ISO, and only if the ISO ships programs that use polkit:
 
-What this leaves: **other programs** that call polkit (GParted, NetworkManager
-asking to change a system connection, udisks2) fail quietly when no agent is
-running. Choose per ISO:
+- `polkitd` (Debian: `polkitd`, plus `pkexec` if wanted), on the system bus.
+- **A login session tracked by logind or elogind.** polkit sends an agent the
+  requests of its session. This is the real cost of polkit on a system without
+  systemd: `elogind` (or systemd). The agent exits with a clear message when it
+  finds no session. *Verify* on the ISO that it registers.
+- polkit's helper: nothing extra; it is part of `polkitd`. Current Ubuntu uses
+  a socket-activated helper (`/run/polkit/agent-helper.socket`); older and
+  other systems use the setuid `polkit-agent-helper-1`. The dialog tries the
+  socket first and the setuid helper second.
+- Autostart: `command -v pkexec >/dev/null 2>&1 && dkde-polkit &`
 
-- **Do not ship those programs.** dkde has its own partition tool
-  (`dkde-parted`), Network page and automounter above. Nothing then needs polkit.
-  This is the plan for a small ISO.
-- **If an ISO does ship one**, it needs `polkitd`, an `elogind` (or `seatd` plus
-  rules that do not depend on a session; *verify* that this works) and an agent
-  autostarted in the session: `polkit-gnome` or `mate-polkit`, both GTK. A
-  dkde agent that reuses the `common.elevate` dialog is possible later (it has
-  to speak polkit's agent protocol over the system bus), but it would still
-  need `polkitd` and the setuid helper from the polkit package, so it saves
-  nothing on the ISO.
+For a small ISO with no polkit programs, leave all of this out: dkde has its own
+partition tool (`dkde-parted`), Network page and automounter, so nothing there
+needs it.
+
+**Tested on a development machine with polkitd 127:** registration, the dialog,
+the helper handshake, cancel and crash handling. **Not tested:** signing in with
+a real password, a wrong password, and registering through a real logind session.
 
 ## 5. Not provided, and not a package
 
@@ -109,6 +110,7 @@ What `~/.config/labwc/autostart` would hold with everything above, in order
 dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
 (while true; do dkde-panel; sleep 1; done) &
 dkde-idle &
+command -v pkexec >/dev/null 2>&1 && dkde-polkit &
 devmon --no-gui \
     --exec-on-drive 'dkde-notify --mounted %f' \
     --exec-on-unmount 'dkde-notify --unmounted %f' \
