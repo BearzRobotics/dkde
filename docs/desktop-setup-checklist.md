@@ -33,7 +33,7 @@ or by the page that needs them.
 | Gap | What to add | Notes |
 |---|---|---|
 | **Lock screen** | `swaylock` (or `gtklock`) | dkde has no lock screen of its own (SPEC.md 5.1). Without one, Lock does nothing. `swaylock` installs its own PAM file. |
-| **USB sticks and cards mounting** | `udevil` (its `devmon`), `eudev` or another udev | Mounts without polkit or D-Bus. **udevil must be installed setuid root** (Debian asks at install; without it devmon needs udisks or pmount), and `udevd` must be running because devmon watches devices through libudev. Needs bash 4 or newer. Autostart: `devmon --no-gui &`. Events can run a command: `--exec-on-drive`, `--exec-on-unmount`, `--exec-on-remove`, with `%d` (mount point), `%f` (device) and `%l` (label), per its man page. *Verify* by running it: not tried yet. udisks2 is the alternative, but it needs polkit (see section 4). |
+| **USB sticks and cards mounting** | `udevil` (its `devmon`), `eudev` or another udev | Mounts without polkit or D-Bus. **udevil must be installed setuid root** (Debian asks at install; without it devmon needs udisks or pmount), and `udevd` must be running because devmon watches devices through libudev. Needs bash 4 or newer. Autostart: `devmon --no-gui &`, or with notifications as in section 6. Events can run a command: `--exec-on-drive`, `--exec-on-unmount`, `--exec-on-remove`, with `%d` (mount point), `%f` (device) and `%l` (label), per its man page. *Verify* by running it: not tried yet. udisks2 is the alternative, but it needs polkit (see section 4). |
 | **Power button and laptop lid** | `acpid` | With no logind, nothing acts on the lid or the power button. `acpid` runs a script; one that calls `loginctl`-free commands (`poweroff`, or a suspend command) is enough. *Verify* on a laptop. |
 | **Clock** | `chrony` (or `ntpsec`, or `busybox ntpd`) | Without systemd-timesyncd nothing keeps the time right. |
 | **Night light** | `wlsunset` | Starts from the autostart with the user's coordinates. No dkde setting for it yet. |
@@ -88,8 +88,9 @@ Work in dkde itself, in the order that matters most:
    system (`locale -a`); the ISO must ship some besides `C.UTF-8`.
 3. ~~Low battery warning~~: done (SPEC.md 5.1). Warns, then sleeps or powers off
    after a grace period. Not tried on a real laptop.
-4. **A notification when a disk is mounted or removed**, from the automounter's
-   hook.
+4. ~~A notification when a disk is mounted or removed~~: `dkde-notify` exists
+   and works (tested against the panel's notification server). The devmon hook
+   line in section 6 is **not tried** with devmon itself.
 5. **Do Not Disturb** for the notification toasts.
 6. **Input methods** (Chinese, Japanese, Korean typing): not wired up
    (SPEC.md 5.3). Needs `fcitx5` and the Wayland text-input protocol.
@@ -105,10 +106,16 @@ What `~/.config/labwc/autostart` would hold with everything above, in order
 dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
 (while true; do dkde-panel; sleep 1; done) &
 dkde-idle &
-devmon &
+devmon --no-gui \
+    --exec-on-drive 'dkde-notify -i drive-removable-media "Drive mounted" %f' \
+    --exec-on-remove 'dkde-notify -i drive-removable-media "Drive removed" %f' &
 gnome-keyring-daemon --start --components=secrets &
 wlsunset -l LATITUDE -L LONGITUDE &
 ```
+
+Only `%f` (the device, such as `/dev/sdd1`) is passed to the hook. devmon also
+offers `%l` (the volume label) and `%d` (the mount point), but it puts them
+through `eval`, and a label is text whoever made the stick chose.
 
 And as system services (dinit files for these do not exist yet; `data/dinit.d/`
 has the ones that do): `dbus`, `seatd`, `greetd`, `networkmanager`, `bluetooth`,

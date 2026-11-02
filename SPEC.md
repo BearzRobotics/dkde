@@ -278,6 +278,14 @@ Supported: summary, body (markup reduced to text), icon, replacing, expiry
 (default 6 s, 0 never), click to dismiss, `NotificationClosed`. At most five
 are shown. Not supported: actions, hints, sounds, a history or do-not-disturb.
 Wayland only; with no session bus the panel logs that notifications are off.
+**Sending one from a script:** `dkde-notify [-i ICON] [-t MS] SUMMARY [BODY]` (a
+small program like `notify-send`, with nothing extra to install) sends a
+notification through the session bus to whatever daemon owns it: the panel's, or
+another. `-t 0` keeps it until dismissed. The text is shown as given, never as
+markup or a command. Hooks that run it (an automounter, a backup script) must
+not hand it text that someone else chose, such as a USB stick's label, through a
+shell: devmon's `%l` and `%d` go through `eval`, so only `%f` (the device node)
+is used.
 
 **Quick settings:** status icons between the tray and the clock (network,
 sound, battery, and airplane mode while it is on) open a flyout with Wi-Fi,

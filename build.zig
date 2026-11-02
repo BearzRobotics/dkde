@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks", "idle", "pdf", "parted" };
+const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "hex", "charmap", "clock", "calendar", "color", "disks", "idle", "pdf", "parted", "notify" };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
