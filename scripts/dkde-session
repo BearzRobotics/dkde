@@ -61,6 +61,16 @@ command -v dkde-setup >/dev/null 2>&1 && dkde-setup --once >/dev/null 2>&1
 seat_check() {
     [ -d /run/systemd/seats ] && return 0            # logind or elogind
     [ -n "$LIBSEAT_BACKEND" ] && [ "$LIBSEAT_BACKEND" != seatd ] && return 0
+    # No seatd installed: libseat is built to use its own backend (or this is a
+    # system that has no use for the check). Nothing to wait for or complain about.
+    have_seatd=no
+    for candidate in /usr/sbin/seatd /usr/bin/seatd /sbin/seatd /bin/seatd /usr/local/sbin/seatd /usr/local/bin/seatd; do
+        [ -x "$candidate" ] && have_seatd=yes
+    done
+    if [ "$have_seatd" = no ] && [ -z "$SEATD_SOCK" ] && [ ! -S /run/seatd.sock ]; then
+        echo "dkde-session: seatd is not installed; libseat will use its own backend"
+        return 0
+    fi
     sock="${SEATD_SOCK:-/run/seatd.sock}"
     waited=0
     while [ ! -S "$sock" ] && [ "$waited" -lt 10 ]; do

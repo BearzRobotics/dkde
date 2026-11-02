@@ -14,7 +14,12 @@ fi
 echo "dkde-greeter-session: $(date) user $(id -un) ($(id -u)), groups: $(id -Gn)"
 # Without logind or elogind the seat comes from seatd, whose socket belongs to
 # a group (video): the greetd user must be in it.
-if [ ! -d /run/systemd/seats ] && [ -z "$LIBSEAT_BACKEND" ]; then
+have_seatd=no
+for candidate in /usr/sbin/seatd /usr/bin/seatd /sbin/seatd /bin/seatd /usr/local/sbin/seatd /usr/local/bin/seatd; do
+    [ -x "$candidate" ] && have_seatd=yes
+done
+# No seatd installed (libseat built with its own backend): nothing to wait for.
+if [ ! -d /run/systemd/seats ] && [ -z "$LIBSEAT_BACKEND" ] && { [ "$have_seatd" = yes ] || [ -S /run/seatd.sock ]; }; then
     sock="${SEATD_SOCK:-/run/seatd.sock}"
     waited=0
     while [ ! -S "$sock" ] && [ "$waited" -lt 10 ]; do sleep 1; waited=$((waited + 1)); done
