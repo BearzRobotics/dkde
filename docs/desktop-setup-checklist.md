@@ -110,8 +110,9 @@ dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
 (while true; do dkde-panel; sleep 1; done) &
 dkde-idle &
 devmon --no-gui \
-    --exec-on-drive 'dkde-notify -i drive-removable-media "Drive mounted" %f' \
-    --exec-on-remove 'dkde-notify -i drive-removable-media "Drive removed" %f' &
+    --exec-on-drive 'dkde-notify --mounted %f' \
+    --exec-on-unmount 'dkde-notify --unmounted %f' \
+    --exec-on-remove 'dkde-notify --removed %f' &
 gnome-keyring-daemon --start --components=secrets &
 wlsunset -l LATITUDE -L LONGITUDE &
 ```
