@@ -19,6 +19,8 @@ const common = @import("common");
 
 const build_options = @import("build_options");
 const pure = @import("pure.zig");
+const annot = @import("annot.zig");
+const editor = @import("editor.zig");
 const x11grab = if (build_options.x11) @import("x11grab.zig") else struct {
     pub fn isActive() bool {
         return false;
@@ -38,7 +40,9 @@ const MAP_SHARED = 1;
 
 const log = std.log.scoped(.snip);
 
-const Mode = enum { full, region, scroll };
+/// `gui` is the editor: the screen frozen, an area chosen and drawn on (the
+/// default); the others are the older window and its buttons.
+const Mode = enum { gui, full, region, scroll };
 
 const App = struct {
     allocator: std.mem.Allocator,
@@ -47,6 +51,10 @@ const App = struct {
     immediate: ?Mode,
     /// `--scroll-region x,y,w,h`: a scrolling capture of that region, no picker.
     preset_region: ?pure.Rect = null,
+    /// `--delay SECONDS`: wait before capturing.
+    delay: u32 = 0,
+    /// `--area x,y,w,h`: the editor starts with this area chosen.
+    preset_area: ?pure.Rect = null,
 
     fn activate(app: *gtk.Application, self: *App) callconv(.c) void {
         common.style.load(self.allocator) catch |err|
@@ -57,6 +65,8 @@ const App = struct {
             return;
         };
         snip.preset_region = self.preset_region;
+        snip.preset_area = self.preset_area;
+        snip.delay.setValue(@floatFromInt(self.delay));
         if (self.immediate) |mode| snip.begin(mode) else snip.window.as(gtk.Window).present();
     }
 };
@@ -79,7 +89,11 @@ const Snip = struct {
 
     mode: Mode = .full,
     preset_region: ?pure.Rect = null,
+    preset_area: ?pure.Rect = null,
     picker: ?*Picker = null,
+    editor: ?*editor.Editor = null,
+    /// Started by the editor (the default): the result is a notification, not a window.
+    gui: bool = false,
 
     fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*Snip {
         const display = gdk.Display.getDefault() orelse return error.NoDisplay;
@@ -228,6 +242,7 @@ const Snip = struct {
             return;
         }
         self.mode = mode;
+        self.gui = mode == .gui;
         const seconds: u32 = @intCast(@max(0, self.delay.getValueAsInt()));
         self.window.as(gtk.Widget).setVisible(0);
         // A little extra so the compositor has really removed our window.
@@ -277,6 +292,19 @@ const Snip = struct {
     /// A finished capture: crop it if needed, then save, copy and show it.
     fn captured(self: *Snip, pixbuf: *gdkpixbuf.Pixbuf) void {
         if (self.scroll) |job| return job.onFrame(pixbuf);
+        if (self.mode == .gui) {
+            self.editor = editor.Editor.show(self.allocator, .{
+                .ctx = self,
+                .copy = editorCopy,
+                .save = editorSave,
+                .scroll = editorScroll,
+                .cancel = editorCancel,
+            }, pixbuf, if (self.preset_area) |r| annot.RectF{ .x = @floatFromInt(r.x), .y = @floatFromInt(r.y), .w = @floatFromInt(r.w), .h = @floatFromInt(r.h) } else null) catch {
+                pixbuf.as(gobject.Object).unref();
+                return self.fail(common.tr("Could not show the screenshot editor."));
+            };
+            return;
+        }
         if (self.mode == .scroll) {
             if (self.preset_region) |rect| {
                 const out_w = pixbuf.getWidth();
@@ -293,6 +321,19 @@ const Snip = struct {
             return;
         }
         self.finish(pixbuf);
+    }
+
+    /// Whether the editor started this capture (there is no window to show the result in).
+    fn guiMode(self: *Snip) bool {
+        return self.gui;
+    }
+
+    /// A scrolling capture from the editor: saved, copied, announced.
+    fn finishGui(self: *Snip, pixbuf: *gdkpixbuf.Pixbuf) void {
+        defer pixbuf.as(gobject.Object).unref();
+        const texture = gdk.Texture.newForPixbuf(pixbuf);
+        defer texture.as(gobject.Object).unref();
+        self.saveAndCopy(texture);
     }
 
     /// Takes ownership of `pixbuf`.
@@ -320,6 +361,98 @@ const Snip = struct {
         if (texture.saveToPng(path) == 0) return self.fail(common.tr("Could not save the screenshot."));
         var buf: [768]u8 = undefined;
         self.status.setText(std.fmt.bufPrintSentinel(&buf, "Saved to {s} and copied to the clipboard.", .{path}, 0) catch "Saved.");
+    }
+
+    // ---- what the editor asks for ---------------------------------------------------
+
+    fn fromCtx(ctx: *anyopaque) *Snip {
+        return @ptrCast(@alignCast(ctx));
+    }
+
+    fn editorCopy(ctx: *anyopaque, texture: *gdk.Texture) void {
+        const self = fromCtx(ctx);
+        self.editor = null;
+        defer texture.as(gobject.Object).unref();
+        gdk.Display.getDefault().?.getClipboard().setTexture(texture);
+        common.notify.send(common.tr("Screenshot copied"), common.tr("It is on the clipboard."), "applets-screenshooter");
+        self.lingerForClipboard();
+    }
+
+    fn editorSave(ctx: *anyopaque, texture: *gdk.Texture) void {
+        const self = fromCtx(ctx);
+        self.editor = null;
+        defer texture.as(gobject.Object).unref();
+        self.saveAndCopy(texture);
+    }
+
+    fn editorScroll(ctx: *anyopaque, rect: annot.RectI, out_w: i32, out_h: i32) void {
+        const self = fromCtx(ctx);
+        self.editor = null;
+        // The editor's window is gone; the page behind it is scrolled and stitched.
+        ScrollJob.start(self, .{ .x = rect.x, .y = rect.y, .w = rect.w, .h = rect.h }, out_w, out_h);
+    }
+
+    fn editorCancel(ctx: *anyopaque) void {
+        const self = fromCtx(ctx);
+        self.editor = null;
+        self.quit();
+    }
+
+    fn quit(self: *Snip) void {
+        if (self.window.as(gtk.Window).getApplication()) |app| app.as(gio.Application).quit();
+    }
+
+    /// Saves the picture in the Screenshots folder, puts it on the clipboard and
+    /// says so with a notification. Used when no window shows the result.
+    fn saveAndCopy(self: *Snip, texture: *gdk.Texture) void {
+        gdk.Display.getDefault().?.getClipboard().setTexture(texture);
+        const dir = self.screenshotDir() orelse {
+            common.notify.send(common.tr("Screenshot not saved"), common.tr("The Screenshots folder could not be made. The picture is on the clipboard."), "dialog-warning");
+            return self.lingerForClipboard();
+        };
+        defer self.allocator.free(dir);
+        const now = glib.DateTime.newNowLocal() orelse return self.lingerForClipboard();
+        defer now.unref();
+        var name_buf: [96]u8 = undefined;
+        const name = pure.fileName(&name_buf, now.getYear(), now.getMonth(), now.getDayOfMonth(), now.getHour(), now.getMinute(), now.getSecond());
+        const path = std.fmt.allocPrintSentinel(self.allocator, "{s}/{s}", .{ dir, name }, 0) catch return self.lingerForClipboard();
+        defer self.allocator.free(path);
+        if (texture.saveToPng(path) == 0) {
+            common.notify.send(common.tr("Screenshot not saved"), common.tr("The file could not be written. The picture is on the clipboard."), "dialog-warning");
+        } else {
+            var buf: [768]u8 = undefined;
+            const body = std.fmt.bufPrintSentinel(&buf, "{s}\nAlso on the clipboard.", .{path}, 0) catch "Saved.";
+            common.notify.send(common.tr("Screenshot saved"), body, "applets-screenshooter");
+        }
+        self.lingerForClipboard();
+    }
+
+    /// On Wayland the clipboard holds a picture only while this program runs,
+    /// so after a copy it stays, with no window, until something else is
+    /// copied (or half an hour has passed), then exits.
+    fn lingerForClipboard(self: *Snip) void {
+        const app = self.window.as(gtk.Window).getApplication() orelse return;
+        const clipboard = gdk.Display.getDefault().?.getClipboard();
+        _ = gdk.Clipboard.signals.changed.connect(clipboard, *Snip, &onClipboardChanged, self, .{});
+        _ = glib.timeoutAddSeconds(30 * 60, onLingerTimeout, self);
+        _ = app.as(gio.Application).hold();
+        // The windows are closed; the hold keeps the program alive.
+        self.window.as(gtk.Window).destroy();
+    }
+
+    fn onClipboardChanged(clipboard: *gdk.Clipboard, self: *Snip) callconv(.c) void {
+        // Our own copy raised this signal too; quit only when it is someone else's.
+        if (clipboard.isLocal() == 0) self.quitApp();
+    }
+
+    fn onLingerTimeout(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Snip = @ptrCast(@alignCast(data.?));
+        self.quitApp();
+        return 0;
+    }
+
+    fn quitApp(_: *Snip) void {
+        if (gio.Application.getDefault()) |app| app.quit();
     }
 
     fn screenshotDir(self: *Snip) ?[:0]u8 {
@@ -616,7 +749,10 @@ const ScrollJob = struct {
         if (self.prev.len > 0) a.free(self.prev);
         snip.scroll = null;
         a.destroy(self);
-        if (pixbuf) |pb| snip.finish(pb) else snip.fail(common.tr("Out of memory"));
+        if (pixbuf) |pb| {
+            if (snip.guiMode()) return snip.finishGui(pb);
+            snip.finish(pb);
+        } else snip.fail(common.tr("Out of memory"));
     }
 };
 
@@ -760,8 +896,11 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const allocator = debug_allocator.allocator();
 
     // `--full` and `--region` capture straight away (for the Print key).
-    var immediate: ?Mode = null;
+    // No arguments: the editor, straight away (what the Print key runs).
+    var immediate: ?Mode = .gui;
     var preset: ?pure.Rect = null;
+    var delay: u32 = 0;
+    var area: ?pure.Rect = null;
     const args_it = init.args.vector[1..];
     var arg_index: usize = 0;
     while (arg_index < args_it.len) : (arg_index += 1) {
@@ -781,11 +920,31 @@ pub fn main(init: std.process.Init.Minimal) !void {
             arg_index += 1;
             continue;
         }
+        if (std.mem.eql(u8, text, "--area") and arg_index + 1 < args_it.len) {
+            var parts = std.mem.splitScalar(u8, std.mem.span(args_it[arg_index + 1]), ',');
+            var v: [4]i32 = undefined;
+            var ok = true;
+            for (&v) |*slot| slot.* = std.fmt.parseInt(i32, parts.next() orelse "x", 10) catch blk: {
+                ok = false;
+                break :blk 0;
+            };
+            if (ok and v[2] > 0 and v[3] > 0) area = .{ .x = v[0], .y = v[1], .w = v[2], .h = v[3] };
+            arg_index += 1;
+            continue;
+        }
+        if (std.mem.eql(u8, text, "--delay") and arg_index + 1 < args_it.len) {
+            delay = std.fmt.parseInt(u32, std.mem.span(args_it[arg_index + 1]), 10) catch 0;
+            arg_index += 1;
+            continue;
+        }
+        if (std.mem.eql(u8, text, "gui") or std.mem.eql(u8, text, "--gui")) immediate = .gui;
+        // The older window with its buttons.
+        if (std.mem.eql(u8, text, "--window")) immediate = null;
         if (std.mem.eql(u8, text, "--full")) immediate = .full;
         if (std.mem.eql(u8, text, "--region")) immediate = .region;
     }
 
-    var app: App = .{ .allocator = allocator, .immediate = immediate, .preset_region = preset };
+    var app: App = .{ .allocator = allocator, .immediate = immediate, .preset_region = preset, .preset_area = area, .delay = @min(delay, 60) };
     defer if (app.appearance) |a| a.destroy();
 
     const gtk_app = gtk.Application.new("org.dkde.snip", .{ .non_unique = true });
@@ -799,4 +958,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
 test {
     _ = @import("pure.zig");
+    _ = @import("annot.zig");
+    _ = @import("editor.zig");
 }

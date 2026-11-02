@@ -9,10 +9,10 @@
   <action name="Execute" command="dkde-tasks"/>
 </keybind>
 <keybind key="Print">
-  <action name="Execute" command="dkde-snip --full"/>
+  <action name="Execute" command="dkde-snip"/>
 </keybind>
 <keybind key="S-Print">
-  <action name="Execute" command="dkde-snip --region"/>
+  <action name="Execute" command="dkde-snip --full"/>
 </keybind>
 <!-- Virtual desktops (the number of desktops is <desktops><number> in rc.xml). -->
 <keybind key="C-A-Left">

@@ -160,8 +160,8 @@ pub const dkde_keybinds = [_]Keybind{
     .{ .name = "Open a terminal", .key = "C-A-t", .command = "dkde-term" },
     .{ .name = "Lock the screen", .key = "C-A-l", .command = "dkde-panel msg lock" },
     .{ .name = "Task Manager", .key = "C-S-Escape", .command = "dkde-tasks" },
-    .{ .name = "Screenshot (full screen)", .key = "Print", .command = "dkde-snip --full" },
-    .{ .name = "Screenshot (region)", .key = "S-Print", .command = "dkde-snip --region" },
+    .{ .name = "Screenshot (choose an area and draw on it)", .key = "Print", .command = "dkde-snip" },
+    .{ .name = "Screenshot (whole screen at once)", .key = "S-Print", .command = "dkde-snip --full" },
     // Volume and brightness keys; the panel shows an on-screen display.
     .{ .name = "Volume up", .key = "XF86AudioRaiseVolume", .command = "dkde-panel msg volume-up" },
     .{ .name = "Volume down", .key = "XF86AudioLowerVolume", .command = "dkde-panel msg volume-down" },
@@ -446,7 +446,7 @@ test "keybinds: created in an empty config" {
     defer a.free(out);
     try std.testing.expect(std.mem.indexOf(u8, out, "<default />") == null);
     try std.testing.expect(std.mem.indexOf(u8, out, "key=\"Super_L\" onRelease=\"yes\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out, "dkde-snip --region") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "dkde-snip --full") != null);
 }
 
 test "keybinds: existing ones are kept and only missing ones added" {
