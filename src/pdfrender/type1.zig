@@ -9,6 +9,7 @@ const pdf = @import("pdf");
 
 pub const Error = error{ BadFont, OutOfMemory };
 
+const unmapped: u16 = 0xFFFF;
 const max_subr_depth = 12;
 const max_stack = 64;
 
@@ -19,7 +20,8 @@ pub const Font = struct {
     subrs: []const []const u8 = &.{},
     units_per_em: u16 = 1000,
     /// The font's own character code to glyph id table.
-    encoding: [256]u16 = @splat(0),
+    /// Glyph index of each code; `unmapped` for none (glyph 0 is a real glyph in Type 1).
+    encoding: [256]u16 = @splat(unmapped),
     unicode: std.AutoHashMapUnmanaged(u32, u16) = .empty,
     by_name: std.StringHashMapUnmanaged(u16) = .empty,
     num_glyphs: u16 = 0,
@@ -93,7 +95,7 @@ pub const Font = struct {
     pub fn glyphForCode(f: *const Font, code: u32) ?u16 {
         if (code > 255) return null;
         const g = f.encoding[code];
-        return if (g == 0) null else g;
+        return if (g == unmapped) null else g;
     }
 
     pub fn advance(f: *const Font, gid: u16) u16 {

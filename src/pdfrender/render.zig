@@ -696,7 +696,11 @@ fn paintPixels(d: *Draw, cr: *cairo.Context, im: display.Image, px: pdf.image.Pi
     cr.scale(1.0 / @as(f64, @floatFromInt(w)), -1.0 / @as(f64, @floatFromInt(h)));
     cr.setSourceSurface(surface, 0, 0);
     // Smoothing must not fade the edges into transparency: repeat the edge pixels, then clip to the image.
-    cr.getSource().setFilter(.good);
+    // Enlarged two times or more, keep the pixels crisp (small bitmaps, barcodes); otherwise smooth.
+    const dm = im.ctm.mul(d.device);
+    const px_w = @sqrt(dm.a * dm.a + dm.b * dm.b) / @as(f64, @floatFromInt(w));
+    const px_h = @sqrt(dm.c * dm.c + dm.d * dm.d) / @as(f64, @floatFromInt(h));
+    cr.getSource().setFilter(if (px_w >= 2 and px_h >= 2) .nearest else .good);
     cr.getSource().setExtend(.pad);
     cr.rectangle(0, 0, @floatFromInt(w), @floatFromInt(h));
     cr.clip();
@@ -881,7 +885,7 @@ test "gradients and tiling patterns are drawn" {
         \\/Pattern cs /P1 scn 10 10 80 80 re f
         \\/Pattern cs /P2 scn 110 10 80 80 re f
     , "/Pattern << /P1 6 0 R /P2 7 0 R >>", 0, &.{
-        .{ .dict = "/PatternType 2 /Shading << /ShadingType 2 /ColorSpace /DeviceRGB /Coords [10 0 90 0] /Function << /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [0 0 1] /N 1 >> >>" },
+        .{ .dict = "<< /PatternType 2 /Shading << /ShadingType 2 /ColorSpace /DeviceRGB /Coords [10 0 90 0] /Function << /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [0 0 1] /N 1 >> >> >>" },
         .{ .dict = "/PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 20 20] /XStep 20 /YStep 20 /Resources << >>", .stream = "0 0.6 0 rg 0 0 10 10 re f 10 10 10 10 re f" },
     });
     defer a.free(bytes);
