@@ -1,7 +1,7 @@
 .{
     .name = .dkde,
     .fingerprint = 0xedcba0fd02e2c514,
-    .version = "0.0.4",
+    .version = "0.1.0",
     .minimum_zig_version = "0.17.1",
     .dependencies = .{
         .zigimg = .{ .path = "third_party/zigimg" },
@@ -18,11 +18,17 @@
             .url = "https://github.com/BearzRobotics/util-unix/releases/download/v0.1.0/util-unix-0.1.0.tar.gz",
             .hash = "util_unix-0.1.0-pehS_bXQAQCZuTRKQAfuj4Xg6JeJZiWo6Ky_6W1C9IDD",
         },
-        // pdf-zig, next to this directory (reader, display lists, text layout, outlines,
-        // annotations, forms and the incremental writer).
-        .pdf = .{ .path = "../pdf-zig" },
-        // DKTermCore (terminal state, key encoding, schemes, PTY), next to this directory.
-        .dkterm = .{ .path = "../dkterm" },
+        // pdf-zig: reader, display lists, text layout, outlines, annotations, forms and the
+        // incremental writer.
+        .pdf = .{
+            .url = "https://github.com/BearzRobotics/pdf-zig/releases/download/v0.2.0/pdf-0.2.0.tar.gz",
+            .hash = "pdf-0.2.0-H1tZ4m7DDABclGabx2iHdYL_hNYUmZwfWwd0R1PUOer7",
+        },
+        // DKTermCore: terminal state, key encoding, schemes, PTY, and libghostty-vt.
+        .dkterm = .{
+            .url = "https://github.com/BearzRobotics/dkterm/releases/download/v0.1.0/dkterm-0.1.0.tar.gz",
+            .hash = "dkterm-0.1.0-yV77apLsAADCq9AS3B3CKDjEV0ubpHDKc0X5ydVef9xD",
+        },
         .gobject = .{
             .url = "https://deps.files.ghostty.org/gobject-2026-10-02-38-1.tar.zst",
             .hash = "gobject-0.3.2-Skun7LuIogBbEh-6WrLeEzMaRCnOMB3eOf__RaPYSMCZ",
