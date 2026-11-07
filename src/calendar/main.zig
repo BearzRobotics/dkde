@@ -393,7 +393,7 @@ pub const CalendarApp = struct {
         status.setXalign(0);
         status.setWrap(1);
         status.setWrapMode(.word_char);
-        status.setMaxWidthChars(26);
+        status.setMaxWidthChars(20);
         status.setMaxWidthChars(32);
         status.as(gtk.Widget).addCssClass("dim-label");
         self.sync_status = status;
@@ -430,7 +430,7 @@ pub const CalendarApp = struct {
         self.heading.as(gtk.Widget).addCssClass("title-4");
         self.heading.setWrap(1);
         self.heading.setWrapMode(.word_char);
-        self.heading.setMaxWidthChars(26);
+        self.heading.setMaxWidthChars(20);
         self.text.setWrapMode(.word_char);
         self.text.as(gtk.Widget).setVexpand(1);
         self.text.as(gtk.Widget).addCssClass("dkde-calendar-notes");
@@ -459,7 +459,7 @@ pub const CalendarApp = struct {
         day_scroller.setPolicy(.never, .automatic);
 
         const right = gtk.Box.new(.vertical, 6);
-        right.as(gtk.Widget).setSizeRequest(230, -1);
+        right.as(gtk.Widget).setSizeRequest(180, -1);
         right.as(gtk.Widget).setHexpand(0);
         right.append(self.heading.as(gtk.Widget));
         right.append(self.alt_box.as(gtk.Widget));
@@ -1105,7 +1105,7 @@ pub const CalendarApp = struct {
                 date_label.setXalign(0);
                 date_label.setWrap(1);
                 date_label.setWrapMode(.word_char);
-                date_label.setMaxWidthChars(26);
+                date_label.setMaxWidthChars(20);
                 row.append(date_label.as(gtk.Widget));
                 self.alt_box.append(row.as(gtk.Widget));
             }
@@ -1152,7 +1152,7 @@ pub const CalendarApp = struct {
         name.setXalign(0);
         name.setWrap(1);
         name.setWrapMode(.word_char);
-        name.setMaxWidthChars(26);
+        name.setMaxWidthChars(20);
         name.as(gtk.Widget).setHexpand(1);
         name.as(gtk.Widget).addCssClass("heading");
         row.append(name.as(gtk.Widget));
@@ -1169,7 +1169,7 @@ pub const CalendarApp = struct {
         info.setXalign(0);
         info.setWrap(1);
         info.setWrapMode(.word_char);
-        info.setMaxWidthChars(26);
+        info.setMaxWidthChars(20);
         info.as(gtk.Widget).addCssClass("dim-label");
         card.append(info.as(gtk.Widget));
 
@@ -1179,7 +1179,7 @@ pub const CalendarApp = struct {
             f.setXalign(0);
             f.setWrap(1);
             f.setWrapMode(.word_char);
-            f.setMaxWidthChars(26);
+            f.setMaxWidthChars(20);
             card.append(f.as(gtk.Widget));
         }
         for (day.alsoLines()) |line| {
@@ -1188,7 +1188,7 @@ pub const CalendarApp = struct {
             l.setXalign(0);
             l.setWrap(1);
             l.setWrapMode(.word_char);
-            l.setMaxWidthChars(26);
+            l.setMaxWidthChars(20);
             card.append(l.as(gtk.Widget));
         }
         self.lit_box.append(card.as(gtk.Widget));
@@ -1225,7 +1225,7 @@ pub const CalendarApp = struct {
         title.setXalign(0);
         title.setWrap(1);
         title.setWrapMode(.word_char);
-        title.setMaxWidthChars(26);
+        title.setMaxWidthChars(20);
         title.as(gtk.Widget).addCssClass("heading");
         text.append(title.as(gtk.Widget));
 
@@ -1252,7 +1252,7 @@ pub const CalendarApp = struct {
             loc.setXalign(0);
             loc.setWrap(1);
             loc.setWrapMode(.word_char);
-            loc.setMaxWidthChars(26);
+            loc.setMaxWidthChars(20);
             loc.as(gtk.Widget).addCssClass("dim-label");
             text.append(loc.as(gtk.Widget));
         }
