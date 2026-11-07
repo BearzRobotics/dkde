@@ -7,15 +7,15 @@ GTK4 (no libadwaita). The compositor is labwc. See `ai/DKDE-SPEC.md` for the des
 | Binary | What it is |
 |---|---|
 | `dkde-panel` | Taskbar, start menu, clock, wallpaper |
-| `dkde-term` | Terminal (libghostty-vt) |
+| `dkde-term` | Terminal with tabs and split panes (DKTermCore) |
 | `dkde-files` | File manager |
 | `dkde-settings` | Settings |
 | `dkde-edit` | Text editor |
 | `dkde-help` | Help viewer: DKDE's documents and the system's man pages, in tabs |
-| `dkde-pdf` | PDF viewer (draws with pdf-zig) |
+| `dkde-pdf` | PDF viewer: tabs, search, text selection, bookmarks, highlights, notes and form filling |
 | `dkde-charmap` | Character map |
 | `dkde-clock` | Stopwatch, timer, alarm |
-| `dkde-calendar` | Calendar with notes |
+| `dkde-calendar` | Calendar with events, notes and liturgical calendars |
 | `dkde-color` | Colour mixer |
 | `dkde-parted` | Partitions: tables, partitions, formatting, mounting |
 | `dkde-calc` | Calculator |
@@ -109,9 +109,10 @@ below for the full list and one install command.
 
 | Package | Source |
 |---|---|
+| toml-zig, util-unix, dkman, pdf-zig, DKTermCore | GitHub releases of BearzRobotics' own libraries (TOML, /etc/passwd parsing, man pages, PDF, terminal core) |
 | zig-gobject (GTK bindings) | Ghostty's build of zig-gobject (`deps.files.ghostty.org`, from ghostty-org/zig-gobject), the same bindings Ghostty uses |
 | zig-wayland | `deps.files.ghostty.org`, from ifreund/zig-wayland |
-| libghostty-vt | Ghostty tag `v1.4.0` (needs Zig 0.17.1) |
+| libghostty-vt | Ghostty tag `v1.4.0` (needs Zig 0.17.1), through DKTermCore |
 
 Vendored in the repo: `protocols/` holds the protocol XML files that
 `wayland-protocols` does not ship or the build must not depend on:

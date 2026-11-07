@@ -7,7 +7,9 @@ dkde-term [-h | --help] [-V | --version]
 dkde-term [-e COMMAND [ARG...]]
 
 # DESCRIPTION
-dkde-term is the DKDE terminal emulator. Terminal state is handled by libghostty-vt; text is drawn with Pango. It runs the user's shell, or the command given with **-e**.
+dkde-term is the DKDE terminal emulator. Terminal state is handled by libghostty-vt; text is drawn with Pango. It runs the user's shell, or the command given with **-e**. The terminal core is DKTermCore, an independent library.
+
+A tab can be split into panes: **Alt+Shift+Plus** splits the active pane to the right, **Alt+Shift+Minus** splits it down. Each new pane runs the same profile in the same directory. **Ctrl+Alt+Left** and **Ctrl+Alt+Right** move between panes and **Ctrl+Shift+W** closes the active pane (the tab when it is the last). A pane whose program ends closes itself, unless the profile says to keep it open.
 
 # CONVENTIONS
 Bold represents literal commands, options, and keywords.

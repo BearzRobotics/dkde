@@ -13,6 +13,8 @@ dkde-calendar
 DESCRIPTION
 dkde-calendar is the DKDE calendar. It shows one month at a time in a grid, with the selected day, its notes and its events beside it. The same day can be read in four calendar systems (Gregorian, Julian, Fixed and Rosquin), and three liturgical calendars can be laid over the grid. Events and notes are stored in the user's calendar.toml. The panel reads that file and sends the reminders; dkde-calendar itself only stores them, and reminders fire whether or not it is running.
 
+The toolbar has two rows. The first moves between months and copies dates (previous and next month, the month name, Today, Go to, Copy date). The second row starts at the calendar selector and holds Save as default, Liturgical and Options and the button that adds an event. The day panel on the right is narrow and wraps its text; in it each calendar's name (the other calendar systems and the liturgical calendars) is shown in bold in the accent colour above its date. In the Rosquin views the glyph of a day is drawn below the civil date line of its cell.
+
 The program is a single window. It takes no operands and no options other than help and version. Everything else is set in the window and remembered in the configuration file.
 
 Events, reminders and the liturgical overlays always use the civil (Gregorian) date. A calendar system only decides how a day is numbered and where its months begin, so changing the system never moves an event.

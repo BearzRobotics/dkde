@@ -27,6 +27,12 @@ zig build test          # unit tests
 zig fmt src build.zig   # formatting is mandatory
 ```
 
+Smoke test a program without a person: `DKDE_EXIT_AFTER_MS=2000 zig-out/bin/dkde-<name>`
+opens it, closes its windows after two seconds and exits. A Debug build prints a leak
+report if anything was not freed, so the output should be empty. (Per-tab and per-popover
+data must be owned by the window, not freed by a widget's destroy signal: GTK does not
+destroy notebook tab labels or popovers with the window.)
+
 The README's "Try it without logging out" section shows how to run the
 desktop in a window under an existing Wayland session, which is the normal
 development loop. `dkde-pointer` can move, click and scroll the pointer in

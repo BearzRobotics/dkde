@@ -7,7 +7,7 @@ dkde-files [-h | --help] [-V | --version]
 dkde-files [DIRECTORY]
 
 # DESCRIPTION
-dkde-files is the DKDE file manager. It browses local directories, copies, moves, renames and deletes files, uses the trash, shows properties and mounts removable media. The program starts in DIRECTORY, or in the home directory without an operand. Anything that needs administrator rights is run through the configured elevation helper after a confirmation.
+dkde-files is the DKDE file manager. It browses local directories, copies, moves, renames and deletes files, uses the trash, shows properties and mounts removable media. **F4** shows a terminal panel below the folder view (the same terminal as dkde-term), started in the current folder; the View menu can send it a **cd** to the folder being shown. The program starts in DIRECTORY, or in the home directory without an operand. Anything that needs administrator rights is run through the configured elevation helper after a confirmation.
 
 # CONVENTIONS
 Bold represents literal commands, options, and keywords.

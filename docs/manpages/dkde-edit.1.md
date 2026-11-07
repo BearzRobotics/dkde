@@ -7,7 +7,7 @@ dkde-edit [-h | --help] [-V | --version]
 dkde-edit [FILE...]
 
 # DESCRIPTION
-dkde-edit is a plain text editor in the style of Notepad. It opens, edits and saves UTF-8 text files, with find and replace and a configurable font and wrapping. Each FILE is opened in the window; without an operand an empty document is shown.
+dkde-edit is a plain text editor in the style of Notepad. It opens, edits and saves UTF-8 text files, with find and replace and a configurable font and wrapping. Each FILE is opened in the window; without an operand an empty document is shown. **Ctrl+`** shows a terminal below the text (the same terminal as dkde-term), started in the folder of the open file.
 
 # CONVENTIONS
 Bold represents literal commands, options, and keywords.
