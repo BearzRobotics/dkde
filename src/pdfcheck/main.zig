@@ -21,7 +21,6 @@
 const std = @import("std");
 const cairo = @import("cairo1");
 const glib = @import("glib2");
-const zpdf = @import("zpdf");
 const render = @import("pdfrender");
 
 const Diag = render.Diag;
@@ -135,21 +134,19 @@ fn checkFile(run: *Run, path: [:0]const u8) void {
     var size: u64 = 0;
 
     blk: {
-        const doc = zpdf.Document.open(a, path) catch |e| {
+        const doc = render.Document.open(a, path) catch |e| {
             err_name = @errorName(e);
             break :blk;
         };
         defer doc.close();
-        size = doc.data.len;
+        size = doc.bytes.len;
         page_count = doc.pageCount();
         if (page_count == 0) {
             err_name = "NoPages";
             break :blk;
         }
-        if (doc.isEncrypted()) {
-            file_diag.note("encrypted", path);
-            break :blk;
-        }
+        // An encrypted file that opens with the empty password is drawn like any other.
+        if (doc.encrypted) file_diag.note("encrypted-opened", path);
         const limit = if (run.opt.pages == 0) page_count else @min(run.opt.pages, page_count);
         for (0..limit) |i| {
             const ps = render.pageSize(doc, i) orelse continue;

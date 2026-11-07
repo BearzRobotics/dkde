@@ -1,34 +1,32 @@
-//! Draws a PDF page with cairo, using the vendored zpdf parser
-//! (third_party/zpdf) to read the file and tokenise content streams.
+//! Draws a PDF page with cairo from the display list that pdf-zig builds
+//! (../../../pdf-zig): pdf-zig reads the file and interprets the content
+//! streams; this file only draws what it is told.
 //!
-//! What it draws so far: filled, stroked and clipped paths, colours (gray,
-//! RGB, CMYK), line styles, and text from simple fonts. Text is drawn with a
-//! system font of the same family and style (the embedded font program is not
-//! read yet), advancing by the widths the PDF gives. Not yet: images, shading,
-//! patterns, transparency, embedded font outlines, page rotation.
+//! Drawn: filled, stroked and clipped paths, dashes, colours, transparency and
+//! blend modes, axial and radial gradients, tiling patterns, images (Flate and
+//! friends through pdf-zig, JPEG through dkde's image codec), form XObjects
+//! (already expanded by pdf-zig), and text. Text uses the embedded TrueType,
+//! CFF or Type 1 outlines when they can be read, and a system font of the same
+//! family and style otherwise, advancing by the widths pdf-zig resolved.
+//!
+//! What cannot be drawn is counted in a `Diag`.
 
 const std = @import("std");
 const cairo = @import("cairo1");
-const zpdf = @import("zpdf");
-const image = @import("image.zig");
+const pdf = @import("pdf");
 const truetype = @import("truetype");
 const cff = @import("cff.zig");
 const type1 = @import("type1.zig");
 const imgcodec = @import("imgcodec");
 pub const Diag = @import("diag.zig").Diag;
 
+const display = pdf.display;
+
 extern fn stbi_load_from_memory(buffer: [*]const u8, len: c_int, x: *c_int, y: *c_int, comp: *c_int, req_comp: c_int) ?[*]u8;
 extern fn stbi_image_free(data: *anyopaque) void;
 extern var stbi_jpeg_raw_cmyk: c_int;
 
-const Object = zpdf.Object;
-const Operand = zpdf.interpreter.Operand;
-const FontEncoding = zpdf.encoding.FontEncoding;
-const Lexer = zpdf.interpreter.ContentLexer;
-
 pub const Error = error{ NoSuchPage, OutOfMemory };
-
-const Rgb = [3]f64;
 
 fn has(haystack: []const u8, needle: []const u8) ?usize {
     if (needle.len > haystack.len) return null;
@@ -39,24 +37,105 @@ fn has(haystack: []const u8, needle: []const u8) ?usize {
     return null;
 }
 
+// ---- documents ----------------------------------------------------------------------------
+
+/// An open PDF file with what the renderer keeps for it between pages.
+pub const Document = struct {
+    gpa: std.mem.Allocator,
+    /// The file's bytes (the pdf-zig document borrows them).
+    bytes: []u8,
+    doc: pdf.Document,
+    pages: pdf.pages.PageList,
+    renderer: pdf.Renderer,
+    /// Font programs and other per-font data, kept until `close`.
+    arena: std.heap.ArenaAllocator,
+    fonts: std.AutoHashMapUnmanaged(*const pdf.font.Font, *RFont) = .empty,
+    /// The file was encrypted (and opened with the empty password).
+    encrypted: bool = false,
+
+    pub const OpenError = error{ OutOfMemory, FileUnreadable, NotPdf, PasswordRequired, Unsupported };
+
+    /// Reads and opens the file at `path`.
+    pub fn open(gpa: std.mem.Allocator, path: [:0]const u8) OpenError!*Document {
+        const f = std.c.fopen(path.ptr, "rb") orelse return error.FileUnreadable;
+        defer _ = std.c.fclose(f);
+        var list: std.ArrayList(u8) = .empty;
+        errdefer list.deinit(gpa);
+        var chunk: [65536]u8 = undefined;
+        while (true) {
+            const n = std.c.fread(&chunk, 1, chunk.len, f);
+            if (n == 0) break;
+            try list.appendSlice(gpa, chunk[0..n]);
+        }
+        const buf = try list.toOwnedSlice(gpa);
+        return fromOwned(gpa, buf);
+    }
+
+    /// Opens a PDF held in memory (copied).
+    pub fn openFromMemory(gpa: std.mem.Allocator, bytes: []const u8) OpenError!*Document {
+        return fromOwned(gpa, try gpa.dupe(u8, bytes));
+    }
+
+    fn fromOwned(gpa: std.mem.Allocator, buf: []u8) OpenError!*Document {
+        errdefer gpa.free(buf);
+        const self = try gpa.create(Document);
+        errdefer gpa.destroy(self);
+        self.* = .{
+            .gpa = gpa,
+            .bytes = buf,
+            .doc = pdf.Document.open(gpa, buf, .{}) catch |e| return switch (e) {
+                error.OutOfMemory => error.OutOfMemory,
+                error.PasswordRequired => error.PasswordRequired,
+                error.UnsupportedEncryption => error.Unsupported,
+                else => error.NotPdf,
+            },
+            .pages = undefined,
+            .renderer = undefined,
+            .arena = std.heap.ArenaAllocator.init(gpa),
+        };
+        errdefer self.doc.deinit();
+        self.pages = try pdf.pages.PageList.build(&self.doc);
+        self.renderer = pdf.Renderer.init(&self.doc, .{});
+        self.encrypted = self.doc.crypt != null;
+        return self;
+    }
+
+    pub fn close(self: *Document) void {
+        const gpa = self.gpa;
+        self.renderer.deinit();
+        self.arena.deinit();
+        self.doc.deinit();
+        gpa.free(self.bytes);
+        gpa.destroy(self);
+    }
+
+    pub fn pageCount(self: *const Document) usize {
+        return self.pages.entries.len;
+    }
+};
+
+/// The size of page `index` as displayed, in points (crop box, rotation applied).
+pub fn pageSize(doc: *Document, index: usize) ?struct { w: f64, h: f64 } {
+    const p = pdf.pages.page(&doc.doc, doc.pages, index) orelse return null;
+    const s = p.displaySize();
+    return .{ .w = s.w, .h = s.h };
+}
+
+// ---- fonts --------------------------------------------------------------------------------
+
 const Family = enum { sans, serif, mono };
 
-/// The embedded font program: TrueType outlines (quadratic) or CFF (cubic).
+/// The embedded font program: TrueType outlines (quadratic), CFF or Type 1 (cubic).
 const Program = union(enum) {
     tt: truetype.Font,
     cff: cff.Font,
+    t1: type1.Font,
 
     fn unitsPerEm(self: Program) f64 {
         return switch (self) {
             .tt => |t| @floatFromInt(t.units_per_em),
             .cff => |c| @floatFromInt(c.units_per_em),
-        };
-    }
-
-    fn advance(self: Program, gid: u16) f64 {
-        return switch (self) {
-            .tt => |t| @floatFromInt(t.advance(gid)),
-            .cff => |c| @floatFromInt(c.advance(gid)),
+            .t1 => |t| @floatFromInt(t.units_per_em),
         };
     }
 
@@ -64,308 +143,143 @@ const Program = union(enum) {
         switch (self) {
             .tt => |t| t.outline(gid, sink) catch {},
             .cff => |c| c.outline(gid, sink) catch {},
+            .t1 => |t| t.outline(gid, sink) catch {},
         }
     }
 };
 
-const Font = struct {
+/// What the renderer knows about a font beyond pdf-zig's description of it.
+const RFont = struct {
     family: Family = .sans,
     bold: bool = false,
     italic: bool = false,
-    first_char: i64 = 0,
-    widths: []const f64 = &.{},
-    missing_width: f64 = 500,
-    /// Character codes to Unicode, and widths for composite fonts (zpdf's reading of the font).
-    enc: ?*FontEncoding = null,
-    /// A Type0 font: codes are CIDs and widths come from /W. (zpdf also marks some simple TrueType fonts with a ToUnicode map as CID.)
-    composite: bool = false,
-    /// The embedded font program, when there is one we can read.
-    prog: ?Program = null,
     symbolic: bool = false,
-
-    fn width(self: Font, code: u8) f64 {
-        const i = @as(i64, code) - self.first_char;
-        if (i >= 0 and i < self.widths.len) return self.widths[@intCast(i)];
-        return self.missing_width;
-    }
+    composite: bool = false,
+    prog: ?Program = null,
+    /// `/CIDToGIDMap` of a CIDFontType2 font, decoded once (null: identity).
+    cid_to_gid: ?[]const u8 = null,
 };
 
-const State = struct {
-    fill: Rgb = .{ 0, 0, 0 },
-    stroke: Rgb = .{ 0, 0, 0 },
-    char_space: f64 = 0,
-    word_space: f64 = 0,
-    h_scale: f64 = 1,
-    leading: f64 = 0,
-    rise: f64 = 0,
-    font: ?*const Font = null,
-    font_size: f64 = 0,
-    render_mode: i32 = 0,
-    fill_alpha: f64 = 1,
-    stroke_alpha: f64 = 1,
-};
+fn rfont(d: *Draw, f: *const pdf.font.Font) *RFont {
+    const doc = d.doc;
+    if (doc.fonts.get(f)) |r| return r;
+    const a = doc.arena.allocator();
+    const r = a.create(RFont) catch return &fallback_font;
+    r.* = .{};
+    const base = f.base_font;
+    r.bold = has(base, "bold") != null or has(base, "black") != null;
+    r.italic = has(base, "italic") != null or has(base, "oblique") != null;
+    if (has(base, "times") != null or has(base, "serif") != null or has(base, "georgia") != null or
+        has(base, "garamond") != null or has(base, "palatino") != null or has(base, "roman") != null) r.family = .serif;
+    if (has(base, "courier") != null or has(base, "mono") != null or has(base, "consolas") != null) r.family = .mono;
+    r.symbolic = f.isSymbolic();
+    r.composite = f.isComposite();
+    loadProgram(d, r, f);
+    if (f.cid_to_gid) |st| r.cid_to_gid = doc.doc.streamData(st) catch null;
+    doc.fonts.put(a, f, r) catch {};
+    return r;
+}
 
-const Ctx = struct {
-    doc: *zpdf.Document,
-    cr: *cairo.Context,
-    arena: std.mem.Allocator,
-    /// For big temporary buffers (decoded images) that are freed straight away.
-    gpa: std.mem.Allocator,
-    resources: ?Object.Dict,
-    diag: *Diag,
-    form_depth: u8 = 0,
-    fonts: std.StringHashMap(*const Font),
-    state: State = .{},
-    stack: [64]State = undefined,
-    depth: usize = 0,
-    // Text matrices: a b c d e f.
-    tm: [6]f64 = .{ 1, 0, 0, 1, 0, 0 },
-    tlm: [6]f64 = .{ 1, 0, 0, 1, 0, 0 },
-    pending_clip: ?cairo.FillRule = null,
-    cx: f64 = 0,
-    cy: f64 = 0,
-    start_x: f64 = 0,
-    start_y: f64 = 0,
+var fallback_font: RFont = .{};
 
-    fn resolve(self: *Ctx, o: Object) Object {
-        var cur = o;
-        var n: u8 = 0;
-        while (cur == .reference and n < 8) : (n += 1) cur = self.doc.resolve(cur.reference) catch return .null;
-        return cur;
-    }
-
-    fn number(o: Object) ?f64 {
-        return switch (o) {
-            .integer => |i| @floatFromInt(i),
-            .real => |r| r,
-            else => null,
-        };
-    }
-
-    fn dictOf(self: *Ctx, o: Object) ?Object.Dict {
-        return switch (self.resolve(o)) {
-            .dict => |d| d,
-            .stream => |s| s.dict,
-            else => null,
-        };
-    }
-
-    /// Reads the embedded font program, if it is TrueType (or OpenType with TrueType outlines).
-    fn loadProgram(self: *Ctx, f: *Font, fd: Object.Dict, name: []const u8) void {
-        var desc_obj = fd.get("FontDescriptor");
-        // A composite font keeps its descriptor on the descendant CIDFont.
-        if (desc_obj == null) if (fd.get("DescendantFonts")) |df| {
-            const arr = self.resolve(df);
-            if (arr == .array and arr.array.len > 0) if (self.dictOf(arr.array[0])) |cf| {
-                desc_obj = cf.get("FontDescriptor");
-            };
-        };
-        const dd = self.dictOf(desc_obj orelse return) orelse return;
-        if (dd.get("Flags")) |fl| f.symbolic = (intOf(self, fl, 0) & 4) != 0;
-        const file = dd.get("FontFile2") orelse dd.get("FontFile3") orelse {
-            if (dd.get("FontFile") != null) self.diag.note("font-type1-not-read", name);
-            return;
-        };
-        const st = switch (self.resolve(file)) {
-            .stream => |x| x,
-            else => return,
-        };
-        const raw = decoded(self, st) orelse return;
-        defer self.gpa.free(raw);
-        const kept = self.arena.dupe(u8, raw) catch return;
-        const tag: u32 = if (kept.len >= 4) (@as(u32, kept[0]) << 24) | (@as(u32, kept[1]) << 16) | (@as(u32, kept[2]) << 8) | kept[3] else 0;
-        if (tag == 0x4F54544F) { // OTTO: OpenType with CFF outlines
-            const table = cff.tableOfSfnt(kept) orelse {
-                // OpenType with TrueType outlines is also allowed under this tag by some producers.
-                f.prog = if (truetype.Font.parse(kept)) |t| .{ .tt = t } else |_| null;
-                if (f.prog == null) self.diag.note("font-opentype-damaged", name);
-                return;
-            };
-            self.loadCff(f, table, name);
-        } else if (tag == 0x00010000 or tag == 0x74727565 or tag == 0x74746366) {
-            f.prog = if (truetype.Font.parse(kept)) |t| .{ .tt = t } else |e| blk: {
-                self.diag.note(if (e == error.Unsupported) "font-cff-not-read" else "font-truetype-damaged", name);
+fn loadProgram(d: *Draw, r: *RFont, f: *const pdf.font.Font) void {
+    const st = f.program.stream orelse return;
+    const doc = d.doc;
+    const a = doc.arena.allocator();
+    const kept = doc.doc.streamData(st) catch return;
+    switch (f.program.kind) {
+        .none => {},
+        .type1 => {
+            if (type1.Font.parse(a, kept)) |t| {
+                r.prog = .{ .t1 = t };
+            } else |_| d.diag.note("font-type1-damaged", f.base_font);
+        },
+        .truetype => {
+            r.prog = if (truetype.Font.parse(kept)) |t| .{ .tt = t } else |e| blk: {
+                d.diag.note(if (e == error.Unsupported) "font-cff-not-read" else "font-truetype-damaged", f.base_font);
                 break :blk null;
             };
-        } else if (kept.len > 4 and kept[0] == 1 and kept[1] == 0) { // a bare CFF (Type1C, CIDFontType0C)
-            self.loadCff(f, kept, name);
-        } else {
-            self.diag.note("font-program-unknown", name);
-        }
+        },
+        .cff, .opentype => {
+            const tag: u32 = if (kept.len >= 4) (@as(u32, kept[0]) << 24) | (@as(u32, kept[1]) << 16) | (@as(u32, kept[2]) << 8) | kept[3] else 0;
+            if (tag == 0x4F54544F) { // OTTO: OpenType with CFF outlines
+                if (cff.tableOfSfnt(kept)) |table| {
+                    loadCff(d, r, table, f.base_font);
+                } else {
+                    r.prog = if (truetype.Font.parse(kept)) |t| .{ .tt = t } else |_| null;
+                    if (r.prog == null) d.diag.note("font-opentype-damaged", f.base_font);
+                }
+            } else if (tag == 0x00010000 or tag == 0x74727565 or tag == 0x74746366) {
+                r.prog = if (truetype.Font.parse(kept)) |t| .{ .tt = t } else |_| null;
+                if (r.prog == null) d.diag.note("font-truetype-damaged", f.base_font);
+            } else if (kept.len > 4 and kept[0] == 1 and kept[1] == 0) {
+                loadCff(d, r, kept, f.base_font);
+            } else d.diag.note("font-program-unknown", f.base_font);
+        },
     }
-
-    fn loadCff(self: *Ctx, f: *Font, data: []const u8, name: []const u8) void {
-        f.prog = if (cff.Font.parse(self.arena, data)) |c| .{ .cff = c } else |_| blk: {
-            self.diag.note("font-cff-damaged", name);
-            break :blk null;
-        };
-    }
-
-    fn resolveThunk(ctx: *const anyopaque, o: Object) Object {
-        const self: *Ctx = @ptrCast(@alignCast(@constCast(ctx)));
-        return self.resolve(o);
-    }
-
-    /// The font's character-code to Unicode mapping (ToUnicode, /Encoding, CID maps), read by zpdf.
-    fn loadEncoding(self: *Ctx, fd: Object.Dict) ?*FontEncoding {
-        const enc = self.arena.create(FontEncoding) catch return null;
-        enc.* = zpdf.encoding.parseFontEncoding(self.arena, fd, resolveThunk, self) catch {
-            self.diag.note("font-encoding-failed", "");
-            return null;
-        };
-        return enc;
-    }
-
-    fn font(self: *Ctx, name: []const u8) ?*const Font {
-        if (self.fonts.get(name)) |f| return f;
-        const res = self.resources orelse return null;
-        const fonts = self.dictOf(res.get("Font") orelse return null) orelse return null;
-        const fd = self.dictOf(fonts.get(name) orelse return null) orelse return null;
-        const f = self.arena.create(Font) catch return null;
-        f.* = .{};
-        if (self.resolve(fd.get("BaseFont") orelse .null) == .name) {
-            const base = self.resolve(fd.get("BaseFont").?).name;
-            f.bold = has(base, "bold") != null or has(base, "black") != null;
-            f.italic = has(base, "italic") != null or has(base, "oblique") != null;
-            if (has(base, "times") != null or has(base, "serif") != null or
-                has(base, "georgia") != null or has(base, "garamond") != null or
-                has(base, "palatino") != null or has(base, "roman") != null) f.family = .serif;
-            if (has(base, "courier") != null or has(base, "mono") != null or
-                has(base, "consolas") != null) f.family = .mono;
-        }
-        if (fd.get("FirstChar")) |fc| f.first_char = switch (self.resolve(fc)) {
-            .integer => |i| i,
-            else => 0,
-        };
-        if (fd.get("Widths")) |w| if (self.resolve(w) == .array) {
-            const arr = self.resolve(w).array;
-            const out = self.arena.alloc(f64, arr.len) catch return null;
-            for (arr, out) |item, *o| o.* = number(self.resolve(item)) orelse 0;
-            f.widths = out;
-        };
-        if (fd.get("FontDescriptor")) |desc| if (self.dictOf(desc)) |dd| {
-            if (dd.get("MissingWidth")) |mw| f.missing_width = number(self.resolve(mw)) orelse 500;
-        };
-        self.loadProgram(f, fd, name);
-        if (self.resolve(fd.get("Subtype") orelse .null) == .name and std.mem.eql(u8, self.resolve(fd.get("Subtype").?).name, "Type0")) self.diag.note("font-type0-composite", name);
-        // The 14 standard fonts come without widths: Courier is fixed, the rest use an average.
-        if (f.widths.len == 0 and f.family == .mono) f.missing_width = 600;
-        f.composite = self.resolve(fd.get("Subtype") orelse .null) == .name and std.mem.eql(u8, self.resolve(fd.get("Subtype").?).name, "Type0");
-        f.enc = self.loadEncoding(fd);
-        self.fonts.put(name, f) catch return null;
-        return f;
-    }
-};
-
-fn cmykToRgb(c: f64, m: f64, y: f64, k: f64) Rgb {
-    return .{ (1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k) };
 }
 
-fn nums(args: []const Operand, out: []f64) bool {
-    if (args.len < out.len) return false;
-    const base = args.len - out.len;
-    for (out, 0..) |*o, i| switch (args[base + i]) {
-        .number => |n| o.* = n,
-        else => return false,
+fn loadCff(d: *Draw, r: *RFont, data: []const u8, name: []const u8) void {
+    r.prog = if (cff.Font.parse(d.doc.arena.allocator(), data)) |c| .{ .cff = c } else |_| blk: {
+        d.diag.note("font-cff-damaged", name);
+        break :blk null;
     };
-    return true;
 }
 
-fn colour(args: []const Operand) ?Rgb {
-    // Trailing numbers: 1 = gray, 3 = RGB, 4 = CMYK.
-    var vals: [4]f64 = undefined;
-    var count: usize = 0;
-    var i = args.len;
-    while (i > 0 and count < 4) : (i -= 1) {
-        switch (args[i - 1]) {
-            .number => |n| {
-                vals[count] = n;
-                count += 1;
+/// Which glyph of the embedded program draws this character.
+fn glyphFor(r: *const RFont, prog: Program, g: display.Glyph) ?u16 {
+    if (r.composite) {
+        switch (prog) {
+            .tt => {
+                if (r.cid_to_gid) |m| {
+                    const at = @as(usize, g.cid) * 2;
+                    if (at + 1 >= m.len) return 0;
+                    return (@as(u16, m[at]) << 8) | m[at + 1];
+                }
+                return @intCast(@min(g.cid, 0xFFFF));
             },
-            else => break,
+            .cff => |c| return c.glyphForCid(g.cid),
+            .t1 => return null,
         }
     }
-    if (count == 0) return null;
-    // Reverse into reading order.
-    var v: [4]f64 = undefined;
-    for (0..count) |k| v[k] = vals[count - 1 - k];
-    return switch (count) {
-        1 => .{ v[0], v[0], v[0] },
-        3 => .{ v[0], v[1], v[2] },
-        4 => cmykToRgb(v[0], v[1], v[2], v[3]),
-        else => null,
-    };
-}
-
-fn setFill(c: *Ctx) void {
-    c.cr.setSourceRgba(c.state.fill[0], c.state.fill[1], c.state.fill[2], c.state.fill_alpha);
-}
-
-fn setStroke(c: *Ctx) void {
-    c.cr.setSourceRgba(c.state.stroke[0], c.state.stroke[1], c.state.stroke[2], c.state.stroke_alpha);
-}
-
-/// A line thinner than one device pixel (PDF's "0 w" asks for the thinnest line
-/// there is) is drawn one pixel wide, as other viewers do, rather than fading away.
-fn hairlineMinimum(cr: *cairo.Context) void {
-    const w = cr.getLineWidth();
-    var dx: f64 = w;
-    var dy: f64 = 0;
-    cr.userToDeviceDistance(&dx, &dy);
-    const device = @sqrt(dx * dx + dy * dy);
-    if (device > 0 and device < 1.0) cr.setLineWidth(w / device);
-}
-
-fn paint(c: *Ctx, fill: ?cairo.FillRule, stroke: bool) void {
-    const cr = c.cr;
-    if (fill) |rule| {
-        cr.setFillRule(rule);
-        setFill(c);
-        if (stroke or c.pending_clip != null) cr.fillPreserve() else cr.fill();
+    var cp: u32 = 0;
+    if (g.text.len > 0) {
+        if (std.unicode.utf8Decode(g.text[0 .. std.unicode.utf8ByteSequenceLength(g.text[0]) catch 1])) |v| cp = v else |_| {}
     }
-    if (stroke) {
-        setStroke(c);
-        hairlineMinimum(cr);
-        if (c.pending_clip != null) cr.strokePreserve() else cr.stroke();
+    const code = g.code;
+    switch (prog) {
+        .tt => |tt| {
+            if (r.symbolic or cp == 0) {
+                if (tt.glyphForCode(code)) |x| return x;
+                if (cp != 0) if (tt.glyphForUnicode(cp)) |x| return x;
+            } else {
+                if (tt.glyphForUnicode(cp)) |x| return x;
+                if (tt.glyphForCode(code)) |x| return x;
+            }
+            // A subset with no usable cmap usually numbers its glyphs by character code.
+            if (!tt.hasCmap() and code < tt.num_glyphs) return @intCast(code);
+        },
+        .cff => |c| {
+            if (r.symbolic or cp == 0) {
+                if (c.glyphForCode(code)) |x| return x;
+                if (cp != 0) if (c.glyphForUnicode(cp)) |x| return x;
+            } else {
+                if (c.glyphForUnicode(cp)) |x| return x;
+                if (c.glyphForCode(code)) |x| return x;
+            }
+        },
+        .t1 => |t| {
+            if (r.symbolic or cp == 0) {
+                if (t.glyphForCode(code)) |x| return x;
+                if (cp != 0) if (t.glyphForUnicode(cp)) |x| return x;
+            } else {
+                if (t.glyphForUnicode(cp)) |x| return x;
+                if (t.glyphForCode(code)) |x| return x;
+            }
+        },
     }
-    if (c.pending_clip) |rule| {
-        cr.setFillRule(rule);
-        cr.clip();
-        c.pending_clip = null;
-    } else if (fill == null and !stroke) {
-        cr.newPath();
-    }
+    return null;
 }
-
-/// Moves the text position by (tx, 0) in text space.
-fn advance(c: *Ctx, tx: f64) void {
-    c.tm[4] += tx * c.tm[0];
-    c.tm[5] += tx * c.tm[1];
-}
-
-fn newLine(c: *Ctx, tx: f64, ty: f64) void {
-    c.tlm[4] += tx * c.tlm[0] + ty * c.tlm[2];
-    c.tlm[5] += tx * c.tlm[1] + ty * c.tlm[3];
-    c.tm = c.tlm;
-}
-
-/// A UTF-8 buffer for one character, written by zpdf's decoder.
-const OneChar = struct {
-    buf: [16]u8 = undefined,
-    len: usize = 0,
-
-    pub fn writeAll(self: *OneChar, bytes: []const u8) !void {
-        const n = @min(bytes.len, self.buf.len - self.len);
-        @memcpy(self.buf[self.len..][0..n], bytes[0..n]);
-        self.len += n;
-    }
-
-    pub fn writeByte(self: *OneChar, b: u8) !void {
-        try self.writeAll(&.{b});
-    }
-
-    pub fn print(_: *OneChar, comptime _: []const u8, _: anytype) !void {}
-};
 
 /// Receives a glyph outline and draws it into cairo's current path.
 const CairoSink = struct {
@@ -399,665 +313,384 @@ const CairoSink = struct {
     }
 };
 
-/// Which glyph of the embedded program draws character `code` (whose Unicode, as UTF-8, is `utf8`).
-fn glyphFor(f: *const Font, prog: Program, code: u32, utf8: []const u8) ?u16 {
-    if (f.composite) {
-        switch (prog) {
-            .tt => {
-                const e = f.enc orelse return @intCast(@min(code, 0xFFFF));
-                return @intCast(@min(e.cid_to_gid_map.getGID(code), 0xFFFF));
-            },
-            .cff => |c| return c.glyphForCid(code),
-        }
-    }
-    var cp: u32 = 0;
-    if (utf8.len > 0) {
-        if (std.unicode.utf8Decode(utf8[0 .. std.unicode.utf8ByteSequenceLength(utf8[0]) catch 1])) |v| cp = v else |_| {}
-    }
-    switch (prog) {
-        .tt => |tt| {
-            if (f.symbolic or cp == 0) {
-                if (tt.glyphForCode(code)) |g| return g;
-                if (cp != 0) if (tt.glyphForUnicode(cp)) |g| return g;
-            } else {
-                if (tt.glyphForUnicode(cp)) |g| return g;
-                if (tt.glyphForCode(code)) |g| return g;
-            }
-            // A subset with no usable cmap usually numbers its glyphs by character code.
-            if (!tt.hasCmap() and code < tt.num_glyphs) return @intCast(code);
-        },
-        .cff => |c| {
-            // Prefer the font's own encoding for a symbolic subset, Unicode otherwise.
-            if (f.symbolic or cp == 0) {
-                if (c.glyphForCode(code)) |g| return g;
-                if (cp != 0) if (c.glyphForUnicode(cp)) |g| return g;
-            } else {
-                if (c.glyphForUnicode(cp)) |g| return g;
-                if (c.glyphForCode(code)) |g| return g;
-            }
-        },
-    }
-    return null;
+// ---- drawing ------------------------------------------------------------------------------
+
+const max_nesting = 8;
+
+const Draw = struct {
+    doc: *Document,
+    gpa: std.mem.Allocator,
+    diag: *Diag,
+    /// Pixels per point.
+    scale: f64,
+    /// Default user space to device pixels: `base` of the display list, then the scale.
+    device: display.Matrix,
+    nesting: u8 = 0,
+};
+
+fn cm(m: display.Matrix) cairo.Matrix {
+    var r: cairo.Matrix = undefined;
+    r.init(m.a, m.b, m.c, m.d, m.e, m.f);
+    return r;
 }
 
-fn showString(c: *Ctx, s: []const u8) void {
-    const f = c.state.font orelse return;
-    const fs = c.state.font_size;
-    const cr = c.cr;
-    // Composite fonts use 2-byte (sometimes 1 to 4) codes; simple fonts 1.
-    const step: usize = if (f.enc) |e| (if (f.composite and e.is_cid) std.math.clamp(@as(usize, e.bytes_per_char), 1, 4) else 1) else 1;
-    var i: usize = 0;
-    while (i < s.len) {
-        const n = @min(step, s.len - i);
-        var code: u32 = 0;
-        for (s[i .. i + n]) |byte| code = (code << 8) | byte;
-        const raw = s[i .. i + n];
-        i += n;
+fn buildPath(cr: *cairo.Context, path: display.Path) void {
+    cr.newPath();
+    for (path) |s| switch (s) {
+        .move => |p| cr.moveTo(p.x, p.y),
+        .line => |p| cr.lineTo(p.x, p.y),
+        .curve => |c| cr.curveTo(c.c1.x, c.c1.y, c.c2.x, c.c2.y, c.p.x, c.p.y),
+        .close => cr.closePath(),
+    };
+}
 
-        // The character as UTF-8: through the font's own mapping when it has one.
-        var one: OneChar = .{};
-        if (f.enc) |e| {
-            e.decode(raw, &one) catch {};
-        } else if (code < 0x80) {
-            one.buf[0] = @intCast(code);
-            one.len = 1;
-        } else {
-            one.len = std.unicode.utf8Encode(@intCast(code), &one.buf) catch 0;
-        }
-        one.buf[@min(one.len, one.buf.len - 1)] = 0;
-        const is_space = code == ' ' and n == 1;
+fn operatorOf(blend: []const u8) cairo.Operator {
+    const eq = std.mem.eql;
+    if (eq(u8, blend, "Multiply")) return .multiply;
+    if (eq(u8, blend, "Screen")) return .screen;
+    if (eq(u8, blend, "Overlay")) return .overlay;
+    if (eq(u8, blend, "Darken")) return .darken;
+    if (eq(u8, blend, "Lighten")) return .lighten;
+    if (eq(u8, blend, "ColorDodge")) return .color_dodge;
+    if (eq(u8, blend, "ColorBurn")) return .color_burn;
+    if (eq(u8, blend, "HardLight")) return .hard_light;
+    if (eq(u8, blend, "SoftLight")) return .soft_light;
+    if (eq(u8, blend, "Difference")) return .difference;
+    if (eq(u8, blend, "Exclusion")) return .exclusion;
+    return .over;
+}
 
+/// A line thinner than one device pixel (PDF's "0 w" asks for the thinnest line
+/// there is) is drawn one pixel wide, as other viewers do, rather than fading away.
+fn hairlineMinimum(cr: *cairo.Context) void {
+    const w = cr.getLineWidth();
+    var dx: f64 = w;
+    var dy: f64 = 0;
+    cr.userToDeviceDistance(&dx, &dy);
+    const device = @sqrt(dx * dx + dy * dy);
+    if (device > 0 and device < 1.0) cr.setLineWidth(w / device);
+}
+
+/// Makes `paint` the source of `cr`. Returns false if there is nothing to draw
+/// with (an unsupported pattern). Patterns are anchored in the space they were
+/// defined in, not in the space of the path they fill.
+fn setPaint(d: *Draw, cr: *cairo.Context, paint: display.Paint, alpha: f64) bool {
+    switch (paint) {
+        .color => |c| {
+            cr.setSourceRgba(c.r, c.g, c.b, alpha);
+            return true;
+        },
+        .none => return false,
+        .shading => |s| {
+            const pat = gradient(s.shading) orelse return false;
+            defer pat.destroy();
+            anchor(cr, pat, s.matrix.mul(d.device));
+            return true;
+        },
+        .tiling => |t| return setTiling(d, cr, t),
+    }
+}
+
+/// Sets `pat` as the source with `to_device` as the matrix from pattern space.
+fn anchor(cr: *cairo.Context, pat: *cairo.Pattern, to_device: display.Matrix) void {
+    var cur: cairo.Matrix = undefined;
+    cr.getMatrix(&cur);
+    var pm = cm(to_device);
+    cr.setMatrix(&pm);
+    cr.setSource(pat);
+    cr.setMatrix(&cur);
+}
+
+fn gradient(sh: display.Shading) ?*cairo.Pattern {
+    const c = sh.coords;
+    const pat = switch (sh.kind) {
+        .axial => cairo.Pattern.linearCreate(c[0], c[1], c[2], c[3]),
+        .radial => cairo.Pattern.radialCreate(c[0], c[1], c[2], c[3], c[4], c[5]),
+    };
+    for (sh.stops) |s| pat.gradientAddColorStopRgba(s.offset, s.color.r, s.color.g, s.color.b, 1);
+    pat.setExtend(if (sh.extend_start or sh.extend_end) .pad else .none);
+    return pat;
+}
+
+/// A tiling pattern: its cell is drawn once into an image at device resolution
+/// and repeated.
+fn setTiling(d: *Draw, cr: *cairo.Context, t: display.Tiling) bool {
+    if (d.nesting >= max_nesting) return false;
+    const xs = if (t.xstep == 0) t.bbox[2] - t.bbox[0] else t.xstep;
+    const ys = if (t.ystep == 0) t.bbox[3] - t.bbox[1] else t.ystep;
+    if (xs == 0 or ys == 0) return false;
+    // Pattern space to device pixels, and how many pixels one step covers.
+    const dm = t.matrix.mul(d.device);
+    const sx = @sqrt(dm.a * dm.a + dm.b * dm.b);
+    const sy = @sqrt(dm.c * dm.c + dm.d * dm.d);
+    const pw: c_int = @intFromFloat(std.math.clamp(@ceil(@abs(xs) * sx), 1, 2048));
+    const ph: c_int = @intFromFloat(std.math.clamp(@ceil(@abs(ys) * sy), 1, 2048));
+    const surface = cairo.Surface.imageCreate(.argb32, pw, ph);
+    defer surface.destroy();
+    const cell = cairo.Context.create(surface);
+    defer cell.destroy();
+    // Image pixels to pattern space: the cell's lower-left corner is the bottom-left pixel.
+    const fw: f64 = @floatFromInt(pw);
+    const fh: f64 = @floatFromInt(ph);
+    cell.translate(0, fh);
+    cell.scale(fw / @abs(xs), -fh / @abs(ys));
+    cell.translate(-t.bbox[0], -t.bbox[1]);
+    var inner: Draw = .{ .doc = d.doc, .gpa = d.gpa, .diag = d.diag, .scale = 1, .device = .identity, .nesting = d.nesting + 1 };
+    drawCommands(&inner, cell, t.cell.commands);
+    surface.flush();
+
+    const pat = cairo.Pattern.surfaceCreate(surface);
+    defer pat.destroy();
+    pat.setExtend(.repeat);
+    pat.setFilter(.good);
+    // Pattern pixels to pattern space, then to the device.
+    const img_to_pattern: display.Matrix = .{ .a = @abs(xs) / fw, .d = -@abs(ys) / fh, .e = t.bbox[0], .f = t.bbox[1] + @abs(ys) };
+    anchor(cr, pat, img_to_pattern.mul(dm));
+    return true;
+}
+
+fn drawCommands(d: *Draw, cr: *cairo.Context, cmds: []const display.Command) void {
+    var saves: usize = 0;
+    for (cmds) |cmd| switch (cmd) {
+        .save => {
+            cr.save();
+            saves += 1;
+        },
+        .restore => if (saves > 0) {
+            cr.restore();
+            saves -= 1;
+        },
+        .clip => |c| {
+            var old: cairo.Matrix = undefined;
+            cr.getMatrix(&old);
+            var m = cm(c.ctm);
+            cr.transform(&m);
+            buildPath(cr, c.path);
+            cr.setMatrix(&old);
+            cr.setFillRule(if (c.rule == .even_odd) .even_odd else .winding);
+            cr.clip();
+        },
+        .fill => |f| drawFill(d, cr, f),
+        .stroke => |s| drawStroke(d, cr, s),
+        .text => |t| drawText(d, cr, t),
+        .image => |im| drawImage(d, cr, im),
+        .shading => |s| {
+            const pat = gradient(s.shading) orelse continue;
+            defer pat.destroy();
+            cr.save();
+            defer cr.restore();
+            anchor(cr, pat, s.ctm.mul(d.device));
+            cr.paintWithAlpha(s.alpha);
+        },
+    };
+    while (saves > 0) : (saves -= 1) cr.restore();
+}
+
+fn drawFill(d: *Draw, cr: *cairo.Context, f: display.Fill) void {
+    cr.save();
+    defer cr.restore();
+    var m = cm(f.ctm);
+    cr.transform(&m);
+    buildPath(cr, f.path);
+    cr.setFillRule(if (f.rule == .even_odd) .even_odd else .winding);
+    cr.setOperator(operatorOf(f.blend));
+    if (!setPaint(d, cr, f.paint, f.alpha)) {
+        cr.newPath();
+        return;
+    }
+    switch (f.paint) {
+        .color => cr.fill(),
+        else => {
+            // A pattern: fill through the path as a clip.
+            cr.clip();
+            cr.paintWithAlpha(f.alpha);
+        },
+    }
+}
+
+fn drawStroke(d: *Draw, cr: *cairo.Context, s: display.Stroke) void {
+    cr.save();
+    defer cr.restore();
+    var m = cm(s.ctm);
+    cr.transform(&m);
+    buildPath(cr, s.path);
+    cr.setLineWidth(s.style.width);
+    hairlineMinimum(cr);
+    cr.setLineCap(switch (s.style.cap) {
+        .butt => .butt,
+        .round => .round,
+        .square => .square,
+    });
+    cr.setLineJoin(switch (s.style.join) {
+        .miter => .miter,
+        .round => .round,
+        .bevel => .bevel,
+    });
+    cr.setMiterLimit(s.style.miter_limit);
+    if (s.style.dash.len > 0) cr.setDash(s.style.dash.ptr, @intCast(s.style.dash.len), s.style.dash_phase) else cr.setDash(undefined, 0, 0);
+    cr.setOperator(operatorOf(s.blend));
+    if (!setPaint(d, cr, s.paint, s.alpha)) {
+        cr.newPath();
+        return;
+    }
+    // Cairo strokes with a pattern source as it does with a colour.
+    cr.stroke();
+}
+
+fn drawText(d: *Draw, cr: *cairo.Context, t: display.Text) void {
+    // Mode 3 is invisible; so is 7 (clip only). Type 3 glyphs are drawn as paths already.
+    if (t.mode == 3 or t.mode == 7) return;
+    const r = rfont(d, t.font);
+    cr.save();
+    defer cr.restore();
+    var ctm = cm(t.ctm);
+    cr.transform(&ctm);
+    var tm = cm(t.tm);
+    cr.transform(&tm);
+    if (!setPaint(d, cr, t.fill, t.alpha)) {
+        // A pattern fill on text: use plain black rather than nothing.
+        cr.setSourceRgba(0, 0, 0, t.alpha);
+    }
+    const stroke_only = t.mode == 1 or t.mode == 5;
+    for (t.glyphs) |g| {
         cr.save();
-        var m: cairo.Matrix = undefined;
-        // Text space to user space: the text matrix, then the rise and horizontal scale.
-        m.init(c.tm[0], c.tm[1], c.tm[2], c.tm[3], c.tm[4], c.tm[5]);
-        cr.transform(&m);
-        cr.translate(0, c.state.rise);
+        cr.translate(g.x, t.rise);
         // Glyphs are drawn y-down, the page is y-up.
-        cr.scale(c.state.h_scale, -1);
-        cr.selectFontFace(switch (f.family) {
+        cr.scale(t.h_scale, -1);
+        cr.selectFontFace(switch (r.family) {
             .sans => "sans-serif",
             .serif => "serif",
             .mono => "monospace",
-        }, if (f.italic) .italic else .normal, if (f.bold) .bold else .normal);
-        cr.setFontSize(fs);
+        }, if (r.italic) .italic else .normal, if (r.bold) .bold else .normal);
+        cr.setFontSize(t.size);
 
-        // The embedded font's own outline, when we can read it.
-        var drewOutline = false;
-        var program_advance: f64 = -1;
-        if (f.prog) |prog| {
-            if (glyphFor(f, prog, code, one.buf[0..one.len])) |gid| {
+        var drew = false;
+        if (r.prog) |prog| {
+            if (glyphFor(r, prog, g)) |gid| {
                 const upm = prog.unitsPerEm();
-                program_advance = prog.advance(gid) / upm;
-                if (c.state.render_mode != 3 and c.state.render_mode != 7) {
-                    // Undo the y flip used for substitute glyphs: outlines are y up like text space.
-                    cr.scale(1, -1);
-                    cr.scale(fs / upm, fs / upm);
-                    var sink: CairoSink = .{ .cr = cr };
-                    cr.newPath();
-                    prog.outline(gid, &sink);
-                    setFill(c);
-                    cr.fill();
-                }
-                drewOutline = true;
+                // Outlines are y up like text space: undo the flip, scale em to size.
+                cr.scale(1, -1);
+                cr.scale(t.size / upm, t.size / upm);
+                var sink: CairoSink = .{ .cr = cr };
+                cr.newPath();
+                prog.outline(gid, &sink);
+                if (stroke_only) {
+                    cr.setLineWidth(upm / 40.0);
+                    cr.stroke();
+                } else cr.fill();
+                drew = true;
             }
         }
-
-        // The advance: the PDF's widths when it has them, else the substitute font's own.
-        const is_cid = f.composite and f.enc != null;
-        var w0: f64 = -1; // negative: measure the substitute glyph
-        if (is_cid) {
-            w0 = f.enc.?.widths.getCIDWidth(code) / 1000.0;
-        } else if (f.widths.len > 0) {
-            w0 = f.width(@truncate(code)) / 1000.0;
-        }
-        if (w0 < 0 and program_advance >= 0) w0 = program_advance;
-        if (w0 < 0) {
-            w0 = 0.5;
-            if (one.len > 0 and one.buf[0] != 0) {
-                var ext: cairo.TextExtents = undefined;
-                // A large size, so hinting does not round the advance to whole pixels.
-                cr.setFontSize(1000);
-                cr.textExtents(@ptrCast(&one.buf), &ext);
-                w0 = ext.x_advance / 1000.0;
-                cr.setFontSize(fs);
-            }
-        }
-
-        if (one.len > 0 and one.buf[0] > 0x20 and c.state.render_mode != 3 and c.state.render_mode != 7 and !drewOutline) {
-            setFill(c);
+        if (!drew and g.text.len > 0 and g.text[0] > 0x20) {
+            var z: [64]u8 = undefined;
+            const n = @min(g.text.len, z.len - 1);
+            @memcpy(z[0..n], g.text[0..n]);
+            z[n] = 0;
             cr.moveTo(0, 0);
-            cr.showText(@ptrCast(&one.buf));
+            cr.showText(@ptrCast(&z));
         }
         cr.restore();
-        const tx = (w0 * fs + c.state.char_space + (if (is_space) c.state.word_space else 0)) * c.state.h_scale;
-        advance(c, tx);
     }
 }
 
-fn operatorStep(c: *Ctx, op: []const u8, args: []const Operand) void {
-    const cr = c.cr;
-    const eql = std.mem.eql;
-    var n: [6]f64 = undefined;
+// ---- images -------------------------------------------------------------------------------
 
-    // -- graphics state
-    if (eql(u8, op, "q")) {
-        if (c.depth < c.stack.len) {
-            c.stack[c.depth] = c.state;
-            c.depth += 1;
-            cr.save();
-        }
-    } else if (eql(u8, op, "Q")) {
-        if (c.depth > 0) {
-            c.depth -= 1;
-            c.state = c.stack[c.depth];
-            cr.restore();
-        }
-    } else if (eql(u8, op, "cm")) {
-        if (nums(args, n[0..6])) {
-            var m: cairo.Matrix = undefined;
-            m.init(n[0], n[1], n[2], n[3], n[4], n[5]);
-            cr.transform(&m);
-        }
-    } else if (eql(u8, op, "w")) {
-        if (nums(args, n[0..1])) cr.setLineWidth(@max(n[0], 0.01));
-    } else if (eql(u8, op, "J")) {
-        if (nums(args, n[0..1])) cr.setLineCap(switch (@as(i32, @intFromFloat(n[0]))) {
-            1 => .round,
-            2 => .square,
-            else => .butt,
-        });
-    } else if (eql(u8, op, "j")) {
-        if (nums(args, n[0..1])) cr.setLineJoin(switch (@as(i32, @intFromFloat(n[0]))) {
-            1 => .round,
-            2 => .bevel,
-            else => .miter,
-        });
-    } else if (eql(u8, op, "M")) {
-        if (nums(args, n[0..1])) cr.setMiterLimit(n[0]);
-    } else if (eql(u8, op, "d")) {
-        if (args.len >= 2 and args[args.len - 2] == .array) {
-            const arr = args[args.len - 2].array;
-            var dashes: [16]f64 = undefined;
-            var count: usize = 0;
-            for (arr) |a| if (a == .number and count < dashes.len and a.number > 0) {
-                dashes[count] = a.number;
-                count += 1;
-            };
-            const phase = args[args.len - 1].asNumber();
-            if (count == 0) cr.setDash(&dashes, 0, 0) else cr.setDash(&dashes, @intCast(count), phase);
-        }
-    }
-    // -- colour
-    else if (eql(u8, op, "g") or eql(u8, op, "rg") or eql(u8, op, "k") or eql(u8, op, "sc") or eql(u8, op, "scn")) {
-        if (colour(args)) |col| c.state.fill = col else c.diag.note("pattern-or-named-colour", op);
-    } else if (eql(u8, op, "G") or eql(u8, op, "RG") or eql(u8, op, "K") or eql(u8, op, "SC") or eql(u8, op, "SCN")) {
-        if (colour(args)) |col| c.state.stroke = col else c.diag.note("pattern-or-named-colour", op);
-    }
-    // -- paths
-    else if (eql(u8, op, "m")) {
-        if (nums(args, n[0..2])) {
-            cr.moveTo(n[0], n[1]);
-            c.cx = n[0];
-            c.cy = n[1];
-            c.start_x = n[0];
-            c.start_y = n[1];
-        }
-    } else if (eql(u8, op, "l")) {
-        if (nums(args, n[0..2])) {
-            cr.lineTo(n[0], n[1]);
-            c.cx = n[0];
-            c.cy = n[1];
-        }
-    } else if (eql(u8, op, "c")) {
-        if (nums(args, n[0..6])) {
-            cr.curveTo(n[0], n[1], n[2], n[3], n[4], n[5]);
-            c.cx = n[4];
-            c.cy = n[5];
-        }
-    } else if (eql(u8, op, "v")) {
-        if (nums(args, n[0..4])) {
-            cr.curveTo(c.cx, c.cy, n[0], n[1], n[2], n[3]);
-            c.cx = n[2];
-            c.cy = n[3];
-        }
-    } else if (eql(u8, op, "y")) {
-        if (nums(args, n[0..4])) {
-            cr.curveTo(n[0], n[1], n[2], n[3], n[2], n[3]);
-            c.cx = n[2];
-            c.cy = n[3];
-        }
-    } else if (eql(u8, op, "h")) {
-        cr.closePath();
-        c.cx = c.start_x;
-        c.cy = c.start_y;
-    } else if (eql(u8, op, "re")) {
-        if (nums(args, n[0..4])) {
-            cr.rectangle(n[0], n[1], n[2], n[3]);
-            c.cx = n[0];
-            c.cy = n[1];
-            c.start_x = n[0];
-            c.start_y = n[1];
-        }
-    } else if (eql(u8, op, "S")) {
-        paint(c, null, true);
-    } else if (eql(u8, op, "s")) {
-        cr.closePath();
-        paint(c, null, true);
-    } else if (eql(u8, op, "f") or eql(u8, op, "F")) {
-        paint(c, .winding, false);
-    } else if (eql(u8, op, "f*")) {
-        paint(c, .even_odd, false);
-    } else if (eql(u8, op, "B")) {
-        paint(c, .winding, true);
-    } else if (eql(u8, op, "B*")) {
-        paint(c, .even_odd, true);
-    } else if (eql(u8, op, "b")) {
-        cr.closePath();
-        paint(c, .winding, true);
-    } else if (eql(u8, op, "b*")) {
-        cr.closePath();
-        paint(c, .even_odd, true);
-    } else if (eql(u8, op, "n")) {
-        paint(c, null, false);
-    } else if (eql(u8, op, "W")) {
-        c.pending_clip = .winding;
-    } else if (eql(u8, op, "W*")) {
-        c.pending_clip = .even_odd;
-    }
-    // -- text
-    else if (eql(u8, op, "BT")) {
-        c.tm = .{ 1, 0, 0, 1, 0, 0 };
-        c.tlm = c.tm;
-    } else if (eql(u8, op, "Tf")) {
-        if (args.len >= 2 and args[args.len - 2] == .name) {
-            c.state.font = c.font(args[args.len - 2].name);
-            c.state.font_size = args[args.len - 1].asNumber();
-        }
-    } else if (eql(u8, op, "Tr")) {
-        if (nums(args, n[0..1])) c.state.render_mode = @intFromFloat(n[0]);
-    } else if (eql(u8, op, "Tc")) {
-        if (nums(args, n[0..1])) c.state.char_space = n[0];
-    } else if (eql(u8, op, "Tw")) {
-        if (nums(args, n[0..1])) c.state.word_space = n[0];
-    } else if (eql(u8, op, "Tz")) {
-        if (nums(args, n[0..1])) c.state.h_scale = n[0] / 100.0;
-    } else if (eql(u8, op, "TL")) {
-        if (nums(args, n[0..1])) c.state.leading = n[0];
-    } else if (eql(u8, op, "Ts")) {
-        if (nums(args, n[0..1])) c.state.rise = n[0];
-    } else if (eql(u8, op, "Td")) {
-        if (nums(args, n[0..2])) newLine(c, n[0], n[1]);
-    } else if (eql(u8, op, "TD")) {
-        if (nums(args, n[0..2])) {
-            c.state.leading = -n[1];
-            newLine(c, n[0], n[1]);
-        }
-    } else if (eql(u8, op, "Tm")) {
-        if (nums(args, n[0..6])) {
-            c.tm = n;
-            c.tlm = n;
-        }
-    } else if (eql(u8, op, "T*")) {
-        newLine(c, 0, -c.state.leading);
-    } else if (eql(u8, op, "Tj")) {
-        if (args.len >= 1) switch (args[args.len - 1]) {
-            .string, .hex_string => |s| showString(c, s),
-            else => {},
-        };
-    } else if (eql(u8, op, "'") or eql(u8, op, "\"")) {
-        newLine(c, 0, -c.state.leading);
-        if (args.len >= 1) switch (args[args.len - 1]) {
-            .string, .hex_string => |s| showString(c, s),
-            else => {},
-        };
-    } else if (eql(u8, op, "TJ")) {
-        if (args.len >= 1 and args[args.len - 1] == .array) {
-            for (args[args.len - 1].array) |item| switch (item) {
-                .string, .hex_string => |s| showString(c, s),
-                .number => |adj| advance(c, -adj / 1000.0 * c.state.font_size * c.state.h_scale),
-                else => {},
-            };
-        }
-    } else if (eql(u8, op, "Do")) {
-        if (args.len >= 1 and args[args.len - 1] == .name) doXObject(c, args[args.len - 1].name);
-    } else if (eql(u8, op, "gs")) {
-        if (args.len >= 1 and args[args.len - 1] == .name) extGState(c, args[args.len - 1].name);
-    } else if (eql(u8, op, "sh")) {
-        c.diag.note("shading-not-drawn", "sh");
-    } else if (eql(u8, op, "ET") or eql(u8, op, "cs") or eql(u8, op, "CS") or eql(u8, op, "BMC") or eql(u8, op, "BDC") or
-        eql(u8, op, "EMC") or eql(u8, op, "MP") or eql(u8, op, "DP") or eql(u8, op, "BX") or eql(u8, op, "EX") or
-        eql(u8, op, "ri") or eql(u8, op, "i") or eql(u8, op, "d0") or eql(u8, op, "d1"))
-    {
-        // Nothing to draw for these.
-    } else {
-        c.diag.note("op-unknown", op);
-    }
-}
+fn drawImage(d: *Draw, cr: *cairo.Context, im: display.Image) void {
+    var scratch = std.heap.ArenaAllocator.init(d.gpa);
+    defer scratch.deinit();
+    const a = scratch.allocator();
+    const doc = &d.doc.doc;
 
-fn decoded(c: *Ctx, st: Object.Stream) ?[]u8 {
-    const filter = if (st.dict.get("Filter")) |f| c.resolve(f) else null;
-    const parms = if (st.dict.get("DecodeParms")) |f| c.resolve(f) else null;
-    return zpdf.decompress.decompressStream(c.gpa, st.data, filter, parms) catch {
-        c.diag.note("stream-decode-failed", "");
-        return null;
+    const res = pdf.image.decode(doc, a, im) catch |e| {
+        d.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", "");
+        return;
     };
-}
-
-fn lastFilter(c: *Ctx, st: Object.Stream) ?[]const u8 {
-    const f = c.resolve(st.dict.get("Filter") orelse return null);
-    return switch (f) {
-        .name => |n| n,
-        .array => |arr| if (arr.len == 0) null else switch (c.resolve(arr[arr.len - 1])) {
-            .name => |n| n,
-            else => null,
-        },
-        else => null,
+    const px: pdf.image.Pixels = switch (res) {
+        .pixels => |p| p,
+        .codec => |k| codecPixels(d, a, im, k) orelse return,
     };
+    paintPixels(d, cr, im, px);
 }
 
-fn intOf(c: *Ctx, o: ?Object, default: i64) i64 {
-    return switch (c.resolve(o orelse return default)) {
-        .integer => |i| i,
-        .real => |r| @intFromFloat(r),
-        else => default,
-    };
-}
-
-fn baseOf(cs: image.Cs) ?image.Base {
-    return switch (cs) {
-        .gray => .gray,
-        .rgb => .rgb,
-        .cmyk => .cmyk,
-        else => null,
-    };
-}
-
-fn csOf(c: *Ctx, o: Object, depth: u8) image.Cs {
-    if (depth > 4) return .{ .other = 1 };
-    const r = c.resolve(o);
-    switch (r) {
-        .name => |n| {
-            if (std.mem.eql(u8, n, "DeviceGray") or std.mem.eql(u8, n, "G") or std.mem.eql(u8, n, "CalGray")) return .gray;
-            if (std.mem.eql(u8, n, "DeviceRGB") or std.mem.eql(u8, n, "RGB") or std.mem.eql(u8, n, "CalRGB")) return .rgb;
-            if (std.mem.eql(u8, n, "DeviceCMYK") or std.mem.eql(u8, n, "CMYK")) return .cmyk;
-            // A name in the page's ColorSpace resources.
-            if (c.resources) |res| if (c.dictOf(res.get("ColorSpace") orelse .null)) |cs| if (cs.get(n)) |named| return csOf(c, named, depth + 1);
-            c.diag.note("colorspace-unknown", n);
-            return .{ .other = 1 };
-        },
-        .array => |arr| {
-            if (arr.len == 0) return .{ .other = 1 };
-            const head = switch (c.resolve(arr[0])) {
-                .name => |n| n,
-                else => return .{ .other = 1 },
-            };
-            const eql = std.mem.eql;
-            if (eql(u8, head, "ICCBased") and arr.len > 1) {
-                const st = switch (c.resolve(arr[1])) {
-                    .stream => |s| s,
-                    else => return .rgb,
-                };
-                return switch (intOf(c, st.dict.get("N"), 3)) {
-                    1 => .gray,
-                    4 => .cmyk,
-                    else => .rgb,
-                };
-            }
-            if (eql(u8, head, "CalGray")) return .gray;
-            if (eql(u8, head, "CalRGB")) return .rgb;
-            if ((eql(u8, head, "Indexed") or eql(u8, head, "I")) and arr.len >= 4) {
-                const base = baseOf(csOf(c, arr[1], depth + 1)) orelse {
-                    c.diag.note("colorspace-indexed-base", "");
-                    return .{ .other = 1 };
-                };
-                const palette: []const u8 = switch (c.resolve(arr[3])) {
-                    .string, .hex_string => |p| p,
-                    .stream => |ps| decoded(c, ps) orelse &.{},
-                    else => &.{},
-                };
-                return .{ .indexed = .{ .base = base, .hival = @intCast(@max(0, intOf(c, arr[2], 255))), .palette = palette } };
-            }
-            if (eql(u8, head, "Separation")) {
-                c.diag.note("colorspace-separation-approx", "");
-                return .ink;
-            }
-            if (eql(u8, head, "DeviceN")) {
-                c.diag.note("colorspace-devicen-approx", "");
-                const names = if (arr.len > 1) c.resolve(arr[1]) else .null;
-                return .{ .other = if (names == .array) @intCast(@min(names.array.len, 8)) else 1 };
-            }
-            if (eql(u8, head, "Lab")) {
-                c.diag.note("colorspace-lab-approx", "");
-                return .rgb;
-            }
-            c.diag.note("colorspace-unknown", head);
-            return .{ .other = 1 };
-        },
-        else => return .{ .other = 1 },
-    }
-}
-
-fn extGState(c: *Ctx, name: []const u8) void {
-    const res = c.resources orelse return;
-    const gs = c.dictOf(res.get("ExtGState") orelse return) orelse return;
-    const d = c.dictOf(gs.get(name) orelse return) orelse return;
-    for (d.entries) |e| {
-        const key = e.key;
-        const v = c.resolve(e.value);
-        if (std.mem.eql(u8, key, "ca")) {
-            c.state.fill_alpha = Ctx.number(v) orelse 1;
-        } else if (std.mem.eql(u8, key, "CA")) {
-            c.state.stroke_alpha = Ctx.number(v) orelse 1;
-        } else if (std.mem.eql(u8, key, "LW")) {
-            if (Ctx.number(v)) |lw| c.cr.setLineWidth(@max(lw, 0.01));
-        } else if (std.mem.eql(u8, key, "SMask")) {
-            if (v != .name) c.diag.note("soft-mask-ignored", name);
-        } else if (std.mem.eql(u8, key, "BM")) {
-            const plain = switch (v) {
-                .name => |n| std.mem.eql(u8, n, "Normal") or std.mem.eql(u8, n, "Compatible"),
-                else => false,
-            };
-            if (!plain) c.diag.note("blend-mode-ignored", name);
-        }
-    }
-}
-
-fn doXObject(c: *Ctx, name: []const u8) void {
-    const res = c.resources orelse return c.diag.note("xobject-no-resources", name);
-    const xs = c.dictOf(res.get("XObject") orelse return c.diag.note("xobject-missing", name)) orelse return;
-    const obj = c.resolve(xs.get(name) orelse return c.diag.note("xobject-missing", name));
-    const st = switch (obj) {
-        .stream => |x| x,
-        else => return c.diag.note("xobject-not-stream", name),
-    };
-    const sub = switch (c.resolve(st.dict.get("Subtype") orelse .null)) {
-        .name => |n| n,
-        else => "",
-    };
-    if (std.mem.eql(u8, sub, "Image")) return drawImage(c, st, name);
-    if (std.mem.eql(u8, sub, "Form")) return drawForm(c, st);
-    c.diag.note("xobject-unknown-subtype", sub);
-}
-
-fn drawForm(c: *Ctx, st: Object.Stream) void {
-    if (c.form_depth >= 12) return c.diag.note("form-too-deep", "");
-    const content = decoded(c, st) orelse return;
-    defer c.gpa.free(content);
-    const cr = c.cr;
-    const saved_state = c.state;
-    const saved_res = c.resources;
-    const saved_fonts = c.fonts;
-    const base_depth = c.depth;
-    cr.save();
-    if (c.resolve(st.dict.get("Matrix") orelse .null) == .array) {
-        const arr = c.resolve(st.dict.get("Matrix").?).array;
-        if (arr.len >= 6) {
-            var v: [6]f64 = undefined;
-            for (0..6) |i| v[i] = Ctx.number(c.resolve(arr[i])) orelse 0;
-            var m: cairo.Matrix = undefined;
-            m.init(v[0], v[1], v[2], v[3], v[4], v[5]);
-            cr.transform(&m);
-        }
-    }
-    if (c.resolve(st.dict.get("BBox") orelse .null) == .array) {
-        const arr = c.resolve(st.dict.get("BBox").?).array;
-        if (arr.len >= 4) {
-            var v: [4]f64 = undefined;
-            for (0..4) |i| v[i] = Ctx.number(c.resolve(arr[i])) orelse 0;
-            cr.rectangle(v[0], v[1], v[2] - v[0], v[3] - v[1]);
-            cr.clip();
-        }
-    }
-    if (st.dict.get("Resources")) |r| if (c.dictOf(r)) |rd| {
-        c.resources = rd;
-        c.fonts = std.StringHashMap(*const Font).init(c.arena);
-    };
-    c.form_depth += 1;
-    runContent(c, content);
-    c.form_depth -= 1;
-    while (c.depth > base_depth) : (c.depth -= 1) cr.restore();
-    cr.restore();
-    c.state = saved_state;
-    c.resources = saved_res;
-    c.fonts = saved_fonts;
-}
-
-const Gray8 = struct { w: usize, h: usize, data: []u8 };
-
-/// A soft mask as 8-bit gray, from a JPEG or raw samples. Caller frees `data`.
-fn grayOf(c: *Ctx, st: Object.Stream) ?Gray8 {
-    const d = st.dict;
-    const w: usize = @intCast(@max(0, intOf(c, d.get("Width"), 0)));
-    const h: usize = @intCast(@max(0, intOf(c, d.get("Height"), 0)));
-    const data = decoded(c, st) orelse return null;
-    defer c.gpa.free(data);
-    if (lastFilter(c, st)) |f| if (std.mem.eql(u8, f, "DCTDecode") or std.mem.eql(u8, f, "DCT")) {
-        if (imgcodec.decode(c.gpa, data)) |dec| {
-            defer dec.deinit(c.gpa);
-            const out = c.gpa.alloc(u8, dec.width * dec.height) catch return null;
-            for (out, 0..) |*o, i| o.* = dec.rgba[i * 4];
-            return .{ .w = dec.width, .h = dec.height, .data = out };
+/// Pixels for a stream that needs a codec: JPEG through dkde's codec (stb_image
+/// for what it refuses), the rest is marked with a pale box.
+fn codecPixels(d: *Draw, a: std.mem.Allocator, im: display.Image, k: pdf.image.Codec) ?pdf.image.Pixels {
+    const doc = &d.doc.doc;
+    const name = k.name;
+    if (std.mem.eql(u8, name, "DCTDecode")) {
+        if (imgcodec.decode(a, k.data)) |dec| {
+            const base: pdf.image.Pixels = .{ .width = @intCast(dec.width), .height = @intCast(dec.height), .rgba = dec.rgba };
+            return pdf.image.withMasks(doc, a, im.stream.dict, base) catch base;
         } else |_| {}
+        d.diag.note("jpeg-fallback-stb", "");
+        if (im.space == .cmyk) {
+            // A CMYK JPEG: take the four components raw and let the PDF's /Decode and colour space apply.
+            var cx: c_int = 0;
+            var cy: c_int = 0;
+            var cn: c_int = 0;
+            stbi_jpeg_raw_cmyk = 1;
+            const raw = stbi_load_from_memory(k.data.ptr, @intCast(@min(k.data.len, std.math.maxInt(c_int))), &cx, &cy, &cn, 4);
+            stbi_jpeg_raw_cmyk = 0;
+            const px4 = raw orelse {
+                d.diag.note("image-jpeg-failed", "");
+                return null;
+            };
+            defer stbi_image_free(px4);
+            const w: u32 = @intCast(cx);
+            const h: u32 = @intCast(cy);
+            return pdf.image.fromSamples(doc, a, im, px4[0 .. @as(usize, w) * h * 4], w, h, 4) catch {
+                d.diag.note("image-failed", "");
+                return null;
+            };
+        }
         var x: c_int = 0;
         var y: c_int = 0;
         var n: c_int = 0;
-        const px = stbi_load_from_memory(data.ptr, @intCast(@min(data.len, std.math.maxInt(c_int))), &x, &y, &n, 1) orelse return null;
-        defer stbi_image_free(px);
-        const out = c.gpa.dupe(u8, px[0 .. @as(usize, @intCast(x)) * @as(usize, @intCast(y))]) catch return null;
-        return .{ .w = @intCast(x), .h = @intCast(y), .data = out };
-    };
-    const px = image.toArgb(c.gpa, .{ .width = @intCast(w), .height = @intCast(h), .bpc = @intCast(intOf(c, d.get("BitsPerComponent"), 8)), .cs = .gray }, data, .{ 0, 0, 0 }, null) catch return null;
-    defer c.gpa.free(px);
-    const out = c.gpa.alloc(u8, px.len) catch return null;
-    for (px, out) |p, *o| o.* = @truncate(p); // opaque gray: any colour channel is the value
-    return .{ .w = w, .h = h, .data = out };
+        const raw = stbi_load_from_memory(k.data.ptr, @intCast(@min(k.data.len, std.math.maxInt(c_int))), &x, &y, &n, 3) orelse {
+            d.diag.note("image-jpeg-failed", "");
+            return null;
+        };
+        defer stbi_image_free(raw);
+        const w: u32 = @intCast(x);
+        const h: u32 = @intCast(y);
+        return pdf.image.fromSamples(doc, a, im, raw[0 .. @as(usize, w) * h * 3], w, h, 3) catch {
+            d.diag.note("image-failed", "");
+            return null;
+        };
+    }
+    d.diag.note(if (std.mem.eql(u8, name, "JPXDecode")) "image-jpx" else if (std.mem.eql(u8, name, "JBIG2Decode")) "image-jbig2" else "image-ccitt", "");
+    // A pale box where the image goes, so the layout is still readable.
+    return pale(a);
 }
 
-fn drawImage(c: *Ctx, st: Object.Stream, name: []const u8) void {
-    const d = st.dict;
-    var w: usize = @intCast(@max(0, intOf(c, d.get("Width"), 0)));
-    var h: usize = @intCast(@max(0, intOf(c, d.get("Height"), 0)));
-    if (w == 0 or h == 0) return c.diag.note("image-bad-dict", name);
-    const is_mask = switch (c.resolve(d.get("ImageMask") orelse .null)) {
-        .boolean => |b| b,
-        else => false,
-    };
-    const filter = lastFilter(c, st) orelse "";
-    var pixels: ?[]u32 = null;
-    defer if (pixels) |p| c.gpa.free(p);
+/// A 1x1 light grey pixel, stretched over the image's place.
+fn pale(a: std.mem.Allocator) ?pdf.image.Pixels {
+    const px = a.alloc(u8, 4) catch return null;
+    @memcpy(px, &[4]u8{ 217, 217, 217, 255 });
+    return .{ .width = 1, .height = 1, .rgba = px };
+}
 
-    // Soft mask: becomes the alpha channel.
-    var alpha: ?[]u8 = null;
-    defer if (alpha) |a| c.gpa.free(a);
-    if (d.get("SMask")) |sm| switch (c.resolve(sm)) {
-        .stream => |ms| if (grayOf(c, ms)) |g| {
-            defer c.gpa.free(g.data);
-            if (g.w == w and g.h == h) {
-                alpha = c.gpa.dupe(u8, g.data) catch null;
-            } else if (g.w > 0 and g.h > 0 and w * h < 200_000_000) {
-                // Different size: nearest-neighbour onto the image's grid.
-                if (c.gpa.alloc(u8, w * h) catch null) |a| {
-                    for (0..h) |y| for (0..w) |x| {
-                        a[y * w + x] = g.data[@min(g.h - 1, y * g.h / h) * g.w + @min(g.w - 1, x * g.w / w)];
-                    };
-                    alpha = a;
-                }
-            }
-        },
-        else => {},
-    };
-    if (d.get("Mask") != null and d.get("SMask") == null) c.diag.note("image-mask-ignored", name);
-
-    const fill8 = [3]u8{ @intFromFloat(c.state.fill[0] * 255 + 0.5), @intFromFloat(c.state.fill[1] * 255 + 0.5), @intFromFloat(c.state.fill[2] * 255 + 0.5) };
-
-    if (std.mem.eql(u8, filter, "JPXDecode") or std.mem.eql(u8, filter, "CCITTFaxDecode") or std.mem.eql(u8, filter, "CCF") or std.mem.eql(u8, filter, "JBIG2Decode")) {
-        c.diag.note(if (filter[0] == 'J' and filter[1] == 'P') "image-jpx" else if (filter[0] == 'J') "image-jbig2" else "image-ccitt", name);
-        // A pale box where the image goes, so the layout is still readable.
-        c.cr.save();
-        c.cr.setSourceRgba(0.85, 0.85, 0.85, 1);
-        c.cr.rectangle(0, 0, 1, 1);
-        c.cr.fill();
-        c.cr.restore();
-        return;
+fn paintPixels(d: *Draw, cr: *cairo.Context, im: display.Image, px: pdf.image.Pixels) void {
+    const w: usize = px.width;
+    const h: usize = px.height;
+    if (w == 0 or h == 0) return;
+    // Cairo wants premultiplied ARGB32 in native byte order.
+    const argb = d.gpa.alloc(u32, w * h) catch return d.diag.note("image-failed", "");
+    defer d.gpa.free(argb);
+    for (0..w * h) |i| {
+        const r: u32 = px.rgba[i * 4];
+        const g: u32 = px.rgba[i * 4 + 1];
+        const b: u32 = px.rgba[i * 4 + 2];
+        const al: u32 = px.rgba[i * 4 + 3];
+        argb[i] = (al << 24) | (((r * al + 127) / 255) << 16) | (((g * al + 127) / 255) << 8) | ((b * al + 127) / 255);
     }
-
-    if (std.mem.eql(u8, filter, "DCTDecode") or std.mem.eql(u8, filter, "DCT")) {
-        const data = decoded(c, st) orelse return;
-        defer c.gpa.free(data);
-        // zigimg (Zig) first; stb_image for what it refuses, such as CMYK JPEGs.
-        if (imgcodec.decode(c.gpa, data)) |dec| {
-            defer dec.deinit(c.gpa);
-            w = dec.width;
-            h = dec.height;
-            pixels = image.fromRgba8(c.gpa, w, h, dec.rgba, alpha) catch |e| return c.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", name);
-        } else |_| {
-            c.diag.note("jpeg-fallback-stb", name);
-            if (!is_mask and csOf(c, d.get("ColorSpace") orelse .null, 0) == .cmyk) {
-                // A CMYK JPEG: take the four components raw and let the PDF's /Decode apply.
-                var cx: c_int = 0;
-                var cy: c_int = 0;
-                var cn: c_int = 0;
-                stbi_jpeg_raw_cmyk = 1;
-                const raw = stbi_load_from_memory(data.ptr, @intCast(@min(data.len, std.math.maxInt(c_int))), &cx, &cy, &cn, 4);
-                stbi_jpeg_raw_cmyk = 0;
-                const px4 = raw orelse return c.diag.note("image-jpeg-failed", name);
-                defer stbi_image_free(px4);
-                w = @intCast(cx);
-                h = @intCast(cy);
-                const spec: image.Spec = .{ .width = @intCast(w), .height = @intCast(h), .bpc = 8, .cs = .cmyk, .decode = decodeArray(c, d.get("Decode")), .mask = false };
-                pixels = image.toArgb(c.gpa, spec, px4[0 .. w * h * 4], fill8, alpha) catch |e| return c.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", name);
-            } else {
-                var x: c_int = 0;
-                var y: c_int = 0;
-                var n: c_int = 0;
-                const px = stbi_load_from_memory(data.ptr, @intCast(@min(data.len, std.math.maxInt(c_int))), &x, &y, &n, 3) orelse return c.diag.note("image-jpeg-failed", name);
-                defer stbi_image_free(px);
-                w = @intCast(x);
-                h = @intCast(y);
-                pixels = image.fromRgb8(c.gpa, w, h, px[0 .. w * h * 3], alpha) catch |e| return c.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", name);
-            }
-        }
-    } else {
-        const data = decoded(c, st) orelse return;
-        defer c.gpa.free(data);
-        const spec: image.Spec = .{
-            .width = @intCast(w),
-            .height = @intCast(h),
-            .bpc = @intCast(intOf(c, d.get("BitsPerComponent"), if (is_mask) 1 else 8)),
-            .cs = if (is_mask) .gray else csOf(c, d.get("ColorSpace") orelse .null, 0),
-            .decode = decodeArray(c, d.get("Decode")),
-            .mask = is_mask,
-        };
-        pixels = image.toArgb(c.gpa, spec, data, fill8, alpha) catch |e| return c.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", name);
-    }
-
-    const px = pixels orelse return;
-    const surface = cairo.Surface.imageCreateForData(@ptrCast(px.ptr), .argb32, @intCast(w), @intCast(h), @intCast(w * 4));
+    const surface = cairo.Surface.imageCreateForData(@ptrCast(argb.ptr), .argb32, @intCast(w), @intCast(h), @intCast(w * 4));
     defer surface.destroy();
     surface.markDirty();
-    const cr = c.cr;
     cr.save();
+    defer cr.restore();
+    var m = cm(im.ctm);
+    cr.transform(&m);
     // Image space is the unit square with y up; the image's first row is its top.
     cr.translate(0, 1);
     cr.scale(1.0 / @as(f64, @floatFromInt(w)), -1.0 / @as(f64, @floatFromInt(h)));
@@ -1067,167 +700,34 @@ fn drawImage(c: *Ctx, st: Object.Stream, name: []const u8) void {
     cr.getSource().setExtend(.pad);
     cr.rectangle(0, 0, @floatFromInt(w), @floatFromInt(h));
     cr.clip();
-    cr.paintWithAlpha(c.state.fill_alpha);
-    cr.restore();
+    cr.setOperator(operatorOf(im.blend));
+    cr.paintWithAlpha(im.alpha);
 }
 
-fn decodeArray(c: *Ctx, o: ?Object) ?[]const f64 {
-    const arr = switch (c.resolve(o orelse return null)) {
-        .array => |a| a,
-        else => return null,
-    };
-    const out = c.arena.alloc(f64, arr.len) catch return null;
-    for (arr, out) |item, *v| v.* = Ctx.number(c.resolve(item)) orelse 0;
-    return out;
-}
-
-/// The inline image key and value abbreviations of PDF 32000-1 table 93-94.
-fn inlineKey(k: []const u8) []const u8 {
-    const pairs = [_][2][]const u8{
-        .{ "BPC", "BitsPerComponent" }, .{ "CS", "ColorSpace" }, .{ "D", "Decode" },
-        .{ "DP", "DecodeParms" },       .{ "F", "Filter" },      .{ "H", "Height" },
-        .{ "IM", "ImageMask" },         .{ "I", "Interpolate" }, .{ "W", "Width" },
-    };
-    for (pairs) |p| if (std.mem.eql(u8, k, p[0])) return p[1];
-    return k;
-}
-
-fn inlineName(v: []const u8) []const u8 {
-    const pairs = [_][2][]const u8{
-        .{ "G", "DeviceGray" },       .{ "RGB", "DeviceRGB" },      .{ "CMYK", "DeviceCMYK" }, .{ "I", "Indexed" },
-        .{ "AHx", "ASCIIHexDecode" }, .{ "A85", "ASCII85Decode" },  .{ "LZW", "LZWDecode" },   .{ "Fl", "FlateDecode" },
-        .{ "RL", "RunLengthDecode" }, .{ "CCF", "CCITTFaxDecode" }, .{ "DCT", "DCTDecode" },
-    };
-    for (pairs) |p| if (std.mem.eql(u8, v, p[0])) return p[1];
-    return v;
-}
-
-fn inlineValue(c: *Ctx, tok: anytype) ?Object {
-    return switch (tok) {
-        .number => |n| if (n == @floor(n) and @abs(n) < 1e15) Object{ .integer = @intFromFloat(n) } else Object{ .real = n },
-        .name => |n| Object{ .name = inlineName(n) },
-        .string => |v| Object{ .string = v },
-        .hex_string => |v| Object{ .hex_string = v },
-        .operator => |o| if (std.mem.eql(u8, o, "true")) Object{ .boolean = true } else if (std.mem.eql(u8, o, "false")) Object{ .boolean = false } else null,
-        .array => |items| blk: {
-            const out = c.arena.alloc(Object, items.len) catch return null;
-            for (items, out) |it, *o| o.* = switch (it) {
-                .number => |n| if (n == @floor(n) and @abs(n) < 1e15) Object{ .integer = @intFromFloat(n) } else Object{ .real = n },
-                .name => |n| Object{ .name = inlineName(n) },
-                .string => |v| Object{ .string = v },
-                .hex_string => |v| Object{ .hex_string = v },
-                else => .null,
-            };
-            break :blk Object{ .array = out };
-        },
-    };
-}
-
-/// Draws an inline image (BI ... ID ... EI): its dictionary uses abbreviated
-/// keys; the rest is an ordinary image.
-fn inlineImage(c: *Ctx, lexer: *Lexer) void {
-    var dl = Lexer.init(c.arena, lexer.inline_dict);
-    var entries: std.ArrayList(Object.Dict.Entry) = .empty;
-    while (dl.next() catch null) |key_tok| {
-        const key = switch (key_tok) {
-            .name => |n| inlineKey(n),
-            else => continue,
-        };
-        const val_tok = (dl.next() catch null) orelse break;
-        const value = inlineValue(c, val_tok) orelse continue;
-        entries.append(c.arena, .{ .key = key, .value = value }) catch return;
-    }
-    drawImage(c, .{ .dict = .{ .entries = entries.items }, .data = lexer.inline_data }, "inline");
-}
-
-/// Runs one content stream (a page, or a form) against the context.
-fn runContent(c: *Ctx, content: []const u8) void {
-    var lexer = Lexer.init(c.arena, content);
-    lexer.capture_inline = true;
-    var args: std.ArrayList(Operand) = .empty;
-    while (lexer.next() catch null) |tok| {
-        switch (tok) {
-            .number => |v| args.append(c.arena, .{ .number = v }) catch return,
-            .string => |v| args.append(c.arena, .{ .string = v }) catch return,
-            .hex_string => |v| args.append(c.arena, .{ .hex_string = v }) catch return,
-            .name => |v| args.append(c.arena, .{ .name = v }) catch return,
-            .array => |v| args.append(c.arena, .{ .array = c.arena.dupe(Operand, v) catch return }) catch return,
-            .operator => |op| {
-                if (std.mem.eql(u8, op, "BI")) {
-                    inlineImage(c, &lexer);
-                } else {
-                    operatorStep(c, op, args.items);
-                }
-                args.clearRetainingCapacity();
-            },
-        }
-    }
-}
-
-/// The page's size in points once its /Rotate is applied.
-pub fn pageSize(doc: *zpdf.Document, index: usize) ?struct { w: f64, h: f64 } {
-    if (index >= doc.pages.items.len) return null;
-    const p = doc.pages.items[index];
-    const w = p.media_box[2] - p.media_box[0];
-    const h = p.media_box[3] - p.media_box[1];
-    return if (@mod(p.rotation, 180) == 90) .{ .w = h, .h = w } else .{ .w = w, .h = h };
-}
+// ---- pages --------------------------------------------------------------------------------
 
 /// Draws page `index` (0-based) onto `cr`, scaled by `scale` device pixels per
 /// PDF point, with the page's top-left at the origin of `cr`. What could not
 /// be drawn is recorded in `diag`.
-pub fn renderPage(allocator: std.mem.Allocator, doc: *zpdf.Document, index: usize, cr: *cairo.Context, scale: f64, diag: *Diag) Error!void {
-    if (index >= doc.pages.items.len) return error.NoSuchPage;
-    const page = doc.pages.items[index];
+pub fn renderPage(allocator: std.mem.Allocator, doc: *Document, index: usize, cr: *cairo.Context, scale: f64, diag: *Diag) Error!void {
+    const page = pdf.pages.page(&doc.doc, doc.pages, index) orelse return error.NoSuchPage;
     diag.page = index;
-    var arena_state = std.heap.ArenaAllocator.init(allocator);
-    defer arena_state.deinit();
-    const arena = arena_state.allocator();
+    var dl = doc.renderer.render(allocator, page) catch |e| switch (e) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.LimitExceeded => return diag.note("page-too-complex", ""),
+        else => return diag.note("page-content-unreadable", @errorName(e)),
+    };
+    defer dl.deinit();
 
-    const x0 = page.media_box[0];
-    const y0 = page.media_box[1];
-    const w = page.media_box[2] - x0;
-    const h = page.media_box[3] - y0;
     cr.save();
     defer cr.restore();
-    switch (@mod(page.rotation, 360)) {
-        90 => {
-            cr.translate(h * scale, 0);
-            cr.rotate(std.math.pi / 2.0);
-        },
-        180 => {
-            cr.translate(w * scale, h * scale);
-            cr.rotate(std.math.pi);
-        },
-        270 => {
-            cr.translate(0, w * scale);
-            cr.rotate(-std.math.pi / 2.0);
-        },
-        else => {},
-    }
-    // PDF space has y pointing up.
-    cr.translate(0, h * scale);
-    cr.scale(scale, -scale);
-    cr.translate(-x0, -y0);
+    cr.scale(scale, scale);
+    var base = cm(dl.base);
+    cr.transform(&base);
     cr.setSourceRgb(0, 0, 0);
     cr.setLineWidth(1);
-
-    const content = zpdf.pagetree.getPageContents(doc.parsing_arena.allocator(), arena, doc.data, &doc.xref_table, page, &doc.object_cache) catch {
-        diag.note("page-content-unreadable", "");
-        return;
-    };
-    var ctx: Ctx = .{
-        .doc = doc,
-        .cr = cr,
-        .arena = arena,
-        .gpa = allocator,
-        .resources = page.resources,
-        .diag = diag,
-        .fonts = std.StringHashMap(*const Font).init(arena),
-    };
-    runContent(&ctx, content);
-    // Unbalanced q at the end of a stream.
-    while (ctx.depth > 0) : (ctx.depth -= 1) cr.restore();
+    var d: Draw = .{ .doc = doc, .gpa = allocator, .diag = diag, .scale = scale, .device = dl.base.mul(display.Matrix.scale(scale, scale)) };
+    drawCommands(&d, cr, dl.commands);
 }
 
 // ---- tests ------------------------------------------------------------------------------------
@@ -1272,9 +772,9 @@ fn buildPdf(a: std.mem.Allocator, content: []const u8, resources: []const u8, ro
     return out.toOwnedSlice(a);
 }
 
-/// Renders page 1 of `pdf` at 2x and returns the image; the caller destroys it.
-fn renderTest(a: std.mem.Allocator, pdf: []const u8, diag: *Diag, w: c_int, h: c_int) !*cairo.Surface {
-    const doc = try zpdf.Document.openFromMemoryCopied(a, pdf, zpdf.ErrorConfig.default());
+/// Renders page 1 of `bytes` at 2x and returns the image; the caller destroys it.
+fn renderTest(a: std.mem.Allocator, bytes: []const u8, diag: *Diag, w: c_int, h: c_int) !*cairo.Surface {
+    const doc = try Document.openFromMemory(a, bytes);
     defer doc.close();
     const surface = cairo.Surface.imageCreate(.argb32, w, h);
     const cr = cairo.Context.create(surface);
@@ -1294,56 +794,60 @@ fn savePng(surface: *cairo.Surface, name: [:0]const u8) void {
     _ = surface.writeToPng(path);
 }
 
+fn pixel(surface: *cairo.Surface, x: usize, y: usize) [3]u8 {
+    const data = surface.imageGetData().?;
+    const stride: usize = @intCast(surface.imageGetStride());
+    const o = y * stride + x * 4; // BGRA
+    return .{ data[o + 2], data[o + 1], data[o] };
+}
+
 /// A 1x1 JPEG, to test DCTDecode.
 const tiny_jpeg_b64 = "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
 
 test "paths, colours and text are drawn" {
     const a = std.testing.allocator;
-    const pdf = try buildPdf(a,
+    const bytes = try buildPdf(a,
         \\1 0 0 rg 10 10 60 40 re f
         \\0 0 1 RG 4 w 100 20 m 150 80 l S
         \\0 0.6 0 rg 120 10 m 190 10 l 190 40 l h f
         \\BT /F1 18 Tf 1 0 0 1 10 70 Tm 0 g (Hello PDF) Tj ET
     , "", 0, &.{});
-    defer a.free(pdf);
+    defer a.free(bytes);
     var diag = Diag.init(a);
     diag.verbose = false;
     defer diag.deinit();
-    const surface = try renderTest(a, pdf, &diag, 400, 200);
+    const surface = try renderTest(a, bytes, &diag, 400, 200);
     defer surface.destroy();
     savePng(surface, "paths");
     try std.testing.expectEqual(@as(u32, 0), diag.total());
+    // The red rectangle: page (10..70, 10..50) at scale 2 from the top of a 200-high surface.
+    const red = pixel(surface, 60, 150);
+    try std.testing.expect(red[0] > 200 and red[1] < 60 and red[2] < 60);
+    const white = pixel(surface, 300, 20);
+    try std.testing.expect(white[0] > 240 and white[1] > 240 and white[2] > 240);
 }
 
 test "inline images are drawn, with their abbreviated keys" {
     const a = std.testing.allocator;
     // A 2x1 RGB inline image (red, blue) and a 1-bit stencil painted in green; the page is 200x100 at scale 2.
-    const pdf = try buildPdf(a,
+    const bytes = try buildPdf(a,
         "q 40 0 0 20 10 60 cm\nBI /W 2 /H 1 /CS /RGB /BPC 8 ID \xFF\x00\x00\x00\x00\xFF EI Q\n" ++
             "0 0.6 0 rg q 30 0 0 20 100 60 cm\nBI /IM true /W 1 /H 1 /BPC 1 ID \x00 EI Q\n" ++
             "0 0 0 rg 10 10 20 20 re f", "", 0, &.{});
-    defer a.free(pdf);
+    defer a.free(bytes);
     var diag = Diag.init(a);
     diag.verbose = false;
     defer diag.deinit();
-    const surface = try renderTest(a, pdf, &diag, 400, 200);
+    const surface = try renderTest(a, bytes, &diag, 400, 200);
     defer surface.destroy();
     savePng(surface, "inline-images");
     try std.testing.expectEqual(@as(u32, 0), diag.total());
-    const data = surface.imageGetData() orelse return error.TestUnexpectedResult;
-    const stride: usize = @intCast(surface.imageGetStride());
-    const at = struct {
-        fn px(d: [*]u8, st: usize, x: usize, y: usize) [3]u8 {
-            const o = y * st + x * 4; // BGRA
-            return .{ d[o + 2], d[o + 1], d[o] };
-        }
-    }.px;
-    // Page y 60..80 is image rows 40..80 at scale 2 from the top of a 200-high surface: y = 200 - 2*70.
-    const red = at(data, stride, 30, 60);
-    const blue = at(data, stride, 70, 60);
+    // Page y 60..80 is surface rows 40..80 (scale 2, page 100 high: y = 200 - 2*70).
+    const red = pixel(surface, 30, 60);
+    const blue = pixel(surface, 70, 60);
     try std.testing.expect(red[0] > 200 and red[1] < 60 and red[2] < 60);
     try std.testing.expect(blue[2] > 200 and blue[0] < 60);
-    const green = at(data, stride, 230, 60);
+    const green = pixel(surface, 230, 60);
     try std.testing.expect(green[1] > 100 and green[0] < 60);
 }
 
@@ -1351,7 +855,7 @@ test "images, forms, transparency and rotation" {
     const a = std.testing.allocator;
     // A 2x2 RGB image: red, green / blue, white.
     const rgb = [_]u8{ 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255 };
-    const pdf = try buildPdf(a,
+    const bytes = try buildPdf(a,
         \\q 60 0 0 40 10 50 cm /Im1 Do Q
         \\q 1 0 0 1 100 10 cm /Fm1 Do Q
         \\/GS1 gs 0 0 1 rg 20 5 50 30 re f
@@ -1360,40 +864,71 @@ test "images, forms, transparency and rotation" {
         .{ .dict = "/Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8", .stream = &rgb },
         .{ .dict = "/Type /XObject /Subtype /Form /BBox [0 0 40 40] /Matrix [1 0 0 1 0 0]", .stream = "0.9 0.5 0 rg 0 0 40 40 re f 0 g 5 5 10 10 re f" },
     });
-    defer a.free(pdf);
+    defer a.free(bytes);
     var diag = Diag.init(a);
     diag.verbose = false;
     defer diag.deinit();
     // Rotated 90 degrees the page is 100 wide and 200 tall.
-    const surface = try renderTest(a, pdf, &diag, 200, 400);
+    const surface = try renderTest(a, bytes, &diag, 200, 400);
     defer surface.destroy();
     savePng(surface, "image-form-rotate");
     try std.testing.expectEqual(@as(u32, 0), diag.total());
+}
+
+test "gradients and tiling patterns are drawn" {
+    const a = std.testing.allocator;
+    const bytes = try buildPdf(a,
+        \\/Pattern cs /P1 scn 10 10 80 80 re f
+        \\/Pattern cs /P2 scn 110 10 80 80 re f
+    , "/Pattern << /P1 6 0 R /P2 7 0 R >>", 0, &.{
+        .{ .dict = "/PatternType 2 /Shading << /ShadingType 2 /ColorSpace /DeviceRGB /Coords [10 0 90 0] /Function << /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [0 0 1] /N 1 >> >>" },
+        .{ .dict = "/PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 20 20] /XStep 20 /YStep 20 /Resources << >>", .stream = "0 0.6 0 rg 0 0 10 10 re f 10 10 10 10 re f" },
+    });
+    defer a.free(bytes);
+    var diag = Diag.init(a);
+    diag.verbose = false;
+    defer diag.deinit();
+    const surface = try renderTest(a, bytes, &diag, 400, 200);
+    defer surface.destroy();
+    savePng(surface, "patterns");
+    try std.testing.expectEqual(@as(u32, 0), diag.total());
+    // The gradient runs from red (left) to blue (right).
+    const left = pixel(surface, 24, 100);
+    const right = pixel(surface, 170, 100);
+    try std.testing.expect(left[0] > right[0] and right[2] > left[2]);
+    // The tiling pattern has green cells and white gaps: both occur in a row.
+    var green: usize = 0;
+    var blank: usize = 0;
+    for (230..380) |x| {
+        const p = pixel(surface, x, 100);
+        if (p[1] > 100 and p[0] < 80) green += 1;
+        if (p[0] > 230 and p[1] > 230 and p[2] > 230) blank += 1;
+    }
+    try std.testing.expect(green > 20 and blank > 20);
 }
 
 test "a JPEG image is decoded, and unsupported image types are counted" {
     const a = std.testing.allocator;
     var tiny_jpeg: [134]u8 = undefined;
     try std.base64.standard.Decoder.decode(&tiny_jpeg, tiny_jpeg_b64);
-    const pdf = try buildPdf(a,
+    const bytes = try buildPdf(a,
         \\q 80 0 0 40 10 10 cm /Im1 Do Q
         \\q 80 0 0 40 100 10 cm /Im2 Do Q
     , "/XObject << /Im1 6 0 R /Im2 7 0 R >>", 0, &.{
         .{ .dict = "/Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /DCTDecode", .stream = &tiny_jpeg },
         .{ .dict = "/Type /XObject /Subtype /Image /Width 8 /Height 8 /ColorSpace /DeviceGray /BitsPerComponent 1 /Filter /JBIG2Decode", .stream = "x" },
     });
-    defer a.free(pdf);
+    defer a.free(bytes);
     var diag = Diag.init(a);
     diag.verbose = false;
     defer diag.deinit();
-    const surface = try renderTest(a, pdf, &diag, 400, 200);
+    const surface = try renderTest(a, bytes, &diag, 400, 200);
     defer surface.destroy();
     savePng(surface, "jpeg-and-unsupported");
     try std.testing.expectEqual(@as(?u32, 1), diag.counts.get("image-jbig2"));
 }
 
 test {
-    _ = @import("image.zig");
     _ = @import("diag.zig");
     _ = @import("cff.zig");
     _ = @import("type1.zig");

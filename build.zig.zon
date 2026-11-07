@@ -5,6 +5,8 @@
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .zigimg = .{ .path = "third_party/zigimg" },
+        // pdf-zig, next to this directory (the PDF reader and display-list builder).
+        .pdf = .{ .path = "../pdf-zig" },
         .gobject = .{
             .url = "https://deps.files.ghostty.org/gobject-2026-10-02-38-1.tar.zst",
             .hash = "gobject-0.3.2-Skun7LuIogBbEh-6WrLeEzMaRCnOMB3eOf__RaPYSMCZ",

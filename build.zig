@@ -67,11 +67,12 @@ pub fn build(b: *std.Build) void {
     imgcodec_run.has_side_effects = true; // DKDE_TEST_IMAGE is read from the environment
     test_step.dependOn(&imgcodec_run.step);
 
-    // The PDF page renderer: cairo drawing on top of the vendored zpdf parser.
+    // The PDF page renderer: cairo drawing from pdf-zig's display list.
     // It does not need GTK or poppler, so its tests always run.
-    const zpdf_mod = b.createModule(.{ .root_source_file = b.path("third_party/zpdf/src/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
+    const pdf_dep = b.dependency("pdf", .{ .target = target, .optimize = optimize });
+    const pdf_mod = pdf_dep.module("pdf");
     const pdfrender = b.createModule(.{ .root_source_file = b.path("src/pdfrender/render.zig"), .target = target, .optimize = optimize, .link_libc = true });
-    pdfrender.addImport("zpdf", zpdf_mod);
+    pdfrender.addImport("pdf", pdf_mod);
     pdfrender.addImport("truetype", truetypeModule(b, target, optimize));
     pdfrender.addImport("imgcodec", imgcodec);
     pdfrender.addImport("cairo1", gobject.module("cairo1"));
@@ -84,8 +85,7 @@ pub fn build(b: *std.Build) void {
 
     // dkde-pdfcheck: draws many PDFs without a display and reports what was not drawn.
     const check_mod = b.createModule(.{ .root_source_file = b.path("src/pdfcheck/main.zig"), .target = target, .optimize = optimize, .link_libc = true, .strip = strip });
-    check_mod.addImport("zpdf", zpdf_mod);
-    check_mod.addImport("pdfrender", pdfrender);
+        check_mod.addImport("pdfrender", pdfrender);
     check_mod.addImport("cairo1", gobject.module("cairo1"));
     check_mod.addImport("glib2", gobject.module("glib2"));
     check_mod.linkSystemLibrary("cairo", .{});
