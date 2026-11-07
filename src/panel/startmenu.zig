@@ -51,8 +51,6 @@ pub const StartMenu = struct {
     page: [:0]const u8 = "main",
     /// Best current search match, launched by Enter.
     first_result: ?*AppEntry = null,
-    /// X11: the menu has been active once, so losing focus now means "close".
-    seen_active: bool = false,
 
     pub fn open(
         allocator: std.mem.Allocator,
@@ -92,9 +90,6 @@ pub const StartMenu = struct {
             .size = bar_height,
             .menu_side = position.edge(),
         });
-        // Without layer-shell there is no full-output backdrop to click, so
-        // losing focus closes the menu instead.
-        if (surface.isX11()) _ = gobject.Object.signals.notify.connect(window, *StartMenu, &onActiveChanged, self, .{ .detail = "is-active" });
         window.present();
         _ = self.search.as(gtk.Widget).grabFocus();
         return self;
@@ -190,7 +185,7 @@ pub const StartMenu = struct {
         const outer = self.menu_box_new();
         // The menu sits in the corner next to the panel, clear of it.
         const widget = outer.as(gtk.Widget);
-        if (!surface.isX11()) switch (position) {
+        switch (position) {
             .bottom => {
                 widget.setHalign(.start);
                 widget.setValign(.end);
@@ -211,7 +206,7 @@ pub const StartMenu = struct {
                 widget.setValign(.end);
                 widget.setMarginEnd(bar_height);
             },
-        };
+        }
         self.window.setChild(outer.as(gtk.Widget));
         self.menu_box = outer;
 
@@ -345,7 +340,7 @@ pub const StartMenu = struct {
         const avatar = gtk.Image.new();
         avatar.setPixelSize(48);
         avatar.as(gtk.Widget).addCssClass("dkde-avatar");
-        var shared = common.Config.load(self.allocator, "dkde.conf") catch null;
+        var shared = common.Config.load(self.allocator, "dkde.toml") catch null;
         defer if (shared) |*c| c.deinit();
         const picture = if (shared) |*c| common.user.picturePath(self.allocator, c) else null;
         defer if (picture) |p| self.allocator.free(p);
@@ -584,7 +579,7 @@ pub const StartMenu = struct {
 
     /// The pinned desktop IDs: the configured list, else the defaults.
     fn pinnedIds(self: *StartMenu) ![][]u8 {
-        var cfg = try common.Config.load(self.allocator, "panel.conf");
+        var cfg = try common.Config.load(self.allocator, "panel.toml");
         defer cfg.deinit();
         if (try cfg.getStringList(self.allocator, "menu", "pinned")) |list| return list;
         var out: std.ArrayList([]u8) = .empty;
@@ -613,7 +608,7 @@ pub const StartMenu = struct {
         }
         if (!found) next.append(self.allocator, id) catch return;
 
-        var cfg = common.Config.load(self.allocator, "panel.conf") catch return;
+        var cfg = common.Config.load(self.allocator, "panel.toml") catch return;
         defer cfg.deinit();
         cfg.setStringList("menu", "pinned", next.items) catch |err| log.warn("cannot save pins: {s}", .{@errorName(err)});
         self.close();
@@ -649,16 +644,6 @@ pub const StartMenu = struct {
 
     fn onSearchActivate(_: *gtk.SearchEntry, self: *StartMenu) callconv(.c) void {
         if (self.first_result) |app| self.launch(app);
-    }
-
-    /// X11 only: the menu closes when it stops being the active window.
-    fn onActiveChanged(window: *gtk.Window, _: *gobject.ParamSpec, self: *StartMenu) callconv(.c) void {
-        if (window.isActive() != 0) {
-            self.seen_active = true;
-        } else if (self.seen_active) {
-            // Defer: closing frees this struct, and we are inside its signal.
-            _ = glib.idleAdd(closeIdle, self);
-        }
     }
 
     fn closeIdle(data: ?*anyopaque) callconv(.c) c_int {

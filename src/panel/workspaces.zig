@@ -34,7 +34,6 @@ pub const Workspaces = struct {
 
     /// Null when not on Wayland or when the compositor has no workspaces.
     pub fn create(allocator: std.mem.Allocator, on_change: *const fn (*anyopaque) void, data: *anyopaque) ?*Workspaces {
-        if (surface.isX11()) return null;
         const display = gdk.Display.getDefault() orelse return null;
         if (gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkwayland.WaylandDisplay.getGObjectType()) == 0) return null;
         const wl_display: *wl.Display = @ptrCast(gdkwayland.WaylandDisplay.getWlDisplay(@ptrCast(display)) orelse return null);

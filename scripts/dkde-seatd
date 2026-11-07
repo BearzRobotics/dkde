@@ -1,4 +1,15 @@
 #!/bin/sh
+
+# Only the long options are ours; seatd's own -h and -v pass through to it.
+case "${1:-}" in
+    --help)
+        echo "dkde-seatd - start seatd from wherever this system installed it"
+        echo "Usage: dkde-seatd [SEATD-OPTIONS...]"
+        echo "  --help     show this help and exit"
+        echo "  --version  show the version and exit"
+        exit 0 ;;
+    --version) echo "dkde-seatd @VERSION@"; exit 0 ;;
+esac
 # Starts seatd, wherever this distribution put it (Debian and Ubuntu: /usr/sbin;
 # Arch, Void and Alpine: /usr/bin). Arguments go to seatd, for example
 #     dkde-seatd -n 3 -g video

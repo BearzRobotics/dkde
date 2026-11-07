@@ -1,6 +1,7 @@
 //! dkde-calc: calculator with standard and scientific modes (SPEC.md 5.6).
 
 const std = @import("std");
+const cli = @import("cli");
 const gio = @import("gio2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
@@ -276,6 +277,7 @@ const Calculator = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-calc", .summary = "Calculator" });
     common.perf.init();
     var debug_allocator: common.perf.Gpa = .{};
     defer debug_allocator.deinit();

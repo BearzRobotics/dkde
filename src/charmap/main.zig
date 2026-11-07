@@ -1,6 +1,7 @@
 //! dkde-charmap: pick Unicode characters from blocks and copy them (SPEC.md 5.6).
 
 const std = @import("std");
+const cli = @import("cli");
 const gdk = @import("gdk4");
 const gio = @import("gio2");
 const glib = @import("glib2");
@@ -150,6 +151,7 @@ const Charmap = struct {
 };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-charmap", .summary = "Character map" });
     try common.runapp.run("org.dkde.charmap", Charmap, init);
 }
 

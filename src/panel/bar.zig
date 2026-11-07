@@ -118,8 +118,7 @@ pub const Bar = struct {
         tray: ?*Tray,
         quick: ?*Quick,
     ) !*Bar {
-        // Auto-hide needs layer-shell; on X11 the bar stays put.
-        const autohide_on = autohide and !surface.isX11();
+        const autohide_on = autohide;
         const vertical = position.isVertical();
         const window = gtk.Window.new();
         window.as(gtk.Widget).addCssClass("dkde-panel");
@@ -295,7 +294,6 @@ pub const Bar = struct {
     /// takes pointer input, so the transparent rest does not block windows.
     fn applySize(self: *Bar, _: bool) void {
         const t: c_int = self.thickness;
-        surface.setSize(self.window, t);
         // The window keeps its size even while the bar inside it is slid away.
         if (self.position.isVertical()) {
             self.window.as(gtk.Widget).setSizeRequest(self.thickness, -1);
@@ -304,10 +302,10 @@ pub const Bar = struct {
         }
         if (self.position.isVertical()) {
             self.root.as(gtk.Widget).setSizeRequest(self.thickness, -1);
-            if (!surface.isX11()) self.window.setDefaultSize(t, 0);
+            self.window.setDefaultSize(t, 0);
         } else {
             self.root.as(gtk.Widget).setSizeRequest(-1, self.thickness);
-            if (!surface.isX11()) self.window.setDefaultSize(0, t);
+            self.window.setDefaultSize(0, t);
         }
     }
 

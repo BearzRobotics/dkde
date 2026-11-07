@@ -9,13 +9,13 @@
 # Settings (environment variables):
 #   PREFIX     install prefix                      (default /usr)
 #   DESTDIR    staging root for packaging          (default empty)
-#   ZIG        the Zig 0.17.0 compiler             (default zig)
+#   ZIG        the Zig 0.17.1 compiler             (default zig)
 #   MODE       safe | small | fast                 (default safe)
 #   CPU        Zig CPU target. "baseline" runs on any x86-64 and is right for
 #              an image that must boot on old machines. "native" tunes for the
 #              build machine and may not run elsewhere.        (default baseline)
 #   TARGET     Zig target triple, only for cross builds, e.g. x86_64-linux-musl
-#   FLAGS      extra zig build options, e.g. "-Dx11=true" or "-Dpdf=true"
+#   FLAGS      extra zig build options, e.g. "-Dpdf=true"
 #   PAM_FORM   system (Slackware, LFS, dkrescue-style system-auth) | debian   (default system)
 #   INIT       dinit | systemd | sysvinit | none   which service files to install (default dinit)
 #   GREETD_USER  the account greetd runs the greeter as           (default _greetd)
@@ -45,9 +45,9 @@ say() { printf 'dkde: %s\n' "$*"; }
 die() { printf 'dkde: %s\n' "$*" >&2; exit 1; }
 
 check() {
-    command -v "$ZIG" >/dev/null 2>&1 || die "Zig not found (set ZIG=/path/to/zig); dkde needs Zig 0.17.0 exactly."
+    command -v "$ZIG" >/dev/null 2>&1 || die "Zig not found (set ZIG=/path/to/zig); dkde needs Zig 0.17.1 exactly."
     v=$("$ZIG" version)
-    [ "$v" = "0.17.0" ] || die "Zig $v found, but dkde needs exactly 0.17.0."
+    [ "$v" = "0.17.1" ] || die "Zig $v found, but dkde needs exactly 0.17.1."
     command -v pkg-config >/dev/null 2>&1 || die "pkg-config is required."
     missing=""
     for m in gtk4 gtk4-layer-shell-0 wayland-client; do

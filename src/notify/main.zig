@@ -13,14 +13,15 @@
 //! The text is shown as given; it is never read as markup or as a command.
 
 const std = @import("std");
+const cli = @import("cli");
 const glib = @import("glib2");
 const gio = @import("gio2");
 const gobject = @import("gobject2");
-const common = @import("common");
+const core = @import("core");
 
 const mounts = @import("mounts.zig");
 
-pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
+pub const std_options: std.Options = .{ .logFn = core.log.logFn, .log_level = .debug };
 
 const usage =
     \\usage: dkde-notify [-i ICON] [-t MILLISECONDS] SUMMARY [BODY]
@@ -99,6 +100,7 @@ pub fn parse(args: []const []const u8) ParseError!Parsed {
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-notify", .summary = "Send a desktop notification", .usage = "[-i ICON] [-t MILLISECONDS] [--] SUMMARY [BODY]", .value_options = &.{ "-i", "-t", "--mounted", "--unmounted", "--removed" } });
     const allocator = std.heap.c_allocator;
     var args: std.ArrayList([]const u8) = .empty;
     defer args.deinit(allocator);
@@ -113,7 +115,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const summary = try allocator.dupeSentinel(u8, parsed.summary, 0);
     const body = try allocator.dupeSentinel(u8, parsed.body, 0);
     const icon = try allocator.dupeSentinel(u8, parsed.icon, 0);
-    common.notify.sendTimed(summary, body, icon, parsed.timeout);
+    core.notify.sendTimed(summary, body, icon, parsed.timeout);
 }
 
 /// The label of a device, from the by-label links udev keeps. Shown only.
@@ -176,7 +178,7 @@ fn sendDrive(allocator: std.mem.Allocator, drive: Drive, device: []const u8, tim
         .removed => summary = "Drive removed",
     }
     const z = try allocator.dupeSentinel(u8, body, 0);
-    common.notify.sendTimed(summary, z, "drive-removable-media", timeout);
+    core.notify.sendTimed(summary, z, "drive-removable-media", timeout);
 }
 
 test "summary and body" {

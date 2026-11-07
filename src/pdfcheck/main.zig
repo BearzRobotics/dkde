@@ -19,6 +19,7 @@
 //! "END" is the culprit, and `--resume` carries on past it.
 
 const std = @import("std");
+const cli = @import("cli");
 const cairo = @import("cairo1");
 const glib = @import("glib2");
 const zpdf = @import("zpdf");
@@ -302,6 +303,7 @@ fn loadTrail(run: *Run, path: [:0]const u8) void {
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-pdfcheck", .summary = "Draw PDFs without a display and report what was not drawn", .usage = "[options] PATH...", .accepted = &.{ "--resume", "-v" }, .value_options = &.{ "--pages", "--scale", "--out", "--report", "--trail", "--max-mb", "--shard" } });
     const a = std.heap.c_allocator;
     var opt: Options = .{};
     var paths: std.ArrayList([:0]const u8) = .empty;

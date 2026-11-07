@@ -8,9 +8,15 @@
 //!               starting on a Sunday. The 29th "day" of a month is outside the
 //!               week: Leap Day (after June 28, in leap years) and Year Day
 //!               (after December 28).
+//!  * rosquin_weeks / rosquin_months / rosquin_quarters: the Rosquin calendar
+//!               (see common/rosquin.zig) with its 28 weeks of 13 days shown as
+//!               one page, as 7 months of 4 weeks, or as 4 quarters of 7 weeks.
 
 const std = @import("std");
-const civil = @import("common").civil;
+const common = @import("common");
+const civil = common.civil;
+const rosquin = common.rosquin;
+const worldcal = @import("worldcal.zig");
 
 pub const Date = civil.Date;
 
@@ -18,38 +24,101 @@ pub const System = enum {
     julian,
     gregorian,
     fixed,
+    rosquin_weeks,
+    rosquin_months,
+    rosquin_quarters,
+    chinese,
+    hebrew,
+    coptic,
+    ethiopian,
 
     pub fn parse(text: []const u8) System {
-        return std.meta.stringToEnum(System, text) orelse .julian;
+        if (std.mem.eql(u8, text, "rosquin")) return .rosquin_months;
+        return std.meta.stringToEnum(System, text) orelse .gregorian;
     }
 
     pub fn name(self: System) [:0]const u8 {
         return @tagName(self);
     }
 
-    pub fn label(self: System) []const u8 {
+    pub fn label(self: System) [:0]const u8 {
         return switch (self) {
             .julian => "Julian",
             .gregorian => "Gregorian",
             .fixed => "Fixed (13 months)",
+            .rosquin_weeks => "Rɛ°Cᴀʟ—28.wѻ",
+            .rosquin_months => "Rɛ°Cᴀʟ—7ᴍọ/4.wѻ",
+            .rosquin_quarters => "Rɛ°Cᴀʟ—4ᴍọ/7.wѻ",
+            .chinese => "Chinese",
+            .hebrew => "Hebrew (Jewish)",
+            .coptic => "Coptic",
+            .ethiopian => "Ethiopian",
         };
     }
 
     pub fn monthCount(self: System) u8 {
-        return if (self == .fixed) 13 else 12;
+        return switch (self) {
+            .fixed => 13,
+            .rosquin_weeks, .rosquin_months, .rosquin_quarters => self.layout().?.monthsPerYear(),
+            .coptic, .ethiopian => 13,
+            else => 12,
+        };
+    }
+
+    pub fn isRosquin(self: System) bool {
+        return self.layout() != null;
+    }
+
+    pub fn layout(self: System) ?rosquin.Layout {
+        return switch (self) {
+            .rosquin_weeks => .weeks,
+            .rosquin_months => .months,
+            .rosquin_quarters => .quarters,
+            else => null,
+        };
     }
 };
 
 /// A date written in some system. In `fixed`, day 29 of month 6 is Leap Day
 /// and day 29 of month 13 is Year Day.
-pub const Ymd = struct { year: i32, month: u8, day: u8 };
+pub const Ymd = struct { year: i32, month: u8, day: u16 };
 
 const gregorian_names = [_][]const u8{ "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
 const fixed_names = [_][]const u8{ "January", "February", "March", "April", "May", "June", "Sol", "July", "August", "September", "October", "November", "December" };
 
+/// How many months (pages) a year has: it varies in the lunisolar calendars.
+pub fn monthsIn(sys: System, year: i32) u8 {
+    return switch (sys) {
+        .chinese => worldcal.chineseMonthsIn(year),
+        .hebrew => worldcal.hebrewMonthsIn(year),
+        else => sys.monthCount(),
+    };
+}
+
+/// The name of a month in a given year ("Month 6", "Leap Month 6", "Adar I", "Pagume").
+pub fn monthLabel(buf: []u8, sys: System, year: i32, month: u8) []const u8 {
+    const i = @min(@as(usize, month) -| 1, 12);
+    return switch (sys) {
+        .chinese => worldcal.chineseMonthName(buf, year, month),
+        .hebrew => worldcal.hebrewMonthName(year, month),
+        .coptic => worldcal.coptic_months[i],
+        .ethiopian => worldcal.ethiopian_months[i],
+        else => monthName(sys, month),
+    };
+}
+
+/// The year as written in the system ("2026", or "Bing-Wu, Fire Horse").
+pub fn yearLabel(buf: []u8, sys: System, year: i32) []const u8 {
+    return switch (sys) {
+        .chinese => worldcal.chineseYearName(buf, year),
+        else => std.fmt.bufPrint(buf, "{d}", .{year}) catch "",
+    };
+}
+
 pub fn monthName(sys: System, month: u8) []const u8 {
     const i = @as(usize, month) - 1;
     return switch (sys) {
+        .rosquin_weeks, .rosquin_months, .rosquin_quarters => rosquin.pageName(sys.layout().?, month),
         .fixed => fixed_names[@min(i, 12)],
         else => gregorian_names[@min(i, 11)],
     };
@@ -113,6 +182,24 @@ fn fixedToDays(v: Ymd) i64 {
     return civil.daysFromCivil(v.year, 1, 1) + doy - 1;
 }
 
+// ---- Rosquin -----------------------------------------------------------------------------------
+
+fn worldYmd(v: worldcal.Ymd) Ymd {
+    return .{ .year = v.year, .month = v.month, .day = v.day };
+}
+
+fn worldOf(v: Ymd) worldcal.Ymd {
+    return .{ .year = v.year, .month = v.month, .day = @intCast(v.day) };
+}
+
+fn rosYmd(v: rosquin.Ymd) Ymd {
+    return .{ .year = v.year, .month = v.month, .day = v.day };
+}
+
+fn rosOf(v: Ymd) rosquin.Ymd {
+    return .{ .year = v.year, .month = v.month, .day = v.day };
+}
+
 // ---- the public face ---------------------------------------------------------------------------
 
 pub fn fromCivil(sys: System, date: Date) Ymd {
@@ -120,20 +207,30 @@ pub fn fromCivil(sys: System, date: Date) Ymd {
         .gregorian => .{ .year = date.year, .month = date.month, .day = date.day },
         .julian => julianFromDays(date.days()),
         .fixed => fixedFromDays(date.days()),
+        .rosquin_weeks, .rosquin_months, .rosquin_quarters => rosYmd(rosquin.fromCivil(sys.layout().?, date)),
+        .chinese => worldYmd(worldcal.chineseFromDays(date.days())),
+        .hebrew => worldYmd(worldcal.hebrewFromDays(date.days())),
+        .coptic => worldYmd(worldcal.africaFromDays(.coptic, date.days())),
+        .ethiopian => worldYmd(worldcal.africaFromDays(.ethiopian, date.days())),
     };
 }
 
 pub fn toCivil(sys: System, v: Ymd) Date {
     return switch (sys) {
-        .gregorian => .{ .year = v.year, .month = v.month, .day = v.day },
+        .gregorian => .{ .year = v.year, .month = v.month, .day = @intCast(v.day) },
         .julian => Date.fromDays(julianToDays(v)),
         .fixed => Date.fromDays(fixedToDays(v)),
+        .rosquin_weeks, .rosquin_months, .rosquin_quarters => rosquin.toCivil(sys.layout().?, rosOf(v)),
+        .chinese => Date.fromDays(worldcal.chineseToDays(worldOf(v))),
+        .hebrew => Date.fromDays(worldcal.hebrewToDays(worldOf(v))),
+        .coptic => Date.fromDays(worldcal.africaToDays(.coptic, worldOf(v))),
+        .ethiopian => Date.fromDays(worldcal.africaToDays(.ethiopian, worldOf(v))),
     };
 }
 
 /// How many days the month has; for `fixed` that is 28, plus 1 for Leap Day
 /// or Year Day.
-pub fn monthDays(sys: System, year: i32, month: u8) u8 {
+pub fn monthDays(sys: System, year: i32, month: u8) u16 {
     return switch (sys) {
         .gregorian => civil.daysInMonth(year, month),
         .julian => switch (month) {
@@ -142,6 +239,10 @@ pub fn monthDays(sys: System, year: i32, month: u8) u8 {
             else => 31,
         },
         .fixed => if ((month == 13) or (month == 6 and civil.isLeap(year))) 29 else 28,
+        .rosquin_weeks, .rosquin_months, .rosquin_quarters => rosquin.monthDays(sys.layout().?, month),
+        .chinese => worldcal.chineseMonthDays(year, month),
+        .hebrew => worldcal.hebrewMonthDays(year, month),
+        .coptic, .ethiopian => worldcal.africaMonthDays(year, month),
     };
 }
 
@@ -149,6 +250,7 @@ pub fn monthDays(sys: System, year: i32, month: u8) u8 {
 /// outside the week. The Fixed Calendar's week restarts every month, so its
 /// Sunday is generally not a civil Sunday.
 pub fn weekdayOf(sys: System, date: Date) ?u8 {
+    if (sys.isRosquin()) return null; // 13-day weeks; see rosquin.dayOfWeek
     if (sys != .fixed) return date.weekday();
     const v = fromCivil(.fixed, date);
     if (v.day == 29) return null;
@@ -157,10 +259,18 @@ pub fn weekdayOf(sys: System, date: Date) ?u8 {
 
 /// Whether the day is outside the week (Leap Day, Year Day).
 pub fn isSpecial(sys: System, v: Ymd) bool {
-    return sys == .fixed and v.day == 29;
+    return (sys == .fixed and v.day == 29) or (sys.isRosquin() and rosquin.isSpecial(rosOf(v)));
+}
+
+/// The page of the grid that shows `v`. A Rosquin special day is in no month, so
+/// it is shown with the page next to it.
+pub fn pageOf(sys: System, v: Ymd) u8 {
+    if (v.month != 0) return v.month;
+    return rosquin.pageNear(sys.layout().?, v.day);
 }
 
 pub fn specialName(v: Ymd) []const u8 {
+    if (rosquin.isSpecial(rosOf(v))) return rosquin.specialName(rosOf(v));
     return if (v.month == 6) "Leap Day" else "Year Day";
 }
 
@@ -169,8 +279,21 @@ pub const weekday_names = [_][]const u8{ "Sunday", "Monday", "Tuesday", "Wednesd
 /// "Saturday, October 31, 2026" in the given system, for a day panel.
 pub fn describe(buf: []u8, sys: System, date: Date) []const u8 {
     const v = fromCivil(sys, date);
+    if (sys.isRosquin()) {
+        const code = rosquin.dayCode(date);
+        if (rosquin.dayOfWeek(date)) |wd| {
+            return std.fmt.bufPrint(buf, "{d} \u{b7} day {d} of the year \u{b7} {s}, Yr {d}, {s} {d} \u{b7} Wk {d}, day {d}", .{
+                code, rosquin.dayOfYear(date), rosquin.day_names[wd - 1], v.year, monthName(sys, v.month), v.day, rosquin.weekOfYear(date).?, wd,
+            }) catch "";
+        }
+        return std.fmt.bufPrint(buf, "{d} \u{b7} day {d} of the year \u{b7} {s}, Yr {d} \u{b7} inter-calendar day, in no week or month (falls in week {d})", .{ code, rosquin.dayOfYear(date), specialName(v), v.year, rosquin.weekNear(v.day) }) catch "";
+    }
     if (weekdayOf(sys, date)) |wd|
-        return std.fmt.bufPrint(buf, "{s}, {s} {d}, {d}", .{ weekday_names[wd], monthName(sys, v.month), v.day, v.year }) catch "";
+    {
+        var mb: [48]u8 = undefined;
+        var yb: [64]u8 = undefined;
+        return std.fmt.bufPrint(buf, "{s}, {s} {d}, {s}", .{ weekday_names[wd], monthLabel(&mb, sys, v.year, v.month), v.day, yearLabel(&yb, sys, v.year) }) catch "";
+    }
     return std.fmt.bufPrint(buf, "{s}, {d}", .{ specialName(v), v.year }) catch "";
 }
 
@@ -185,7 +308,7 @@ test "Julian is 13 days behind now" {
     try std.testing.expectEqual(Ymd{ .year = 2026, .month = 12, .day = 25 }, fromCivil(.julian, .{ .year = 2027, .month = 1, .day = 7 }));
     // Julian leap day exists in 1900 (not Gregorian) and was Mar 13 civil.
     try std.testing.expectEqual(Ymd{ .year = 1900, .month = 2, .day = 29 }, fromCivil(.julian, .{ .year = 1900, .month = 3, .day = 13 }));
-    try std.testing.expectEqual(@as(u8, 29), monthDays(.julian, 1900, 2));
+    try std.testing.expectEqual(@as(u16, 29), monthDays(.julian, 1900, 2));
 }
 
 test "Julian round trip over centuries" {
@@ -215,8 +338,8 @@ test "fixed calendar" {
     try std.testing.expectEqual(Ymd{ .year = 2028, .month = 6, .day = 29 }, fromCivil(.fixed, .{ .year = 2028, .month = 6, .day = 17 }));
     try std.testing.expectEqual(Ymd{ .year = 2028, .month = 7, .day = 1 }, fromCivil(.fixed, .{ .year = 2028, .month = 6, .day = 18 }));
     try std.testing.expectEqual(Ymd{ .year = 2028, .month = 13, .day = 29 }, fromCivil(.fixed, .{ .year = 2028, .month = 12, .day = 31 }));
-    try std.testing.expectEqual(@as(u8, 29), monthDays(.fixed, 2028, 6));
-    try std.testing.expectEqual(@as(u8, 28), monthDays(.fixed, 2026, 6));
+    try std.testing.expectEqual(@as(u16, 29), monthDays(.fixed, 2028, 6));
+    try std.testing.expectEqual(@as(u16, 28), monthDays(.fixed, 2026, 6));
 }
 
 test "fixed round trip; months are 28 days apart" {
@@ -231,4 +354,19 @@ test "fixed round trip; months are 28 days apart" {
             try std.testing.expect(prev.day == 1 or prev.day == 29 or prev.month == 13 or v.month == 1);
         }
     }
+}
+
+test "the world calendars through calsys" {
+    const d: Date = .{ .year = 2026, .month = 11, .day = 6 };
+    inline for (.{ System.chinese, System.hebrew, System.coptic, System.ethiopian }) |sys| {
+        try std.testing.expect(toCivil(sys, fromCivil(sys, d)).eql(d));
+        // The pages of the day's year cover its month and the day is inside it.
+        const v = fromCivil(sys, d);
+        try std.testing.expect(v.day >= 1 and v.day <= monthDays(sys, v.year, v.month));
+        try std.testing.expect(v.month >= 1 and v.month <= monthsIn(sys, v.year));
+    }
+    var buf: [128]u8 = undefined;
+    try std.testing.expectEqualStrings("Month 9", monthLabel(&buf, .chinese, 2026, fromCivil(.chinese, d).month));
+    try std.testing.expectEqualStrings("Bing-Wu, Fire Horse", yearLabel(&buf, .chinese, 2026));
+    try std.testing.expectEqualStrings("Hathor", monthLabel(&buf, .coptic, 1743, 3));
 }

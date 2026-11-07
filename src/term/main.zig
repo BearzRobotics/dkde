@@ -1,6 +1,7 @@
 //! dkde-term: the terminal emulator (SPEC.md 5.3).
 
 const std = @import("std");
+const cli = @import("cli");
 const gio = @import("gio2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
@@ -31,6 +32,7 @@ const App = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-term", .summary = "Terminal emulator", .usage = "[-e COMMAND [ARG...]]", .stop_at = &.{"-e"} });
     common.perf.init();
     var debug_allocator: common.perf.Gpa = .{};
     defer debug_allocator.deinit();
@@ -47,7 +49,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     var app: App = .{
         .allocator = allocator,
-        .config = try common.Config.load(allocator, "term.conf"),
+        .config = try common.Config.load(allocator, "term.toml"),
         .command = if (command.items.len > 0) command.items else null,
     };
     defer app.config.deinit();

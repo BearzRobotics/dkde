@@ -1,6 +1,7 @@
 //! dkde-tasks: Task Manager (SPEC.md 5.6). Processes come from /proc.
 
 const std = @import("std");
+const cli = @import("cli");
 const gdk = @import("gdk4");
 const gio = @import("gio2");
 const glib = @import("glib2");
@@ -249,7 +250,7 @@ const TaskManager = struct {
             view.appendColumn(column);
         }
         if (view.getSorter()) |sorter| _ = gtk.Sorter.signals.changed.connect(sorter, *TaskManager, &onSortChanged, self, .{});
-        if (self.sort_columns[@intFromEnum(Column.cpu)]) |cpu_column| view.sortByColumn(cpu_column, .descending);
+        if (self.sort_columns[@backingInt(Column.cpu)]) |cpu_column| view.sortByColumn(cpu_column, .descending);
         const scroller = gtk.ScrolledWindow.new();
         scroller.setChild(view.as(gtk.Widget));
         scroller.as(gtk.Widget).setVexpand(1);
@@ -885,6 +886,7 @@ const TaskManager = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-tasks", .summary = "Task manager", .usage = "[--tab TAB] [--resource NAME]", .value_options = &.{ "--tab", "--resource" } });
     common.perf.init();
     var debug_allocator: common.perf.Gpa = .{};
     defer debug_allocator.deinit();

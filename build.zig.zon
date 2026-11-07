@@ -2,9 +2,23 @@
     .name = .dkde,
     .fingerprint = 0xedcba0fd02e2c514,
     .version = "0.0.4",
-    .minimum_zig_version = "0.17.0",
+    .minimum_zig_version = "0.17.1",
     .dependencies = .{
         .zigimg = .{ .path = "third_party/zigimg" },
+        .toml = .{
+            .url = "https://github.com/BearzRobotics/toml-zig/releases/download/v0.1.0/toml-0.1.0.tar.gz",
+            .hash = "toml-0.1.0-dDatLI4xAgB1P1SWnx8mnn9oHfDkYSZbqBMOKvKR-X3N",
+        },
+        .dkman = .{
+            .url = "https://github.com/BearzRobotics/dkman/releases/download/v0.2.1/dkman-0.2.1.tar.gz",
+            .hash = "dkman-0.2.1-lbczzpstAQDGuyy27qMaXebWM9U2civXDur84HvFpnvS",
+            .lazy = true,
+        },
+        .util_unix = .{
+            .url = "https://github.com/BearzRobotics/util-unix/releases/download/v0.1.0/util-unix-0.1.0.tar.gz",
+            .hash = "util_unix-0.1.0-pehS_bXQAQCZuTRKQAfuj4Xg6JeJZiWo6Ky_6W1C9IDD",
+            .lazy = true,
+        },
         .gobject = .{
             .url = "https://deps.files.ghostty.org/gobject-2026-10-02-38-1.tar.zst",
             .hash = "gobject-0.3.2-Skun7LuIogBbEh-6WrLeEzMaRCnOMB3eOf__RaPYSMCZ",

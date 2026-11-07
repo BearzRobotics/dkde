@@ -23,6 +23,7 @@
 //!    service may call the agent.
 
 const std = @import("std");
+const cli = @import("cli");
 const gio = @import("gio2");
 const glib = @import("glib2");
 const gobject = @import("gobject2");
@@ -448,6 +449,7 @@ fn noopFree(_: ?*anyopaque) callconv(.c) void {}
 // ---- the program -------------------------------------------------------------------------------------
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-polkit", .summary = "Polkit authentication agent", .usage = "[--process-subject]", .accepted = &.{"--process-subject"} });
     for (init.args.vector[1..]) |a| {
         const arg = std.mem.span(a);
         if (std.mem.eql(u8, arg, "--process-subject")) {

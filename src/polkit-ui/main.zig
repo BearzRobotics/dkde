@@ -15,6 +15,7 @@
 //! the helper, not this program, that tells polkitd authentication worked.
 
 const std = @import("std");
+const cli = @import("cli");
 const gio = @import("gio2");
 const glib = @import("glib2");
 const gobject = @import("gobject2");
@@ -477,6 +478,7 @@ fn activate(app: *gtk.Application, _: ?*anyopaque) callconv(.c) void {
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-polkit-ui", .summary = "Authentication dialog for dkde-polkit (not run by hand)", .usage = "--message TEXT [--icon NAME] [--program PATH]", .value_options = &.{ "--message", "--icon", "--program" } });
     common.perf.init();
     ui = .{ .app = undefined };
     ui.message = try gpa.dupeSentinel(u8, "", 0);

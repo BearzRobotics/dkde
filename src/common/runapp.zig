@@ -8,7 +8,7 @@ const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 
 const style = @import("style.zig");
-const perf = @import("perf.zig");
+const perf = @import("core").perf;
 
 /// The program's arguments after its name, for a window that takes a file.
 pub var args: []const [*:0]const u8 = &.{};

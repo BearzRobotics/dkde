@@ -1,6 +1,7 @@
 //! dkde-edit: a plain text editor in the style of Notepad (SPEC.md 5.6).
 
 const std = @import("std");
+const cli = @import("cli");
 const gdk = @import("gdk4");
 const gio = @import("gio2");
 const glib = @import("glib2");
@@ -692,6 +693,7 @@ const Editor = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-edit", .summary = "Text editor", .usage = "[FILE...]" });
     common.perf.init();
     var debug_allocator: common.perf.Gpa = .{};
     defer debug_allocator.deinit();
@@ -703,7 +705,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     var app: App = .{
         .allocator = allocator,
-        .config = try common.Config.load(allocator, "edit.conf"),
+        .config = try common.Config.load(allocator, "edit.toml"),
         .files = files.items,
     };
     defer app.config.deinit();

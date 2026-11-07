@@ -6,6 +6,7 @@
 //! window geometry and no way to drive another program's scrolling.
 
 const std = @import("std");
+const cli = @import("cli");
 const cairo = @import("cairo1");
 const gdk = @import("gdk4");
 const gdkpixbuf = @import("gdkpixbuf2");
@@ -17,15 +18,9 @@ const gtk = @import("gtk4");
 const wayland = @import("wayland");
 const common = @import("common");
 
-const build_options = @import("build_options");
 const pure = @import("pure.zig");
 const annot = @import("annot.zig");
 const editor = @import("editor.zig");
-const x11grab = if (build_options.x11) @import("x11grab.zig") else struct {
-    pub fn isActive() bool {
-        return false;
-    }
-};
 
 const wl = wayland.client.wl;
 const zwlr = wayland.client.zwlr;
@@ -97,8 +92,7 @@ const Snip = struct {
 
     fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*Snip {
         const display = gdk.Display.getDefault() orelse return error.NoDisplay;
-        const on_x11 = x11grab.isActive();
-        if (!on_x11 and gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkwayland.WaylandDisplay.getGObjectType()) == 0) return error.NotWayland;
+        if (gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkwayland.WaylandDisplay.getGObjectType()) == 0) return error.NotWayland;
 
         const self = try allocator.create(Snip);
         errdefer allocator.destroy(self);
@@ -109,8 +103,7 @@ const Snip = struct {
             .status = gtk.Label.new(common.tr("Choose what to capture")),
             .delay = gtk.SpinButton.newWithRange(0, 30, 1),
         };
-        // On X11 the screen is read with XGetImage; only Wayland needs the protocols.
-        if (!on_x11) {
+        {
             const wl_display: *wl.Display = @ptrCast(gdkwayland.WaylandDisplay.getWlDisplay(@ptrCast(display)) orelse return error.NoDisplay);
             self.registry = try wl_display.getRegistry();
             self.registry.?.setListener(*Snip, registryEvent, self);
@@ -237,7 +230,7 @@ const Snip = struct {
 
     /// Hides the window (so it is not in the picture), waits the delay, then captures.
     fn begin(self: *Snip, mode: Mode) void {
-        if (!x11grab.isActive() and (self.manager == null or self.shm == null or self.output == null)) {
+        if (self.manager == null or self.shm == null or self.output == null) {
             self.fail(common.tr("This compositor does not support screen capture (wlr-screencopy)."));
             return;
         }
@@ -255,26 +248,7 @@ const Snip = struct {
         return 0;
     }
 
-    /// X11: read the root window directly.
-    fn captureX11(self: *Snip) void {
-        if (!build_options.x11) return;
-        const shot = x11grab.grabScreen(self.allocator) catch |err| {
-            var buf: [96]u8 = undefined;
-            return self.fail(std.fmt.bufPrintSentinel(&buf, "Could not capture the screen ({s}).", .{@errorName(err)}, 0) catch "Could not capture the screen.");
-        };
-        defer self.allocator.free(shot.pixels);
-        const rgba = self.allocator.alloc(u8, shot.pixels.len) catch return self.fail("Out of memory");
-        defer self.allocator.free(rgba);
-        pure.toRgba(rgba, shot.pixels, shot.width, shot.height, shot.width * 4, .bgra, false);
-        const pixbuf = gdkpixbuf.Pixbuf.new(.rgb, 1, 8, @intCast(shot.width), @intCast(shot.height)) orelse return self.fail("Out of memory");
-        const dst = pixbuf.getPixels();
-        const rowstride: usize = @intCast(pixbuf.getRowstride());
-        for (0..shot.height) |y| @memcpy(dst[y * rowstride ..][0 .. shot.width * 4], rgba[y * shot.width * 4 ..][0 .. shot.width * 4]);
-        self.captured(pixbuf);
-    }
-
     fn captureNow(self: *Snip) void {
-        if (x11grab.isActive()) return self.captureX11();
         const frame = self.manager.?.captureOutput(0, self.output.?) catch {
             return self.fail(common.tr("Could not start the capture."));
         };
@@ -890,6 +864,7 @@ const Picker = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-snip", .summary = "Screenshot tool", .usage = "[--full | --region | --window | --gui] [--area X,Y,W,H] [--delay SECONDS]", .accepted = &.{ "--full", "--region", "--window", "--gui", "gui" }, .value_options = &.{ "--area", "--delay", "--scroll-region" } });
     common.perf.init();
     var debug_allocator: common.perf.Gpa = .{};
     defer debug_allocator.deinit();

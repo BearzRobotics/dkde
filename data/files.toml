@@ -1,0 +1,21 @@
+# The file manager. Every key is listed with its default.
+[files]
+show-hidden = false
+# details, list, small, medium or large
+view = "details"
+
+# Folders in the sidebar.
+[bookmarks]
+paths = []
+
+# The right-click menu: ids separated by `;`, `--` is a separator. See SPEC.md 5.4
+# for the ids.
+[context]
+quick = "cut;copy;paste;rename;trash"
+item = "open;open-tab;open-window;open-with-choose;run;run-admin;exec;--;extract;compress-zip;compress-targz;restore;delete-permanent;--;properties"
+folder = "new-folder;open-window;terminal-here;open-admin;toggle-hidden;bookmark;empty-trash;--;properties"
+
+# Your own entries: label = "command", then add cmd:<label> to a list above.
+# %f is the selected file, %F all selected files, %d the current folder.
+#[context-commands]
+#Checksum = "sha256sum %F | dkde-edit"

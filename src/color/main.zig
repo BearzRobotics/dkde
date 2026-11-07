@@ -2,6 +2,7 @@
 //! hex, rgb() or hsl() (SPEC.md 5.6). It cannot pick from the screen.
 
 const std = @import("std");
+const cli = @import("cli");
 const cairo = @import("cairo1");
 const glib = @import("glib2");
 const gobject = @import("gobject2");
@@ -146,6 +147,7 @@ const ColorTool = struct {
 };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-color", .summary = "Colour picker" });
     try common.runapp.run("org.dkde.color", ColorTool, init);
 }
 

@@ -1,0 +1,39 @@
+# Settings shared by every dkde program. Only change what you want to differ;
+# every key is listed here with its default.
+[appearance]
+# The accent colour: Start button, selections, highlights.
+accent = "#3584e4"
+# true for a dark colour scheme.
+dark = false
+# The interface font, for example "Sans 11". Empty uses the system font.
+font = ""
+# The icon theme for apps, folders and file types: the name of an installed
+# theme (a folder in /usr/share/icons, ~/.local/share/icons, or one shipped with
+# dkde such as "Fluent" or "Papirus"). Empty uses Fluent.
+icon-theme = ""
+# The theme for the small interface glyphs: window buttons, arrows, toolbar and
+# menu actions. They are looked up in this theme first, then in icon-theme.
+# Empty uses "dkde-ui" (Microsoft's Fluent UI System Icons); "same" uses only
+# icon-theme; or name any installed theme.
+ui-icon-theme = ""
+# Also write this look (dark mode, accent, font, icons) into the GTK 3, GTK 4 and
+# Qt (qt5ct, qt6ct, Kvantum) settings files in ~/.config, so programs made with
+# those toolkits match. The panel writes them whenever an appearance setting
+# changes; set false to manage those files yourself.
+export-toolkits = true
+
+[default-apps]
+# The desktop file ID of your terminal (for example dkde-term.desktop).
+# Empty uses the first terminal found.
+terminal = ""
+
+[performance]
+# How GTK draws windows. "cairo" uses the CPU only: far less memory and no
+# graphics-driver start-up, best on old or low-memory machines. "auto" lets
+# GTK use OpenGL or Vulkan, which is smoother on a real GPU. Also "gl", "vulkan".
+# An explicit GSK_RENDERER in the environment overrides this.
+renderer = "cairo"
+
+[user]
+# A picture for your account card in Settings. Empty shows the default.
+picture = ""

@@ -1,6 +1,7 @@
 //! dkde-panel: taskbar, start menu, clock and wallpaper (SPEC.md 5.1, 5.2).
 
 const std = @import("std");
+const cli = @import("cli");
 const gdk = @import("gdk4");
 const gio = @import("gio2");
 const glib = @import("glib2");
@@ -59,6 +60,7 @@ const App = struct {
         common.style.load(self.allocator) catch |err|
             std.log.warn("stylesheet not loaded: {s}", .{@errorName(err)});
 
+        common.style.export_toolkits = true;
         self.appearance = common.style.Appearance.create(self.allocator) catch null;
 
         const display = gdk.Display.getDefault() orelse {
@@ -370,7 +372,14 @@ const App = struct {
 
         const format = self.config.getString(self.allocator, "panel", "clock-format", default_clock_format) catch return;
         defer self.allocator.free(format);
-        const formatz = self.allocator.dupeSentinel(u8, format, 0) catch return;
+        // @D, @Y, @n ... are Rosquin calendar tokens (common/rosquin.zig); the
+        // calendar they count in is `clock-rosquin-layout`.
+        const layout_name = self.config.getString(self.allocator, "panel", "clock-rosquin-layout", "months") catch return;
+        defer self.allocator.free(layout_name);
+        const today: common.civil.Date = .{ .year = now.getYear(), .month = @intCast(now.getMonth()), .day = @intCast(now.getDayOfMonth()) };
+        const expanded = common.rosquin.expand(self.allocator, format, today, common.rosquin.Layout.parse(layout_name) orelse .months) catch return;
+        defer self.allocator.free(expanded);
+        const formatz = self.allocator.dupeSentinel(u8, expanded, 0) catch return;
         defer self.allocator.free(formatz);
 
         if (now.format(formatz)) |text| {
@@ -416,6 +425,7 @@ const App = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-panel", .summary = "Desktop panel: taskbar, Start menu, clock and tray", .usage = "[msg COMMAND]" });
     common.perf.init();
     // `dkde-panel msg <command>` talks to the running panel and exits.
     if (init.args.vector.len >= 2 and std.mem.eql(u8, std.mem.span(init.args.vector[1]), "msg")) {
@@ -428,7 +438,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     var app: App = .{
         .allocator = allocator,
-        .config = try common.Config.load(allocator, "panel.conf"),
+        .config = try common.Config.load(allocator, "panel.toml"),
         .wallpaper_css = gtk.CssProvider.new(),
     };
     defer app.deinit();

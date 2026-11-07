@@ -5,14 +5,117 @@
 //! always running; this program only stores the events.
 
 const std = @import("std");
+const cli = @import("cli");
 const glib = @import("glib2");
 const gobject = @import("gobject2");
 const gio = @import("gio2");
 const gtk = @import("gtk4");
+const gdk = @import("gdk4");
 const common = @import("common");
 const liturgy = @import("liturgy.zig");
 const editor = @import("editor.zig");
+const goto = @import("goto.zig");
 const calsys = @import("calsys.zig");
+const lunar = @import("lunar.zig");
+const rosstamp = @import("rosstamp.zig");
+const native = @import("native.zig");
+const pango = @import("pango1");
+const rosquin = common.rosquin;
+extern fn FcConfigAppFontAddFile(config: ?*anyopaque, file: [*:0]const u8) c_int;
+
+/// The clock of the lunar site, for `lunar.Site.offset_fn` (which takes no context).
+var site_zone: ?*glib.TimeZone = null;
+
+fn siteOffset(utc_seconds: i64) i32 {
+    const tz = site_zone orelse return 0;
+    return tz.getOffset(@intCast(tz.findInterval(.universal, utc_seconds)));
+}
+
+/// The glyph font is part of the program, so it works wherever the program is run
+/// from. It is written to the user's cache directory and registered with
+/// fontconfig for this process only.
+const glyph_font = @embedFile("rosquin-font");
+
+/// Must run before GTK starts: Pango reads its font list once, when it is first used.
+fn loadGlyphFont(allocator: std.mem.Allocator) void {
+    const cache = std.mem.span(glib.getUserCacheDir());
+    const dir = std.fmt.allocPrintSentinel(allocator, "{s}/dkde", .{cache}, 0) catch return;
+    defer allocator.free(dir);
+    const path = std.fmt.allocPrintSentinel(allocator, "{s}/RosquinGlyphs.ttf", .{dir}, 0) catch return;
+    defer allocator.free(path);
+    _ = glib.mkdirWithParents(dir, 0o755);
+    var err: ?*glib.Error = null;
+    if (glib.fileSetContents(path, glyph_font.ptr, glyph_font.len, &err) == 0) {
+        if (err) |e| e.free();
+        std.log.warn("cannot write {s}; Rosquin days will show as boxes", .{path});
+        return;
+    }
+    if (FcConfigAppFontAddFile(null, path.ptr) == 0) std.log.warn("cannot load {s}", .{path});
+
+    // The fonts for the native names of the other calendars, the same way.
+    inline for (.{
+        .{ "NativeCJK.ttf", @embedFile("font-cjk") },
+        .{ "NativeHebrew.ttf", @embedFile("font-he") },
+        .{ "NativeEthiopic.ttf", @embedFile("font-et") },
+        .{ "NativeCoptic.ttf", @embedFile("font-cop") },
+    }) |item| {
+        const fpath = std.fmt.allocPrintSentinel(allocator, "{s}/{s}", .{ dir, item[0] }, 0) catch return;
+        defer allocator.free(fpath);
+        var ferr: ?*glib.Error = null;
+        if (glib.fileSetContents(fpath, item[1].ptr, item[1].len, &ferr) != 0) {
+            _ = FcConfigAppFontAddFile(null, fpath.ptr);
+        } else if (ferr) |e| e.free();
+    }
+}
+
+/// `text` with the characters that matter in Pango markup escaped.
+fn escapeInto(out: []u8, n: *usize, text: []const u8) void {
+    for (text) |ch| {
+        const rep: []const u8 = switch (ch) {
+            '&' => "&amp;",
+            '<' => "&lt;",
+            '>' => "&gt;",
+            else => &[_]u8{ch},
+        };
+        if (n.* + rep.len > out.len) return;
+        @memcpy(out[n.*..][0..rep.len], rep);
+        n.* += rep.len;
+    }
+}
+
+const branding_png = @embedFile("branding");
+var branding_texture: ?*gdk.Texture = null;
+
+/// The calendar's branding picture (on a white ground), for the first row of the 14th column. Null if it cannot be made.
+fn brandingPicture(size: c_int) ?*gtk.Picture {
+    if (branding_texture == null) {
+        const bytes = glib.Bytes.new(branding_png.ptr, branding_png.len);
+        defer bytes.unref();
+        var err: ?*glib.Error = null;
+        branding_texture = gdk.Texture.newFromBytes(bytes, &err);
+        if (err) |e| e.free();
+    }
+    const texture = branding_texture orelse return null;
+    const picture = gtk.Picture.newForPaintable(texture.as(gdk.Paintable));
+    picture.setContentFit(.contain);
+    picture.as(gtk.Widget).setSizeRequest(size, size);
+    picture.as(gtk.Widget).setMarginTop(4);
+    picture.as(gtk.Widget).setMarginBottom(4);
+    return picture;
+}
+
+/// The look of the glyph stamp, set here so it does not depend on style.css being found.
+fn installGlyphStyle() void {
+    const display = gdk.Display.getDefault() orelse return;
+    const provider = gtk.CssProvider.new();
+    defer provider.as(gobject.Object).unref();
+    provider.loadFromString(
+        \\.dkde-rosglyph { font-family: "Rosquin Glyphs"; font-size: 88px; padding: 0; margin: 0; }
+        \\.dkde-rosglyph.compact { font-size: 64px; }
+        \\button.dkde-cal-cell.dkde-cal-ankh:not(.selected):not(.today) { background-color: #fff3e0; }
+    );
+    gtk.StyleContext.addProviderForDisplay(display, provider.as(gtk.StyleProvider), gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
+}
 
 const events = common.events;
 const civil = common.civil;
@@ -35,10 +138,25 @@ pub const CalendarApp = struct {
 
     // What is shown. `year` and `month` are in the calendar system `sys`.
     sys: calsys.System,
+    // Where the moon phases are seen from (the [location] group of calendar.toml).
+    site: lunar.Site,
     year: i32,
     month: u8,
     selected: Date,
     today: Date,
+    // What the settings file holds as the default view; changing the view on screen
+    // does not change it until Save as default.
+    saved_sys: calsys.System = .gregorian,
+    saved_no: bool = false,
+    saved_tlm: bool = false,
+    saved_ru: bool = false,
+    saved_named: bool = true,
+    save_button: ?*gtk.Button = null,
+    // Show the native names (Chinese characters, Hebrew letters ...) beside the Latin ones, in
+    // the built-in open-source fonts or the one the user chose.
+    native_on: bool = false,
+    native_font: [96]u8 = undefined,
+    native_font_len: usize = 0,
     show_no: bool = false,
     show_tlm: bool = false,
     show_ru: bool = false,
@@ -57,7 +175,7 @@ pub const CalendarApp = struct {
     lit_box: *gtk.Box,
     events_box: *gtk.Box,
     text: *gtk.TextView,
-    cells: [42]Cell = undefined,
+    cells: [368]Cell = undefined,
 
     // The note being edited.
     key: [16]u8 = undefined,
@@ -68,7 +186,7 @@ pub const CalendarApp = struct {
     pub fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*CalendarApp {
         const self = try allocator.create(CalendarApp);
         errdefer allocator.destroy(self);
-        var cfg = try common.Config.load(allocator, "calendar.conf");
+        var cfg = try common.Config.load(allocator, "calendar.toml");
         errdefer cfg.deinit();
         var list = try events.load(allocator, &cfg);
         errdefer list.deinit();
@@ -77,9 +195,24 @@ pub const CalendarApp = struct {
         defer now.unref();
         const today: Date = .{ .year = now.getYear(), .month = @intCast(now.getMonth()), .day = @intCast(now.getDayOfMonth()) };
 
-        const sys_text = try cfg.getString(allocator, "view", "system", "julian");
+        installGlyphStyle();
+        const sys_text = try cfg.getString(allocator, "view", "system", "gregorian");
         defer allocator.free(sys_text);
         const sys = calsys.System.parse(sys_text);
+
+        const zone_name = try cfg.getString(allocator, "location", "timezone", "America/Detroit");
+        defer allocator.free(zone_name);
+        var site: lunar.Site = .{
+            .latitude = cfg.getFloat("location", "latitude", lunar.lake_odessa.latitude),
+            .longitude = cfg.getFloat("location", "longitude", lunar.lake_odessa.longitude),
+        };
+        if (zone_name.len > 0) {
+            const zone_z = try std.fmt.allocPrintSentinel(allocator, "{s}", .{zone_name}, 0);
+            defer allocator.free(zone_z);
+            site_zone = glib.TimeZone.new(zone_z.ptr);
+            site.offset_fn = &siteOffset;
+        }
+
         const here = calsys.fromCivil(sys, today);
 
         self.* = .{
@@ -88,8 +221,9 @@ pub const CalendarApp = struct {
             .cfg = cfg,
             .list = list,
             .sys = sys,
+            .site = site,
             .year = here.year,
-            .month = here.month,
+            .month = calsys.pageOf(sys, here),
             .selected = today,
             .today = today,
             .grid = gtk.Grid.new(),
@@ -105,11 +239,35 @@ pub const CalendarApp = struct {
         self.show_ru = self.cfg.getBool("view", "orthodox-ru", false);
         self.named_only = self.cfg.getBool("view", "named-days-only", true);
         self.twelve_hour = self.cfg.getBool("view", "twelve-hour", true);
+        self.native_on = self.cfg.getBool("view", "native-script", false);
+        if (self.cfg.getString(allocator, "view", "native-font", "")) |nf| {
+            defer allocator.free(nf);
+            self.native_font_len = @min(nf.len, self.native_font.len);
+            @memcpy(self.native_font[0..self.native_font_len], nf[0..self.native_font_len]);
+        } else |_| {}
+        self.saved_sys = sys;
+        self.saved_no = self.show_no;
+        self.saved_tlm = self.show_tlm;
+        self.saved_ru = self.show_ru;
+        self.saved_named = self.named_only;
         self.ensureTables();
 
         const window = self.window.as(gtk.Window);
         window.setTitle(common.tr("Calendar"));
-        window.setDefaultSize(1060, 700);
+        // No bigger than the first monitor, so the window always fits.
+        var want_w: c_int = 1060;
+        var want_h: c_int = 700;
+        if (gdk.Display.getDefault()) |display| {
+            const monitors = display.getMonitors();
+            if (monitors.getItem(0)) |item| {
+                const monitor: *gdk.Monitor = @ptrCast(@alignCast(item));
+                var geometry: gdk.Rectangle = undefined;
+                monitor.getGeometry(&geometry);
+                if (geometry.f_width > 0) want_w = @min(want_w, geometry.f_width - 40);
+                if (geometry.f_height > 0) want_h = @min(want_h, geometry.f_height - 80);
+            }
+        }
+        window.setDefaultSize(want_w, want_h);
         self.window.as(gtk.Widget).addCssClass("dkde");
         _ = common.header.create(window, "x-office-calendar", true);
 
@@ -117,10 +275,13 @@ pub const CalendarApp = struct {
         const prev = gtk.Button.newFromIconName("go-previous-symbolic");
         const next = gtk.Button.newFromIconName("go-next-symbolic");
         const today_button = gtk.Button.newWithLabel(common.tr("Today"));
+        const goto_button = gtk.Button.newWithLabel(common.tr("Go to\u{2026}"));
+        goto_button.as(gtk.Widget).setTooltipText(common.tr("Jump to any date, past or future, by date, day code or Rosquin year"));
+        _ = gtk.Button.signals.clicked.connect(goto_button, *CalendarApp, &onGoto, self, .{});
         _ = gtk.Button.signals.clicked.connect(prev, *CalendarApp, &onPrev, self, .{});
         _ = gtk.Button.signals.clicked.connect(next, *CalendarApp, &onNext, self, .{});
         _ = gtk.Button.signals.clicked.connect(today_button, *CalendarApp, &onToday, self, .{});
-        var terminated = [_]?[*:0]const u8{ common.tr("Julian").ptr, common.tr("Gregorian").ptr, common.tr("Fixed (13 months)").ptr, null };
+        var terminated = [_]?[*:0]const u8{ common.tr("Julian").ptr, common.tr("Gregorian").ptr, common.tr("Fixed (13 months)").ptr, common.tr(calsys.System.rosquin_weeks.label()).ptr, common.tr(calsys.System.rosquin_months.label()).ptr, common.tr(calsys.System.rosquin_quarters.label()).ptr, common.tr(calsys.System.chinese.label()).ptr, common.tr(calsys.System.hebrew.label()).ptr, common.tr(calsys.System.coptic.label()).ptr, common.tr(calsys.System.ethiopian.label()).ptr, null };
         const system_menu = gtk.DropDown.newFromStrings(@ptrCast(&terminated));
         system_menu.setSelected(@backingInt(self.sys));
         system_menu.as(gtk.Widget).setTooltipText(common.tr("Calendar system"));
@@ -159,17 +320,54 @@ pub const CalendarApp = struct {
         bar.append(next.as(gtk.Widget));
         bar.append(self.month_label.as(gtk.Widget));
         bar.append(today_button.as(gtk.Widget));
+        const copy_button = gtk.Button.newWithLabel(common.tr("Copy date"));
+        copy_button.as(gtk.Widget).setTooltipText(common.tr("Copy the selected date as text, or its Rosquin glyph (right-click a day does the same)"));
+        _ = gtk.Button.signals.clicked.connect(copy_button, *CalendarApp, &onCopyButton, self, .{});
+        bar.append(goto_button.as(gtk.Widget));
+        bar.append(copy_button.as(gtk.Widget));
+        const save_button = gtk.Button.newWithLabel(common.tr("Save as default"));
+        save_button.as(gtk.Widget).setTooltipText(common.tr("Make the calendar and the liturgical calendars shown now the ones the program opens with. Changing the view to look at something does not change the default."));
+        _ = gtk.Button.signals.clicked.connect(save_button, *CalendarApp, &onSaveView, self, .{});
+        self.save_button = save_button;
         bar.append(system_menu.as(gtk.Widget));
+        bar.append(save_button.as(gtk.Widget));
         bar.append(spacer.as(gtk.Widget));
-        bar.append(no_check.as(gtk.Widget));
-        bar.append(tlm_check.as(gtk.Widget));
-        bar.append(ru_check.as(gtk.Widget));
+        // The liturgical calendars in one drop-down, so the bar never runs out of room.
+        const lit_box = gtk.Box.new(.vertical, 6);
+        lit_box.append(no_check.as(gtk.Widget));
+        lit_box.append(tlm_check.as(gtk.Widget));
+        lit_box.append(ru_check.as(gtk.Widget));
+        const lit_popover = gtk.Popover.new();
+        lit_popover.setChild(lit_box.as(gtk.Widget));
+        const lit_menu = gtk.MenuButton.new();
+        lit_menu.setLabel(common.tr("Liturgical"));
+        lit_menu.as(gtk.Widget).setTooltipText(common.tr("Lay the Novus Ordo, 1962 or Russian Orthodox liturgical calendar over the days"));
+        lit_menu.setPopover(lit_popover);
+        bar.append(lit_menu.as(gtk.Widget));
         const clock_check = gtk.CheckButton.newWithLabel(common.tr("12-hour clock (AM/PM)"));
         clock_check.setActive(@intFromBool(self.twelve_hour));
         _ = gtk.CheckButton.signals.toggled.connect(clock_check, *CalendarApp, &onToggleClock, self, .{});
+        const native_check = gtk.CheckButton.newWithLabel(common.tr("Show native script"));
+        native_check.setActive(@intFromBool(self.native_on));
+        native_check.as(gtk.Widget).setTooltipText(common.tr("In the Chinese, Hebrew, Coptic and Ethiopian calendars, write the month, day and year in their own script beside the Latin names"));
+        _ = gtk.CheckButton.signals.toggled.connect(native_check, *CalendarApp, &onToggleNative, self, .{});
+        const font_row = gtk.Box.new(.horizontal, 6);
+        const font_caption = gtk.Label.new(common.tr("Native font"));
+        font_row.append(font_caption.as(gtk.Widget));
+        const font_button = gtk.FontButton.new();
+        font_button.as(gtk.Widget).setTooltipText(common.tr("A font of your own for the native names. Without one, the program uses the open-source fonts it carries (Noto Sans Hebrew, Ethiopic and Coptic, Droid Sans Fallback)"));
+        if (self.native_font_len > 0) font_button.as(gtk.FontChooser).setFont(zstr(self.native_font[0..self.native_font_len]));
+        _ = gtk.FontButton.signals.font_set.connect(font_button, *CalendarApp, &onNativeFont, self, .{});
+        font_row.append(font_button.as(gtk.Widget));
+        const font_reset = gtk.Button.newWithLabel(common.tr("Built-in"));
+        font_reset.as(gtk.Widget).setTooltipText(common.tr("Go back to the fonts the program carries"));
+        _ = gtk.Button.signals.clicked.connect(font_reset, *CalendarApp, &onNativeFontReset, self, .{});
+        font_row.append(font_reset.as(gtk.Widget));
         const options_box = gtk.Box.new(.vertical, 6);
         options_box.append(named_check.as(gtk.Widget));
         options_box.append(clock_check.as(gtk.Widget));
+        options_box.append(native_check.as(gtk.Widget));
+        options_box.append(font_row.as(gtk.Widget));
         options_box.append(gtk.Separator.new(.horizontal).as(gtk.Widget));
         inline for (.{
             .{ "Import calendar file…", FileMode.load_file },
@@ -210,7 +408,14 @@ pub const CalendarApp = struct {
         const month_box = gtk.Box.new(.vertical, 4);
         month_box.as(gtk.Widget).setHexpand(1);
         month_box.append(bar.as(gtk.Widget));
-        month_box.append(self.grid.as(gtk.Widget));
+        // The grid scrolls when it does not fit, so it never makes the window bigger
+        // than the screen.
+        const grid_scroll = gtk.ScrolledWindow.new();
+        grid_scroll.setChild(self.grid.as(gtk.Widget));
+        grid_scroll.setPolicy(.automatic, .automatic);
+        grid_scroll.as(gtk.Widget).setHexpand(1);
+        grid_scroll.as(gtk.Widget).setVexpand(1);
+        month_box.append(grid_scroll.as(gtk.Widget));
 
         // ---- the day panel -------------------------------------------------------------
         self.heading.setXalign(0);
@@ -268,6 +473,7 @@ pub const CalendarApp = struct {
         self.rebuildGrid();
         self.showDay();
         self.showSyncStatus();
+        self.refreshSave();
         return self;
     }
 
@@ -312,26 +518,23 @@ pub const CalendarApp = struct {
 
     fn onToggleNo(button: *gtk.CheckButton, self: *CalendarApp) callconv(.c) void {
         self.show_no = button.getActive() != 0;
-        self.cfg.setBool("view", "novus-ordo", self.show_no) catch {};
         self.overlaysChanged();
     }
 
     fn onToggleTlm(button: *gtk.CheckButton, self: *CalendarApp) callconv(.c) void {
         self.show_tlm = button.getActive() != 0;
-        self.cfg.setBool("view", "tlm-1962", self.show_tlm) catch {};
         self.overlaysChanged();
     }
 
     fn onToggleRu(button: *gtk.CheckButton, self: *CalendarApp) callconv(.c) void {
         self.show_ru = button.getActive() != 0;
-        self.cfg.setBool("view", "orthodox-ru", self.show_ru) catch {};
         self.overlaysChanged();
     }
 
     fn onToggleNamed(button: *gtk.CheckButton, self: *CalendarApp) callconv(.c) void {
         self.named_only = button.getActive() != 0;
-        self.cfg.setBool("view", "named-days-only", self.named_only) catch {};
         self.rebuildGrid();
+        self.refreshSave();
     }
 
     fn onToggleClock(button: *gtk.CheckButton, self: *CalendarApp) callconv(.c) void {
@@ -341,7 +544,32 @@ pub const CalendarApp = struct {
         self.showEvents();
     }
 
+    /// Whether the view on screen differs from the saved default.
+    fn viewIsDirty(self: *const CalendarApp) bool {
+        return self.sys != self.saved_sys or self.show_no != self.saved_no or self.show_tlm != self.saved_tlm or
+            self.show_ru != self.saved_ru or self.named_only != self.saved_named;
+    }
+
+    fn refreshSave(self: *CalendarApp) void {
+        if (self.save_button) |b| b.as(gtk.Widget).setSensitive(@intFromBool(self.viewIsDirty()));
+    }
+
+    fn onSaveView(_: *gtk.Button, self: *CalendarApp) callconv(.c) void {
+        self.cfg.setString("view", "system", self.sys.name()) catch {};
+        self.cfg.setBool("view", "novus-ordo", self.show_no) catch {};
+        self.cfg.setBool("view", "tlm-1962", self.show_tlm) catch {};
+        self.cfg.setBool("view", "orthodox-ru", self.show_ru) catch {};
+        self.cfg.setBool("view", "named-days-only", self.named_only) catch {};
+        self.saved_sys = self.sys;
+        self.saved_no = self.show_no;
+        self.saved_tlm = self.show_tlm;
+        self.saved_ru = self.show_ru;
+        self.saved_named = self.named_only;
+        self.refreshSave();
+    }
+
     fn overlaysChanged(self: *CalendarApp) void {
+        self.refreshSave();
         self.ensureTables();
         self.rebuildGrid();
         self.showLiturgy();
@@ -360,10 +588,10 @@ pub const CalendarApp = struct {
     fn shiftMonth(self: *CalendarApp, delta: i32) void {
         var m: i32 = @as(i32, self.month) + delta;
         var y = self.year;
-        const count: i32 = self.sys.monthCount();
+        const count: i32 = calsys.monthsIn(self.sys, y);
         if (m < 1) {
-            m = count;
             y -= 1;
+            m = calsys.monthsIn(self.sys, y);
         } else if (m > count) {
             m = 1;
             y += 1;
@@ -375,15 +603,19 @@ pub const CalendarApp = struct {
 
     fn onSystem(menu: *gtk.DropDown, _: *gobject.ParamSpec, self: *CalendarApp) callconv(.c) void {
         const index = menu.getSelected();
-        if (index > 2) return;
+        if (index > 9) return;
         self.sys = @fromBackingInt(@intCast(index));
-        self.cfg.setString("view", "system", self.sys.name()) catch {};
         // Show the month that holds the selected day in the new system.
         const v = calsys.fromCivil(self.sys, self.selected);
         self.year = v.year;
-        self.month = v.month;
+        self.month = calsys.pageOf(self.sys, v);
         self.rebuildGrid();
         self.showDay();
+        self.refreshSave();
+    }
+
+    fn onGoto(_: *gtk.Button, self: *CalendarApp) callconv(.c) void {
+        goto.open(self);
     }
 
     fn onToday(_: *gtk.Button, self: *CalendarApp) callconv(.c) void {
@@ -391,14 +623,95 @@ pub const CalendarApp = struct {
     }
 
     /// Selects a day, showing its month if it is not the one on screen.
-    fn selectDate(self: *CalendarApp, date: Date) void {
+    pub fn selectDate(self: *CalendarApp, date: Date) void {
         self.flush();
         self.selected = date;
         const v = calsys.fromCivil(self.sys, date);
         self.year = v.year;
-        self.month = v.month;
+        self.month = calsys.pageOf(self.sys, v);
         self.rebuildGrid();
         self.showDay();
+    }
+
+    // ---- copying a date as text --------------------------------------------------------------
+
+    const CopyKind = enum { text, code, glyph, both, iso };
+    const CopyJob = struct { app: *CalendarApp, date: Date, kind: CopyKind, popover: *gtk.Popover };
+
+    /// What a copy puts on the clipboard. The glyph forms are the Rosquin glyph as
+    /// characters of the font RosquinGlyphs.ttf, so they only show as the glyph in a
+    /// program where that font is installed and used.
+    fn copyString(self: *CalendarApp, kind: CopyKind, date: Date, out: []u8) []const u8 {
+        var iso: [16]u8 = undefined;
+        const iso_text = events.formatDate(&iso, date);
+        if (!self.sys.isRosquin()) {
+            var db: [160]u8 = undefined;
+            return switch (kind) {
+                .iso => std.fmt.bufPrint(out, "{s}", .{iso_text}) catch "",
+                else => std.fmt.bufPrint(out, "{s} ({s})", .{ calsys.describe(&db, self.sys, date), iso_text }) catch "",
+            };
+        }
+        const layout = self.sys.layout().?;
+        const line = rosquin.expand(self.allocator, "@D/@y  Yr @Y  @n @d  @N", date, layout) catch return "";
+        defer self.allocator.free(line);
+        var gb: [160]u8 = undefined;
+        const glyph = rosstamp.glyphString(&gb, self.site, date);
+        return switch (kind) {
+            .text => std.fmt.bufPrint(out, "{s} ({s})", .{ line, iso_text }) catch "",
+            .code => std.fmt.bufPrint(out, "{d}", .{rosquin.dayCode(date)}) catch "",
+            .glyph => std.fmt.bufPrint(out, "{s}", .{glyph}) catch "",
+            .both => std.fmt.bufPrint(out, "{s}  {s}", .{ glyph, line }) catch "",
+            .iso => std.fmt.bufPrint(out, "{s}", .{iso_text}) catch "",
+        };
+    }
+
+    fn onCopyPick(_: *gtk.Button, job: *CopyJob) callconv(.c) void {
+        var buf: [512]u8 = undefined;
+        const text = job.app.copyString(job.kind, job.date, &buf);
+        job.app.window.as(gtk.Widget).getClipboard().setText(zstr(text));
+        job.popover.popdown();
+    }
+
+    fn onCopyClosed(_: *gtk.Popover, popover: *gtk.Popover) callconv(.c) void {
+        popover.as(gtk.Widget).unparent();
+    }
+
+    /// A small menu of ways to copy `date`, next to `anchor`.
+    fn showCopyMenu(self: *CalendarApp, anchor: *gtk.Widget, date: Date) void {
+        const popover = gtk.Popover.new();
+        const box = gtk.Box.new(.vertical, 2);
+        const rosq = self.sys.isRosquin();
+        const items = [_]struct { kind: CopyKind, label: [:0]const u8, only_rosquin: bool }{
+            .{ .kind = .text, .label = "Copy date as text", .only_rosquin = false },
+            .{ .kind = .code, .label = "Copy day code", .only_rosquin = true },
+            .{ .kind = .glyph, .label = "Copy glyph (needs the Rosquin font)", .only_rosquin = true },
+            .{ .kind = .both, .label = "Copy glyph and text", .only_rosquin = true },
+            .{ .kind = .iso, .label = "Copy date as 2026-11-06", .only_rosquin = false },
+        };
+        inline for (items) |item| {
+            if (!item.only_rosquin or rosq) {
+            const job = self.allocator.create(CopyJob) catch return;
+            job.* = .{ .app = self, .date = date, .kind = item.kind, .popover = popover };
+            const b = gtk.Button.newWithLabel(common.tr(item.label));
+            b.as(gtk.Widget).addCssClass("flat");
+            _ = gtk.Button.signals.clicked.connect(b, *CopyJob, &onCopyPick, job, .{});
+            box.append(b.as(gtk.Widget));
+            }
+        }
+        popover.setChild(box.as(gtk.Widget));
+        popover.as(gtk.Widget).setParent(anchor);
+        _ = gtk.Popover.signals.closed.connect(popover, *gtk.Popover, &onCopyClosed, popover, .{});
+        popover.popup();
+    }
+
+    fn onCellRight(gesture: *gtk.GestureClick, _: c_int, _: f64, _: f64, cell: *Cell) callconv(.c) void {
+        cell.app.selectDate(cell.date);
+        const widget = gesture.as(gtk.EventController).getWidget() orelse return;
+        cell.app.showCopyMenu(widget, cell.date);
+    }
+
+    fn onCopyButton(button: *gtk.Button, self: *CalendarApp) callconv(.c) void {
+        self.showCopyMenu(button.as(gtk.Widget), self.selected);
     }
 
     fn onCell(_: *gtk.Button, cell: *Cell) callconv(.c) void {
@@ -419,22 +732,81 @@ pub const CalendarApp = struct {
         clearGrid(self.grid);
         const sys = self.sys;
 
-        var title: [64]u8 = undefined;
-        self.month_label.setText(bufZ(&title, "{s} {d}{s}", .{
-            calsys.monthName(sys, self.month),
-            self.year,
-            if (sys == .julian) " (Julian)" else "",
-        }) catch "");
+        var title: [128]u8 = undefined;
+        if (sys == .rosquin_weeks) {
+            self.month_label.setText(bufZ(&title, "Yr {d} \u{b7} 28 weeks", .{self.year}) catch "");
+        } else if (sys.isRosquin()) {
+            self.month_label.setText(bufZ(&title, "{s} {d} \u{b7} Yr {d}", .{ calsys.monthName(sys, self.month), self.month, self.year }) catch "");
+        } else {
+            var mb: [48]u8 = undefined;
+            var yb: [64]u8 = undefined;
+            self.month_label.setText(bufZ(&title, "{s} {s}{s}", .{
+                calsys.monthLabel(&mb, sys, self.year, self.month),
+                calsys.yearLabel(&yb, sys, self.year),
+                if (sys == .julian) " (Julian)" else "",
+            }) catch "");
+        }
 
-        const heads = .{ "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
-        inline for (heads, 0..) |n, col| {
-            const l = gtk.Label.new(common.tr(n));
-            l.as(gtk.Widget).addCssClass("dkde-cal-weekday");
-            self.grid.attach(l.as(gtk.Widget), @intCast(col), 0, 1, 1);
+        if (self.native_on and native.has(sys)) {
+            var pb: [160]u8 = undefined;
+            var mk: [640]u8 = undefined;
+            const latin = std.mem.span(self.month_label.getText());
+            self.month_label.setMarkup(self.withNative(&mk, latin, sys, native.pageLine(&pb, sys, self.year, self.month), "  "));
+        }
+
+        if (sys.isRosquin()) {
+            // A 13-day week: days 1 to 12, then the Ankh; a 14th column holds the
+            // inter-calendar days, which are in no week.
+            var col: usize = 0;
+            while (col < 14) : (col += 1) {
+                var hb: [8]u8 = undefined;
+                const l = gtk.Label.new(if (col == 13) common.tr("Inter") else if (col == 12) "\u{2625}" else (bufZ(&hb, "{d}", .{col + 1}) catch ""));
+                l.as(gtk.Widget).addCssClass("dkde-cal-weekday");
+                self.grid.attach(l.as(gtk.Widget), @intCast(col), 0, 1, 1);
+            }
+        } else {
+            const heads = .{ "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+            inline for (heads, 0..) |n, col| {
+                const l = gtk.Label.new(common.tr(n));
+                l.as(gtk.Widget).addCssClass("dkde-cal-weekday");
+                self.grid.attach(l.as(gtk.Widget), @intCast(col), 0, 1, 1);
+            }
         }
 
         const first = calsys.toCivil(sys, .{ .year = self.year, .month = self.month, .day = 1 });
         const days = calsys.monthDays(sys, self.year, self.month);
+        if (sys.isRosquin()) {
+            // 13 columns, one row per week; Year-End Day and Leap Day get a row of their own.
+            const layout = sys.layout().?;
+            const len: usize = layout.monthLen();
+            var i: usize = 0;
+            while (i < len) : (i += 1) {
+                const date = calsys.toCivil(sys, .{ .year = self.year, .month = self.month, .day = @intCast(i + 1) });
+                self.placeCell(i, date, @intCast(i % 13), @intCast(i / 13 + 1), 1);
+            }
+            // The first row of the 14th column always carries the calendar's branding picture.
+            // Where a special day falls in that row (Leap Day in month 4 of the 7-month
+            // layout, Year-End Day in month 2 of the 4-month layout) it shares the cell.
+            var branding_shared = false;
+            // Year-End Day (week 8) and Leap Day (week 13) belong to no week and no month.
+            // They stand in the 14th column, in the row of the week they fall in, on the
+            // page that holds that week.
+            inline for (.{ rosquin.year_end_day, rosquin.leap_day }) |day| {
+                if (rosquin.pageNear(layout, day) == self.month and (day == rosquin.year_end_day or rosquin.hasLeapDay(self.year))) {
+                    const date = calsys.toCivil(sys, .{ .year = self.year, .month = 0, .day = day });
+                    const idx = len + (if (day == rosquin.year_end_day) @as(usize, 0) else 1);
+                    if (rosquin.rowNear(layout, day) == 0) {
+                        branding_shared = true;
+                        const stack = gtk.Box.new(.vertical, 2);
+                        if (brandingPicture(40)) |picture| stack.append(picture.as(gtk.Widget));
+                        stack.append(self.cellButton(idx, date).as(gtk.Widget));
+                        self.grid.attach(stack.as(gtk.Widget), 13, 1, 1, 1);
+                    } else self.placeCell(idx, date, 13, @as(c_int, rosquin.rowNear(layout, day)) + 1, 1);
+                }
+            }
+            if (!branding_shared) if (brandingPicture(72)) |picture| self.grid.attach(picture.as(gtk.Widget), 13, 1, 1, 1);
+            return;
+        }
         if (sys == .fixed) {
             // Every month is four whole weeks; Leap Day and Year Day get a row of their own.
             var i: usize = 0;
@@ -451,10 +823,31 @@ pub const CalendarApp = struct {
     }
 
     fn placeCell(self: *CalendarApp, index: usize, date: Date, col: c_int, row: c_int, span: c_int) void {
+        self.grid.attach(self.cellButton(index, date).as(gtk.Widget), col, row, span, 1);
+    }
+
+    fn cellButton(self: *CalendarApp, index: usize, date: Date) *gtk.Button {
         self.cells[index] = .{ .app = self, .date = date };
         const button = self.makeCell(date);
         _ = gtk.Button.signals.clicked.connect(button, *Cell, &onCell, &self.cells[index], .{});
-        self.grid.attach(button.as(gtk.Widget), col, row, span, 1);
+        // Right click: copy this date as text.
+        const right = gtk.GestureClick.new();
+        right.as(gtk.GestureSingle).setButton(3);
+        _ = gtk.GestureClick.signals.pressed.connect(right, *Cell, &onCellRight, &self.cells[index], .{});
+        button.as(gtk.Widget).addController(right.as(gtk.EventController));
+        return button;
+    }
+
+    /// The Rosquin glyph of a day: every component printed over the same box.
+    fn stampWidget(self: *CalendarApp, date: Date) *gtk.Widget {
+        // One label: the font's glyphs have no width, so all of them land on the same spot,
+        // exactly as they do when the text is pasted into another program.
+        var buf: [160]u8 = undefined;
+        const l = gtk.Label.new(zstr(rosstamp.glyphString(&buf, self.site, date)));
+        l.as(gtk.Widget).setHalign(.start);
+        l.as(gtk.Widget).addCssClass("dkde-rosglyph");
+        if (self.sys == .rosquin_weeks) l.as(gtk.Widget).addCssClass("compact"); // 28 rows: a smaller stamp keeps the page short
+        return l.as(gtk.Widget);
     }
 
     fn makeCell(self: *CalendarApp, date: Date) *gtk.Button {
@@ -464,9 +857,11 @@ pub const CalendarApp = struct {
         w.addCssClass("dkde-cal-cell");
         w.setHexpand(1);
         w.setVexpand(1);
-        w.setSizeRequest(96, 74);
+        w.setSizeRequest(if (self.sys.isRosquin()) 96 else 96, if (self.sys == .rosquin_weeks) 104 else if (self.sys.isRosquin()) 140 else 74);
         const v = calsys.fromCivil(self.sys, date);
-        if (v.month != self.month or v.year != self.year) w.addCssClass("outside");
+        if (!calsys.isSpecial(self.sys, v) and (v.month != self.month or v.year != self.year)) w.addCssClass("outside");
+        // Day 13 of the Rosquin week, the Ankh, has a very light orange ground.
+        if (self.sys.isRosquin() and rosquin.dayOfWeek(date) == 13) w.addCssClass("dkde-cal-ankh");
         if (date.eql(self.today)) w.addCssClass("today");
         if (date.eql(self.selected)) w.addCssClass("selected");
 
@@ -477,8 +872,28 @@ pub const CalendarApp = struct {
         num.as(gtk.Widget).addCssClass("dkde-cal-num");
         num.as(gtk.Widget).setHalign(.start);
         const top = gtk.Box.new(.horizontal, 4);
-        top.append(num.as(gtk.Widget));
-        if (self.sys != .gregorian) {
+        if (self.sys.isRosquin()) {
+            top.append(self.stampWidget(date));
+            var db: [160]u8 = undefined;
+            button.as(gtk.Widget).setTooltipText(zstr(calsys.describe(&db, self.sys, date)));
+        } else {
+            top.append(num.as(gtk.Widget));
+            if (self.native_on and native.has(self.sys) and !calsys.isSpecial(self.sys, v)) {
+                var db2: [32]u8 = undefined;
+                const numeral = native.day(&db2, self.sys, v.day);
+                if (numeral.len > 0) {
+                    var mk: [320]u8 = undefined;
+                    var n: usize = 0;
+                    self.nativeSpan(mk[0 .. mk.len - 1], &n, self.sys, numeral);
+                    mk[n] = 0;
+                    const nat = gtk.Label.new(null);
+                    nat.setMarkup(mk[0..n :0]);
+                    nat.as(gtk.Widget).addCssClass("dim-label");
+                    top.append(nat.as(gtk.Widget));
+                }
+            }
+        }
+        if (self.sys != .gregorian and !self.sys.isRosquin()) {
             // The civil date, small, at the right.
             var cb: [16]u8 = undefined;
             const civil_label = gtk.Label.new(bufZ(&cb, "{d}/{d}", .{ date.month, date.day }) catch "");
@@ -488,7 +903,32 @@ pub const CalendarApp = struct {
             civil_label.as(gtk.Widget).addCssClass("dkde-cal-civil");
             top.append(civil_label.as(gtk.Widget));
         }
+        if (self.sys.isRosquin()) {
+            if (lunar.phaseOn(self.site, date)) |phase| {
+                const moon = gtk.Label.new(zstr(phase.symbol()));
+                moon.as(gtk.Widget).setTooltipText(zstr(phase.label()));
+                top.append(moon.as(gtk.Widget));
+            }
+        }
         box.append(top.as(gtk.Widget));
+        if (self.sys.isRosquin()) {
+            // The day code (2026-11-06 is 18309) and the day of the year (47), which starts over on September 21.
+            var kb: [24]u8 = undefined;
+            const code = gtk.Label.new(bufZ(&kb, "{d} \u{b7} {d}", .{ rosquin.dayCode(date), rosquin.dayOfYear(date) }) catch "");
+            code.setXalign(0);
+            code.as(gtk.Widget).addCssClass("dkde-cal-num");
+            // The civil date shares the line, so a cell is no wider than its glyph.
+            var cb2: [16]u8 = undefined;
+            const civil_small = gtk.Label.new(bufZ(&cb2, "{d}/{d}", .{ date.month, date.day }) catch "");
+            civil_small.as(gtk.Widget).setHexpand(1);
+            civil_small.setXalign(1);
+            civil_small.as(gtk.Widget).addCssClass("dim-label");
+            civil_small.as(gtk.Widget).addCssClass("dkde-cal-civil");
+            const code_row = gtk.Box.new(.horizontal, 4);
+            code_row.append(code.as(gtk.Widget));
+            code_row.append(civil_small.as(gtk.Widget));
+            box.append(code_row.as(gtk.Widget));
+        }
 
         var day: liturgy.Day = undefined;
         if (self.table_no) |*t| self.addLitLine(box, t, date, &day);
@@ -548,6 +988,69 @@ pub const CalendarApp = struct {
 
     // ---- the day panel ---------------------------------------------------------------------
 
+    // ---- native names ------------------------------------------------------------------------
+
+    fn rawInto(out: []u8, n: *usize, s: []const u8) void {
+        if (n.* + s.len > out.len) return;
+        @memcpy(out[n.*..][0..s.len], s);
+        n.* += s.len;
+    }
+
+    /// Markup for `text` in the font of the system's script: the user's own font first, if
+    /// one was chosen, then the built-in one.
+    fn nativeSpan(self: *const CalendarApp, out: []u8, n: *usize, sys: calsys.System, text: []const u8) void {
+        if (text.len == 0) return;
+        rawInto(out, n, "<span font_family=\"");
+        if (self.native_font_len > 0) {
+            for (self.native_font[0..self.native_font_len]) |ch| if (ch != '"' and ch != '<' and ch != '&') rawInto(out, n, &[_]u8{ch});
+            rawInto(out, n, ",");
+        }
+        rawInto(out, n, native.family(sys));
+        rawInto(out, n, "\">");
+        escapeInto(out, n, text);
+        rawInto(out, n, "</span>");
+    }
+
+    /// `latin`, then in the system's script `native_text` when that is on and there is some.
+    fn withNative(self: *const CalendarApp, out: []u8, latin: []const u8, sys: calsys.System, native_text: []const u8, sep: []const u8) [:0]const u8 {
+        var n: usize = 0;
+        escapeInto(out[0 .. out.len - 1], &n, latin);
+        if (self.native_on and native.has(sys) and native_text.len > 0) {
+            rawInto(out[0 .. out.len - 1], &n, sep);
+            self.nativeSpan(out[0 .. out.len - 1], &n, sys, native_text);
+        }
+        out[n] = 0;
+        return out[0..n :0];
+    }
+
+    fn onToggleNative(button: *gtk.CheckButton, self: *CalendarApp) callconv(.c) void {
+        self.native_on = button.getActive() != 0;
+        self.cfg.setBool("view", "native-script", self.native_on) catch {};
+        self.rebuildGrid();
+        self.showDay();
+    }
+
+    fn onNativeFont(button: *gtk.FontButton, self: *CalendarApp) callconv(.c) void {
+        const name = button.as(gtk.FontChooser).getFont() orelse return;
+        defer glib.free(name);
+        const desc = pango.FontDescription.fromString(name);
+        defer desc.free();
+        const fam = desc.getFamily() orelse return;
+        const fam_text = std.mem.span(fam);
+        self.native_font_len = @min(fam_text.len, self.native_font.len);
+        @memcpy(self.native_font[0..self.native_font_len], fam_text[0..self.native_font_len]);
+        self.cfg.setString("view", "native-font", zstr(fam_text)) catch {};
+        self.rebuildGrid();
+        self.showDay();
+    }
+
+    fn onNativeFontReset(_: *gtk.Button, self: *CalendarApp) callconv(.c) void {
+        self.native_font_len = 0;
+        self.cfg.setString("view", "native-font", "") catch {};
+        self.rebuildGrid();
+        self.showDay();
+    }
+
     fn showDay(self: *CalendarApp) void {
         var buf: [16]u8 = undefined;
         const key = dateKey(&buf, self.selected.year, self.selected.month, self.selected.day);
@@ -556,19 +1059,34 @@ pub const CalendarApp = struct {
 
         // The heading is in the chosen system; the others follow in small type.
         var hb: [96]u8 = undefined;
-        self.heading.setText(zstr(calsys.describe(&hb, self.sys, self.selected)));
-        var ab: [320]u8 = undefined;
+        {
+            var nb: [160]u8 = undefined;
+            var mb: [640]u8 = undefined;
+            self.heading.setMarkup(self.withNative(&mb, calsys.describe(&hb, self.sys, self.selected), self.sys, native.dateLine(&nb, self.sys, self.selected), "\n"));
+        }
+        var ab: [2400]u8 = undefined;
         var used: usize = 0;
-        inline for (.{ calsys.System.julian, calsys.System.gregorian, calsys.System.fixed }) |other| {
+        inline for (.{ calsys.System.julian, calsys.System.gregorian, calsys.System.fixed, calsys.System.rosquin_weeks, calsys.System.rosquin_months, calsys.System.rosquin_quarters, calsys.System.chinese, calsys.System.hebrew, calsys.System.coptic, calsys.System.ethiopian }) |other| {
             if (other != self.sys) {
                 var tb: [96]u8 = undefined;
                 const text = calsys.describe(&tb, other, self.selected);
-                const line = std.fmt.bufPrint(ab[used..], "{s}{s}: {s}", .{ if (used > 0) "\n" else "", other.label(), text }) catch "";
-                used += line.len;
+                var nb: [160]u8 = undefined;
+                var lb: [640]u8 = undefined;
+                var plain: [400]u8 = undefined;
+                const latin = std.fmt.bufPrint(&plain, "{s}: {s}", .{ other.label(), text }) catch "";
+                const marked = self.withNative(&lb, latin, other, native.dateLine(&nb, other, self.selected), " \u{b7} ");
+                if (used + marked.len + 1 < ab.len) {
+                    if (used > 0) {
+                        ab[used] = '\n';
+                        used += 1;
+                    }
+                    @memcpy(ab[used..][0..marked.len], marked);
+                    used += marked.len;
+                }
             }
         }
         ab[used] = 0;
-        self.alt_label.setText(ab[0..used :0]);
+        self.alt_label.setMarkup(ab[0..used :0]);
         self.showLiturgy();
         self.showEvents();
 
@@ -1024,6 +1542,9 @@ fn zstr(text: []const u8) [:0]const u8 {
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    // Before GTK starts: Pango reads its font list once, when it is first used.
+    loadGlyphFont(std.heap.page_allocator);
+    cli.handle(init.args, .{ .name = "dkde-calendar", .summary = "Calendar" });
     try common.runapp.run("org.dkde.calendar", CalendarApp, init);
 }
 
@@ -1036,6 +1557,11 @@ test "date keys" {
 test {
     _ = @import("liturgy.zig");
     _ = @import("calsys.zig");
+    _ = @import("lunar.zig");
+    _ = @import("worldcal.zig");
+    _ = @import("native.zig");
+    _ = @import("goto.zig");
+    _ = @import("rosstamp.zig");
     _ = @import("orthodox.zig");
     _ = @import("fasting.zig");
 }

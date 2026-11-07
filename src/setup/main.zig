@@ -12,10 +12,11 @@
 //! `dkde-setup --yes` applies the user-level fixes without asking.
 
 const std = @import("std");
+const cli = @import("cli");
 const glib = @import("glib2");
 const giounix = @import("giounix2");
 const gobject = @import("gobject2");
-const common = @import("common");
+const core = @import("core");
 
 extern fn write(fd: c_int, buf: [*]const u8, count: usize) isize;
 extern fn read(fd: c_int, buf: [*]u8, count: usize) isize;
@@ -153,7 +154,7 @@ const Setup = struct {
     fn checkAutostart(self: *Setup) void {
         const path = self.labwcFile("autostart");
         const current = self.readFile(path) orelse "";
-        const updated = common.labwc.ensureAutostart(self.arena.allocator(), current) catch null;
+        const updated = core.labwc.ensureAutostart(self.arena.allocator(), current) catch null;
         if (updated) |content| {
             self.add(.{ .title = "labwc autostart starts the panel", .status = .todo, .detail = self.fmt("add the panel to {s}", .{path}), .write_path = path, .write_content = content });
         } else self.add(.{ .title = "labwc autostart starts the panel", .status = .ok });
@@ -164,7 +165,7 @@ const Setup = struct {
         const current = self.readFile(path) orelse "";
         // dkde owns every shortcut, labwc's window ones included, so they can be
         // changed in one place (Settings > Keyboard shortcuts).
-        const updated = common.labwc.takeOverKeybinds(self.arena.allocator(), current, &common.labwc.dkde_keybinds) catch null;
+        const updated = core.labwc.takeOverKeybinds(self.arena.allocator(), current, &core.labwc.dkde_keybinds) catch null;
         const title = "labwc keybindings (dkde's shortcuts, in place of labwc's built-in ones)";
         if (updated) |content| {
             self.add(.{ .title = title, .status = .todo, .detail = self.fmt("add the missing ones to {s} and drop labwc's <default />; your own are kept", .{path}), .write_path = path, .write_content = content });
@@ -180,7 +181,7 @@ const Setup = struct {
             if (std.mem.startsWith(u8, std.mem.trim(u8, line, " \t"), "NO_AT_BRIDGE=")) has = true;
         }
         if (has) return self.add(.{ .title = "no accessibility-bus warnings (NO_AT_BRIDGE)", .status = .ok });
-        const content = common.labwc.setEnvVar(self.arena.allocator(), current, "NO_AT_BRIDGE", "1") catch return;
+        const content = core.labwc.setEnvVar(self.arena.allocator(), current, "NO_AT_BRIDGE", "1") catch return;
         self.add(.{ .title = "no accessibility-bus warnings (NO_AT_BRIDGE)", .status = .todo, .detail = self.fmt("set NO_AT_BRIDGE=1 in {s} (dkde has no D-Bus/AT-SPI)", .{path}), .write_path = path, .write_content = content });
     }
 
@@ -245,7 +246,7 @@ const Setup = struct {
         if (hasLogind()) return;
         const status = self.readFile("/proc/self/status") orelse return;
         const group_file = self.readFile("/etc/group") orelse return;
-        const gids = common.user.parseGroups(self.arena.allocator(), status) catch return;
+        const gids = core.user.parseGroups(self.arena.allocator(), status) catch return;
         var need_video = true;
         var need_input = true;
         var lines = std.mem.splitScalar(u8, group_file, '\n');
@@ -323,7 +324,7 @@ const Setup = struct {
     fn checkServiceGroups(self: *Setup) void {
         const status = self.readFile("/proc/self/status") orelse return;
         const group_file = self.readFile("/etc/group") orelse return;
-        const gids = common.user.parseGroups(self.arena.allocator(), status) catch return;
+        const gids = core.user.parseGroups(self.arena.allocator(), status) catch return;
         const user = std.mem.span(glib.getUserName());
 
         var missing: std.ArrayList(u8) = .empty;
@@ -364,19 +365,6 @@ const Setup = struct {
         });
     }
 
-    fn checkXSession(self: *Setup) void {
-        // Only relevant where an X server exists.
-        if (glib.findProgramInPath("Xorg")) |p| glib.free(p) else return;
-        const path: [:0]const u8 = "/usr/share/xsessions/dkde-x11.desktop";
-        if (exists(path)) return self.add(.{ .title = "X11 session entry (for Xorg users)", .status = .ok });
-        self.add(.{
-            .title = "X11 session entry (optional, for Xorg users)",
-            .status = .todo,
-            .command = "printf '[Desktop Entry]\\nName=dkde (X11)\\nComment=dkde desktop on Xorg\\nExec=dkde-xsession\\nType=XSession\\nDesktopNames=dkde\\n' | sudo tee /usr/share/xsessions/dkde-x11.desktop >/dev/null",
-            .reason = "lets you pick dkde from a graphical login screen when running Xorg. It needs a dkde built with -Dx11=true and an EWMH window manager such as openbox. From a console, scripts/dkde-startx works without it.",
-        });
-    }
-
     fn run(self: *Setup) void {
         self.checkUserDirs();
         self.checkAutostart();
@@ -390,7 +378,6 @@ const Setup = struct {
         self.checkGreeterSeat();
         self.checkServiceGroups();
         self.checkSessionEntry();
-        self.checkXSession();
     }
 
     // ---- reporting and fixing --------------------------------------------------
@@ -456,11 +443,11 @@ test "group membership by gid or member list" {
     try std.testing.expectEqual(@as(?bool, null), Setup.isMember(groups, &.{}, "alice", "bluetooth"));
 }
 
-pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
+pub const std_options: std.Options = .{ .logFn = core.log.logFn, .log_level = .debug };
 
 /// Written once setup has run for this user; see `--once`.
 fn markerPath(allocator: std.mem.Allocator) ?[:0]u8 {
-    return common.paths.userStateFile(allocator, "setup-done") catch null;
+    return core.paths.userStateFile(allocator, "setup-done") catch null;
 }
 
 fn markerExists(allocator: std.mem.Allocator) bool {
@@ -479,12 +466,40 @@ fn writeMarker(allocator: std.mem.Allocator) void {
     _ = glib.fileSetContents(path, text.ptr, text.len, null);
 }
 
+/// `--migrate-config`: old INI files become TOML, originals kept as `.migrated`.
+fn migrateConfig(allocator: std.mem.Allocator) void {
+    const Report = struct {
+        failed: bool = false,
+        found: bool = false,
+        fn say(self: *@This(), name: []const u8, result: anyerror!core.migrate.Outcome) void {
+            self.found = true;
+            if (result) |outcome| {
+                print("{s}.conf: {s}\n", .{ name, switch (outcome) {
+                    .migrated => "converted to " ++ "TOML; the original is kept as .conf.migrated",
+                    .toml_exists => "left alone: a .toml file exists already",
+                    .absent => "none",
+                } });
+            } else |err| {
+                self.failed = true;
+                print("{s}.conf: not converted ({s}); the file is untouched\n", .{ name, @errorName(err) });
+            }
+        }
+    };
+    var report: Report = .{};
+    core.migrate.migrateUser(allocator, &report, Report.say) catch |err| {
+        print("cannot migrate: {s}\n", .{@errorName(err)});
+        std.process.exit(1);
+    };
+    if (!report.found) print("No old *.conf files to convert.\n", .{});
+    if (report.failed) std.process.exit(1);
+}
+
 /// `--write-config`: complete, hand-editable files in the user's config folder.
 fn writeConfig(allocator: std.mem.Allocator) void {
-    const names = [_][]const u8{ "dkde.conf", "panel.conf", "term.conf", "files.conf", "hex.conf", "edit.conf", "calendar.conf" };
+    const names = [_][]const u8{ "dkde.toml", "panel.toml", "term.toml", "files.toml", "edit.toml", "calendar.toml" };
     for (names) |name| {
-        const extra = if (std.mem.eql(u8, name, "term.conf")) common.config.term_profile_template else "";
-        if (common.config.writeAllDefaults(allocator, name, extra)) |result| {
+        const extra = if (std.mem.eql(u8, name, "term.toml")) core.config.term_profile_template else "";
+        if (core.config.writeAllDefaults(allocator, name, extra)) |result| {
             print("{s}: {s}\n", .{ name, switch (result) {
                 .created => "written with every default",
                 .merged => "missing defaults added",
@@ -496,7 +511,8 @@ fn writeConfig(allocator: std.mem.Allocator) void {
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
-    var debug_allocator: common.perf.Gpa = .{};
+    cli.handle(init.args, .{ .name = "dkde-setup", .summary = "Check and fix the desktop setup", .usage = "[--check] [--yes] [--once] [--write-config] [--migrate-config]", .accepted = &.{ "--check", "--yes", "-y", "--once", "--write-config", "--migrate-config" } });
+    var debug_allocator: core.perf.Gpa = .{};
     defer debug_allocator.deinit();
     const allocator = debug_allocator.allocator();
 
@@ -504,19 +520,22 @@ pub fn main(init: std.process.Init.Minimal) !void {
     var yes = false;
     var once = false;
     var write_config = false;
+    var migrate_config = false;
     for (init.args.vector[1..]) |arg| {
         const text = std.mem.span(arg);
         if (std.mem.eql(u8, text, "--check")) check_only = true;
         if (std.mem.eql(u8, text, "--once")) once = true;
         if (std.mem.eql(u8, text, "--write-config")) write_config = true;
+        if (std.mem.eql(u8, text, "--migrate-config")) migrate_config = true;
         if (std.mem.eql(u8, text, "--yes") or std.mem.eql(u8, text, "-y")) yes = true;
         if (std.mem.eql(u8, text, "--help") or std.mem.eql(u8, text, "-h")) {
-            out("usage: dkde-setup [--check] [--yes] [--once] [--write-config]\n  --write-config  write every config file with all defaults in it (missing files are\n                  created, existing ones only gain the keys they lack), for editing by hand\n  --check  only report; exit 1 if something is missing\n  --yes    apply user-level fixes without asking\n  --once   the first-login run: apply the user-level fixes quietly, and only if\n           setup has never run for this user (dkde-session does this)\n");
+            out("usage: dkde-setup [--check] [--yes] [--once] [--write-config] [--migrate-config]\n  --migrate-config  convert old *.conf files in ~/.config/dkde to TOML; each original is kept\n                  as *.conf.migrated and no existing *.toml is overwritten\n  --write-config  write every config file with all defaults in it (missing files are\n                  created, existing ones only gain the keys they lack), for editing by hand\n  --check  only report; exit 1 if something is missing\n  --yes    apply user-level fixes without asking\n  --once   the first-login run: apply the user-level fixes quietly, and only if\n           setup has never run for this user (dkde-session does this)\n");
             return;
         }
     }
 
     if (write_config) return writeConfig(allocator);
+    if (migrate_config) return migrateConfig(allocator);
 
     // The automatic run happens once. After that, setup runs only when asked
     // for by hand, so it never puts back what the user changed or removed.
@@ -561,5 +580,5 @@ pub fn main(init: std.process.Init.Minimal) !void {
 }
 
 test {
-    _ = common;
+    _ = core;
 }

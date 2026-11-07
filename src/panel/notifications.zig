@@ -76,7 +76,6 @@ pub const Notifications = struct {
     /// Starts owning the name. With no session bus, GIO reports the name as
     /// lost and nothing else happens.
     pub fn create(allocator: std.mem.Allocator) ?*Notifications {
-        if (surface.isX11()) return null; // the toast surface needs layer-shell
         if (glib.getenv("DBUS_SESSION_BUS_ADDRESS") == null) {
             std.log.info("no session bus: notifications are off", .{});
             return null;

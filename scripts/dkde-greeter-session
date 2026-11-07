@@ -1,4 +1,15 @@
 #!/bin/sh
+
+case "${1:-}" in
+    -h|--help)
+        echo "dkde-greeter-session - run the login-screen session for greetd"
+        echo "Usage: dkde-greeter-session"
+        echo "  -h, --help     show this help and exit"
+        echo "  -V, --version  show the version and exit"
+        exit 0 ;;
+    -V|--version) echo "dkde-greeter-session @VERSION@"; exit 0 ;;
+    -*) echo "dkde-greeter-session: unknown option '$1'" >&2; echo "Try 'dkde-greeter-session --help'." >&2; exit 2 ;;
+esac
 # What greetd runs for the login screen: a kiosk labwc that shows only
 # dkde-greeter and exits with it.
 export XDG_SESSION_TYPE=wayland

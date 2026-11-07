@@ -861,3 +861,15 @@ notebook > header.top > tabs > tab:checked {
   border-radius: 8px;
 }
 entry.dkde-snip-text { min-height: 28px; }
+
+/* The Rosquin day glyph: components of RosquinGlyphs.ttf printed over one another.
+   Every glyph is a 900x900 square, so the font size is the stamp size. */
+.dkde-rosglyph {
+  font-family: "Rosquin Glyphs";
+  font-size: 88px;
+  padding: 0;
+  margin: 0;
+}
+.dkde-rosglyph.compact {
+  font-size: 64px;
+}

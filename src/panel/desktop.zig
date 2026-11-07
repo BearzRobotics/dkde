@@ -38,7 +38,7 @@ pub const Desktop = struct {
         const self = allocator.create(Desktop) catch return null;
         self.allocator = allocator;
         self.dir_path = allocator.dupeSentinel(u8, std.mem.span(path), 0) catch return null;
-        self.positions = common.Config.load(allocator, "desktop.conf") catch return null;
+        self.positions = common.Config.load(allocator, "desktop.toml") catch return null;
         self.selected = null;
         self.config = config;
 

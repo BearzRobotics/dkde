@@ -2,6 +2,7 @@
 //! alarms run only while the app is open; there is no background service.
 
 const std = @import("std");
+const cli = @import("cli");
 const glib = @import("glib2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
@@ -328,6 +329,7 @@ const Clock = struct {
 };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-clock", .summary = "Clock, stopwatch, timer and alarms" });
     try common.runapp.run("org.dkde.clock", Clock, init);
 }
 

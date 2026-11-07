@@ -8,7 +8,7 @@ This is a work in progress library to create, process, read and write different 
 
 ## Install & Build
 
-This library currently uses zig [0.17.0](https://ziglang.org/download/)
+This library currently uses zig [0.17.1](https://ziglang.org/download/)
 
 ### Use zigimg in your project
 

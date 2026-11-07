@@ -3,6 +3,7 @@
 //! search with highlights, and copying a page's text. Built with `-Dpdf=true`.
 
 const std = @import("std");
+const cli = @import("cli");
 const cairo = @import("cairo1");
 const gdk = @import("gdk4");
 const gio = @import("gio2");
@@ -617,6 +618,7 @@ const Viewer = struct {
 var initial_path: ?[:0]const u8 = null;
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-pdf", .summary = "PDF viewer", .usage = "[FILE]" });
     if (init.args.vector.len > 1) initial_path = std.mem.span(init.args.vector[1]);
     try common.runapp.run("org.dkde.pdf", Viewer, init);
 }

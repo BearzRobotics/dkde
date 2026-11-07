@@ -30,7 +30,7 @@ pub const Reminders = struct {
     pub fn create(allocator: std.mem.Allocator) !*Reminders {
         const self = try allocator.create(Reminders);
         errdefer allocator.destroy(self);
-        var config = try common.Config.load(allocator, "calendar.conf");
+        var config = try common.Config.load(allocator, "calendar.toml");
         errdefer config.deinit();
         const list = try events.load(allocator, &config);
         self.* = .{ .allocator = allocator, .config = config, .list = list, .checked = nowMinutes().minute };

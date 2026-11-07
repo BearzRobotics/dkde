@@ -25,7 +25,7 @@ pub fn init() void {
     // An explicit GSK_RENDERER in the environment always wins.
     if (glib.getenv("GSK_RENDERER") != null) return;
     const alloc = std.heap.c_allocator;
-    var cfg = config.Config.load(alloc, "dkde.conf") catch return;
+    var cfg = config.Config.load(alloc, "dkde.toml") catch return;
     defer cfg.deinit();
     const choice = cfg.getString(alloc, "performance", "renderer", "cairo") catch return;
     defer alloc.free(choice);

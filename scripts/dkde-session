@@ -1,4 +1,15 @@
 #!/bin/sh
+
+case "${1:-}" in
+    -h|--help)
+        echo "dkde-session - start the DKDE Wayland session (labwc, the panel and a session D-Bus when available)"
+        echo "Usage: dkde-session"
+        echo "  -h, --help     show this help and exit"
+        echo "  -V, --version  show the version and exit"
+        exit 0 ;;
+    -V|--version) echo "dkde-session @VERSION@"; exit 0 ;;
+    -*) echo "dkde-session: unknown option '$1'" >&2; echo "Try 'dkde-session --help'." >&2; exit 2 ;;
+esac
 # The dkde Wayland session: greetd (or any login manager, or a tty) runs this.
 # It prepares the environment a systemd-less system does not provide, then
 # starts labwc under a private session D-Bus when one can be had. The labwc
@@ -22,6 +33,10 @@ echo "dkde-session: $(date) user $(id -un) ($(id -u)), groups: $(id -Gn)"
 export DKDE_LOG_FILE="${DKDE_LOG_FILE:-auto}"
 export XDG_CURRENT_DESKTOP=dkde
 export XDG_SESSION_DESKTOP=dkde
+# Qt programs read their palette, fonts and icons from qt5ct/qt6ct, which the
+# panel keeps in step with dkde.toml (see src/common/toolkits.zig).
+export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-qt6ct}"
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
 
 # Without logind nobody creates /run/user/$UID. Use it if it exists and is
 # ours, otherwise make a private directory.

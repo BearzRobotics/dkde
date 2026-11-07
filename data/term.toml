@@ -1,0 +1,39 @@
+# The terminal. Profiles are tables named ["profile:<name>"]; see
+# `dkde-setup --write-config` for a complete ["profile:Default"] you can copy.
+[terminal]
+default-profile = "Default"
+# Lines kept for scrolling back.
+scrollback-lines = 10000
+
+# Profiles are not listed here: a profile in this file could not be deleted by
+# you. Create one by adding a table like the example below to your own term.toml
+# (`dkde-setup --write-config` writes a complete one). Keys you leave out use the
+# defaults shown.
+#["profile:Default"]
+## Empty runs your login shell.
+#command = ""
+## Starting folder; empty is your home.
+#directory = ""
+#font = "Monospace 11"
+#color-scheme = "campbell"
+## block, bar or underline
+#cursor-style = "block"
+## Window title and tab icon; empty uses the program's own.
+#title = ""
+#icon = ""
+#tab-color = ""
+## NAME=value pairs separated by ;
+#environment = ""
+## windowed, maximized or fullscreen
+#startup = "windowed"
+## always, success (only when the program ended normally) or never
+#close-on-exit = "always"
+## Let programs set the clipboard (OSC 52).
+#osc52 = true
+## 20 to 100; below 100 the background is see-through.
+#opacity = 100
+## Start size; 0 lets the window decide.
+#columns = 0
+#rows = 0
+#padding = 4
+#copy-on-select = true

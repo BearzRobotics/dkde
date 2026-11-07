@@ -3,6 +3,7 @@
 //! `mount`, `umount` and the checkers, as administrator, after a confirmation.
 
 const std = @import("std");
+const cli = @import("cli");
 const cairo = @import("cairo1");
 const pangocairo = @import("pangocairo1");
 const gdk = @import("gdk4");
@@ -1433,6 +1434,7 @@ fn formatSize(buf: *[32]u8, bytes: u64) []const u8 {
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-parted", .summary = "Partition manager", .usage = "[--selftest IMAGE]", .value_options = &.{"--selftest"} });
     // `--selftest IMAGE` runs headless, with no window.
     if (init.args.vector.len > 2 and std.mem.eql(u8, std.mem.span(init.args.vector[1]), "--selftest")) {
         var debug_allocator: common.perf.Gpa = .{};

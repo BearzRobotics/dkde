@@ -4,6 +4,7 @@
 //! (WebP, SVG, ICO, AVIF, JPEG XL), whatever loaders are installed.
 
 const std = @import("std");
+const cli = @import("cli");
 const gdk = @import("gdk4");
 const gdkpixbuf = @import("gdkpixbuf2");
 const gio = @import("gio2");
@@ -374,7 +375,7 @@ const Viewer = struct {
 
     fn setWallpaper(self: *Viewer) void {
         const path = self.path orelse return;
-        var cfg = common.Config.load(self.allocator, "panel.conf") catch return;
+        var cfg = common.Config.load(self.allocator, "panel.toml") catch return;
         defer cfg.deinit();
         // A slideshow folder would override the picture, so turn it off.
         cfg.setString("wallpaper", "slideshow-dir", "") catch return;
@@ -407,6 +408,7 @@ const Viewer = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-view", .summary = "Image viewer", .usage = "[FILE]" });
     common.perf.init();
     var debug_allocator: common.perf.Gpa = .{};
     defer debug_allocator.deinit();

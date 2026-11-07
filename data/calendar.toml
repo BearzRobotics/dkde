@@ -1,0 +1,42 @@
+# The calendar and its reminders (dkde-calendar, and the panel's reminders).
+# Every key is listed with its default. Events live in this file too, in
+# [event:...] groups the calendar writes; leave those alone.
+[view]
+# Which calendar the grid opens with: julian, gregorian, fixed (the International
+# Fixed Calendar, 13 months of 28 days), rosquin_weeks, rosquin_months or
+# rosquin_quarters (13-day weeks, drawn with the Rosquin glyphs), chinese, hebrew,
+# coptic or ethiopian. Changing the calendar on screen does not change this; the
+# Save as default button does.
+system = "gregorian"
+# Show the Novus Ordo, the 1962 Roman (traditional Latin Mass) and the Russian
+# Orthodox observances.
+novus-ordo = false
+tlm-1962 = false
+orthodox-ru = false
+# Show only days that have a named observance in the list.
+named-days-only = true
+# 12-hour clock in the calendar and in reminders; false gives 24-hour.
+twelve-hour = true
+# In the Chinese, Hebrew, Coptic and Ethiopian calendars, also write the month, day and
+# year in their own script. It needs a font with that script: the program carries
+# open-source ones, or name your own below.
+native-script = false
+# Family name of a font of your own for the native names (for example "Noto Sans CJK SC");
+# empty uses the fonts the program carries.
+native-font = ""
+
+[location]
+# Where the moon phases are seen from. A phase is one instant for the whole
+# Earth; the place decides which local day it falls on. Default: Lake Odessa,
+# Michigan.
+latitude = 42.7889
+longitude = -85.1417
+# The clock that place keeps (an IANA name, daylight saving included). Empty:
+# local mean solar time from the longitude, rounded to a whole hour, no daylight
+# saving.
+timezone = "America/Detroit"
+
+[sync]
+# A .ics file to read events from (for example one kept in sync by a tool you
+# run yourself). Empty: none.
+ics-file = ""

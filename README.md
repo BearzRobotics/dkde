@@ -8,27 +8,20 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 |---|---|
 | `dkde-panel` | Taskbar, start menu, clock, wallpaper |
 | `dkde-term` | Terminal (libghostty-vt) |
-| `dkde-console` | Text console that replaces agetty on the virtual terminals: draws through DRM, links nothing but libghostty-vt, falls back to agetty (see SPEC 5.11) |
 | `dkde-files` | File manager |
 | `dkde-settings` | Settings |
 | `dkde-edit` | Text editor |
-| `dkde-hex` | Hex editor |
 | `dkde-pdf` | PDF viewer (optional, see below) |
 | `dkde-charmap` | Character map |
 | `dkde-clock` | Stopwatch, timer, alarm |
 | `dkde-calendar` | Calendar with notes |
 | `dkde-color` | Colour mixer |
-| `dkde-disks` | Disk usage |
 | `dkde-parted` | Partitions: tables, partitions, formatting, mounting |
 | `dkde-calc` | Calculator |
 | `dkde-view` | Image viewer |
 | `dkde-tasks` | Task Manager |
 | `dkde-snip` | Screenshots |
 | `dkde-setup` | First-run check and fixes |
-
-## Reverse engineering with the hex editor
-
-`dkde-hex` also has a Disk mode for raw sectors of disks, partitions and images (read-only until you enable writing; see SPEC §5.6). `dkde-hex` can parse a file with a [Kaitai Struct](https://kaitai.io) description or an [ImHex](https://imhex.werwolv.net) pattern and show its fields as a tree, coloured in the hex view. Formats and patterns are not bundled; see [docs/hex-structure.md](docs/hex-structure.md). The YAML parser is [zig-yaml](https://codeberg.org/kubkon/zig-yaml) by Jakub Konka (MIT), vendored in `third_party/zig-yaml/`.
 
 ## Trying the partition tool safely
 
@@ -39,7 +32,7 @@ pass or FAIL per step. Every apply is also written to `~/.local/state/dkde/parte
 
 ## Theming
 
-One stylesheet and `dkde.conf` (dark mode, accent colour, font) style every program; you can override anything in `~/.config/dkde/style.css`. See [docs/theming.md](docs/theming.md).
+One stylesheet and `dkde.toml` (dark mode, accent colour, font) style every program; you can override anything in `~/.config/dkde/style.css`. See [docs/theming.md](docs/theming.md).
 
 ## Screenshots
 
@@ -58,7 +51,7 @@ folders shown are whatever was on that machine.
 
 | What | Version | How |
 |---|---|---|
-| Zig | **0.17.0** exactly (set as `.minimum_zig_version`; upgrading is a deliberate, separate change) | `zvm`: `curl https://www.zvm.app/install.sh \| bash`, then `zvm i 0.17.0` |
+| Zig | **0.17.1** exactly (set as `.minimum_zig_version`; upgrading is a deliberate, separate change) | `zvm`: `curl https://www.zvm.app/install.sh \| bash`, then `zvm i 0.17.1` |
 | git, curl | any | apt |
 | pkg-config | any | apt |
 
@@ -87,7 +80,7 @@ sudo apt install labwc shared-mime-info papirus-icon-theme
 |---|---|
 | labwc (0.9.3 or newer) | The compositor. Must offer `wlr-layer-shell`, `wlr-foreign-toplevel-management` and `wlr-screencopy`; `ext-workspace-v1` (virtual desktops) and `wlr-virtual-pointer` (scrolling screenshots) are used when present |
 | shared-mime-info | Content types for the file manager and Open With |
-| papirus-icon-theme | Default icons |
+| papirus-icon-theme | Fallback icons (Fluent ships with dkde) |
 
 ### Optional
 
@@ -108,11 +101,8 @@ below for the full list and one install command.
 | Feature | What you need |
 |---|---|
 | PDF viewer `dkde-pdf` | `libpoppler-glib-dev` to build, `zig build -Dpdf=true` |
-| Xorg session and X11 taskbar/screenshots | `libx11-dev` to build, `zig build -Dx11=true` (see "Xorg") |
-| Hex editor structure view | Kaitai `.ksy` files and/or ImHex `.hexpat` patterns, not bundled: Structure ▸ Get Kaitai formats… / Get ImHex patterns… (needs `git`, or `curl`/`wget` with `tar`) |
 | File manager archives | `zip`, `unzip`, `tar`, `7zip` |
 | Partition tool `dkde-parted` | `util-linux` (`lsblk`, `mount`), `parted` and `sudo`; for formatting, the tools of each filesystem you want: `e2fsprogs`, `xfsprogs`, `btrfs-progs`, `dosfstools` (+ `fatresize`), `exfatprogs`, `ntfs-3g`, `f2fs-tools`, `jfsutils`, `reiserfsprogs`, `nilfs-tools`, `udftools`, `hfsprogs`. A filesystem is offered only when its tools are installed |
-| Hex editor disk mode (raw sectors) | nothing extra; reading a device needs root, which it asks for through `sudo` |
 | Run as administrator (file manager, Settings) | `sudo` |
 
 ### Fetched by `zig build` (pinned by hash in `build.zig.zon`)
@@ -121,7 +111,7 @@ below for the full list and one install command.
 |---|---|
 | zig-gobject (GTK bindings) | Ghostty's build of zig-gobject (`deps.files.ghostty.org`, from ghostty-org/zig-gobject), the same bindings Ghostty uses |
 | zig-wayland | `deps.files.ghostty.org`, from ifreund/zig-wayland |
-| libghostty-vt | Ghostty tag `v1.4.0` (needs Zig 0.17.0) |
+| libghostty-vt | Ghostty tag `v1.4.0` (needs Zig 0.17.1) |
 
 Vendored in the repo: `protocols/` holds the protocol XML files that
 `wayland-protocols` does not ship or the build must not depend on:
@@ -155,9 +145,6 @@ sudo apt install \
     f2fs-tools jfsutils reiserfsprogs nilfs-tools udftools hfsprogs fatresize \
     tmux vim htop
 ```
-
-`git` (or `curl` with `tar`, or `wget` with `tar`) lets the hex editor download
-Kaitai formats and ImHex patterns when you ask it to.
 
 | Feature | Packages | Without them |
 |---|---|---|
@@ -214,7 +201,7 @@ table lists by their command names: `labwc`, `wlr-randr`, `wpa_cli`, `ip`,
 `bluetoothctl`, `rfkill`, `brightnessctl`, `wpctl` or `pactl` (and `pw-play`
 or `paplay`), `lpstat`/`lpadmin`/`lpoptions`/`lp`, `dbus-run-session`,
 `sudo`, plus `greetd` and `seatd` for a graphical login. Build-time you need
-GTK 4, gtk4-layer-shell, the Wayland client library and Zig 0.17.0.
+GTK 4, gtk4-layer-shell, the Wayland client library and Zig 0.17.1.
 
 **musl.** The libc calls dkde makes directly (`openpty`, `__errno_location`,
 `program_invocation_short_name`) link and run against musl. A full build and
@@ -252,7 +239,7 @@ checks itself on every linefeed and is far too slow.
 This puts dkde on your system for everyday use. (To just look at it without
 installing, see "Try it without logging out" below.)
 
-**1. Install the dependencies.** Build-time packages and Zig 0.17.0 from
+**1. Install the dependencies.** Build-time packages and Zig 0.17.1 from
 "Dependencies", and whatever you want from "Recommended software".
 
 **2. Build and install.** Use a release build: the default is a Debug build,
@@ -270,10 +257,9 @@ installed under the prefix:
 
 | Path | What |
 |---|---|
-| `bin/dkde-*` | The programs: `dkde-panel`, `dkde-term`, `dkde-files`, `dkde-settings`, `dkde-edit`, `dkde-calc`, `dkde-parted`, `dkde-view`, `dkde-tasks`, `dkde-snip`, `dkde-setup`, `dkde-greeter`, and the session scripts `dkde-session`, `dkde-greeter-session`, `dkde-greeter-start`, `dkde-xsession`, `dkde-startx` (`dkde-pointer` is a test tool you can delete) |
+| `bin/dkde-*` | The programs: `dkde-panel`, `dkde-term`, `dkde-files`, `dkde-settings`, `dkde-edit`, `dkde-calc`, `dkde-parted`, `dkde-view`, `dkde-tasks`, `dkde-snip`, `dkde-setup`, `dkde-greeter`, and the session scripts `dkde-session`, `dkde-greeter-session`, `dkde-greeter-start` (`dkde-pointer` is a test tool you can delete) |
 | `share/applications/` | Start menu entries for the apps |
 | `share/wayland-sessions/dkde.desktop` | The session entry for login managers (GDM, SDDM, greetd's own menu and so on) |
-| `share/xsessions/dkde-x11.desktop` | The Xorg session entry (see "Xorg") |
 | `share/dkde/` | The stylesheet, default config, example labwc files and the service files for dinit, systemd, SysV init, PAM and greetd |
 
 dkde finds `share/dkde` through `XDG_DATA_DIRS`, whose default includes
@@ -394,29 +380,6 @@ labwc files are added to, never replaced, and backed up once. Anything that
 needs root is shown with the exact command and the reason, and runs only if
 you answer `y`.
 
-## Xorg (optional)
-
-dkde is Wayland-first; the default build has no X11 code. To run it on Xorg:
-
-```
-sudo apt install libx11-dev openbox xinit    # build and run extras
-zig build -Dx11=true
-scripts/dkde-startx            # from a text console
-```
-
-`scripts/dkde-startx` runs `startx` with `scripts/dkde-xsession`, which starts
-a window manager (`openbox`, or whatever `DKDE_WM` names; any EWMH-compliant
-one works) and then the panel. `DKDE_COMPOSITOR=picom` adds an optional
-compositor, needed only for shadows and a see-through terminal. For a
-graphical login screen, `dkde-setup` can install
-`/usr/share/xsessions/dkde-x11.desktop`.
-
-On X11 the panel and the screenshot tool use X instead of Wayland; every
-other app is plain GTK4 and runs on either. Auto-hide is Wayland-only.
-Status: the panel's window list and start menu were tried under labwc's
-Xwayland; placing the bar relies on the window manager honouring dock hints
-(Openbox and similar do), and that has not been tried on a real Xorg session.
-
 ## Using it for real
 
 Example labwc files are in `data/labwc/`: an `autostart` that restarts the
@@ -441,6 +404,7 @@ dynamically linked system libraries (LGPL); libghostty-vt (Ghostty) and
 zig-wayland, fetched by `zig build`, are MIT, as I read their license files;
 the zig-gobject package I fetched ships no license file, so check its
 upstream before redistributing binaries; and the protocol XML files in
-`protocols/` keep their own copyright and permission notices. The Papirus icon
+`protocols/` keep their own copyright and permission notices. The Fluent icon
+theme in `icons/Fluent` is GPL-3.0 (see `icons/COPYING`); the Microsoft Fluent UI System Icons in `icons/dkde-ui` are MIT (`icons/dkde-ui/LICENSE`); the Papirus icon
 theme is a separate package and is not bundled.
 

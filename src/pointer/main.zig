@@ -16,6 +16,7 @@
 //! (default 1280x720).
 
 const std = @import("std");
+const cli = @import("cli");
 const wayland = @import("wayland");
 
 const wl = wayland.client.wl;
@@ -194,6 +195,7 @@ fn pressChord(kb: *zwp.VirtualKeyboardV1, display: *wl.Display, spec: []const u8
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-pointer", .summary = "Move and click the pointer on a Wayland compositor (a test tool)", .usage = "[--size WxH] [move X Y | click BUTTON | scroll N | tap KEY | sleep MS]...", .value_options = &.{"--size"} });
     const display = wl.Display.connect(null) catch fail("cannot connect to the compositor", .{});
     const registry = try display.getRegistry();
     var globals: Globals = .{};

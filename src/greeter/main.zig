@@ -3,6 +3,7 @@
 //! chosen account and, on success, to start the dkde session.
 
 const std = @import("std");
+const cli = @import("cli");
 const gio = @import("gio2");
 const glib = @import("glib2");
 const gobject = @import("gobject2");
@@ -200,6 +201,7 @@ const App = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-greeter", .summary = "Graphical login screen (run by greetd)" });
     common.perf.init();
     var debug_allocator: common.perf.Gpa = .{};
     defer debug_allocator.deinit();

@@ -1,0 +1,74 @@
+# The taskbar, start menu, desktop and idle actions. Every key is listed with
+# its default; change what you like.
+[panel]
+height = 40
+# bottom, top, left or right
+position = "bottom"
+# Slide out of the way; move the pointer to the edge to show it.
+autohide = false
+# strftime codes; \n starts a new line. 12-hour time over the date by default.
+clock-format = "%-I:%M %p\n%-m/%-d/%Y"
+# The Rosquin calendar can be shown in the clock with these codes in
+# clock-format: @D day code, @y day of the year (starts over at 1 on
+# September 21), @Y year, @n month (or quarter) name, @m its number,
+# @d day of it, @w week of the year, @e day of the 13-day week, @N day name,
+# @@ for a literal @. For example "%-I:%M %p\n@D/@y  Yr @Y  @n @d".
+# Which grouping @n, @m and @d count in: weeks (28 weeks, no months), months
+# (7 months of 4 weeks) or quarters (4 quarters of 7 weeks).
+clock-rosquin-layout = "months"
+# One button per app (with a count) instead of one per window.
+group-windows = true
+# false shows icons only.
+show-labels = true
+# Apps pinned to the taskbar (right-click a taskbar button or a Start menu
+# app). Desktop file IDs.
+taskbar-pinned = []
+# Which quick settings the flyout shows: network, bluetooth, airplane, sound,
+# brightness, battery.
+quick-settings = ["network", "bluetooth", "airplane", "sound", "brightness", "battery"]
+
+[desktop]
+# Show the files in ~/Desktop as icons on the wallpaper. Read when the panel
+# starts.
+icons = true
+# Snap desktop icons to a grid when you move them.
+snap-to-grid = true
+
+[wallpaper]
+# Path to an image; empty shows the solid colour.
+image = ""
+color = "#3a6ea5"
+# cover, contain, fill or center
+fit = "cover"
+# A folder of pictures to cycle through (replaces the single image), and how
+# often to change, in minutes. 0 keeps the first picture.
+slideshow-dir = ""
+slideshow-minutes = 10
+
+[menu]
+# Desktop file IDs, in order.
+pinned = ["dkde-files.desktop", "dkde-term.desktop", "dkde-settings.desktop"]
+recent-count = 5
+shutdown-command = "poweroff"
+restart-command = "reboot"
+logoff-command = "labwc --exit"
+# Commands for dkde-idle; empty finds one automatically (swaylock, loginctl, ...).
+lock-command = ""
+sleep-command = ""
+
+[power]
+# Minutes of no keyboard or mouse use before each action; 0 never.
+lock-after = 0
+screen-off-after = 0
+sleep-after = 0
+# Lock before sleeping, so the machine wakes locked.
+lock-before-sleep = true
+# Battery warnings (laptops; a desktop has no battery and never checks).
+# A notification at this percent while running on the battery; 0 turns the
+# warnings off.
+low-battery = 15
+# A second notification that stays until dismissed, and, after 30 seconds
+# without a charger, the action below.
+critical-battery = 5
+# sleep, poweroff or none (warn only). Sleep uses [menu] sleep-command.
+critical-battery-action = "sleep"

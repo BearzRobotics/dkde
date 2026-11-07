@@ -1,6 +1,7 @@
 //! dkde-settings: the settings app (SPEC.md 5.5).
 
 const std = @import("std");
+const cli = @import("cli");
 const gio = @import("gio2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
@@ -31,6 +32,7 @@ const App = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-settings", .summary = "Desktop settings", .usage = "[--page PAGE]", .value_options = &.{"--page"} });
     common.perf.init();
     var debug_allocator: common.perf.Gpa = .{};
     defer debug_allocator.deinit();

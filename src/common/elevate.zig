@@ -16,7 +16,7 @@ const glib = @import("glib2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 
-const tr = @import("i18n.zig").tr;
+const tr = @import("core").i18n.tr;
 
 pub const Outcome = enum { ok, cancelled, failed };
 

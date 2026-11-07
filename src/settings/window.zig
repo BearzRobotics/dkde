@@ -16,7 +16,6 @@ const labwc = common.labwc;
 const audio = common.audio;
 const users = @import("users.zig");
 const hwpages = @import("hwpages.zig");
-const consolepage = @import("consolepage.zig");
 const aboutpage = @import("aboutpage.zig");
 const regionpage = @import("regionpage.zig");
 const termpreview = @import("termpreview.zig");
@@ -52,7 +51,6 @@ const pages = [_]Page{
     .{ .id = "shortcuts", .title = "Keyboard shortcuts", .icon = "preferences-desktop-keyboard-shortcuts-symbolic", .category = 2, .desc = "Keys that open apps and manage windows" },
     .{ .id = "defaults", .title = "Default apps", .icon = "preferences-other-symbolic", .category = 3, .desc = "Which app opens which kind of file" },
     .{ .id = "terminal", .title = "Terminal", .icon = "utilities-terminal-symbolic", .category = 3, .desc = "The terminal window you open on the desktop (dkde-term). Your own settings, with profiles" },
-    .{ .id = "console", .title = "Console", .icon = "computer-symbolic", .category = 3, .desc = "The full-screen text login on Ctrl+Alt+F1 to F6, with no desktop (dkde-console). System-wide, needs an administrator password" },
     .{ .id = "datetime", .title = "Date & time", .icon = "preferences-system-time-symbolic", .category = 4, .desc = "Time zone, clock and calendar system" },
     .{ .id = "region", .title = "Language & region", .icon = "preferences-desktop-locale-symbolic", .category = 4, .desc = "Language, and how dates, numbers, currency and measurements are written" },
     .{ .id = "about", .title = "About", .icon = "help-about-symbolic", .category = 1, .desc = "This computer: name, system, processor, memory, storage" },
@@ -85,6 +83,7 @@ pub const SettingsWindow = struct {
     pinned: std.ArrayList([]u8) = .empty,
     /// Names of the icon themes in the Appearance drop-down, in order.
     icon_themes: std.ArrayList([:0]u8) = .empty,
+    ui_icon_themes: std.ArrayList([:0]u8) = .empty,
     pinned_box: ?*gtk.Box = null,
     profile_box: ?*gtk.Box = null,
     /// The previews in the profile cards; they follow the staged values.
@@ -120,9 +119,9 @@ pub const SettingsWindow = struct {
             .allocator = allocator,
             .window = gtk.ApplicationWindow.new(app),
             .stack = gtk.Stack.new(),
-            .shared = try common.Config.load(allocator, "dkde.conf"),
-            .panel = try common.Config.load(allocator, "panel.conf"),
-            .term = try common.Config.load(allocator, "term.conf"),
+            .shared = try common.Config.load(allocator, "dkde.toml"),
+            .panel = try common.Config.load(allocator, "panel.toml"),
+            .term = try common.Config.load(allocator, "term.toml"),
         };
         self.loadApps();
         // Changes are held until Apply: the files are not written before.
@@ -404,6 +403,8 @@ pub const SettingsWindow = struct {
         self.account_names.deinit(self.allocator);
         for (self.icon_themes.items) |t| self.allocator.free(t);
         self.icon_themes.deinit(self.allocator);
+        for (self.ui_icon_themes.items) |t| self.allocator.free(t);
+        self.ui_icon_themes.deinit(self.allocator);
         for (self.strings.items) |str| self.allocator.free(str);
         self.strings.deinit(self.allocator);
         for (self.apps.items) |a| a.as(gobject.Object).unref();
@@ -505,8 +506,6 @@ pub const SettingsWindow = struct {
                 hwpages.BluetoothPage.build(self)
             else if (std.mem.eql(u8, id, "shortcuts"))
                 hwpages.ShortcutsPage.build(self)
-            else if (std.mem.eql(u8, id, "console"))
-                consolepage.ConsolePage.build(self)
             else if (std.mem.eql(u8, id, "about"))
                 aboutpage.AboutPage.build(self)
             else if (std.mem.eql(u8, id, "region"))
@@ -680,7 +679,8 @@ pub const SettingsWindow = struct {
         _ = gobject.Object.signals.notify.connect(accent, *Binding, &onAccent, self.bind(&self.shared, "appearance", "accent"), .{ .detail = "rgba" });
         addRowDesc(page, common.tr("Accent colour"), "Used for the Start button, selections and highlights", accent.as(gtk.Widget));
 
-        addRowDesc(page, common.tr("Icon theme"), "The icons used by dkde apps and the taskbar", self.iconThemePicker().as(gtk.Widget));
+        addRowDesc(page, common.tr("Icon theme"), "Icons for apps, folders and file types", self.iconThemePicker(false).as(gtk.Widget));
+        addRowDesc(page, common.tr("Interface icons"), "The small glyphs on buttons, toolbars and window controls; they are looked up before the icon theme", self.iconThemePicker(true).as(gtk.Widget));
 
         const font = gtk.FontDialogButton.new(gtk.FontDialog.new());
         font.setLevel(.family);
@@ -725,35 +725,48 @@ pub const SettingsWindow = struct {
         return page;
     }
 
-    /// A drop-down of the installed icon themes; the first entry means "system default".
-    fn iconThemePicker(self: *SettingsWindow) *gtk.DropDown {
+    /// A drop-down of the installed icon themes. The first entries are not themes:
+    /// "Default" (empty value) and, for the interface icons, "Same as the icon
+    /// theme" (value "same"). `ui` picks the interface-icons setting.
+    fn iconThemePicker(self: *SettingsWindow, ui: bool) *gtk.DropDown {
         const names = common.icons.list(self.allocator) catch &.{};
         defer common.icons.free(self.allocator, @constCast(names));
+        const key: [:0]const u8 = if (ui) "ui-icon-theme" else "icon-theme";
+        const store = if (ui) &self.ui_icon_themes else &self.icon_themes;
         const list = gtk.StringList.new(null);
-        list.append(common.tr("System default"));
-        for (self.icon_themes.items) |t| self.allocator.free(t);
-        self.icon_themes.clearRetainingCapacity();
-        const current = self.shared.getString(self.allocator, "appearance", "icon-theme", "") catch null;
+        list.append(if (ui) common.tr("Default (dkde-ui, Microsoft Fluent UI)") else common.tr("Default (Fluent)"));
+        var lead: c_uint = 1;
+        if (ui) {
+            list.append(common.tr("Same as the icon theme"));
+            lead = 2;
+        }
+        for (store.items) |t| self.allocator.free(t);
+        store.clearRetainingCapacity();
+        const current = self.shared.getString(self.allocator, "appearance", key, "") catch null;
         defer if (current) |c| self.allocator.free(c);
-        var selected: c_uint = 0;
-        for (names, 0..) |n, i| {
+        var selected: c_uint = if (ui and current != null and std.mem.eql(u8, current.?, "same")) 1 else 0;
+        for (names) |n| {
+            // The generated stacking theme is not for choosing (it is also hidden).
             const z = self.allocator.dupeSentinel(u8, n, 0) catch continue;
-            self.icon_themes.append(self.allocator, z) catch {
+            store.append(self.allocator, z) catch {
                 self.allocator.free(z);
                 continue;
             };
             list.append(z.ptr);
-            if (current != null and std.mem.eql(u8, current.?, n)) selected = @intCast(i + 1);
+            if (current != null and std.mem.eql(u8, current.?, n)) selected = @intCast(store.items.len - 1 + lead);
         }
         const dd = gtk.DropDown.new(list.as(gio.ListModel), null);
         dd.setSelected(selected);
-        _ = gobject.Object.signals.notify.connect(dd, *Binding, &onIconTheme, self.bind(&self.shared, "appearance", "icon-theme"), .{ .detail = "selected" });
+        _ = gobject.Object.signals.notify.connect(dd, *Binding, &onIconTheme, self.bind(&self.shared, "appearance", key), .{ .detail = "selected" });
         return dd;
     }
 
     fn onIconTheme(dd: *gtk.DropDown, _: *gobject.ParamSpec, b: *Binding) callconv(.c) void {
+        const ui = std.mem.eql(u8, b.key, "ui-icon-theme");
+        const store = if (ui) &b.window.ui_icon_themes else &b.window.icon_themes;
+        const lead: c_uint = if (ui) 2 else 1;
         const index = dd.getSelected();
-        const value: [:0]const u8 = if (index == 0 or index - 1 >= b.window.icon_themes.items.len) "" else b.window.icon_themes.items[index - 1];
+        const value: [:0]const u8 = if (index == 0) "" else if (ui and index == 1) "same" else if (index < lead or index - lead >= store.items.len) "" else store.items[index - lead];
         b.config.setString(b.group, b.key, value) catch {};
     }
 

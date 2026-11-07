@@ -1,6 +1,7 @@
 //! dkde-files: the file manager (SPEC.md 5.4).
 
 const std = @import("std");
+const cli = @import("cli");
 const gio = @import("gio2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
@@ -31,6 +32,7 @@ const App = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-files", .summary = "File manager", .usage = "[DIRECTORY]" });
     common.perf.init();
     var debug_allocator: common.perf.Gpa = .{};
     defer debug_allocator.deinit();
@@ -38,7 +40,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     var app: App = .{
         .allocator = allocator,
-        .config = try common.Config.load(allocator, "files.conf"),
+        .config = try common.Config.load(allocator, "files.toml"),
         .start = if (init.args.vector.len > 1) std.mem.span(init.args.vector[1]) else null,
     };
     defer app.config.deinit();

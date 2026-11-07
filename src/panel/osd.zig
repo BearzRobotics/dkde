@@ -21,7 +21,6 @@ pub const Osd = struct {
     hide_source: c_uint = 0,
 
     pub fn create(allocator: std.mem.Allocator) ?*Osd {
-        if (surface.isX11()) return null;
         const self = allocator.create(Osd) catch return null;
         const window = gtk.Window.new();
         window.as(gtk.Widget).addCssClass("dkde-osd-window");

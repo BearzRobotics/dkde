@@ -8,14 +8,15 @@
 //!   [menu]  lock-command, sleep-command                 empty = detect
 
 const std = @import("std");
+const cli = @import("cli");
 const glib = @import("glib2");
 const wayland = @import("wayland");
-const common = @import("common");
+const core = @import("core");
 
 const wl = wayland.client.wl;
 const ext = wayland.client.ext;
 
-pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
+pub const std_options: std.Options = .{ .logFn = core.log.logFn, .log_level = .debug };
 
 const log = std.log.scoped(.idle);
 
@@ -25,7 +26,7 @@ const Kind = enum { lock, screen_off, sleep };
 
 const Idle = struct {
     allocator: std.mem.Allocator,
-    config: common.Config,
+    config: core.Config,
     display: *wl.Display,
     notifier: ?*ext.IdleNotifierV1 = null,
     seat: ?*wl.Seat = null,
@@ -98,7 +99,7 @@ const Idle = struct {
         const configured = self.config.getString(self.allocator, "menu", "lock-command", "") catch return null;
         if (configured.len > 0) return configured;
         self.allocator.free(configured);
-        const found = common.power.detectLock(common.power.system_probe) orelse return null;
+        const found = core.power.detectLock(core.power.system_probe) orelse return null;
         return self.allocator.dupe(u8, found) catch null;
     }
 
@@ -106,7 +107,7 @@ const Idle = struct {
         const configured = self.config.getString(self.allocator, "menu", "sleep-command", "") catch return null;
         if (configured.len > 0) return configured;
         self.allocator.free(configured);
-        const found = common.power.detectSleep(common.power.system_probe) orelse return null;
+        const found = core.power.detectSleep(core.power.system_probe) orelse return null;
         return self.allocator.dupe(u8, found) catch null;
     }
 
@@ -161,9 +162,10 @@ const Idle = struct {
     }
 };
 
-pub fn main(_: std.process.Init.Minimal) !void {
-    common.perf.init();
-    var debug_allocator: common.perf.Gpa = .{};
+pub fn main(init: std.process.Init.Minimal) !void {
+    cli.handle(init.args, .{ .name = "dkde-idle", .summary = "Idle and screen-lock daemon" });
+    core.perf.init();
+    var debug_allocator: core.perf.Gpa = .{};
     defer debug_allocator.deinit();
     const allocator = debug_allocator.allocator();
 
@@ -173,7 +175,7 @@ pub fn main(_: std.process.Init.Minimal) !void {
     };
     var idle: Idle = .{
         .allocator = allocator,
-        .config = try common.Config.load(allocator, "panel.conf"),
+        .config = try core.Config.load(allocator, "panel.toml"),
         .display = display,
         .registry = try display.getRegistry(),
         .fast = glib.getenv("DKDE_IDLE_SECONDS") != null,
@@ -195,5 +197,5 @@ pub fn main(_: std.process.Init.Minimal) !void {
 }
 
 test {
-    _ = @import("common");
+    _ = @import("core");
 }

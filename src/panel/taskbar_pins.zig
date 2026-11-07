@@ -8,7 +8,7 @@ const log = std.log.scoped(.taskbar_pins);
 
 /// The pinned desktop IDs, in order. Free with `common.config.freeStringList`.
 pub fn ids(allocator: std.mem.Allocator) ![][]u8 {
-    var cfg = try common.Config.load(allocator, "panel.conf");
+    var cfg = try common.Config.load(allocator, "panel.toml");
     defer cfg.deinit();
     if (try cfg.getStringList(allocator, "panel", "taskbar-pinned")) |list| {
         // Drop empty entries (an empty key reads as one).
@@ -51,7 +51,7 @@ pub fn toggle(allocator: std.mem.Allocator, id: []const u8) void {
     const current: []const []const u8 = @ptrCast(list);
     const next = toggled(allocator, current, id) catch return;
     defer allocator.free(next);
-    var cfg = common.Config.load(allocator, "panel.conf") catch return;
+    var cfg = common.Config.load(allocator, "panel.toml") catch return;
     defer cfg.deinit();
     cfg.setStringList("panel", "taskbar-pinned", next) catch |err| log.warn("cannot save taskbar pins: {s}", .{@errorName(err)});
 }

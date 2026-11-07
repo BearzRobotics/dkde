@@ -1,4 +1,15 @@
 #!/bin/sh
+
+case "${1:-}" in
+    -h|--help)
+        echo "dkde-greeter-start - run the greeter inside its kiosk labwc"
+        echo "Usage: dkde-greeter-start"
+        echo "  -h, --help     show this help and exit"
+        echo "  -V, --version  show the version and exit"
+        exit 0 ;;
+    -V|--version) echo "dkde-greeter-start @VERSION@"; exit 0 ;;
+    -*) echo "dkde-greeter-start: unknown option '$1'" >&2; echo "Try 'dkde-greeter-start --help'." >&2; exit 2 ;;
+esac
 # Started by the greeter's labwc: run the greeter, then end that labwc.
 dkde-greeter
 labwc --exit

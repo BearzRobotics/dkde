@@ -131,7 +131,7 @@ fn launchInTerminal(allocator: std.mem.Allocator, info: *gio.AppInfo) bool {
 /// The executable of the terminal chosen in Settings (`[default-apps]
 /// terminal` in dkde.conf), or null for dkde-term.
 fn defaultTerminal(allocator: std.mem.Allocator) ?[]u8 {
-    var cfg = config_mod.Config.load(allocator, "dkde.conf") catch return null;
+    var cfg = config_mod.Config.load(allocator, "dkde.toml") catch return null;
     defer cfg.deinit();
     const id = cfg.getString(allocator, "default-apps", "terminal", "") catch return null;
     defer allocator.free(id);

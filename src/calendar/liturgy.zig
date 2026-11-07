@@ -6,6 +6,7 @@
 //! here. `compute` says what is celebrated on a day and what else is kept.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const glib = @import("glib2");
 const common = @import("common");
 const civil = common.civil;
@@ -107,6 +108,8 @@ pub const Table = struct {
 
     /// The user's copy in ~/.config/dkde if there is one, else the built-in table.
     pub fn load(allocator: std.mem.Allocator, kind: Kind) !Table {
+        // The standalone Windows build has only the built-in tables.
+        if (comptime builtin.os.tag == .windows) return parse(allocator, kind, kind.builtinText());
         if (common.paths.userConfigFile(allocator, kind.fileName())) |path| {
             defer allocator.free(path);
             var contents: [*]u8 = undefined;

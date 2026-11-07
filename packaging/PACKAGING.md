@@ -25,7 +25,7 @@ Make one yourself from a clean checkout with `scripts/make-source-tarball.sh`.
 
 | What | Version | pkg-config module / command | Ubuntu package |
 |---|---|---|---|
-| Zig | **0.17.0 exactly** | `zig version` | (not in apt; from ziglang.org or `zvm`) |
+| Zig | **0.17.1 exactly** | `zig version` | (not in apt; from ziglang.org or `zvm`) |
 | GTK 4 and its chain (GLib, GIO, Pango, Cairo, HarfBuzz, gdk-pixbuf, Graphene) | 4.12 or newer *(unverified lower bound)* | `gtk4` | `libgtk-4-dev` |
 | gtk4-layer-shell | any | `gtk4-layer-shell-0` | `libgtk4-layer-shell-dev` |
 | Wayland client library | any | `wayland-client` | `libwayland-dev` |
@@ -34,11 +34,11 @@ Make one yourself from a clean checkout with `scripts/make-source-tarball.sh`.
 | C compiler / libc headers | for linking only | | `build-essential` (dkrescue: LLVM/Clang) |
 
 Optional build flags: `-Dpdf=true` (needs `poppler-glib`; the Zig PDF renderer is
-still in progress), `-Dx11=true` (needs `x11`).
+still in progress).
 
 The Zig dependencies are pinned by hash in `build.zig.zon` and vendored in the
 tarball: zig-gobject (GTK bindings), zig-wayland, libghostty-vt (the terminal
-core, needs no C libraries), zigimg and zig-yaml (in `third_party/`).
+core, needs no C libraries), zigimg (in `third_party/`).
 
 ## 3. Building
 
@@ -69,14 +69,14 @@ Things worth knowing:
 
 | Where | What |
 |---|---|
-| `$PREFIX/bin/` | `dkde-panel`, `dkde-session`, `dkde-greeter`, `dkde-greeter-session`, `dkde-greeter-start`, `dkde-setup`, `dkde-idle`, `dkde-pointer`, the apps (`dkde-term`, `-files`, `-settings`, `-edit`, `-hex`, `-calc`, `-calendar`, `-clock`, `-color`, `-charmap`, `-disks`, `-parted`, `-snip`, `-tasks`, `-view`), and `dkde-startx`, `dkde-xsession` |
+| `$PREFIX/bin/` | `dkde-panel`, `dkde-session`, `dkde-greeter`, `dkde-greeter-session`, `dkde-greeter-start`, `dkde-setup`, `dkde-idle`, `dkde-pointer`, the apps (`dkde-term`, `-files`, `-settings`, `-edit`, `-calc`, `-calendar`, `-clock`, `-color`, `-charmap`, `-parted`, `-snip`, `-tasks`, `-view`) |
 | `$PREFIX/share/applications/` | the apps' `.desktop` files |
 | `$PREFIX/share/wayland-sessions/dkde.desktop` | the login-manager session entry |
-| `$PREFIX/share/dkde/` | defaults (`*.conf`, `style.css`), labwc config and keybindings, the service-file templates |
+| `$PREFIX/share/dkde/` | defaults (`*.toml`, `style.css`), labwc config and keybindings, the service-file templates |
 | `/etc/greetd/config.toml`, `/etc/pam.d/greetd` | login screen (from `packaging/build.sh install`) |
 | `/etc/dinit.d/` | `greetd`, `seatd`, `dbus`, `wpa_supplicant`, `bluetooth`, `cupsd` (with `INIT=dinit`) |
 
-The per-user config (`~/.config/dkde/`, including `calendar.conf`) is created
+The per-user config (`~/.config/dkde/`, including `calendar.toml`) is created
 on first use; `dkde-setup --once` runs from `dkde-session` on first login.
 
 ## 5. Run-time requirements
@@ -107,7 +107,7 @@ dependencies). It needs `parted`, and util-linux's `lsblk` (with `-J`) and
 filesystem is offered only when its tools are installed (`e2fsprogs`,
 `dosfstools`, `xfsprogs`, `btrfs-progs`, `exfatprogs`, `ntfs-3g`, ...).
 
-**Not needed:** systemd, logind, polkit, libadwaita, X11 (unless `-Dx11=true`),
+**Not needed:** systemd, logind, polkit, libadwaita, X11,
 a D-Bus library, cron or any init-system timers. Calendar reminders run inside
 `dkde-panel`, so dinit needs no timer support.
 
@@ -126,14 +126,14 @@ a D-Bus library, cron or any init-system timers. Calendar reminders run inside
 ## 7. Low-resource notes for the image
 
 dkde defaults to GTK's CPU renderer (`GSK_RENDERER=cairo`, set through
-`[performance] renderer` in `dkde.conf`): an idle panel was about 53 MB
+`[performance] renderer` in `dkde.toml`): an idle panel was about 53 MB
 instead of 228 MB in testing, and it needs no GL/EGL stack on the image. Leave
 Mesa out unless a GPU needs it, and set `renderer=auto` for machines that have
 one. Apps allocate with plain `malloc` and nothing polls while idle.
 
 ## 8. First-boot checklist (dkrescue QEMU)
 
-1. `packaging/build.sh check` passes inside dkrescue (Zig 0.17.0, the three
+1. `packaging/build.sh check` passes inside dkrescue (Zig 0.17.1, the three
    pkg-config modules). *Unverified: GTK 4 and gtk4-layer-shell on musl.*
 2. `packaging/build.sh install` finishes; `ldd $(command -v dkde-panel)` shows
    no missing libraries.
