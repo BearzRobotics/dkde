@@ -35,7 +35,7 @@ fn isGtkFree(name: []const u8) bool {
     return false;
 }
 
-const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "charmap", "clock", "calendar", "color", "idle", "pdf", "parted", "notify", "polkit-ui" };
+const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "charmap", "clock", "calendar", "color", "idle", "pdf", "parted", "notify", "polkit-ui", "help" };
 
 pub fn build(b: *std.Build) void {
     addWindowsCalendar(b);
@@ -132,11 +132,12 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&imgcodec_run.step);
     }
 
-    // The PDF page renderer: cairo drawing on top of the vendored zpdf parser.
+    // The PDF page renderer: cairo drawing from pdf-zig's display list.
     // It does not need GTK or poppler, so its tests always run.
-    const zpdf_mod = b.createModule(.{ .root_source_file = b.path("third_party/zpdf/src/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
+    const pdf_dep = b.dependency("pdf", .{ .target = target, .optimize = optimize });
+    const pdf_mod = pdf_dep.module("pdf");
     const pdfrender = b.createModule(.{ .root_source_file = b.path("src/pdfrender/render.zig"), .target = target, .optimize = optimize, .link_libc = true });
-    pdfrender.addImport("zpdf", zpdf_mod);
+    pdfrender.addImport("pdf", pdf_mod);
     pdfrender.addImport("truetype", truetypeModule(b, target, optimize));
     pdfrender.addImport("imgcodec", imgcodec);
     pdfrender.addImport("cairo1", gobject.module("cairo1"));
@@ -152,7 +153,6 @@ pub fn build(b: *std.Build) void {
     // dkde-pdfcheck: draws many PDFs without a display and reports what was not drawn.
     const check_mod = b.createModule(.{ .root_source_file = b.path("src/pdfcheck/main.zig"), .target = target, .optimize = optimize, .link_libc = true, .strip = strip });
     check_mod.addImport("cli", cli);
-    check_mod.addImport("zpdf", zpdf_mod);
     check_mod.addImport("pdfrender", pdfrender);
     check_mod.addImport("cairo1", gobject.module("cairo1"));
     check_mod.addImport("glib2", gobject.module("glib2"));
@@ -225,6 +225,11 @@ pub fn build(b: *std.Build) void {
             if (std.mem.eql(u8, name, "pdf")) mod.linkSystemLibrary("poppler-glib", .{});
             if (std.mem.eql(u8, name, "parted")) mod.addImport("pangocairo1", gobject.module("pangocairo1"));
             if (std.mem.eql(u8, name, "view")) mod.addImport("imgcodec", imgcodec);
+            if (std.mem.eql(u8, name, "help")) {
+                // Manual-page lookup and rendering: dkman's library (which brings md-zig and gtroff-zig).
+                const dkman = b.lazyDependency("dkman", .{ .target = target, .optimize = optimize }) orelse return;
+                mod.addImport("dkman", dkman.module("dkman"));
+            }
             if (std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "pointer") or std.mem.eql(u8, name, "idle")) {
                 mod.addImport("gdkwayland4", gobject.module("gdkwayland4"));
                 mod.addImport("wayland", wayland_module);
@@ -238,6 +243,7 @@ pub fn build(b: *std.Build) void {
             // Dev runs read data files straight from the source tree.
             run.setCwd(b.path("."));
             run.setEnvironmentVariable("DKDE_DATA_DIR", "data");
+            run.setEnvironmentVariable("DKDE_HELP_DIR", "docs/manpages");
             b.step("run-" ++ name, "Build and run dkde-" ++ name).dependOn(&run.step);
 
             const run_tests = b.addRunArtifact(b.addTest(.{ .root_module = mod }));
@@ -264,7 +270,7 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
     }
 
-    for ([_][]const u8{ "dkde-files", "dkde-term", "dkde-settings", "dkde-calc", "dkde-edit", "dkde-view", "dkde-tasks", "dkde-snip", "dkde-charmap", "dkde-clock", "dkde-calendar", "dkde-color", "dkde-parted" }) |name| {
+    for ([_][]const u8{ "dkde-files", "dkde-term", "dkde-settings", "dkde-calc", "dkde-edit", "dkde-view", "dkde-tasks", "dkde-snip", "dkde-charmap", "dkde-clock", "dkde-calendar", "dkde-color", "dkde-parted", "dkde-help" }) |name| {
         if (!wanted(app, name["dkde-".len..])) continue;
         b.getInstallStep().dependOn(&b.addInstallFileWithDir(
             b.path(b.fmt("data/{s}.desktop", .{name})),

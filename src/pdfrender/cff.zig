@@ -5,9 +5,9 @@
 //! font returns an error instead of crashing.
 
 const std = @import("std");
-const zpdf = @import("zpdf");
+const pdf = @import("pdf");
 
-const std_strings = zpdf.cff_std_strings.std_strings;
+const std_strings = pdf.cff_strings.std_strings;
 
 pub const Error = error{ BadFont, OutOfMemory };
 
@@ -312,7 +312,7 @@ pub const Font = struct {
         _ = a;
         const d = f.data;
         if (off == 0 or off == 1) { // Standard (or Expert, treated alike): by Unicode of the standard name
-            for (zpdf.encoding.standard_encoding, 0..) |cp, code| {
+            for (pdf.encoding.standard_encoding, 0..) |cp, code| {
                 if (code > 255 or cp == 0) continue;
                 if (f.unicode.get(cp)) |g| f.encoding[code] = g;
             }
@@ -463,7 +463,7 @@ fn readFdSelect(d: []const u8, off: usize, out: []u8) void {
 }
 
 fn nameToUnicode(name: []const u8) ?u32 {
-    if (zpdf.agl.glyphNameToUnicode(name)) |u| return u;
+    if (pdf.agl.glyphNameToUnicode(name)) |u| return u;
     // "uniXXXX", "uXXXX[XX]" and "name.suffix" forms.
     if (name.len >= 7 and std.mem.startsWith(u8, name, "uni")) return std.fmt.parseInt(u32, name[3..7], 16) catch null;
     if (name.len >= 5 and name[0] == 'u') if (std.fmt.parseInt(u32, name[1..], 16)) |v| return v else |_| {};
@@ -731,7 +731,7 @@ const Interp = struct {
         const f = self.font;
         var w: f64 = 0;
         for ([_]struct { c: usize, dx: f64, dy: f64 }{ .{ .c = bchar, .dx = 0, .dy = 0 }, .{ .c = achar, .dx = adx, .dy = ady } }) |part| {
-            const cp = zpdf.encoding.standard_encoding[part.c];
+            const cp = pdf.encoding.standard_encoding[part.c];
             const gid = f.unicode.get(cp) orelse continue;
             f.run(gid, sink, &w, self.ox + part.dx, self.oy + part.dy, self.depth_glyph + 1) catch {};
         }

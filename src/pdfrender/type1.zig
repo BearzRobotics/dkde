@@ -5,10 +5,11 @@
 //! and a damaged font returns an error.
 
 const std = @import("std");
-const zpdf = @import("zpdf");
+const pdf = @import("pdf");
 
 pub const Error = error{ BadFont, OutOfMemory };
 
+const unmapped: u16 = 0xFFFF;
 const max_subr_depth = 12;
 const max_stack = 64;
 
@@ -19,7 +20,8 @@ pub const Font = struct {
     subrs: []const []const u8 = &.{},
     units_per_em: u16 = 1000,
     /// The font's own character code to glyph id table.
-    encoding: [256]u16 = @splat(0),
+    /// Glyph index of each code; `unmapped` for none (glyph 0 is a real glyph in Type 1).
+    encoding: [256]u16 = @splat(unmapped),
     unicode: std.AutoHashMapUnmanaged(u32, u16) = .empty,
     by_name: std.StringHashMapUnmanaged(u16) = .empty,
     num_glyphs: u16 = 0,
@@ -66,7 +68,7 @@ pub const Font = struct {
         const rest = clear[pos..];
         // "StandardEncoding def": the standard names for the codes.
         if (std.mem.indexOf(u8, rest[0..@min(rest.len, 40)], "StandardEncoding") != null) {
-            for (zpdf.encoding.standard_encoding, 0..) |cp, code| {
+            for (pdf.encoding.standard_encoding, 0..) |cp, code| {
                 if (code > 255 or cp == 0) continue;
                 if (f.unicode.get(cp)) |g| f.encoding[code] = g;
             }
@@ -93,7 +95,7 @@ pub const Font = struct {
     pub fn glyphForCode(f: *const Font, code: u32) ?u16 {
         if (code > 255) return null;
         const g = f.encoding[code];
-        return if (g == 0) null else g;
+        return if (g == unmapped) null else g;
     }
 
     pub fn advance(f: *const Font, gid: u16) u16 {
@@ -270,7 +272,7 @@ fn readCharStrings(a: std.mem.Allocator, d: []const u8, len_iv: usize) Error![]c
 }
 
 fn nameToUnicode(name: []const u8) ?u32 {
-    if (zpdf.agl.glyphNameToUnicode(name)) |u| return u;
+    if (pdf.agl.glyphNameToUnicode(name)) |u| return u;
     if (name.len >= 7 and std.mem.startsWith(u8, name, "uni")) return std.fmt.parseInt(u32, name[3..7], 16) catch null;
     if (std.mem.indexOfScalar(u8, name, '.')) |dot| if (dot > 0) return nameToUnicode(name[0..dot]);
     return null;
@@ -482,7 +484,7 @@ const Interp = struct {
                         .{ .c = achar, .dx = self.sbx - asb + adx, .dy = ady },
                     };
                     for (parts) |part| {
-                        const cp = zpdf.encoding.standard_encoding[part.c];
+                        const cp = pdf.encoding.standard_encoding[part.c];
                         const gid = f.unicode.get(cp) orelse continue;
                         f.run(gid, sink, &w, self.ox + part.dx, self.oy + part.dy, self.glyph_depth + 1) catch {};
                     }
