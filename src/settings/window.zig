@@ -71,9 +71,9 @@ pub const SettingsWindow = struct {
     stack: *gtk.Stack,
     scroller: *gtk.ScrolledWindow = undefined,
 
-    shared: common.Config, // dkde.conf
-    panel: common.Config, // panel.conf
-    term: common.Config, // term.conf
+    shared: common.Config, // dkde.toml
+    panel: common.Config, // panel.toml
+    term: common.Config, // term.toml
 
     bindings: std.ArrayList(*Binding) = .empty,
     /// Config group names that bindings point at; freed with the window.
@@ -399,6 +399,8 @@ pub const SettingsWindow = struct {
         if (self.debounce_source != 0) _ = glib.Source.remove(self.debounce_source);
         for (self.bindings.items) |b| self.allocator.destroy(b);
         self.bindings.deinit(self.allocator);
+        for (self.term_previews.items) |p| p.destroy();
+        self.term_previews.deinit(self.allocator);
         for (self.account_names.items) |n| self.allocator.free(n);
         self.account_names.deinit(self.allocator);
         for (self.icon_themes.items) |t| self.allocator.free(t);
@@ -1683,7 +1685,7 @@ pub const SettingsWindow = struct {
 
     // ---- terminal --------------------------------------------------------
 
-    /// term.conf holds `[terminal] default-profile` and one `[profile:<name>]`
+    /// term.toml holds `[terminal] default-profile` and one `[profile:<name>]`
     /// group per profile with `command`, `directory`, `font`, `color-scheme`
     /// and `cursor-style`.
     fn terminalPage(self: *SettingsWindow) *gtk.Box {

@@ -15,7 +15,7 @@
 #              an image that must boot on old machines. "native" tunes for the
 #              build machine and may not run elsewhere.        (default baseline)
 #   TARGET     Zig target triple, only for cross builds, e.g. x86_64-linux-musl
-#   FLAGS      extra zig build options, e.g. "-Dpdf=true"
+#   FLAGS      extra zig build options, e.g. "-Doptimize=ReleaseSafe"
 #   PAM_FORM   system (Slackware, LFS, dkrescue-style system-auth) | debian   (default system)
 #   INIT       dinit | systemd | sysvinit | none   which service files to install (default dinit)
 #   GREETD_USER  the account greetd runs the greeter as           (default _greetd)

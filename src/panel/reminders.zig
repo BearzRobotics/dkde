@@ -1,5 +1,5 @@
 //! Calendar reminders (SPEC.md 5.6). dkde-calendar stores its events in
-//! `calendar.conf`; the panel is always running, so it keeps one timer set for
+//! `calendar.toml`; the panel is always running, so it keeps one timer set for
 //! the next reminder and sends a desktop notification when it falls due. No
 //! cron or init-system timer is involved, and nothing wakes while no reminder
 //! is pending.

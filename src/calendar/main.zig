@@ -1,7 +1,7 @@
 //! dkde-calendar: a month calendar with events (place, date, time frame,
 //! repeat, reminder), a note for any day, and optional liturgical calendars
 //! laid over the days (SPEC.md 5.6). Everything is saved in
-//! `~/.config/dkde/calendar.conf`. Reminders are sent by dkde-panel, which is
+//! `~/.config/dkde/calendar.toml`. Reminders are sent by dkde-panel, which is
 //! always running; this program only stores the events.
 
 const std = @import("std");
@@ -163,6 +163,9 @@ pub const CalendarApp = struct {
     named_only: bool = true,
     twelve_hour: bool = true,
     sync_status: ?*gtk.Label = null,
+    /// One per file button in the Options popover. The popover is not destroyed with the
+    /// window, so a button's data cannot be freed by its destroy signal: it lives here.
+    file_ctx: [3]FileCtx = undefined,
     table_no: ?liturgy.Table = null,
     table_tlm: ?liturgy.Table = null,
     table_ru: ?liturgy.Table = null,
@@ -329,9 +332,11 @@ pub const CalendarApp = struct {
         save_button.as(gtk.Widget).setTooltipText(common.tr("Make the calendar and the liturgical calendars shown now the ones the program opens with. Changing the view to look at something does not change the default."));
         _ = gtk.Button.signals.clicked.connect(save_button, *CalendarApp, &onSaveView, self, .{});
         self.save_button = save_button;
-        bar.append(system_menu.as(gtk.Widget));
-        bar.append(save_button.as(gtk.Widget));
-        bar.append(spacer.as(gtk.Widget));
+        // Second row, as in the Windows build: the calendar selector and everything after it.
+        const bar2 = gtk.Box.new(.horizontal, 6);
+        bar2.append(system_menu.as(gtk.Widget));
+        bar2.append(save_button.as(gtk.Widget));
+        bar2.append(spacer.as(gtk.Widget));
         // The liturgical calendars in one drop-down, so the bar never runs out of room.
         const lit_box = gtk.Box.new(.vertical, 6);
         lit_box.append(no_check.as(gtk.Widget));
@@ -343,7 +348,7 @@ pub const CalendarApp = struct {
         lit_menu.setLabel(common.tr("Liturgical"));
         lit_menu.as(gtk.Widget).setTooltipText(common.tr("Lay the Novus Ordo, 1962 or Russian Orthodox liturgical calendar over the days"));
         lit_menu.setPopover(lit_popover);
-        bar.append(lit_menu.as(gtk.Widget));
+        bar2.append(lit_menu.as(gtk.Widget));
         const clock_check = gtk.CheckButton.newWithLabel(common.tr("12-hour clock (AM/PM)"));
         clock_check.setActive(@intFromBool(self.twelve_hour));
         _ = gtk.CheckButton.signals.toggled.connect(clock_check, *CalendarApp, &onToggleClock, self, .{});
@@ -373,12 +378,11 @@ pub const CalendarApp = struct {
             .{ "Import calendar file…", FileMode.load_file },
             .{ "Export calendar file…", FileMode.save_file },
             .{ "Choose sync file…", FileMode.set_sync },
-        }) |item| {
+        }, 0..) |item, ci| {
             const b = gtk.Button.newWithLabel(common.tr(item[0]));
             b.as(gtk.Widget).addCssClass("flat");
-            const ctx = allocator.create(FileCtx) catch return error.OutOfMemory;
-            ctx.* = .{ .app = self, .mode = item[1] };
-            _ = gtk.Button.signals.clicked.connect(b, *FileCtx, &onFileButton, ctx, .{});
+            self.file_ctx[ci] = .{ .app = self, .mode = item[1] };
+            _ = gtk.Button.signals.clicked.connect(b, *FileCtx, &onFileButton, &self.file_ctx[ci], .{});
             options_box.append(b.as(gtk.Widget));
         }
         const sync_now = gtk.Button.newWithLabel(common.tr("Sync now"));
@@ -397,8 +401,8 @@ pub const CalendarApp = struct {
         const options = gtk.MenuButton.new();
         options.setLabel(common.tr("Options"));
         options.setPopover(options_popover);
-        bar.append(options.as(gtk.Widget));
-        bar.append(add.as(gtk.Widget));
+        bar2.append(options.as(gtk.Widget));
+        bar2.append(add.as(gtk.Widget));
 
         // ---- month grid ----------------------------------------------------------------
         self.grid.setColumnHomogeneous(1);
@@ -408,6 +412,7 @@ pub const CalendarApp = struct {
         const month_box = gtk.Box.new(.vertical, 4);
         month_box.as(gtk.Widget).setHexpand(1);
         month_box.append(bar.as(gtk.Widget));
+        month_box.append(bar2.as(gtk.Widget));
         // The grid scrolls when it does not fit, so it never makes the window bigger
         // than the screen.
         const grid_scroll = gtk.ScrolledWindow.new();
@@ -468,6 +473,7 @@ pub const CalendarApp = struct {
         body.append(right.as(gtk.Widget));
         window.setChild(body.as(gtk.Widget));
 
+        _ = gtk.Window.signals.close_request.connect(self.window.as(gtk.Window), *CalendarApp, &onCloseRequest, self, .{});
         _ = gtk.Widget.signals.destroy.connect(self.window, *CalendarApp, &onDestroy, self, .{});
         self.syncNow(false);
         self.rebuildGrid();
@@ -481,8 +487,18 @@ pub const CalendarApp = struct {
         self.window.as(gtk.Window).present();
     }
 
-    fn onDestroy(_: *gtk.ApplicationWindow, self: *CalendarApp) callconv(.c) void {
+    /// The note is written while the window and its text view still exist: by
+    /// the time `destroy` runs, GTK has already taken the widgets apart.
+    fn onCloseRequest(_: *gtk.Window, self: *CalendarApp) callconv(.c) c_int {
         self.flush();
+        return 0;
+    }
+
+    fn onDestroy(_: *gtk.ApplicationWindow, self: *CalendarApp) callconv(.c) void {
+        if (self.save_source != 0) {
+            _ = glib.Source.remove(self.save_source);
+            self.save_source = 0;
+        }
         if (self.table_no) |*t| t.deinit();
         if (self.table_tlm) |*t| t.deinit();
         if (self.table_ru) |*t| t.deinit();
@@ -910,7 +926,6 @@ pub const CalendarApp = struct {
                 top.append(moon.as(gtk.Widget));
             }
         }
-        box.append(top.as(gtk.Widget));
         if (self.sys.isRosquin()) {
             // The day code (2026-11-06 is 18309) and the day of the year (47), which starts over on September 21.
             var kb: [24]u8 = undefined;
@@ -929,6 +944,10 @@ pub const CalendarApp = struct {
             code_row.append(civil_small.as(gtk.Widget));
             box.append(code_row.as(gtk.Widget));
         }
+
+        // The glyph hangs below the civil date line: its font draws well outside its own box,
+        // so above that line it landed on the date.
+        box.append(top.as(gtk.Widget));
 
         var day: liturgy.Day = undefined;
         if (self.table_no) |*t| self.addLitLine(box, t, date, &day);

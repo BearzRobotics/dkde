@@ -227,11 +227,11 @@ pub fn writeAll(a: std.mem.Allocator, config_home: []const u8, t: Theme) void {
         } else |_| {}
     }
     inline for (.{ .{ "qt5ct", false }, .{ "qt6ct", true } }) |q| {
-        const scheme = std.fmt.allocPrint(a, "{s}/{s}/colors/dkde.conf", .{ config_home, q[0] }) catch return;
+        const scheme = std.fmt.allocPrint(a, "{s}/{s}/colors/dkde.toml", .{ config_home, q[0] }) catch return;
         defer a.free(scheme);
         if (qtColorScheme(a, t, q[1])) |s| {
             defer a.free(s);
-            writeUnder(a, config_home, q[0] ++ "/colors/dkde.conf", s);
+            writeUnder(a, config_home, q[0] ++ "/colors/dkde.toml", s);
         } else |_| {}
         if (qtConf(a, t, scheme, kv)) |s| {
             defer a.free(s);

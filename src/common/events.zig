@@ -1,6 +1,6 @@
 //! Calendar events: what is stored, which days an event falls on, and when its
 //! reminder fires (SPEC.md 5.6, dkde-calendar). Events live in
-//! `~/.config/dkde/calendar.conf` as `[event.<id>]` groups, so the calendar app
+//! `~/.config/dkde/calendar.toml` as `[event.<id>]` groups, so the calendar app
 //! writes them and the panel, which sends the reminders, reads the same file.
 //!
 //! Times are local wall-clock time with no zone arithmetic: a "minute" is

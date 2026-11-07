@@ -7,6 +7,7 @@ const glib = @import("glib2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const common = @import("common");
+const termembed = @import("termembed");
 
 const archive = @import("archive.zig");
 const context = @import("context.zig");
@@ -23,7 +24,7 @@ const list_attributes = "standard::name,standard::display-name,standard::type,st
 
 const Column = enum { name, size, kind, modified };
 
-/// How a folder is shown (SPEC.md 5.4). The tag names are the `view` values in files.conf.
+/// How a folder is shown (SPEC.md 5.4). The tag names are the `view` values in files.toml.
 const ViewMode = enum {
     details,
     list,
@@ -62,6 +63,8 @@ pub const FilesWindow = struct {
     config: *common.Config,
     window: *gtk.ApplicationWindow,
     view_mode: ViewMode = .details,
+    /// The terminal below the folder view (F4); the shell starts on first use.
+    term_panel: *termembed.Panel,
 
     // Model chain: DirectoryList -> filter -> sort -> selection.
     dir_list: *gtk.DirectoryList,
@@ -81,6 +84,9 @@ pub const FilesWindow = struct {
     path_stack: *gtk.Stack,
     crumbs: *gtk.Box,
     crumb_ctxs: std.ArrayList(*CrumbCtx) = .empty,
+    /// The data of each tab's close button, owned here: GTK does not destroy a
+    /// notebook's tab labels when the window goes, so the button cannot free it.
+    tab_closers: std.ArrayList(*TabClose) = .empty,
     path_entry: *gtk.Entry,
     search: *gtk.SearchEntry,
     status: *gtk.Label,
@@ -123,6 +129,7 @@ pub const FilesWindow = struct {
             .allocator = allocator,
             .config = config,
             .window = gtk.ApplicationWindow.new(app),
+            .term_panel = try termembed.Panel.create(allocator),
             .dir_list = undefined,
             .filter = undefined,
             .selection = undefined,
@@ -169,6 +176,8 @@ pub const FilesWindow = struct {
             self.allocator.destroy(ctx);
         }
         self.crumb_ctxs.deinit(self.allocator);
+        for (self.tab_closers.items) |c| self.allocator.destroy(c);
+        self.tab_closers.deinit(self.allocator);
         for (self.sidebar_paths.items) |p| if (p) |path| self.allocator.free(path);
         self.sidebar_paths.deinit(self.allocator);
         self.sidebar_bookmark.deinit(self.allocator);
@@ -183,6 +192,7 @@ pub const FilesWindow = struct {
             self.allocator.destroy(tab);
         }
         self.tabs.deinit(self.allocator);
+        self.term_panel.destroy();
         self.allocator.destroy(self);
     }
 
@@ -325,9 +335,18 @@ pub const FilesWindow = struct {
         right.append(self.progress_box.as(gtk.Widget));
         right.append(self.status.as(gtk.Widget));
 
+        // The folder view above, the terminal panel below (hidden until F4).
+        const vertical = gtk.Paned.new(.vertical);
+        vertical.setStartChild(right.as(gtk.Widget));
+        vertical.setEndChild(self.term_panel.widget());
+        vertical.setResizeStartChild(1);
+        vertical.setResizeEndChild(0);
+        vertical.setShrinkStartChild(0);
+        vertical.setShrinkEndChild(0);
+
         const paned = gtk.Paned.new(.horizontal);
         paned.setStartChild(side_scroller.as(gtk.Widget));
-        paned.setEndChild(right.as(gtk.Widget));
+        paned.setEndChild(vertical.as(gtk.Widget));
         paned.setShrinkStartChild(0);
         paned.setResizeStartChild(0);
 
@@ -369,6 +388,9 @@ pub const FilesWindow = struct {
                 mb.check("Lar_ge Icons", "view-large", self.view_mode == .large),
                 .separator,
                 mb.check("Show _Hidden Files", "toggle-hidden", self.show_hidden),
+                .separator,
+                mb.item("_Terminal Panel", "toggle-terminal", "F4"),
+                mb.item("Terminal: _Go to This Folder", "terminal-cd", null),
             } },
             .{ .label = "_Go", .entries = &.{
                 mb.item("_Back", "back", "<Alt>Left"),
@@ -443,10 +465,6 @@ pub const FilesWindow = struct {
 
     const TabClose = struct { window: *FilesWindow, page: *gtk.Widget };
 
-    fn onTabCloseDestroy(_: *gtk.Button, ctx: *TabClose) callconv(.c) void {
-        ctx.window.allocator.destroy(ctx);
-    }
-
     fn onTabCloseClicked(_: *gtk.Button, ctx: *TabClose) callconv(.c) void {
         for (ctx.window.tabs.items, 0..) |t, i| {
             if (t.view_stack.as(gtk.Widget) == ctx.page) return ctx.window.closeTab(i);
@@ -464,7 +482,7 @@ pub const FilesWindow = struct {
         const ctx = self.allocator.create(TabClose) catch @panic("OOM");
         ctx.* = .{ .window = self, .page = page };
         _ = gtk.Button.signals.clicked.connect(close, *TabClose, &onTabCloseClicked, ctx, .{});
-        _ = gtk.Widget.signals.destroy.connect(close, *TabClose, &onTabCloseDestroy, ctx, .{});
+        self.tab_closers.append(self.allocator, ctx) catch @panic("OOM");
         const box = gtk.Box.new(.horizontal, 6);
         box.append(label.as(gtk.Widget));
         box.append(close.as(gtk.Widget));
@@ -539,7 +557,14 @@ pub const FilesWindow = struct {
         if (self.tabs.items.len <= 1) return self.window.as(gtk.Window).close();
         self.snapshotInto(self.tabs.items[self.active_tab]);
         const tab = self.tabs.orderedRemove(index);
+        const page = tab.view_stack.as(gtk.Widget);
         self.notebook.removePage(@intCast(index));
+        // The close button's data: this runs from its click handler, which does not touch it again.
+        for (self.tab_closers.items, 0..) |c, i| if (c.page == page) {
+            _ = self.tab_closers.orderedRemove(i);
+            self.allocator.destroy(c);
+            break;
+        };
         tab.current.as(gobject.Object).unref();
         for (tab.back.items) |f| f.as(gobject.Object).unref();
         tab.back.deinit(self.allocator);
@@ -1878,6 +1903,13 @@ pub const FilesWindow = struct {
             return;
         }
         if (eql(u8, action, "open-admin")) return self.openAsAdmin();
+        if (eql(u8, action, "toggle-terminal") or eql(u8, action, "terminal-cd")) {
+            const path = self.current.getPath() orelse return;
+            defer glib.free(path);
+            if (eql(u8, action, "toggle-terminal")) return self.term_panel.toggle(std.mem.span(path));
+            self.term_panel.show(std.mem.span(path));
+            return self.term_panel.changeDirectory(std.mem.span(path));
+        }
         if (eql(u8, action, "terminal-here")) {
             const path = self.current.getPath() orelse return;
             defer glib.free(path);

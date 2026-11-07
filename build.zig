@@ -53,7 +53,6 @@ pub fn build(b: *std.Build) void {
     const app = b.option([]const u8, "app", "Build only this program (e.g. -Dapp=calc); default: all");
     if (app) |name| validateApp(b, name);
 
-    const pdf = b.option(bool, "pdf", "Build dkde-pdf (needs libpoppler-glib-dev)") orelse false;
     const build_options = b.addOptions();
     // Shown on the About page and by --version.
     build_options.addOption([]const u8, "version", @import("build.zig.zon").version);
@@ -86,6 +85,9 @@ pub fn build(b: *std.Build) void {
         core.addAnonymousImport("data-" ++ name ++ ".toml", .{ .root_source_file = b.path("data/" ++ name ++ ".toml") });
     }
     core.addImport("toml", b.dependency("toml", .{ .target = target, .optimize = optimize }).module("toml"));
+    // /etc/passwd and /etc/group parsing (no NSS), shared with the other Unix tools.
+    const util_unix = b.dependency("util_unix", .{ .target = target, .optimize = optimize }).module("util_unix");
+    core.addImport("util_unix", util_unix);
 
     const common = b.addModule("common", .{
         .root_source_file = b.path("src/common/root.zig"),
@@ -133,7 +135,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // The PDF page renderer: cairo drawing from pdf-zig's display list.
-    // It does not need GTK or poppler, so its tests always run.
+    // It does not need GTK, so its tests always run.
     const pdf_dep = b.dependency("pdf", .{ .target = target, .optimize = optimize });
     const pdf_mod = pdf_dep.module("pdf");
     const pdfrender = b.createModule(.{ .root_source_file = b.path("src/pdfrender/render.zig"), .target = target, .optimize = optimize, .link_libc = true });
@@ -171,10 +173,7 @@ pub fn build(b: *std.Build) void {
     }
 
     inline for (components) |name| {
-        // dkde-pdf needs poppler, so it is only built when asked for.
-        const is_pdf = comptime std.mem.eql(u8, name, "pdf");
-        // -Dapp=pdf is itself the request for it.
-        if ((!is_pdf or pdf or isApp(app, "pdf")) and wanted(app, name)) {
+        if (wanted(app, name)) {
             const mod = b.createModule(.{
                 .root_source_file = b.path("src/" ++ name ++ "/main.zig"),
                 .target = target,
@@ -206,25 +205,32 @@ pub fn build(b: *std.Build) void {
             }
             if (std.mem.eql(u8, name, "settings")) {
                 // The Terminal page previews colour schemes with termcore's tables.
-                const ghostty = b.dependency("ghostty", .{ .target = target, .optimize = .ReleaseFast });
-                mod.addImport("termcore", termcoreModule(b, target, optimize, ghostty));
+                mod.addImport("termcore", b.dependency("dkterm", .{ .target = target, .optimize = optimize }).module("termcore"));
+            }
+            if (std.mem.eql(u8, name, "files") or std.mem.eql(u8, name, "edit")) {
+                mod.addImport("termembed", termEmbedModule(b, target, optimize, common, gobject));
             }
             if (std.mem.eql(u8, name, "term")) {
                 // Debug builds of libghostty-vt run integrity checks on every linefeed,
                 // which makes a screenful of output take seconds. Always build it fast.
-                const ghostty = b.dependency("ghostty", .{ .target = target, .optimize = .ReleaseFast });
-                mod.addImport("ghostty-vt", ghostty.module("ghostty-vt"));
-                // termcore must use the same libghostty-vt as the program that imports it.
-                mod.addImport("termcore", termcoreModule(b, target, optimize, ghostty));
+                // termcore must use the same libghostty-vt as the program that imports it:
+                // take both from DKTermCore, which builds libghostty-vt once.
+                const dkterm = b.dependency("dkterm", .{ .target = target, .optimize = optimize });
+                mod.addImport("ghostty-vt", dkterm.module("ghostty-vt"));
+                mod.addImport("termcore", dkterm.module("termcore"));
                 mod.addImport("cairo1", gobject.module("cairo1"));
                 mod.addImport("pangocairo1", gobject.module("pangocairo1"));
             }
             mod.addImport("build_options", build_options_mod);
             mod.addImport("cli", cli);
             if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "color") or std.mem.eql(u8, name, "parted") or std.mem.eql(u8, name, "pdf")) mod.addImport("cairo1", gobject.module("cairo1"));
-            if (std.mem.eql(u8, name, "pdf")) mod.linkSystemLibrary("poppler-glib", .{});
+            if (std.mem.eql(u8, name, "pdf")) {
+                mod.addImport("pdfrender", pdfrender);
+                mod.addImport("pdf", pdf_mod);
+            }
             if (std.mem.eql(u8, name, "parted")) mod.addImport("pangocairo1", gobject.module("pangocairo1"));
             if (std.mem.eql(u8, name, "view")) mod.addImport("imgcodec", imgcodec);
+            if (std.mem.eql(u8, name, "settings") or std.mem.eql(u8, name, "tasks")) mod.addImport("util_unix", util_unix);
             if (std.mem.eql(u8, name, "help")) {
                 // Manual-page lookup and rendering: dkman's library (which brings md-zig and gtroff-zig).
                 const dkman = b.lazyDependency("dkman", .{ .target = target, .optimize = optimize }) orelse return;
@@ -270,7 +276,7 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
     }
 
-    for ([_][]const u8{ "dkde-files", "dkde-term", "dkde-settings", "dkde-calc", "dkde-edit", "dkde-view", "dkde-tasks", "dkde-snip", "dkde-charmap", "dkde-clock", "dkde-calendar", "dkde-color", "dkde-parted", "dkde-help" }) |name| {
+    for ([_][]const u8{ "dkde-files", "dkde-term", "dkde-settings", "dkde-calc", "dkde-edit", "dkde-view", "dkde-pdf", "dkde-tasks", "dkde-snip", "dkde-charmap", "dkde-clock", "dkde-calendar", "dkde-color", "dkde-parted", "dkde-help" }) |name| {
         if (!wanted(app, name["dkde-".len..])) continue;
         b.getInstallStep().dependOn(&b.addInstallFileWithDir(
             b.path(b.fmt("data/{s}.desktop", .{name})),
@@ -279,8 +285,9 @@ pub fn build(b: *std.Build) void {
         ).step);
     }
 
-    if (pdf and wanted(app, "pdf") or isApp(app, "pdf")) {
-        b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path("data/dkde-pdf.desktop"), .prefix, "share/applications/dkde-pdf.desktop").step);
+    // The help viewer shows these (and the system's manual pages).
+    if (wanted(app, "help")) {
+        b.installDirectory(.{ .source_dir = b.path("docs/manpages"), .install_dir = .prefix, .install_subdir = "share/dkde/help", .exclude_extensions = &.{} });
     }
 
     if (app) |name| {
@@ -355,22 +362,24 @@ fn addGtk(mod: *std.Build.Module, gobject: *std.Build.Dependency) void {
     }
 }
 
+/// The terminal as a widget other programs can host (dkde-files, dkde-edit):
+/// the same view dkde-term uses, on DKTermCore. Compiled only into the
+/// programs that import it.
+fn termEmbedModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, common: *std.Build.Module, gobject: *std.Build.Dependency) *std.Build.Module {
+    const m = b.createModule(.{ .root_source_file = b.path("src/term/embed.zig"), .target = target, .optimize = optimize, .link_libc = true });
+    m.addImport("common", common);
+    const dkterm = b.dependency("dkterm", .{ .target = target, .optimize = optimize });
+    m.addImport("ghostty-vt", dkterm.module("ghostty-vt"));
+    m.addImport("termcore", dkterm.module("termcore"));
+    inline for (.{ "glib2", "gobject2", "gio2", "gtk4", "gdk4", "pango1", "pangocairo1", "cairo1" }) |name| {
+        m.addImport(name, gobject.module(name));
+    }
+    return m;
+}
+
 /// The TrueType reader used by the PDF renderer. Pure Zig.
 fn truetypeModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Module {
     return b.createModule(.{ .root_source_file = b.path("src/truetype.zig"), .target = target, .optimize = optimize, .link_libc = true });
-}
-
-/// termcore: terminal state and tables shared by dkde-term and dkde-settings.
-/// Imports only std and libghostty-vt. Moves out when DKTermCore is a package.
-fn termcoreModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, ghostty: *std.Build.Dependency) *std.Build.Module {
-    const m = b.createModule(.{
-        .root_source_file = b.path("src/termcore/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    m.addImport("ghostty-vt", ghostty.module("ghostty-vt"));
-    return m;
 }
 
 /// `zig build wincal`: the standalone Windows calendar (zig-out/bin/rosquin-calendar.exe).

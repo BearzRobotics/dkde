@@ -45,7 +45,7 @@ fn add(display: *gdk.Display, path: [:0]const u8, priority: c_uint) void {
     gtk.StyleContext.addProviderForDisplay(display, provider.as(gtk.StyleProvider), priority);
 }
 
-/// The shared look from `dkde.conf` (accent colour, light/dark, UI font),
+/// The shared look from `dkde.toml` (accent colour, light/dark, UI font),
 /// applied to this process and re-applied whenever the file changes
 /// (SPEC.md 6.2).
 pub const Appearance = struct {
@@ -79,7 +79,7 @@ pub const Appearance = struct {
         gtk.StyleContext.addProviderForDisplay(display, self.provider.as(gtk.StyleProvider), appearance_priority);
         self.apply();
         self.config.watch(Appearance, onChanged, self) catch |err|
-            log.warn("dkde.conf not watched: {s}", .{@errorName(err)});
+            log.warn("dkde.toml not watched: {s}", .{@errorName(err)});
         return self;
     }
 
@@ -102,7 +102,7 @@ pub const Appearance = struct {
         defer self.allocator.free(accent_z);
         var rgba: gdk.RGBA = undefined;
         const accent: [:0]const u8 = if (rgba.parse(accent_z) != 0) accent_z else blk: {
-            log.warn("dkde.conf: invalid accent '{s}'; using default", .{accent_raw});
+            log.warn("dkde.toml: invalid accent '{s}'; using default", .{accent_raw});
             break :blk default_accent;
         };
 

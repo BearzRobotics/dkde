@@ -57,6 +57,11 @@ pub const Document = struct {
 
     /// Reads and opens the file at `path`.
     pub fn open(gpa: std.mem.Allocator, path: [:0]const u8) OpenError!*Document {
+        return openWithPassword(gpa, path, "");
+    }
+
+    /// Like `open`, for an encrypted file with a user password.
+    pub fn openWithPassword(gpa: std.mem.Allocator, path: [:0]const u8, password: []const u8) OpenError!*Document {
         const f = std.c.fopen(path.ptr, "rb") orelse return error.FileUnreadable;
         defer _ = std.c.fclose(f);
         var list: std.ArrayList(u8) = .empty;
@@ -68,22 +73,22 @@ pub const Document = struct {
             try list.appendSlice(gpa, chunk[0..n]);
         }
         const buf = try list.toOwnedSlice(gpa);
-        return fromOwned(gpa, buf);
+        return fromOwned(gpa, buf, password);
     }
 
     /// Opens a PDF held in memory (copied).
     pub fn openFromMemory(gpa: std.mem.Allocator, bytes: []const u8) OpenError!*Document {
-        return fromOwned(gpa, try gpa.dupe(u8, bytes));
+        return fromOwned(gpa, try gpa.dupe(u8, bytes), "");
     }
 
-    fn fromOwned(gpa: std.mem.Allocator, buf: []u8) OpenError!*Document {
+    fn fromOwned(gpa: std.mem.Allocator, buf: []u8, password: []const u8) OpenError!*Document {
         errdefer gpa.free(buf);
         const self = try gpa.create(Document);
         errdefer gpa.destroy(self);
         self.* = .{
             .gpa = gpa,
             .bytes = buf,
-            .doc = pdf.Document.open(gpa, buf, .{}) catch |e| return switch (e) {
+            .doc = pdf.Document.open(gpa, buf, .{ .password = password }) catch |e| return switch (e) {
                 error.OutOfMemory => error.OutOfMemory,
                 error.PasswordRequired => error.PasswordRequired,
                 error.UnsupportedEncryption => error.Unsupported,
@@ -709,6 +714,17 @@ fn paintPixels(d: *Draw, cr: *cairo.Context, im: display.Image, px: pdf.image.Pi
 }
 
 // ---- pages --------------------------------------------------------------------------------
+
+/// The text of page `index` (0-based) in reading order, allocated from `allocator`.
+pub fn pageText(allocator: std.mem.Allocator, doc: *Document, index: usize) (Error || error{Unreadable})![]u8 {
+    const page = pdf.pages.page(&doc.doc, doc.pages, index) orelse return error.NoSuchPage;
+    var dl = doc.renderer.render(allocator, page) catch |e| switch (e) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.Unreadable,
+    };
+    defer dl.deinit();
+    return pdf.text.extract(allocator, &dl, .reading) catch error.OutOfMemory;
+}
 
 /// Draws page `index` (0-based) onto `cr`, scaled by `scale` device pixels per
 /// PDF point, with the page's top-left at the origin of `cr`. What could not

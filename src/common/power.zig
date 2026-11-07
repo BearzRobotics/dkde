@@ -34,7 +34,7 @@ pub fn detectSleep(p: Probe) ?[]const u8 {
 
 pub const Detect = *const fn (Probe) ?[]const u8;
 
-/// The command for `key` in `[menu]` of panel.conf, else the detected one.
+/// The command for `key` in `[menu]` of panel.toml, else the detected one.
 /// The caller frees it. Null when there is nothing to run.
 pub fn resolve(allocator: std.mem.Allocator, cfg: *const Config, key: [:0]const u8, detect: Detect) ?[]u8 {
     const configured = cfg.getString(allocator, "menu", key, "") catch return null;

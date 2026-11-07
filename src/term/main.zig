@@ -58,6 +58,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     // Uniqueness needs a session D-Bus, which dkde does not have.
     const gtk_app = gtk.Application.new("org.dkde.term", .{ .non_unique = true });
     defer gtk_app.as(gobject.Object).unref();
+    common.runapp.quitAfterEnv(gtk_app);
     _ = gio.Application.signals.activate.connect(gtk_app, *App, &App.activate, &app, .{});
 
     // GApplication only gets the program name; the rest is ours.
@@ -71,6 +72,7 @@ test {
     _ = @import("pty.zig");
     _ = @import("view.zig");
     _ = @import("window.zig");
+    _ = @import("embed.zig");
 }
 
 test "libghostty-vt parses a sequence" {

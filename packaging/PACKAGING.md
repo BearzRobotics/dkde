@@ -33,9 +33,6 @@ Make one yourself from a clean checkout with `scripts/make-source-tarball.sh`.
 | pkg-config | any | | `pkg-config` |
 | C compiler / libc headers | for linking only | | `build-essential` (dkrescue: LLVM/Clang) |
 
-Optional build flags: `-Dpdf=true` (needs `poppler-glib`; the Zig PDF renderer is
-still in progress).
-
 The Zig dependencies are pinned by hash in `build.zig.zon` and vendored in the
 tarball: zig-gobject (GTK bindings), zig-wayland, libghostty-vt (the terminal
 core, needs no C libraries), zigimg (in `third_party/`).

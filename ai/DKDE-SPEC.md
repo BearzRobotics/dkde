@@ -226,7 +226,7 @@ The historical component-level design is retained in `DKDE-LEGACY-REQUIREMENTS.m
 | `dkde-clock` | time utilities | run stopwatch and timer without notification service |
 | `dkde-calendar` | calendar and events | open calendar and persist a test event without panel |
 | `dkde-snip` | screenshots | capture via available Wayland protocol; explain unsupported compositor |
-| `dkde-help` (proposed name) | documentation/help | open local help document without network access |
+| `dkde-help` | documentation/help | open local help document without network access |
 
 Additional utilities enumerated in the historical specification (`dkde-tasks`, `dkde-charmap`, `dkde-color`, PDF checker, greeter, setup, optional policy agent) remain in the feature inventory; they are not deleted by omission from this table. DKTerm and DKConsole are **not** DKDE executable targets.
 

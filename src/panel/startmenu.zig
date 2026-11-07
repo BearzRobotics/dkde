@@ -708,7 +708,7 @@ pub const StartMenu = struct {
         var argc: c_int = 0;
         var argv: [*:null]?[*:0]u8 = undefined;
         if (glib.shellParseArgv(commandz, &argc, &argv, null) == 0) {
-            log.warn("panel.conf: cannot parse {s}='{s}'", .{ key, command });
+            log.warn("panel.toml: cannot parse {s}='{s}'", .{ key, command });
             return;
         }
         defer glib.strfreev(argv);

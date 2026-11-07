@@ -2,10 +2,11 @@
 
 const std = @import("std");
 const glib = @import("glib2");
+const userdb = @import("util_unix").userdb;
 
 const config_mod = @import("config.zig");
 
-/// Path of the profile picture: `[user] picture` in dkde.conf, else the
+/// Path of the profile picture: `[user] picture` in dkde.toml, else the
 /// conventional `~/.face`. Owned by the caller; null when there is none.
 pub fn picturePath(allocator: std.mem.Allocator, cfg: *const config_mod.Config) ?[]u8 {
     if (cfg.getString(allocator, "user", "picture", "")) |configured| {
@@ -40,14 +41,10 @@ const admin_groups = [_][]const u8{ "sudo", "wheel", "admin" };
 pub fn isAdmin(group_file: []const u8, gids: []const u32) bool {
     var lines = std.mem.splitScalar(u8, group_file, '\n');
     while (lines.next()) |line| {
-        var fields = std.mem.splitScalar(u8, line, ':');
-        const name = fields.next() orelse continue;
-        _ = fields.next() orelse continue;
-        const gid_text = fields.next() orelse continue;
-        const gid = std.fmt.parseInt(u32, gid_text, 10) catch continue;
+        const g = userdb.parseGroup(line) orelse continue;
         for (admin_groups) |admin| {
-            if (!std.mem.eql(u8, name, admin)) continue;
-            for (gids) |g| if (g == gid) return true;
+            if (!std.mem.eql(u8, g.name, admin)) continue;
+            for (gids) |id| if (id == g.gid) return true;
         }
     }
     return false;

@@ -9,6 +9,7 @@ const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const pango = @import("pango1");
 const common = @import("common");
+const termembed = @import("termembed");
 
 const App = struct {
     allocator: std.mem.Allocator,
@@ -55,6 +56,8 @@ const Editor = struct {
     find_entry: *gtk.SearchEntry,
     replace_entry: *gtk.Entry,
     css: *gtk.CssProvider,
+    /// The terminal below the text (Ctrl+`); the shell starts on first use.
+    term_panel: *termembed.Panel,
     /// Close was requested and the user chose to save first.
     closing_after_save: bool = false,
 
@@ -72,6 +75,7 @@ const Editor = struct {
             .find_entry = gtk.SearchEntry.new(),
             .replace_entry = gtk.Entry.new(),
             .css = gtk.CssProvider.new(),
+            .term_panel = try termembed.Panel.create(allocator),
         };
 
         const window = self.window;
@@ -114,6 +118,10 @@ const Editor = struct {
                 .separator,
                 mb.item("_Find and Replace…", "find", "<Control>f"),
             } },
+            .{ .label = "_View", .entries = &.{
+                mb.item("_Terminal", "toggle-terminal", "<Control>grave"),
+                mb.item("Terminal: _Go to This File's Folder", "terminal-cd", null),
+            } },
             .{ .label = "F_ormat", .entries = &.{
                 mb.check("_Word Wrap", "word-wrap", word_wrap),
                 mb.item("_Font…", "font", null),
@@ -152,8 +160,19 @@ const Editor = struct {
         const root = gtk.Box.new(.vertical, 0);
         root.append(menu_bar.as(gtk.Widget));
         root.append(self.search_bar.as(gtk.Widget));
-        root.append(self.notebook.as(gtk.Widget));
-        root.append(self.status.as(gtk.Widget));
+        // The text above, the terminal panel below (hidden until Ctrl+`).
+        const text_area = gtk.Box.new(.vertical, 0);
+        text_area.append(self.notebook.as(gtk.Widget));
+        text_area.append(self.status.as(gtk.Widget));
+        const vertical = gtk.Paned.new(.vertical);
+        vertical.setStartChild(text_area.as(gtk.Widget));
+        vertical.setEndChild(self.term_panel.widget());
+        vertical.setResizeStartChild(1);
+        vertical.setResizeEndChild(0);
+        vertical.setShrinkStartChild(0);
+        vertical.setShrinkEndChild(0);
+        vertical.as(gtk.Widget).setVexpand(1);
+        root.append(vertical.as(gtk.Widget));
         window.as(gtk.Window).setChild(root.as(gtk.Widget));
 
         _ = self.addDoc() catch return error.OutOfMemory;
@@ -171,6 +190,7 @@ const Editor = struct {
             self.allocator.destroy(doc);
         }
         self.docs.deinit(self.allocator);
+        self.term_panel.destroy();
         self.css.as(gobject.Object).unref();
         self.allocator.destroy(self);
     }
@@ -183,6 +203,14 @@ const Editor = struct {
         if (eql(u8, action, "open")) return self.openDialog();
         if (eql(u8, action, "save")) return self.save();
         if (eql(u8, action, "save-as")) return self.saveAsDialog();
+        if (eql(u8, action, "toggle-terminal") or eql(u8, action, "terminal-cd")) {
+            // The shell starts in the folder of the open file (home for an untitled one).
+            const dir: ?[]const u8 = if (self.cur.path) |p| (std.fs.path.dirname(p) orelse null) else null;
+            if (eql(u8, action, "toggle-terminal")) return self.term_panel.toggle(dir);
+            self.term_panel.show(dir);
+            if (dir) |d| self.term_panel.changeDirectory(d);
+            return;
+        }
         if (eql(u8, action, "undo")) return self.cur.buffer.undo();
         if (eql(u8, action, "redo")) return self.cur.buffer.redo();
         if (eql(u8, action, "cut")) return self.cur.buffer.cutClipboard(self.cur.view.as(gtk.Widget).getClipboard(), 1);
@@ -713,6 +741,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     const gtk_app = gtk.Application.new("org.dkde.edit", .{ .non_unique = true });
     defer gtk_app.as(gobject.Object).unref();
+    common.runapp.quitAfterEnv(gtk_app);
     _ = gio.Application.signals.activate.connect(gtk_app, *App, &App.activate, &app, .{});
 
     // GApplication only gets the program name; the file argument is ours.

@@ -37,6 +37,7 @@ const ColorTool = struct {
             .rgb = gtk.Entry.new(),
             .hsl = gtk.Entry.new(),
         };
+        _ = gtk.Widget.signals.destroy.connect(self.window, *ColorTool, &onDestroy, self, .{});
         const window = self.window.as(gtk.Window);
         window.setTitle(common.tr("Colour"));
         window.setDefaultSize(420, 420);
@@ -78,6 +79,10 @@ const ColorTool = struct {
 
         self.apply(self.color, true);
         return self;
+    }
+
+    fn onDestroy(_: *gtk.ApplicationWindow, self: *ColorTool) callconv(.c) void {
+        self.allocator.destroy(self);
     }
 
     pub fn present(self: *ColorTool) void {

@@ -49,6 +49,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     // Uniqueness needs a session D-Bus, which dkde does not have.
     const gtk_app = gtk.Application.new("org.dkde.files", .{ .non_unique = true });
     defer gtk_app.as(gobject.Object).unref();
+    common.runapp.quitAfterEnv(gtk_app);
     _ = gio.Application.signals.activate.connect(gtk_app, *App, &App.activate, &app, .{});
 
     // Only the program name goes to GApplication: the folder argument is ours.

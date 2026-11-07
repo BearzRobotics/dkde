@@ -2,7 +2,7 @@
 
 A small Wayland desktop shell with the layout of classic Windows: taskbar,
 Windows 7 style start menu, and a matching set of apps. Written in Zig on
-GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
+GTK4 (no libadwaita). The compositor is labwc. See `ai/DKDE-SPEC.md` for the design.
 
 | Binary | What it is |
 |---|---|
@@ -11,7 +11,8 @@ GTK4 (no libadwaita). The compositor is labwc. See `SPEC.md` for the design.
 | `dkde-files` | File manager |
 | `dkde-settings` | Settings |
 | `dkde-edit` | Text editor |
-| `dkde-pdf` | PDF viewer (optional, see below) |
+| `dkde-help` | Help viewer: DKDE's documents and the system's man pages, in tabs |
+| `dkde-pdf` | PDF viewer (draws with pdf-zig) |
 | `dkde-charmap` | Character map |
 | `dkde-clock` | Stopwatch, timer, alarm |
 | `dkde-calendar` | Calendar with notes |
@@ -100,7 +101,6 @@ below for the full list and one install command.
 
 | Feature | What you need |
 |---|---|
-| PDF viewer `dkde-pdf` | `libpoppler-glib-dev` to build, `zig build -Dpdf=true` |
 | File manager archives | `zip`, `unzip`, `tar`, `7zip` |
 | Partition tool `dkde-parted` | `util-linux` (`lsblk`, `mount`), `parted` and `sudo`; for formatting, the tools of each filesystem you want: `e2fsprogs`, `xfsprogs`, `btrfs-progs`, `dosfstools` (+ `fatresize`), `exfatprogs`, `ntfs-3g`, `f2fs-tools`, `jfsutils`, `reiserfsprogs`, `nilfs-tools`, `udftools`, `hfsprogs`. A filesystem is offered only when its tools are installed |
 | Run as administrator (file manager, Settings) | `sudo` |
@@ -225,11 +225,6 @@ zig build install --prefix /usr
 (For everyday use, build with `-Doptimize=ReleaseSafe`, or `-Doptimize=ReleaseSmall` for the smallest binaries on very old machines; see "Install" below.)
 
 Release builds drop debug information from the programs (all of them together are about 13 MB with `-Doptimize=ReleaseFast`; they were 134 MB with it). `-Dstrip=false` keeps it, for `perf` or a debugger. Debug builds always keep it.
-
-**PDF viewer (optional).** `dkde-pdf` needs poppler's GLib bindings, so it is
-built only on request: install `libpoppler-glib-dev` (Ubuntu; at run time
-`libpoppler-glib8`) and build with `zig build -Dpdf=true`. Without the flag the
-build has no poppler dependency.
 
 Debug builds still compile libghostty-vt with `ReleaseFast`; in Debug mode it
 checks itself on every linefeed and is far too slow.

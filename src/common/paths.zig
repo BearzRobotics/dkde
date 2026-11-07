@@ -48,14 +48,32 @@ pub fn userStateFile(allocator: std.mem.Allocator, file: []const u8) ![:0]u8 {
     return join(allocator, glib.getUserStateDir(), file);
 }
 
+extern fn readlink(path: [*:0]const u8, buf: [*]u8, size: usize) isize;
+
+/// `<exe dir>/../share/dkde/<file>` when that file exists.
+fn besideExecutable(allocator: std.mem.Allocator, file: []const u8) !?[:0]u8 {
+    if (comptime builtin.os.tag != .linux) return null;
+    var exe: [std.fs.max_path_bytes]u8 = undefined;
+    const n = readlink("/proc/self/exe", &exe, exe.len - 1);
+    if (n <= 0) return null;
+    const dir = std.fs.path.dirname(exe[0..@intCast(n)]) orelse return null;
+    const candidate = try std.fmt.allocPrintSentinel(allocator, "{s}/../share/dkde/{s}", .{ dir, file }, 0);
+    if (glib.fileTest(candidate, .{ .exists = true }) != 0) return candidate;
+    allocator.free(candidate);
+    return null;
+}
+
 /// The system copy of `file`: `$DKDE_DATA_DIR/<file>` if set, otherwise the
-/// first `$XDG_DATA_DIRS/dkde/<file>` that exists. Null when none exists.
+/// `<exe dir>/../share/dkde/<file>`, then the first `$XDG_DATA_DIRS/dkde/<file>` that exists. Null when none exists.
 pub fn systemDataFile(allocator: std.mem.Allocator, file: []const u8) !?[:0]u8 {
     // No system data directories on Windows: the defaults are built into the program.
     if (comptime is_windows) return null;
     if (glib.getenv(data_dir_env)) |dir| {
         return try std.fmt.allocPrintSentinel(allocator, "{s}/{s}", .{ std.mem.span(dir), file }, 0);
     }
+    // Next to the program: `<prefix>/bin/dkde-x` finds `<prefix>/share/dkde/`, so an
+    // installed tree, a staging directory or `zig-out` works without XDG_DATA_DIRS.
+    if (try besideExecutable(allocator, file)) |path| return path;
     // The binding types this NULL-terminated array without its terminator.
     const dirs: [*:null]const ?[*:0]const u8 = @ptrCast(glib.getSystemDataDirs());
     var i: usize = 0;

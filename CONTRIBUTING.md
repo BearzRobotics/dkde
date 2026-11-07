@@ -1,13 +1,13 @@
 # Contributing to dkde
 
 Thanks for looking. dkde is a small project with a written design, so the main
-rule is: read [SPEC.md](SPEC.md) first, and change it in the same pull request
+rule is: read [ai/DKDE-SPEC.md](ai/DKDE-SPEC.md) first, and change it in the same pull request
 as the code when the code changes the design.
 
-## The rules (SPEC.md section 10)
+## The rules (see ai/DKDE-SPEC.md)
 
 - **Spec first.** No new dependency, Wayland protocol or config key without
-  updating `SPEC.md` in the same change. If the spec turns out to be wrong,
+  updating `ai/DKDE-SPEC.md` in the same change. If the spec turns out to be wrong,
   fix the spec, then the code.
 - **One topic per pull request.** Small and reviewable beats large.
 - **Tests ship with the logic they test.** Parsing, config handling, labwc

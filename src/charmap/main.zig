@@ -31,6 +31,7 @@ const Charmap = struct {
             .picked = gtk.Entry.new(),
             .info = gtk.Label.new(""),
         };
+        _ = gtk.Widget.signals.destroy.connect(self.window, *Charmap, &onDestroy, self, .{});
         const window = self.window.as(gtk.Window);
         window.setTitle(common.tr("Character Map"));
         window.setDefaultSize(620, 520);
@@ -83,6 +84,10 @@ const Charmap = struct {
 
         self.fill(0);
         return self;
+    }
+
+    fn onDestroy(_: *gtk.ApplicationWindow, self: *Charmap) callconv(.c) void {
+        self.allocator.destroy(self);
     }
 
     pub fn present(self: *Charmap) void {

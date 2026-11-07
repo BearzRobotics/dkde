@@ -1,5 +1,5 @@
 //! Terminal profiles and colour schemes (SPEC.md 5.3). A profile is a
-//! `[profile:<name>]` group of term.conf (see SPEC.md 5.5).
+//! `[profile:<name>]` group of term.toml (see SPEC.md 5.5).
 
 const std = @import("std");
 const common = @import("common");

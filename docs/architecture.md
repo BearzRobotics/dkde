@@ -13,7 +13,7 @@ Describes what the code does today, not the goals; goals are in `ai/DKDE-SPEC.md
                               contextmenu, runapp, elevate.
  termcore (src/termcore)      terminal state and tables over libghostty-vt; used by term and
                               settings. Leaves when DKTermCore is a package.
- imgcodec, pdfrender, truetype, third_party/{zigimg,zpdf,stb}   per-app libraries
+ imgcodec, pdfrender, truetype, third_party/{zigimg,stb}   per-app libraries
 ```
 
 Programs (`src/<name>/main.zig` → `dkde-<name>`):
@@ -21,14 +21,14 @@ Programs (`src/<name>/main.zig` → `dkde-<name>`):
 | Imports | Programs |
 |---|---|
 | `core` only (no GTK linked) | `notify`, `setup`, `idle` |
-| `common` (GTK4) | `panel`, `files`, `settings`, `edit`, `view`, `calc`, `calendar`, `clock`, `charmap`, `color`, `parted`, `pdf` (poppler, `-Dpdf`), `snip`, `tasks`, `term`, `greeter`, `polkit-ui` |
+| `common` (GTK4) | `panel`, `files`, `settings`, `edit`, `view`, `calc`, `calendar`, `clock`, `charmap`, `color`, `parted`, `pdf`, `snip`, `tasks`, `term`, `greeter`, `polkit-ui` |
 | neither | `polkit` (GIO only), `pdfcheck`, `pointer` |
 
 No program imports another program's source. They start each other only as optional actions, through `PATH`.
 
 ## Build
 
-`build.zig` is the only build script. `zig build` builds everything; `zig build -Dapp=<name>` builds, tests (`test-<name>`) and installs one program, with `share/dkde/{style.css,dkde.toml}` and that program's own defaults. Lazy dependencies (`gobject`, `wayland`) are fetched only when a GTK program is selected. `-Dpdf=true` adds `dkde-pdf`. toml-zig is a path dependency on `../toml-zig`.
+`build.zig` is the only build script. `zig build` builds everything; `zig build -Dapp=<name>` builds, tests (`test-<name>`) and installs one program, with `share/dkde/{style.css,dkde.toml}` and that program's own defaults. Lazy dependencies (`gobject`, `wayland`) are fetched only when a GTK program is selected. toml-zig is a path dependency on `../toml-zig`.
 
 ## Configuration
 

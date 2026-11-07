@@ -7,6 +7,7 @@
 //! password cannot be interpreted as shell code.
 
 const std = @import("std");
+const userdb = @import("util_unix").userdb;
 
 pub const User = struct {
     name: []const u8,
@@ -23,19 +24,11 @@ pub fn parsePasswd(allocator: std.mem.Allocator, content: []const u8) ![]User {
     errdefer out.deinit(allocator);
     var lines = std.mem.splitScalar(u8, content, '\n');
     while (lines.next()) |line| {
-        if (line.len == 0 or line[0] == '#') continue;
-        var f = std.mem.splitScalar(u8, line, ':');
-        const name = f.next() orelse continue;
-        _ = f.next() orelse continue;
-        const uid = std.fmt.parseInt(u32, f.next() orelse continue, 10) catch continue;
-        _ = f.next() orelse continue;
-        const gecos = f.next() orelse continue;
-        _ = f.next() orelse continue;
-        const shell = f.next() orelse continue;
-        if (uid < 1000 or uid >= 60000) continue;
-        if (std.mem.endsWith(u8, shell, "nologin") or std.mem.endsWith(u8, shell, "/false")) continue;
-        const comma = std.mem.indexOfScalar(u8, gecos, ',') orelse gecos.len;
-        try out.append(allocator, .{ .name = name, .uid = uid, .full_name = gecos[0..comma], .shell = shell });
+        const e = userdb.parsePasswd(line) orelse continue;
+        if (e.uid < 1000 or e.uid >= 60000) continue;
+        if (std.mem.endsWith(u8, e.shell, "nologin") or std.mem.endsWith(u8, e.shell, "/false")) continue;
+        const comma = std.mem.indexOfScalar(u8, e.gecos, ',') orelse e.gecos.len;
+        try out.append(allocator, .{ .name = e.name, .uid = e.uid, .full_name = e.gecos[0..comma], .shell = e.shell });
     }
     return out.toOwnedSlice(allocator);
 }
@@ -66,9 +59,8 @@ pub fn adminGroup(group_file: []const u8) ?[]const u8 {
     for (admin_groups) |wanted| {
         var lines = std.mem.splitScalar(u8, group_file, '\n');
         while (lines.next()) |line| {
-            var f = std.mem.splitScalar(u8, line, ':');
-            const name = f.next() orelse continue;
-            if (std.mem.eql(u8, name, wanted)) return wanted;
+            const g = userdb.parseGroup(line) orelse continue;
+            if (std.mem.eql(u8, g.name, wanted)) return wanted;
         }
     }
     return null;
@@ -78,13 +70,9 @@ pub fn adminGroup(group_file: []const u8) ?[]const u8 {
 pub fn isMember(group_file: []const u8, group: []const u8, user: []const u8) bool {
     var lines = std.mem.splitScalar(u8, group_file, '\n');
     while (lines.next()) |line| {
-        var f = std.mem.splitScalar(u8, line, ':');
-        const name = f.next() orelse continue;
-        if (!std.mem.eql(u8, name, group)) continue;
-        _ = f.next();
-        _ = f.next();
-        const members = f.next() orelse return false;
-        var it = std.mem.tokenizeScalar(u8, members, ',');
+        const g = userdb.parseGroup(line) orelse continue;
+        if (!std.mem.eql(u8, g.name, group)) continue;
+        var it = std.mem.tokenizeScalar(u8, g.members, ',');
         while (it.next()) |m| if (std.mem.eql(u8, m, user)) return true;
         return false;
     }
@@ -116,12 +104,8 @@ pub fn parseGroups(allocator: std.mem.Allocator, content: []const u8) ![]Group {
     errdefer out.deinit(allocator);
     var lines = std.mem.splitScalar(u8, content, '\n');
     while (lines.next()) |line| {
-        if (line.len == 0 or line[0] == '#') continue;
-        var f = std.mem.splitScalar(u8, line, ':');
-        const name = f.next() orelse continue;
-        _ = f.next() orelse continue;
-        const gid = std.fmt.parseInt(u32, f.next() orelse continue, 10) catch continue;
-        try out.append(allocator, .{ .name = name, .gid = gid, .members = f.next() orelse "" });
+        const g = userdb.parseGroup(line) orelse continue;
+        try out.append(allocator, .{ .name = g.name, .gid = g.gid, .members = g.members });
     }
     return out.toOwnedSlice(allocator);
 }

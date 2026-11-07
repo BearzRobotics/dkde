@@ -17,10 +17,12 @@
         .util_unix = .{
             .url = "https://github.com/BearzRobotics/util-unix/releases/download/v0.1.0/util-unix-0.1.0.tar.gz",
             .hash = "util_unix-0.1.0-pehS_bXQAQCZuTRKQAfuj4Xg6JeJZiWo6Ky_6W1C9IDD",
-            .lazy = true,
         },
-        // pdf-zig, next to this directory (the PDF reader and display-list builder).
+        // pdf-zig, next to this directory (reader, display lists, text layout, outlines,
+        // annotations, forms and the incremental writer).
         .pdf = .{ .path = "../pdf-zig" },
+        // DKTermCore (terminal state, key encoding, schemes, PTY), next to this directory.
+        .dkterm = .{ .path = "../dkterm" },
         .gobject = .{
             .url = "https://deps.files.ghostty.org/gobject-2026-10-02-38-1.tar.zst",
             .hash = "gobject-0.3.2-Skun7LuIogBbEh-6WrLeEzMaRCnOMB3eOf__RaPYSMCZ",
@@ -30,10 +32,6 @@
             .url = "https://deps.files.ghostty.org/zig_wayland-27dda01712ddf3cb46ebd93380d88b01a7c828f8.tar.gz",
             .hash = "wayland-0.7.0-dev-lQa1klz9AQB87V0pMKMdm8JvyOx32XR9FxcWnw9wh6XZ",
             .lazy = true,
-        },
-        .ghostty = .{
-            .url = "https://github.com/ghostty-org/ghostty/archive/ce787fc18a7782e81585beb63f0d905ccaf69284.tar.gz",
-            .hash = "ghostty-1.4.0-5UdBC-qohwWqLS0BImOz05t4hVyTwbaKslyTPvKYvAtE",
         },
     },
     .paths = .{ "build.zig", "build.zig.zon", "src", "data", "protocols", "third_party", "LICENSE", "README.md" },

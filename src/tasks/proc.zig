@@ -2,6 +2,7 @@
 //! contents, so they are unit tested.
 
 const std = @import("std");
+const userdb = @import("util_unix").userdb;
 
 pub const Stat = struct {
     pid: u32,
@@ -114,11 +115,8 @@ pub fn parseUid(status: []const u8) ?u32 {
 pub fn userName(passwd: []const u8, uid: u32) ?[]const u8 {
     var lines = std.mem.splitScalar(u8, passwd, '\n');
     while (lines.next()) |line| {
-        var fields = std.mem.splitScalar(u8, line, ':');
-        const name = fields.next() orelse continue;
-        _ = fields.next() orelse continue;
-        const id = std.fmt.parseInt(u32, fields.next() orelse continue, 10) catch continue;
-        if (id == uid) return name;
+        const e = userdb.parsePasswd(line) orelse continue;
+        if (e.uid == uid) return e.name;
     }
     return null;
 }

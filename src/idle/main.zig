@@ -1,6 +1,6 @@
 //! dkde-idle: runs the lock, screen-off and sleep actions after the keyboard and
 //! pointer have been quiet for the configured time (SPEC.md 5.1). It uses
-//! `ext-idle-notify-v1` and reads `[power]` and `[menu]` of panel.conf, which it
+//! `ext-idle-notify-v1` and reads `[power]` and `[menu]` of panel.toml, which it
 //! watches, so changes in Settings apply at once.
 //!
 //!   [power] lock-after, screen-off-after, sleep-after   minutes; 0 = never

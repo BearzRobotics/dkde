@@ -56,6 +56,8 @@ pub const Callbacks = struct {
     title_changed: *const fn (data: *anyopaque, view: *TerminalView) void,
     /// The child exited.
     exited: *const fn (data: *anyopaque, view: *TerminalView) void,
+    /// The view took keyboard focus (which pane of a tab is active).
+    focused: *const fn (data: *anyopaque, view: *TerminalView) void,
 };
 
 pub const TerminalView = struct {
@@ -745,6 +747,7 @@ pub const TerminalView = struct {
 
     fn onFocusEnter(_: *gtk.EventControllerFocus, self: *TerminalView) callconv(.c) void {
         self.focused = true;
+        self.callbacks.focused(self.callbacks.data, self);
         self.cursor_visible = true;
         if (self.blink_source == 0) self.blink_source = glib.timeoutAdd(600, onBlink, self);
         if (self.term.modes.get(.focus_event)) self.sendFocus(.gained);
@@ -891,6 +894,11 @@ pub const TerminalView = struct {
         };
         defer glib.free(text);
         self.paste(std.mem.span(text));
+    }
+
+    /// Types `bytes` into the program as if the user had (no paste markers).
+    pub fn typeText(self: *TerminalView, bytes: []const u8) void {
+        self.pty.send(bytes);
     }
 
     pub fn paste(self: *TerminalView, text: []const u8) void {

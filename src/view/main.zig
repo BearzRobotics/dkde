@@ -422,6 +422,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     const gtk_app = gtk.Application.new("org.dkde.view", .{ .non_unique = true });
     defer gtk_app.as(gobject.Object).unref();
+    common.runapp.quitAfterEnv(gtk_app);
     _ = gio.Application.signals.activate.connect(gtk_app, *App, &App.activate, &app, .{});
 
     var argv = [_]?[*:0]const u8{ init.args.vector[0], null };

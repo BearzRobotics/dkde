@@ -288,6 +288,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     const gtk_app = gtk.Application.new("org.dkde.calc", .{ .non_unique = true });
     defer gtk_app.as(gobject.Object).unref();
+    common.runapp.quitAfterEnv(gtk_app);
     _ = gio.Application.signals.activate.connect(gtk_app, *App, &App.activate, &app, .{});
     const status = gio.Application.run(gtk_app.as(gio.Application), @intCast(init.args.vector.len), @ptrCast(@constCast(init.args.vector.ptr)));
     if (status != 0) std.process.exit(@intCast(status));

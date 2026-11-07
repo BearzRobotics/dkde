@@ -95,7 +95,7 @@ const App = struct {
             std.log.warn("no calendar reminders: {s}", .{@errorName(err)});
             break :blk null;
         };
-        // Warnings read the thresholds from panel.conf each time, so a change in
+        // Warnings read the thresholds from panel.toml each time, so a change in
         // Settings applies without a restart.
         self.power_watch = PowerWatch.create(self.allocator, &self.config);
         self.ipc_server = ipc.Server.start(self.allocator, onCommand, self) catch |err| blk: {
@@ -322,7 +322,7 @@ const App = struct {
 
         var rgba: gdk.RGBA = undefined;
         const valid = if (rgba.parse(colorz) != 0) colorz else blk: {
-            std.log.warn("panel.conf: invalid wallpaper color '{s}'; using default", .{color});
+            std.log.warn("panel.toml: invalid wallpaper color '{s}'; using default", .{color});
             break :blk default_wallpaper_color;
         };
         const css = std.fmt.allocPrintSentinel(self.allocator, ".dkde-wallpaper {{ background-color: {s}; }}", .{valid}, 0) catch return;
@@ -446,6 +446,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     // Uniqueness needs a session D-Bus, which dkde does not have.
     const gtk_app = gtk.Application.new("org.dkde.panel", .{ .non_unique = true });
     defer gtk_app.as(gobject.Object).unref();
+    common.runapp.quitAfterEnv(gtk_app);
     _ = gio.Application.signals.activate.connect(gtk_app, *App, &App.activate, &app, .{});
 
     const status = gio.Application.run(gtk_app.as(gio.Application), @intCast(init.args.vector.len), @ptrCast(@constCast(init.args.vector.ptr)));

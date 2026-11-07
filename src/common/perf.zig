@@ -1,9 +1,13 @@
 //! Low-resource start-up shared by every dkde program (SPEC.md 11).
 //!
 //! `init` must run before GTK starts. It picks GTK's renderer from
-//! `[performance] renderer` in dkde.conf and, on glibc only, caps malloc arenas.
+//! `[performance] renderer` in dkde.toml and, on glibc only, caps malloc arenas.
 //! `Gpa` is the allocator the mains use: the checking allocator in Debug
 //! builds, plain malloc otherwise (no per-allocation bookkeeping).
+//!
+//! Debug builds print a leak report when the program exits, and every program
+//! is expected to exit without one: close its window and check. `DKDE_EXIT_AFTER_MS`
+//! (see runapp.zig) does that without a person. Release builds do not check.
 
 const std = @import("std");
 const builtin = @import("builtin");
