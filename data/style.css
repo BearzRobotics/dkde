@@ -770,6 +770,14 @@ notebook > header.top > tabs > tab:checked {
   opacity: 0.7;
 }
 
+/* The name of a calendar in the calendar's side panel: it stands out from the dates. */
+.dkde-cal-sysname {
+  color: @dkde_accent;
+  font-weight: 700;
+  font-size: 0.9em;
+  letter-spacing: 0.03em;
+}
+
 .dkde-lit-dot {
   min-width: 10px;
   min-height: 10px;

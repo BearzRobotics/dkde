@@ -174,7 +174,7 @@ pub const CalendarApp = struct {
     grid: *gtk.Grid,
     month_label: *gtk.Label,
     heading: *gtk.Label,
-    alt_label: *gtk.Label,
+    alt_box: *gtk.Box,
     lit_box: *gtk.Box,
     events_box: *gtk.Box,
     text: *gtk.TextView,
@@ -232,7 +232,7 @@ pub const CalendarApp = struct {
             .grid = gtk.Grid.new(),
             .month_label = gtk.Label.new(""),
             .heading = gtk.Label.new(""),
-            .alt_label = gtk.Label.new(""),
+            .alt_box = gtk.Box.new(.vertical, 6),
             .lit_box = gtk.Box.new(.vertical, 6),
             .events_box = gtk.Box.new(.vertical, 4),
             .text = gtk.TextView.new(),
@@ -392,6 +392,8 @@ pub const CalendarApp = struct {
         const status = gtk.Label.new("");
         status.setXalign(0);
         status.setWrap(1);
+        status.setWrapMode(.word_char);
+        status.setMaxWidthChars(26);
         status.setMaxWidthChars(32);
         status.as(gtk.Widget).addCssClass("dim-label");
         self.sync_status = status;
@@ -426,6 +428,9 @@ pub const CalendarApp = struct {
         self.heading.setXalign(0);
         self.heading.setWrap(1);
         self.heading.as(gtk.Widget).addCssClass("title-4");
+        self.heading.setWrap(1);
+        self.heading.setWrapMode(.word_char);
+        self.heading.setMaxWidthChars(26);
         self.text.setWrapMode(.word_char);
         self.text.as(gtk.Widget).setVexpand(1);
         self.text.as(gtk.Widget).addCssClass("dkde-calendar-notes");
@@ -454,12 +459,10 @@ pub const CalendarApp = struct {
         day_scroller.setPolicy(.never, .automatic);
 
         const right = gtk.Box.new(.vertical, 6);
-        right.as(gtk.Widget).setSizeRequest(320, -1);
-        self.alt_label.setXalign(0);
-        self.alt_label.setWrap(1);
-        self.alt_label.as(gtk.Widget).addCssClass("dim-label");
+        right.as(gtk.Widget).setSizeRequest(230, -1);
+        right.as(gtk.Widget).setHexpand(0);
         right.append(self.heading.as(gtk.Widget));
-        right.append(self.alt_label.as(gtk.Widget));
+        right.append(self.alt_box.as(gtk.Widget));
         right.append(day_scroller.as(gtk.Widget));
         right.append(notes_label.as(gtk.Widget));
         right.append(notes_scroller.as(gtk.Widget));
@@ -1083,29 +1086,30 @@ pub const CalendarApp = struct {
             var mb: [640]u8 = undefined;
             self.heading.setMarkup(self.withNative(&mb, calsys.describe(&hb, self.sys, self.selected), self.sys, native.dateLine(&nb, self.sys, self.selected), "\n"));
         }
-        var ab: [2400]u8 = undefined;
-        var used: usize = 0;
+        // The same day in the other calendars: each system's name stands out above its date.
+        clearBox(self.alt_box);
         inline for (.{ calsys.System.julian, calsys.System.gregorian, calsys.System.fixed, calsys.System.rosquin_weeks, calsys.System.rosquin_months, calsys.System.rosquin_quarters, calsys.System.chinese, calsys.System.hebrew, calsys.System.coptic, calsys.System.ethiopian }) |other| {
             if (other != self.sys) {
                 var tb: [96]u8 = undefined;
                 const text = calsys.describe(&tb, other, self.selected);
                 var nb: [160]u8 = undefined;
                 var lb: [640]u8 = undefined;
-                var plain: [400]u8 = undefined;
-                const latin = std.fmt.bufPrint(&plain, "{s}: {s}", .{ other.label(), text }) catch "";
-                const marked = self.withNative(&lb, latin, other, native.dateLine(&nb, other, self.selected), " \u{b7} ");
-                if (used + marked.len + 1 < ab.len) {
-                    if (used > 0) {
-                        ab[used] = '\n';
-                        used += 1;
-                    }
-                    @memcpy(ab[used..][0..marked.len], marked);
-                    used += marked.len;
-                }
+                const marked = self.withNative(&lb, text, other, native.dateLine(&nb, other, self.selected), " \u{b7} ");
+                const row = gtk.Box.new(.vertical, 0);
+                const name = gtk.Label.new(zstr(other.label()));
+                name.setXalign(0);
+                name.as(gtk.Widget).addCssClass("dkde-cal-sysname");
+                row.append(name.as(gtk.Widget));
+                const date_label = gtk.Label.new(null);
+                date_label.setMarkup(marked);
+                date_label.setXalign(0);
+                date_label.setWrap(1);
+                date_label.setWrapMode(.word_char);
+                date_label.setMaxWidthChars(26);
+                row.append(date_label.as(gtk.Widget));
+                self.alt_box.append(row.as(gtk.Widget));
             }
         }
-        ab[used] = 0;
-        self.alt_label.setMarkup(ab[0..used :0]);
         self.showLiturgy();
         self.showEvents();
 
@@ -1134,8 +1138,7 @@ pub const CalendarApp = struct {
         const card = gtk.Box.new(.vertical, 2);
         const head = gtk.Label.new(common.tr(title));
         head.setXalign(0);
-        head.as(gtk.Widget).addCssClass("caption-heading");
-        head.as(gtk.Widget).addCssClass("dim-label");
+        head.as(gtk.Widget).addCssClass("dkde-cal-sysname");
         card.append(head.as(gtk.Widget));
 
         const row = gtk.Box.new(.horizontal, 8);
@@ -1148,6 +1151,8 @@ pub const CalendarApp = struct {
         const name = gtk.Label.new(zstr(day.name));
         name.setXalign(0);
         name.setWrap(1);
+        name.setWrapMode(.word_char);
+        name.setMaxWidthChars(26);
         name.as(gtk.Widget).setHexpand(1);
         name.as(gtk.Widget).addCssClass("heading");
         row.append(name.as(gtk.Widget));
@@ -1163,6 +1168,8 @@ pub const CalendarApp = struct {
         const info = gtk.Label.new(detail);
         info.setXalign(0);
         info.setWrap(1);
+        info.setWrapMode(.word_char);
+        info.setMaxWidthChars(26);
         info.as(gtk.Widget).addCssClass("dim-label");
         card.append(info.as(gtk.Widget));
 
@@ -1171,6 +1178,8 @@ pub const CalendarApp = struct {
             const f = gtk.Label.new(bufZ(&fb, "{s}  {s}", .{ day.fast_emoji, day.fast_text }) catch "");
             f.setXalign(0);
             f.setWrap(1);
+            f.setWrapMode(.word_char);
+            f.setMaxWidthChars(26);
             card.append(f.as(gtk.Widget));
         }
         for (day.alsoLines()) |line| {
@@ -1178,6 +1187,8 @@ pub const CalendarApp = struct {
             const l = gtk.Label.new(bufZ(&lb, "{s}: {s}", .{ line.label, line.text }) catch "");
             l.setXalign(0);
             l.setWrap(1);
+            l.setWrapMode(.word_char);
+            l.setMaxWidthChars(26);
             card.append(l.as(gtk.Widget));
         }
         self.lit_box.append(card.as(gtk.Widget));
@@ -1213,6 +1224,8 @@ pub const CalendarApp = struct {
         const title = gtk.Label.new(zstr(if (ev.title.len > 0) ev.title else "(No title)"));
         title.setXalign(0);
         title.setWrap(1);
+        title.setWrapMode(.word_char);
+        title.setMaxWidthChars(26);
         title.as(gtk.Widget).addCssClass("heading");
         text.append(title.as(gtk.Widget));
 
@@ -1238,6 +1251,8 @@ pub const CalendarApp = struct {
             const loc = gtk.Label.new(zstr(ev.location));
             loc.setXalign(0);
             loc.setWrap(1);
+            loc.setWrapMode(.word_char);
+            loc.setMaxWidthChars(26);
             loc.as(gtk.Widget).addCssClass("dim-label");
             text.append(loc.as(gtk.Widget));
         }
