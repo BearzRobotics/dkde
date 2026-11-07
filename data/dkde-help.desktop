@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Help
+Comment=DKDE documentation and manual pages
+Exec=dkde-help
+Icon=help-browser
+Terminal=false
+Categories=Utility;Documentation;

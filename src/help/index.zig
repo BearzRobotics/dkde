@@ -97,7 +97,7 @@ pub fn filter(gpa: Allocator, entries: []const Entry, query: []const u8) Allocat
     return out.toOwnedSlice(gpa);
 }
 
-pub const LoadError = dkman.source.Error || render.Error;
+pub const LoadError = dkman.source.Error || dkman.render.Error;
 
 /// Reads, detects and renders the file at `path`. A page that is only a
 /// `.so` redirect is followed once. Plain text comes back without ranges.

@@ -24,6 +24,10 @@ pub const Style = enum {
     term,
 };
 
+pub const Error = Allocator.Error;
+
+const rule = "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}";
+
 pub const Span = struct { start: u32, end: u32, style: Style };
 
 pub const Rendered = struct {
@@ -127,7 +131,7 @@ pub fn render(gpa: Allocator, doc: *const md.Document) Allocator.Error!Rendered 
                 },
                 .thematic_break => {
                     try b.lineBreak();
-                    try b.put("\u{2500}" ** 24);
+                    try b.put(rule);
                     try b.blankLine();
                 },
                 .table_cell => {
