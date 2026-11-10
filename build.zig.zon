@@ -1,17 +1,17 @@
 .{
     .name = .dkde,
     .fingerprint = 0xedcba0fd02e2c514,
-    .version = "0.1.0",
+    .version = "0.1.1",
     .minimum_zig_version = "0.17.1",
     .dependencies = .{
         .zigimg = .{ .path = "third_party/zigimg" },
         .toml = .{
-            .url = "https://github.com/BearzRobotics/toml-zig/releases/download/v0.1.0/toml-0.1.0.tar.gz",
-            .hash = "toml-0.1.0-dDatLI4xAgB1P1SWnx8mnn9oHfDkYSZbqBMOKvKR-X3N",
+            .url = "https://github.com/BearzRobotics/toml-zig/releases/download/v0.2.0/toml-0.2.0.tar.gz",
+            .hash = "toml-0.2.0-dDatLIhiAgBq8q4SLFu0RZSUcCJLAwl49UZRIZ-fHqqx",
         },
         .dkman = .{
-            .url = "https://github.com/BearzRobotics/dkman/releases/download/v0.2.1/dkman-0.2.1.tar.gz",
-            .hash = "dkman-0.2.1-lbczzpstAQDGuyy27qMaXebWM9U2civXDur84HvFpnvS",
+            .url = "https://github.com/BearzRobotics/dkman/releases/download/v0.3.1/dkman-0.3.1.tar.gz",
+            .hash = "dkman-0.3.1-lbczzr3KAQARFnvZ964Cu8OuUExHPyZ0BlOTREV-cXHe",
             .lazy = true,
         },
         .util_unix = .{
@@ -26,8 +26,8 @@
         },
         // DKTermCore: terminal state, key encoding, schemes, PTY, and libghostty-vt.
         .dkterm = .{
-            .url = "https://github.com/BearzRobotics/dkterm/releases/download/v0.1.0/dkterm-0.1.0.tar.gz",
-            .hash = "dkterm-0.1.0-yV77apLsAADCq9AS3B3CKDjEV0ubpHDKc0X5ydVef9xD",
+            .url = "https://github.com/BearzRobotics/dkterm/releases/download/v0.1.1/dkterm-0.1.1.tar.gz",
+            .hash = "dkterm-0.1.1-yV77apLsAADpg3_p1DCpxNqOpEyzQIwG8guWTRiSd5u_",
         },
         .gobject = .{
             .url = "https://deps.files.ghostty.org/gobject-2026-10-02-38-1.tar.zst",

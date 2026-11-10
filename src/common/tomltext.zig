@@ -1,6 +1,6 @@
 //! Editing a TOML file as text, so that comments, blank lines, ordering and
-//! formatting survive a change. The TOML library parses to a document that does
-//! not keep comments; these functions change only the lines they must.
+//! formatting survive a change. The TOML library keeps comments too (0.2.0), but
+//! normalizes layout; these functions change only the lines they must.
 //!
 //! They understand the files dkde writes: `[group]` tables (the name may be
 //! quoted) holding `key = value` lines, where a value may span lines (arrays,

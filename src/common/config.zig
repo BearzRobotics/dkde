@@ -17,7 +17,9 @@
 //!  - A parsed file keeps keys this program does not know. Saving edits the
 //!    file as text (see tomltext.zig), so comments, blank lines and the order
 //!    of keys survive; only a layout the text editor does not understand falls
-//!    back to rewriting the file from the parsed document (comments lost).
+//!    back to rewriting the file from the parsed document, which keeps the
+//!    comments the TOML library keeps (all but those inside arrays and inline
+//!    tables).
 
 const std = @import("std");
 const toml = @import("toml");
@@ -597,7 +599,7 @@ fn renderEntry(a: std.mem.Allocator, key: []const u8, v: toml.Value) tomltext.Er
 /// Applies the difference between two serialized documents to `orig`, the
 /// file's own text. Null when that cannot be done safely (an unsupported
 /// layout, or the result does not parse back to exactly `after`); the caller
-/// then writes `after`, losing comments.
+/// then writes `after`.
 fn patchText(a: std.mem.Allocator, orig: []const u8, before_text: []const u8, after_text: []const u8) ?[]u8 {
     if (std.mem.trim(u8, orig, " \t\r\n").len == 0) return null;
     return patchTextInner(a, orig, before_text, after_text) catch null;
@@ -657,13 +659,33 @@ fn patchTextInner(a: std.mem.Allocator, orig: []const u8, before_text: []const u
         }
     }
 
-    // The edited text must mean exactly what the document says.
+    // The edited text must mean exactly what the document says. Comments are
+    // not part of the meaning (the file keeps its own, the document may differ).
     var check = try toml.Document.parse(a, text, .{}, null);
     defer check.deinit();
+    stripComments(check.root);
+    stripComments(after.root);
     const check_text = try check.toOwnedString(a);
     defer a.free(check_text);
-    if (!std.mem.eql(u8, check_text, after_text)) return error.Unsupported;
+    const after_plain = try after.toOwnedString(a);
+    defer a.free(after_plain);
+    if (!std.mem.eql(u8, check_text, after_plain)) return error.Unsupported;
     return text;
+}
+
+/// Clears every comment in `t` and below, so two documents compare by their values only.
+fn stripComments(t: *toml.Table) void {
+    t.header = .{};
+    t.key_comments = .empty;
+    t.footer = &.{};
+    for (t.entries.values()) |v| switch (v) {
+        .table => |sub| stripComments(sub),
+        .array => |arr| for (arr.items.items) |item| switch (item) {
+            .table => |sub| stripComments(sub),
+            else => {},
+        },
+        else => {},
+    };
 }
 
 /// Reads and parses `path`. A missing file gives null; unreadable or invalid
@@ -1138,6 +1160,23 @@ test "saving a setting keeps the file's comments" {
     const text = try fileText(a, path);
     defer a.free(text);
     try std.testing.expectEqualStrings("# mine\n[a]\n# the x\nx = \"new\" # why\n\n# the y\ny = 2\nz = true\n\n[b]\nn = 3\n", text);
+    _ = std.c.unlink(path);
+}
+
+test "a layout the text editor does not handle still keeps comments (rewritten from the document)" {
+    const a = std.testing.allocator;
+    const path = try tmpPath(a, "user.toml");
+    defer a.free(path);
+    // An array of tables makes tomltext give up, so the document is written back.
+    writeText(path, "# mine\n[a]\n# the x\nx = 1 # why\n\n# first\n[[items]]\nn = 1\n");
+    var cfg = try testConfig(a, path);
+    defer cfg.deinit();
+    try cfg.setInt("a", "x", 2);
+    const text = try fileText(a, path);
+    defer a.free(text);
+    try std.testing.expect(std.mem.indexOf(u8, text, "# mine\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "# the x\nx = 2 # why") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "# first\n[[items]]") != null);
     _ = std.c.unlink(path);
 }
 
