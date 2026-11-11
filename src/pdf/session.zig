@@ -149,6 +149,34 @@ pub const Session = struct {
         return self.layouts.getPtr(index).?;
     }
 
+    /// How many visible characters (spaces aside) page `index` has, to tell a
+    /// scanned page from one with text. The layout is not kept.
+    pub fn textAmount(self: *Session, index: usize) Error!usize {
+        if (self.layouts.getPtr(index)) |l| return countInk(l.text);
+        const p = try self.page(index);
+        var dl = self.text_renderer.render(self.gpa, p) catch return error.OutOfMemory;
+        defer dl.deinit();
+        var lay = try pdf.text.layout(self.gpa, &dl);
+        defer lay.deinit(self.gpa);
+        return countInk(lay.text);
+    }
+
+    fn countInk(text: []const u8) usize {
+        var n: usize = 0;
+        for (text) |c| {
+            if (!std.ascii.isWhitespace(c)) n += 1;
+        }
+        return n;
+    }
+
+    /// Replaces the document with a whole new file (such as one OCR made): it
+    /// cannot be undone piece by piece, and is unsaved until saved.
+    pub fn replaceAll(self: *Session, new_bytes: []const u8) Error!void {
+        try self.reopen(new_bytes);
+        self.history.clearRetainingCapacity();
+        self.saved_at = std.math.maxInt(usize);
+    }
+
     /// The annotations of a page; allocated from `arena`.
     pub fn annotations(self: *Session, arena: Allocator, index: usize) Error![]pdf.annot.Annotation {
         return pdf.annot.list(arena, &self.doc.doc, try self.page(index));
@@ -372,4 +400,25 @@ test "bookmarks are added and removed as edits" {
 test "the date is in PDF form" {
     var buf: [20]u8 = undefined;
     try testing.expectEqualStrings("D:20261107121530Z", pdfDate(&buf, 1794053730));
+}
+
+test "text is counted, and a replaced file is unsaved with nothing to undo" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const original = try testPdf(arena.allocator());
+    const s = try Session.openBytes(testing.allocator, original);
+    defer s.close();
+    const amount = try s.textAmount(0);
+    try testing.expect(amount >= "Helloworld".len);
+    // Counted the same whether or not the layout is cached.
+    _ = try s.layout(0);
+    try testing.expectEqual(amount, try s.textAmount(0));
+
+    try s.addNote(0, 100, 20, .{ .contents = "remember" });
+    try s.replaceAll(original);
+    try testing.expect(s.dirty());
+    try testing.expect(!s.canUndo());
+    try testing.expectEqualSlices(u8, original, s.bytes());
+    s.markSaved();
+    try testing.expect(!s.dirty());
 }

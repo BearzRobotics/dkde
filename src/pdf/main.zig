@@ -4,6 +4,9 @@
 //! search (matches are highlighted), select text with the mouse and copy it,
 //! follow the document's bookmarks and add your own, highlight, underline and
 //! strike out text, put notes on a page, and fill in form fields.
+//! Documents reopen where they were left; recent ones are listed in File and
+//! on the start page of an empty tab. Scanned pages can be made searchable
+//! with OCR when OCRmyPDF is installed (ocr.zig).
 //!
 //! Everything you add is written into the PDF as standard annotations,
 //! bookmarks and field values, as a new revision at the end of the file, so
@@ -22,6 +25,7 @@ const common = @import("common");
 const pdf = @import("pdf");
 
 const layout_mod = @import("layout.zig");
+const ocr = @import("ocr.zig");
 const places = @import("places.zig");
 const render = @import("pdfrender");
 const session_mod = @import("session.zig");
@@ -98,6 +102,8 @@ const DocView = struct {
     /// The page to scroll to once the view has its full height (a document
     /// opened where it was left, before the window is laid out).
     pending_page: ?usize = null,
+    /// Text recognition running for this tab.
+    ocr_job: ?*OcrJob = null,
     paned: *gtk.Paned,
     sidebar: *gtk.Box,
     sidebar_list: *gtk.ListBox,
@@ -457,6 +463,10 @@ const DocView = struct {
     /// still have a laid-out view (`rememberPlace`); at teardown it is gone.
     fn closeDocument(self: *DocView) void {
         self.pending_page = null;
+        if (self.ocr_job) |job| {
+            self.ocr_job = null;
+            job.detach();
+        }
         self.dropCache();
         self.dropThumbs();
         if (self.layout) |*l| l.deinit(self.allocator);
@@ -1432,6 +1442,115 @@ const DocView = struct {
         common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot change the PDF"), msg);
     }
 
+    // ---- text recognition (OCR) ---------------------------------------------------------------------
+
+    /// Finds the pages that are pictures of text, has OCRmyPDF put an
+    /// invisible text layer on them, and shows the result as an unsaved
+    /// change: saving keeps it, closing or reloading drops it.
+    fn startOcr(self: *DocView) void {
+        const s = self.session orelse return;
+        const win = self.window.as(gtk.Window);
+        if (self.ocr_job != null) return self.status.setText(common.tr("The text is being recognised already\u{2026}"));
+        const prog = glib.findProgramInPath(ocr.program) orelse {
+            var buf: [200]u8 = undefined;
+            const msg = std.fmt.bufPrintSentinel(&buf, "Recognising text needs OCRmyPDF and Tesseract. Install the \u{201c}{s}\u{201d} package, then try again.", .{ocr.package}, 0) catch "";
+            return common.dialogs.showError(win, common.tr("Text recognition is not installed"), msg);
+        };
+        glib.free(prog);
+        if (s.doc.doc.crypt != null) return common.dialogs.showError(win, common.tr("Cannot recognise the text"), common.tr("This document is encrypted. Save an unencrypted copy first."));
+
+        const job = self.allocator.create(OcrJob) catch return;
+        job.* = .{ .viewer = self, .gpa = self.allocator, .total = self.pages };
+        self.ocr_job = job;
+        job.idle = glib.idleAdd(OcrJob.onScanIdle, job);
+        self.status.setText(common.tr("Looking for scanned pages\u{2026}"));
+    }
+
+    /// Run when the scan for pages without text is done.
+    fn ocrScanned(self: *DocView, job: *OcrJob) void {
+        const s = self.session orelse return job.finish();
+        if (job.scanned.items.len == 0) {
+            self.status.setText(common.tr("Every page has text already: there is nothing to recognise."));
+            return job.finish();
+        }
+        const failed = common.tr("Text recognition failed");
+        const win = self.window.as(gtk.Window);
+        var gerr: ?*glib.Error = null;
+        const dir = glib.Dir.makeTmp("dkde-ocr-XXXXXX", &gerr) orelse {
+            if (gerr) |e| e.free();
+            common.dialogs.showError(win, failed, common.tr("No temporary folder could be made."));
+            return job.finish();
+        };
+        defer glib.free(dir);
+        job.dir = self.allocator.dupeSentinel(u8, std.mem.span(dir), 0) catch return job.finish();
+        const in_path = std.fmt.allocPrintSentinel(self.allocator, "{s}/in.pdf", .{job.dir.?}, 0) catch return job.finish();
+        defer self.allocator.free(in_path);
+        const out_path = std.fmt.allocPrintSentinel(self.allocator, "{s}/out.pdf", .{job.dir.?}, 0) catch return job.finish();
+        defer self.allocator.free(out_path);
+        // The document as it is now, unsaved changes included.
+        common.fsio.writeFileAtomic(in_path, s.bytes()) catch {
+            common.dialogs.showError(win, failed, common.tr("The document could not be written to a temporary file."));
+            return job.finish();
+        };
+        const pages = ocr.pageList(self.allocator, job.scanned.items) catch return job.finish();
+        defer self.allocator.free(pages);
+        const pages_z = self.allocator.dupeSentinel(u8, pages, 0) catch return job.finish();
+        defer self.allocator.free(pages_z);
+        var lang_buf: [64]u8 = undefined;
+        const langs = self.allocator.dupeSentinel(u8, ocrLanguages(&lang_buf), 0) catch return job.finish();
+        defer self.allocator.free(langs);
+
+        // --redo-ocr keeps the text a page has (a stamped header, a typed
+        // cover sheet) and recognises the rest; --optimize 0 leaves the
+        // pictures as they are.
+        const argv = [_:null]?[*:0]const u8{ ocr.program, "--redo-ocr", "--pages", pages_z, "--output-type", "pdf", "--optimize", "0", "-l", langs, "-q", in_path, out_path };
+        const sub = gio.Subprocess.newv(@ptrCast(&argv), .{ .stdout_silence = true, .stderr_pipe = true }, &gerr) orelse {
+            if (gerr) |e| e.free();
+            common.dialogs.showError(win, failed, common.tr("OCRmyPDF could not be started."));
+            return job.finish();
+        };
+        job.sub = sub;
+        job.generation = s.generation;
+        sub.communicateUtf8Async(null, null, OcrJob.onDone, job);
+        var buf: [160]u8 = undefined;
+        const n = job.scanned.items.len;
+        self.status.setText(std.fmt.bufPrintSentinel(&buf, "Recognising the text of {d} scanned page{s}\u{2026}", .{ n, if (n == 1) "" else "s" }, 0) catch "");
+    }
+
+    /// The OCR result arrived: it replaces the document, unsaved.
+    fn ocrDone(self: *DocView, job: *OcrJob, stderr: []const u8, ok: bool) void {
+        const win = self.window.as(gtk.Window);
+        const failed = common.tr("Text recognition failed");
+        self.status.setText("");
+        const s = self.session orelse return;
+        if (!ok) {
+            const last = ocr.lastMessage(stderr);
+            var buf: [400]u8 = undefined;
+            const msg = std.fmt.bufPrintSentinel(&buf, "{s}", .{if (last.len > 0) last[0..@min(last.len, 380)] else "OCRmyPDF stopped with an error."}, 0) catch "";
+            return common.dialogs.showError(win, failed, msg);
+        }
+        if (s.generation != job.generation)
+            return common.dialogs.showError(win, failed, common.tr("The document changed while its text was being recognised. Run it again to include the changes."));
+        const out_path = std.fmt.allocPrint(self.allocator, "{s}/out.pdf", .{job.dir.?}) catch return;
+        defer self.allocator.free(out_path);
+        const bytes = (common.fsio.readFile(self.allocator, out_path, 1 << 33) catch null) orelse
+            return common.dialogs.showError(win, failed, common.tr("OCRmyPDF left no result."));
+        defer self.allocator.free(bytes);
+        s.replaceAll(bytes) catch return common.dialogs.showError(win, failed, common.tr("The result could not be opened."));
+
+        // Page sizes normally stay; read them again all the same.
+        if (s.pageCount() == self.pages) {
+            for (self.page_points, 0..) |*pp, i| {
+                if (render.pageSize(s.doc, i)) |sz| pp.* = .{ .w = sz.w, .h = sz.h };
+            }
+        }
+        self.changed();
+        self.relayoutKeepingPlace();
+        var buf: [200]u8 = undefined;
+        const n = job.scanned.items.len;
+        self.status.setText(std.fmt.bufPrintSentinel(&buf, "Recognised the text of {d} page{s}. Save (Ctrl+S) to keep it.", .{ n, if (n == 1) "" else "s" }, 0) catch "");
+    }
+
     /// An edit happened: redraw everything that depends on the file.
     fn changed(self: *DocView) void {
         self.dropCache();
@@ -2208,6 +2327,7 @@ const DocView = struct {
             _ = self.openPath(copy, null);
             return;
         }
+        if (eql(u8, action, "ocr")) return self.startOcr();
         if (eql(u8, action, "undo")) {
             const s = self.session orelse return;
             s.undo() catch return self.status.setText(common.tr("Nothing to undo."));
@@ -2340,6 +2460,7 @@ const Window = struct {
                 mb.item("_Save", "save", "<Control>s"),
                 mb.item("Save _As…", "save-as", "<Control><Shift>s"),
                 mb.item("_Print…", "print", "<Control>p"),
+                mb.item("Recognise _Text (OCR)", "ocr", null),
                 mb.item("_Reload", "reload", "F5"),
                 .separator,
                 mb.item("_Close Tab", "close-tab", "<Control>w"),
@@ -2939,6 +3060,113 @@ const Window = struct {
     }
 };
 
+// ---- text recognition --------------------------------------------------------------------------
+
+/// One run of OCR for a tab: first a scan, a few pages per idle moment, for
+/// pages without text; then OCRmyPDF in the background. A tab that closes or
+/// opens another file lets go of it (`detach`); it then only cleans up.
+const OcrJob = struct {
+    viewer: ?*DocView,
+    gpa: std.mem.Allocator,
+    total: usize,
+    next: usize = 0,
+    scanned: std.ArrayList(usize) = .empty,
+    idle: c_uint = 0,
+    /// After asking OCRmyPDF to stop, the moment to make it.
+    kill_timer: c_uint = 0,
+    sub: ?*gio.Subprocess = null,
+    /// The temporary folder with the input and the result.
+    dir: ?[:0]u8 = null,
+    /// The document's generation when OCR started: a later edit voids the result.
+    generation: u32 = 0,
+
+    fn onScanIdle(data: ?*anyopaque) callconv(.c) c_int {
+        const job: *OcrJob = @ptrCast(@alignCast(data.?));
+        const v = job.viewer.?;
+        const s = v.session orelse {
+            job.idle = 0;
+            job.finish();
+            return 0;
+        };
+        // Some pages per turn, so the window stays responsive.
+        const start = glib.getMonotonicTime();
+        while (job.next < job.total) {
+            const amount = s.textAmount(job.next) catch 0;
+            if (amount < ocr.scanned_below) job.scanned.append(job.gpa, job.next) catch {};
+            job.next += 1;
+            if (glib.getMonotonicTime() - start > 40_000) break;
+        }
+        if (job.next < job.total) {
+            var buf: [96]u8 = undefined;
+            v.status.setText(std.fmt.bufPrintSentinel(&buf, "Looking for scanned pages\u{2026} {d} of {d}", .{ job.next, job.total }, 0) catch "");
+            return 1;
+        }
+        job.idle = 0;
+        v.ocrScanned(job);
+        return 0;
+    }
+
+    fn onDone(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const job: *OcrJob = @ptrCast(@alignCast(data.?));
+        const sub: *gio.Subprocess = @ptrCast(@alignCast(source.?));
+        var err_buf: ?[*:0]u8 = null;
+        var gerr: ?*glib.Error = null;
+        const finished = sub.communicateUtf8Finish(result, null, @ptrCast(&err_buf), &gerr) != 0;
+        defer if (err_buf) |b| glib.free(b);
+        if (gerr) |e| e.free();
+        defer job.finish();
+        const v = job.viewer orelse return;
+        const ok = finished and sub.getSuccessful() != 0;
+        v.ocrDone(job, if (err_buf) |b| std.mem.span(b) else "", ok);
+    }
+
+    /// The tab lets go: the scan stops, OCRmyPDF is stopped.
+    fn detach(job: *OcrJob) void {
+        job.viewer = null;
+        if (job.idle != 0) {
+            _ = glib.Source.remove(job.idle);
+            job.idle = 0;
+            return job.finish();
+        }
+        const sub = job.sub orelse return job.finish();
+        // An interrupt, as from Ctrl+C, lets OCRmyPDF stop its workers and
+        // clean up; a kill would leave them running. It is killed only if it
+        // has not stopped a few seconds later. `onDone` then frees the job.
+        sub.sendSignal(@intFromEnum(std.posix.SIG.INT));
+        job.kill_timer = glib.timeoutAdd(5000, onKillTimer, job);
+    }
+
+    fn onKillTimer(data: ?*anyopaque) callconv(.c) c_int {
+        const job: *OcrJob = @ptrCast(@alignCast(data.?));
+        job.kill_timer = 0;
+        if (job.sub) |sub| sub.forceExit();
+        return 0;
+    }
+
+    fn finish(job: *OcrJob) void {
+        if (job.viewer) |v| v.ocr_job = null;
+        if (job.dir) |d| {
+            std.Io.Dir.cwd().deleteTree(common.fsio.io(), d) catch {};
+            job.gpa.free(d);
+        }
+        if (job.kill_timer != 0) _ = glib.Source.remove(job.kill_timer);
+        if (job.sub) |sub| sub.as(gobject.Object).unref();
+        job.scanned.deinit(job.gpa);
+        job.gpa.destroy(job);
+    }
+};
+
+/// The languages to recognise: the desktop's own when Tesseract has them.
+fn ocrLanguages(buf: []u8) []const u8 {
+    var out: ?[*:0]u8 = null;
+    var status: c_int = 0;
+    if (glib.spawnCommandLineSync("tesseract --list-langs", @ptrCast(&out), null, &status, null) == 0) return "eng";
+    defer if (out) |o| glib.free(o);
+    const list = if (out) |o| std.mem.span(o) else "";
+    const locale = std.mem.span(glib.getenv("LC_ALL") orelse glib.getenv("LC_MESSAGES") orelse glib.getenv("LANG") orelse "C");
+    return ocr.languages(buf, locale, list);
+}
+
 // ---- where documents were left ----------------------------------------------------------------
 
 fn placesFile(gpa: std.mem.Allocator) ?[:0]u8 {
@@ -2971,6 +3199,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
 test {
     _ = @import("layout.zig");
+    _ = @import("ocr.zig");
     _ = @import("places.zig");
     _ = @import("session.zig");
 }
