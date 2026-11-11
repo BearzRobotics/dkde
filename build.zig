@@ -377,7 +377,7 @@ fn termEmbedModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: st
     const dkterm = b.dependency("dkterm", .{ .target = target, .optimize = optimize });
     m.addImport("ghostty-vt", dkterm.module("ghostty-vt"));
     m.addImport("termcore", dkterm.module("termcore"));
-    inline for (.{ "glib2", "gobject2", "gio2", "gtk4", "gdk4", "pango1", "pangocairo1", "cairo1" }) |name| {
+    inline for (.{ "glib2", "gobject2", "gio2", "gtk4", "gdk4", "pango1", "pangocairo1", "cairo1", "gdkpixbuf2" }) |name| {
         m.addImport(name, gobject.module(name));
     }
     return m;
