@@ -1,0 +1,29 @@
+# dkde-view: the image viewer. Copy a setting into ~/.config/dkde/view.toml
+# to change it; the viewer also writes the ones changed from its menus.
+
+[view]
+# How a picture fits when it opens: "best" (all of it) or "width".
+fit = "best"
+# Fitting may enlarge pictures smaller than the window.
+upscale = false
+# Behind transparent parts: "checker", "black", "white" or "none".
+backdrop = "checker"
+# The order of a folder's pictures: "name", "date" or "size".
+sort = "name"
+reverse = false
+# Next after the last picture goes back to the first.
+loop = true
+# The thumbnail strip (Ctrl+F9), the Properties pane (F9), the status bar.
+gallery = false
+properties = false
+statusbar = true
+# Seconds each picture shows in a slideshow (F5).
+slideshow-seconds = 5
+# JPEG quality when a picture has to be written again (10 to 100).
+jpeg-quality = 92
+# From this zoom on, pixels show as sharp squares (2 = 200%).
+sharp-from = 2.0
+# The window's size, remembered.
+width = 960
+height = 680
+maximized = false

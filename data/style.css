@@ -958,3 +958,24 @@ entry.dkde-snip-text { min-height: 28px; }
 headerbar .dkde-tabs button.dkde-tab.dkde-tab-attention {
   background: alpha(#e5a50a, 0.35);
 }
+
+/* Image viewer: the thumbnail strip, the picture showing marked. */
+.dkde-view-gallery {
+  border-top: 1px solid alpha(currentColor, 0.15);
+}
+.dkde-view-thumb {
+  padding: 3px;
+  border: 2px solid transparent;
+  border-radius: 4px;
+}
+.dkde-view-thumb.selected {
+  border-color: @dkde_accent;
+  background: alpha(@dkde_accent, 0.2);
+}
+.dkde-view-properties {
+  border-left: 1px solid alpha(currentColor, 0.15);
+}
+.dkde-view-banner {
+  padding: 6px;
+  border-radius: 6px;
+}
