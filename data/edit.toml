@@ -2,3 +2,24 @@
 [edit]
 word-wrap = true
 font = "Monospace 11"
+# Colours from the system's GtkSourceView schemes; empty follows light or dark.
+color-scheme = ""
+syntax-highlighting = true
+line-numbers = true
+highlight-current-line = true
+right-margin = false
+right-margin-column = 80
+tab-width = 4
+insert-spaces = false
+auto-indent = true
+show-whitespace = false
+overview-map = false
+spell-check = false
+word-completion = true
+# Open the tabs of the last session when started without files. Unsaved
+# text always comes back after a crash.
+restore-session = true
+file-panel = false
+# The window's size, remembered when it closes.
+width = 900
+height = 640

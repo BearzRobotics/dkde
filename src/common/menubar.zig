@@ -41,6 +41,11 @@ pub fn dynamic(label: [:0]const u8, id: [:0]const u8) Entry {
     return .{ .submenu = .{ .label = label, .id = id } };
 }
 
+/// A check item with a shortcut.
+pub fn checkKey(label: [:0]const u8, action: [:0]const u8, initial: bool, accel: [:0]const u8) Entry {
+    return .{ .item = .{ .label = label, .action = action, .toggle = initial, .accel = accel } };
+}
+
 pub fn check(label: [:0]const u8, action: [:0]const u8, initial: bool) Entry {
     return .{ .item = .{ .label = label, .action = action, .toggle = initial } };
 }
