@@ -181,6 +181,22 @@ pub const Session = struct {
         try self.commit(&upd);
     }
 
+    /// Adds free-hand ink: strokes of displayed-page points.
+    pub fn addInk(self: *Session, index: usize, strokes: []const []const pdf.display.Point, width: f64, meta: pdf.annot.Meta) Error!void {
+        var upd = try self.begin();
+        defer upd.deinit();
+        _ = try pdf.annot.addInk(&upd, try self.page(index), strokes, width, meta);
+        try self.commit(&upd);
+    }
+
+    /// Adds a text box at (`x`, `y`), `w` by `h`, on the displayed page.
+    pub fn addFreeText(self: *Session, index: usize, x: f64, y: f64, w: f64, h: f64, size: f64, meta: pdf.annot.Meta) Error!void {
+        var upd = try self.begin();
+        defer upd.deinit();
+        _ = try pdf.annot.addFreeText(&upd, try self.page(index), x, y, w, h, size, meta);
+        try self.commit(&upd);
+    }
+
     pub fn setNoteText(self: *Session, num: u32, contents: []const u8, date: ?[]const u8) Error!void {
         var upd = try self.begin();
         defer upd.deinit();

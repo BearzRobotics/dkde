@@ -51,6 +51,7 @@ const Action = enum {
     underline,
     strikeout,
     add_note,
+    add_text_box,
     edit_note,
     delete_annotation,
     add_bookmark_here,
@@ -67,7 +68,13 @@ const Act = struct {
     num: u32 = 0,
     /// Field name and chosen value, for `pick_choice`.
     text: ?[:0]u8 = null,
+    /// The box size, for `add_text_box`.
+    w: f64 = 0,
+    h: f64 = 0,
 };
+
+/// What a drag on the page does.
+const Tool = enum { select, ink, text_box };
 
 const DocView = struct {
     allocator: std.mem.Allocator,
@@ -94,6 +101,18 @@ const DocView = struct {
     thumb_cache: std.AutoHashMapUnmanaged(usize, *cairo.Surface) = .empty,
     /// Set while the selection follows scrolling, so it does not scroll back.
     thumb_syncing: bool = false,
+
+    tool: Tool = .select,
+    /// The colour of new ink and text boxes.
+    pen_color: [3]f64 = .{ 0.85, 0.1, 0.1 },
+    /// The stroke being drawn (page points), on `ink_page`.
+    ink: std.ArrayList(pdf.display.Point) = .empty,
+    ink_page: usize = 0,
+    inking: bool = false,
+    /// The text box being dragged out: its corners in page points.
+    box_page: ?usize = null,
+    box_a: Point = .{ .x = 0, .y = 0 },
+    box_b: Point = .{ .x = 0, .y = 0 },
     diag: render.Diag,
 
     session: ?*Session = null,
@@ -277,6 +296,7 @@ const DocView = struct {
         if (self.path) |p| self.allocator.free(p);
         if (self.needle) |n| self.allocator.free(n);
         self.matches.deinit(self.allocator);
+        self.ink.deinit(self.allocator);
         self.rows.deinit(self.allocator);
         self.expanded.deinit(self.allocator);
         self.expanded_touched.deinit(self.allocator);
@@ -783,6 +803,45 @@ const DocView = struct {
         }
     }
 
+    /// Picks what a drag on the page does; the menu's check marks follow.
+    fn setTool(self: *DocView, tool: Tool) void {
+        self.tool = tool;
+        self.inking = false;
+        self.box_page = null;
+        self.clearSelection();
+        common.menubar.setChecked(self.window, "tool-ink", tool == .ink);
+        common.menubar.setChecked(self.window, "tool-text", tool == .text_box);
+        self.area.as(gtk.Widget).setCursorFromName(if (tool == .select) null else "crosshair");
+        self.status.setText(switch (tool) {
+            .select => "",
+            .ink => common.tr("Drawing: drag on the page. Escape stops."),
+            .text_box => common.tr("Text box: drag out a box, or click. Escape stops."),
+        });
+        self.area.as(gtk.Widget).queueDraw();
+    }
+
+    fn choosePenColor(self: *DocView) void {
+        const dialog = gtk.ColorDialog.new();
+        defer dialog.as(gobject.Object).unref();
+        dialog.setTitle(common.tr("Annotation colour"));
+        dialog.setWithAlpha(0);
+        const c = self.pen_color;
+        var rgba: gdk.RGBA = .{ .f_red = @floatCast(c[0]), .f_green = @floatCast(c[1]), .f_blue = @floatCast(c[2]), .f_alpha = 1 };
+        dialog.chooseRgba(self.window.as(gtk.Window), &rgba, null, onPenColor, self);
+    }
+
+    fn onPenColor(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *DocView = @ptrCast(@alignCast(data.?));
+        const dialog: *gtk.ColorDialog = @ptrCast(@alignCast(source.?));
+        var err: ?*glib.Error = null;
+        const chosen = dialog.chooseRgbaFinish(result, &err) orelse {
+            if (err) |e| e.free();
+            return;
+        };
+        defer chosen.free();
+        self.pen_color = .{ chosen.f_red, chosen.f_green, chosen.f_blue };
+    }
+
     fn rotate(self: *DocView, clockwise: bool) void {
         const page = self.currentPage();
         self.rotation +%= if (clockwise) 1 else 3;
@@ -888,6 +947,30 @@ const DocView = struct {
                     cr.fill();
                 }
             }
+        }
+
+        if (self.inking and self.ink_page == page and self.ink.items.len > 0) {
+            const c = self.pen_color;
+            cr.setSourceRgb(c[0], c[1], c[2]);
+            cr.setLineWidth(2 * sc);
+            cr.setLineCap(.round);
+            cr.setLineJoin(.round);
+            for (self.ink.items, 0..) |pt, i| {
+                if (i == 0) cr.moveTo(x + pt.x * sc, y + pt.y * sc) else cr.lineTo(x + pt.x * sc, y + pt.y * sc);
+            }
+            if (self.ink.items.len == 1) cr.lineTo(x + self.ink.items[0].x * sc, y + self.ink.items[0].y * sc);
+            cr.stroke();
+        }
+        if (self.box_page == page) {
+            cr.setSourceRgba(self.pen_color[0], self.pen_color[1], self.pen_color[2], 0.8);
+            cr.setLineWidth(1);
+            const dashes = [_]f64{ 4, 3 };
+            cr.setDash(&dashes, dashes.len, 0);
+            const bx = @min(self.box_a.x, self.box_b.x) * sc;
+            const by = @min(self.box_a.y, self.box_b.y) * sc;
+            cr.rectangle(x + bx, y + by, @abs(self.box_b.x - self.box_a.x) * sc, @abs(self.box_b.y - self.box_a.y) * sc);
+            cr.stroke();
+            cr.setDash(&dashes, 0, 0);
         }
 
         if (self.show_fields) {
@@ -1015,6 +1098,22 @@ const DocView = struct {
         self.drag_moved = false;
         const s = self.session orelse return;
         const spot = self.spotAt(x, y) orelse return;
+        switch (self.tool) {
+            .select => {},
+            .ink => {
+                self.inking = true;
+                self.ink_page = spot.page;
+                self.ink.clearRetainingCapacity();
+                self.ink.append(self.allocator, .{ .x = spot.x, .y = spot.y }) catch {};
+                return;
+            },
+            .text_box => {
+                self.box_page = spot.page;
+                self.box_a = .{ .x = spot.x, .y = spot.y };
+                self.box_b = self.box_a;
+                return;
+            },
+        }
         const lay = s.layout(spot.page) catch return;
         self.dragging = true;
         self.sel_page = spot.page;
@@ -1043,6 +1142,20 @@ const DocView = struct {
     }
 
     fn onDragUpdate(_: *gtk.GestureDrag, dx: f64, dy: f64, self: *DocView) callconv(.c) void {
+        if (self.inking) {
+            const pt = self.toPage(self.ink_page, self.drag_x + dx, self.drag_y + dy);
+            const last = self.ink.items[self.ink.items.len - 1];
+            // Half a point apart at least: enough for a smooth line, not a flood of points.
+            if (@abs(pt.x - last.x) + @abs(pt.y - last.y) < 0.5) return;
+            self.ink.append(self.allocator, .{ .x = pt.x, .y = pt.y }) catch {};
+            self.area.as(gtk.Widget).queueDraw();
+            return;
+        }
+        if (self.box_page) |page| {
+            self.box_b = self.toPage(page, self.drag_x + dx, self.drag_y + dy);
+            self.area.as(gtk.Widget).queueDraw();
+            return;
+        }
         if (!self.dragging) return;
         if (!self.drag_moved and dx * dx + dy * dy < 9) return;
         self.drag_moved = true;
@@ -1066,6 +1179,35 @@ const DocView = struct {
     }
 
     fn onDragEnd(_: *gtk.GestureDrag, _: f64, _: f64, self: *DocView) callconv(.c) void {
+        if (self.inking) {
+            self.inking = false;
+            const s = self.session orelse return;
+            var date: [20]u8 = undefined;
+            const strokes = [_][]const pdf.display.Point{self.ink.items};
+            s.addInk(self.ink_page, &strokes, 2, self.meta(&date, "", self.pen_color)) catch |e| return self.editFailed(e);
+            self.ink.clearRetainingCapacity();
+            self.changed();
+            return;
+        }
+        if (self.box_page) |page| {
+            self.box_page = null;
+            var x = @min(self.box_a.x, self.box_b.x);
+            var y = @min(self.box_a.y, self.box_b.y);
+            var w = @abs(self.box_b.x - self.box_a.x);
+            var h = @abs(self.box_b.y - self.box_a.y);
+            // A click rather than a drag: a box of a usual size there.
+            if (w < 8 or h < 8) {
+                x = self.box_a.x;
+                y = self.box_a.y;
+                w = 180;
+                h = 40;
+            }
+            const act = self.allocator.create(Act) catch return;
+            act.* = .{ .viewer = self, .action = .add_text_box, .page = page, .x = x, .y = y, .w = w, .h = h };
+            self.openTextDialog(act, common.tr("Text box"), "", false);
+            self.area.as(gtk.Widget).queueDraw();
+            return;
+        }
         self.dragging = false;
         if (self.drag_moved) {
             if (self.sel_start != self.sel_end) self.status.setText(common.tr("Selected. Ctrl+C copies, Ctrl+H highlights."));
@@ -1081,7 +1223,7 @@ const DocView = struct {
 
     /// Double click selects a word, triple click the line.
     fn onMultiClick(_: *gtk.GestureClick, n_press: c_int, x: f64, y: f64, self: *DocView) callconv(.c) void {
-        if (n_press < 2) return;
+        if (n_press < 2 or self.tool != .select) return;
         const s = self.session orelse return;
         const spot = self.spotAt(x, y) orelse return;
         const lay = s.layout(spot.page) catch return;
@@ -1322,12 +1464,18 @@ const DocView = struct {
         const x = td.act.x;
         const y = td.act.y;
         const num = td.act.num;
+        const box_w = td.act.w;
+        const box_h = td.act.h;
         const field_name: ?[]u8 = if (td.act.text) |t| v.allocator.dupe(u8, t) catch null else null;
         defer if (field_name) |f| v.allocator.free(f);
         td.dialog.destroy();
         var date: [20]u8 = undefined;
         switch (action) {
             .add_note => s.addNote(page, x, y, v.meta(&date, text, .{ 1, 0.92, 0.2 })) catch |e| return v.editFailed(e),
+            .add_text_box => {
+                if (text.len == 0) return;
+                s.addFreeText(page, x, y, box_w, box_h, 12, v.meta(&date, text, v.pen_color)) catch |e| return v.editFailed(e);
+            },
             .edit_note => s.setNoteText(num, text, dateNow(&date)) catch |e| return v.editFailed(e),
             .pick_choice => {
                 const name = field_name orelse return;
@@ -1584,7 +1732,7 @@ const DocView = struct {
                 v.changed();
             },
             .add_bookmark_here => v.askBookmarkTitle(act.page, act.y),
-            .pick_choice => {},
+            .pick_choice, .add_text_box => {},
         }
     }
 
@@ -1963,6 +2111,9 @@ const DocView = struct {
             self.show_fields = !self.show_fields;
             return self.area.as(gtk.Widget).queueDraw();
         }
+        if (eql(u8, action, "tool-ink")) return self.setTool(if (self.tool == .ink) .select else .ink);
+        if (eql(u8, action, "tool-text")) return self.setTool(if (self.tool == .text_box) .select else .text_box);
+        if (eql(u8, action, "pen-color")) return self.choosePenColor();
         if (eql(u8, action, "rotate-left")) return self.rotate(false);
         if (eql(u8, action, "rotate-right")) return self.rotate(true);
         if (eql(u8, action, "toggle-dual")) return self.setMode(.{ .dual = !self.mode.dual, .cover = self.mode.cover });
@@ -2068,6 +2219,10 @@ const Window = struct {
                 mb.item("_Underline selection", "underline", "<Control>u"),
                 mb.item("S_trike out selection", "strikeout", null),
                 mb.item("Add _note…", "add-note", "<Control>m"),
+                .separator,
+                mb.check("_Draw", "tool-ink", false),
+                mb.check("Te_xt Box", "tool-text", false),
+                mb.item("Annotation _Colour…", "pen-color", null),
                 .separator,
                 mb.item("Add _bookmark here", "add-bookmark", "<Control>d"),
             } },
@@ -2457,7 +2612,14 @@ const Window = struct {
     }
 
     fn onScreenKey(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *Window) callconv(.c) c_int {
-        if (self.screen == .normal) return 0;
+        if (self.screen == .normal) {
+            // Escape puts a drawing tool down.
+            if (keyval == gdk.KEY_Escape) if (self.active()) |d| if (d.tool != .select) {
+                d.setTool(.select);
+                return 1;
+            };
+            return 0;
+        }
         if (keyval == gdk.KEY_Escape) {
             self.setScreen(.normal);
             return 1;

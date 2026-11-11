@@ -21,8 +21,8 @@
         // pdf-zig: reader, display lists, text layout, outlines, annotations, forms and the
         // incremental writer.
         .pdf = .{
-            .url = "https://github.com/BearzRobotics/pdf-zig/releases/download/v0.2.1/pdf-0.2.1.tar.gz",
-            .hash = "pdf-0.2.1-H1tZ4qnGDACiB65s4NoSrhJb1kFA74fqi4wTglUkYWFc",
+            .url = "https://github.com/BearzRobotics/pdf-zig/releases/download/v0.2.2/pdf-0.2.2.tar.gz",
+            .hash = "pdf-0.2.2-H1tZ4sfuDADXf-4fik9IiGpb5l_Qi4rJzPDJbm33K2vs",
         },
         // DKTermCore: terminal state, key encoding, schemes, PTY, and libghostty-vt.
         .dkterm = .{
