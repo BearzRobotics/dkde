@@ -38,9 +38,15 @@ pub fn readFile(gpa: std.mem.Allocator, path: []const u8, limit: usize) !?[]u8 {
 /// half of it.
 pub fn writeFileAtomic(path: []const u8, data: []const u8) !void {
     const i = io();
-    var atomic = try std.Io.Dir.cwd().createFileAtomic(i, path, .{ .replace = true });
+    // A file that is replaced keeps its permissions (an executable script
+    // stays executable, a private file stays private): the new copy would
+    // otherwise get the defaults.
+    const old: ?std.Io.File.Permissions = if (std.Io.Dir.cwd().statFile(i, path, .{})) |st| st.permissions else |_| null;
+    var atomic = try std.Io.Dir.cwd().createFileAtomic(i, path, .{ .replace = true, .permissions = old orelse .default_file });
     defer atomic.deinit(i);
     try atomic.file.writeStreamingAll(i, data);
+    // Set again: the umask may have taken bits off at creation.
+    if (old) |p| atomic.file.setPermissions(i, p) catch {};
     try atomic.replace(i);
 }
 
@@ -66,5 +72,13 @@ test "write, read and replace" {
     const got = (try readFile(gpa, file, 100)).?;
     defer gpa.free(got);
     try std.testing.expectEqualStrings("two", got);
+
+    // Replacing keeps the file's permissions.
+    const f = try std.Io.Dir.cwd().openFile(io(), file, .{});
+    try f.setPermissions(io(), .fromMode(0o750));
+    f.close(io());
+    try writeFileAtomic(file, "three");
+    const st = try std.Io.Dir.cwd().statFile(io(), file, .{});
+    try std.testing.expectEqual(@as(u32, 0o750), st.permissions.toMode() & 0o777);
     try std.testing.expect(exists(file));
 }

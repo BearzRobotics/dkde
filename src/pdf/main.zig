@@ -107,6 +107,9 @@ const DocView = struct {
     sel_start: u32 = 0,
     sel_end: u32 = 0,
     anchor: u32 = 0,
+    /// The drag has reached text, so `anchor` is set (a drag that began on a
+    /// picture selects nothing until it does).
+    anchored: bool = false,
     dragging: bool = false,
     drag_x: f64 = 0,
     drag_y: f64 = 0,
@@ -730,12 +733,30 @@ const DocView = struct {
         const s = self.session orelse return;
         const spot = self.spotAt(x, y) orelse return;
         const lay = s.layout(spot.page) catch return;
-        const off = lay.offsetAt(spot.x, spot.y) orelse return;
         self.dragging = true;
         self.sel_page = spot.page;
+        self.anchored = false;
+        self.sel_start = 0;
+        self.sel_end = 0;
+        if (!nearText(lay, spot.x, spot.y)) return;
+        const off = lay.offsetAt(spot.x, spot.y) orelse return;
+        self.anchored = true;
         self.anchor = off;
         self.sel_start = off;
         self.sel_end = off;
+    }
+
+    /// Whether a page point is on or close to a glyph (within about a line's
+    /// height). A press on a scanned picture or an empty margin then selects
+    /// nothing, instead of jumping to the nearest text, which may be far away.
+    fn nearText(lay: anytype, x: f64, y: f64) bool {
+        for (lay.boxes) |b| {
+            const h = @max(b.rect.y1 - b.rect.y0, 4.0);
+            const dx = if (x < b.rect.x0) b.rect.x0 - x else if (x > b.rect.x1) x - b.rect.x1 else 0;
+            const dy = if (y < b.rect.y0) b.rect.y0 - y else if (y > b.rect.y1) y - b.rect.y1 else 0;
+            if (dy <= h * 0.6 and dx <= h * 1.5) return true;
+        }
+        return false;
     }
 
     fn onDragUpdate(_: *gtk.GestureDrag, dx: f64, dy: f64, self: *DocView) callconv(.c) void {
@@ -750,6 +771,12 @@ const DocView = struct {
         const px = (self.drag_x + dx - self.pageLeft(page)) / sc;
         const py = (self.drag_y + dy - l.tops[page]) / sc;
         const lay = s.layout(page) catch return;
+        if (!self.anchored) {
+            // Begun on a picture: start where the drag first reaches text.
+            if (!nearText(lay, px, py)) return;
+            self.anchor = lay.offsetAt(px, py) orelse return;
+            self.anchored = true;
+        }
         const off = lay.offsetAt(px, py) orelse return;
         self.sel_start = @min(self.anchor, off);
         self.sel_end = @max(self.anchor, off);
@@ -776,6 +803,7 @@ const DocView = struct {
         const s = self.session orelse return;
         const spot = self.spotAt(x, y) orelse return;
         const lay = s.layout(spot.page) catch return;
+        if (!nearText(lay, spot.x, spot.y)) return;
         const off = lay.offsetAt(spot.x, spot.y) orelse return;
         var lo: usize = off;
         var hi: usize = off;
@@ -1063,30 +1091,124 @@ const DocView = struct {
                 s.fillChecked(f, which, true) catch |e| return self.editFailed(e);
                 self.changed();
             },
-            .text => {
-                const act = self.allocator.create(Act) catch return;
-                act.* = .{ .viewer = self, .action = .pick_choice, .page = spot.page };
-                act.text = self.allocator.dupeSentinel(u8, f.name, 0) catch {
-                    self.allocator.destroy(act);
-                    return;
-                };
-                self.openTextDialog(act, if (f.name.len > 0) (self.allocator.dupeSentinel(u8, f.name, 0) catch return) else common.tr("Field"), f.value, false);
-            },
+            .text => self.editFieldInPlace(f, which, spot.page),
             .combo, .list => {
-                if (f.options.len == 0 and f.kind == .combo) {
-                    const act = self.allocator.create(Act) catch return;
-                    act.* = .{ .viewer = self, .action = .pick_choice, .page = spot.page };
-                    act.text = self.allocator.dupeSentinel(u8, f.name, 0) catch {
-                        self.allocator.destroy(act);
-                        return;
-                    };
-                    return self.openTextDialog(act, common.tr("Field"), f.value, false);
-                }
+                if (f.options.len == 0 and f.kind == .combo) return self.editFieldInPlace(f, which, spot.page);
                 self.showChoices(f, spot);
             },
             else => self.status.setText(common.tr("This kind of field cannot be filled here.")),
         }
     }
+
+    /// Types into a text field where it is on the page, as other viewers do:
+    /// a box over the field, Enter (Ctrl+Enter in a multi-line field) or a
+    /// click elsewhere keeps the text, Escape drops it.
+    fn editFieldInPlace(self: *DocView, f: pdf.form.Field, which: usize, page: usize) void {
+        const s = self.session orelse return;
+        const l = self.layout orelse return;
+        const p = pdf.pages.page(&s.doc.doc, s.doc.pages, page) orelse return;
+        const m = pdf.interp.baseMatrix(p);
+        const wr = f.widgets[which].rect;
+        const a = m.apply(wr.x0, wr.y0);
+        const b = m.apply(wr.x1, wr.y1);
+        const sc = self.scale();
+        const left = self.pageLeft(page) + @min(a.x, b.x) * sc;
+        const top = l.tops[page] + @min(a.y, b.y) * sc;
+        const w = @abs(b.x - a.x) * sc;
+        const h = @abs(b.y - a.y) * sc;
+
+        const fe = self.allocator.create(FieldEdit) catch return;
+        fe.* = .{ .viewer = self, .name = self.allocator.dupe(u8, f.name) catch {
+            self.allocator.destroy(fe);
+            return;
+        }, .pop = gtk.Popover.new() };
+        const pop = fe.pop;
+        pop.as(gtk.Widget).setParent(self.area.as(gtk.Widget));
+        var rect: gdk.Rectangle = .{ .f_x = @intFromFloat(left), .f_y = @intFromFloat(top), .f_width = @intFromFloat(@max(w, 1)), .f_height = @intFromFloat(@max(h, 1)) };
+        pop.setPointingTo(&rect);
+        pop.setPosition(.bottom);
+        pop.setHasArrow(0);
+        const value = self.allocator.dupeSentinel(u8, f.value, 0) catch return;
+        defer self.allocator.free(value);
+        const width: c_int = @intFromFloat(std.math.clamp(w, 160, 900));
+        if (f.multiline) {
+            const view = gtk.TextView.new();
+            view.setWrapMode(.word_char);
+            view.getBuffer().setText(value, -1);
+            const scroller = gtk.ScrolledWindow.new();
+            scroller.setChild(view.as(gtk.Widget));
+            scroller.as(gtk.Widget).setSizeRequest(width, @intFromFloat(std.math.clamp(h, 60, 400)));
+            pop.setChild(scroller.as(gtk.Widget));
+            fe.view = view;
+        } else {
+            const entry = gtk.Entry.new();
+            entry.as(gtk.Editable).setText(value);
+            entry.as(gtk.Widget).setSizeRequest(width, -1);
+            if (f.max_len) |n| entry.setMaxLength(@intCast(@min(n, std.math.maxInt(c_int))));
+            if (f.password) entry.setVisibility(0);
+            _ = gtk.Entry.signals.activate.connect(entry, *FieldEdit, &FieldEdit.onActivate, fe, .{});
+            pop.setChild(entry.as(gtk.Widget));
+            fe.entry = entry;
+        }
+        const keys = gtk.EventControllerKey.new();
+        keys.as(gtk.EventController).setPropagationPhase(.capture);
+        _ = gtk.EventControllerKey.signals.key_pressed.connect(keys, *FieldEdit, &FieldEdit.onKey, fe, .{});
+        pop.as(gtk.Widget).addController(keys.as(gtk.EventController));
+        _ = gtk.Popover.signals.closed.connect(pop, *FieldEdit, &FieldEdit.onClosed, fe, .{});
+        pop.popup();
+        if (fe.entry) |e| _ = e.as(gtk.Widget).grabFocus() else if (fe.view) |v| _ = v.as(gtk.Widget).grabFocus();
+    }
+
+    const FieldEdit = struct {
+        viewer: *DocView,
+        name: []u8,
+        pop: *gtk.Popover,
+        entry: ?*gtk.Entry = null,
+        view: ?*gtk.TextView = null,
+        cancelled: bool = false,
+
+        fn onActivate(_: *gtk.Entry, fe: *FieldEdit) callconv(.c) void {
+            fe.pop.popdown();
+        }
+
+        fn onKey(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, state: gdk.ModifierType, fe: *FieldEdit) callconv(.c) c_int {
+            if (keyval == gdk.KEY_Escape) {
+                fe.cancelled = true;
+                fe.pop.popdown();
+                return 1;
+            }
+            if ((keyval == gdk.KEY_Return or keyval == gdk.KEY_KP_Enter) and state.control_mask) {
+                fe.pop.popdown();
+                return 1;
+            }
+            return 0;
+        }
+
+        /// Closing keeps the text (Enter, or a click elsewhere) unless Escape
+        /// was pressed; the popover goes once it is done closing.
+        fn onClosed(pop: *gtk.Popover, fe: *FieldEdit) callconv(.c) void {
+            const v = fe.viewer;
+            defer {
+                _ = glib.idleAdd(unparentIdle, pop);
+                v.allocator.free(fe.name);
+                v.allocator.destroy(fe);
+            }
+            if (fe.cancelled) return;
+            const s = v.session orelse return;
+            const text: []u8 = if (fe.entry) |e|
+                v.allocator.dupe(u8, std.mem.span(e.as(gtk.Editable).getText())) catch return
+            else
+                v.bufferText(fe.view.?) orelse return;
+            defer v.allocator.free(text);
+            v.ensureFields();
+            for (v.fields) |f| if (std.mem.eql(u8, f.name, fe.name)) {
+                if (std.mem.eql(u8, f.value, text)) return; // unchanged: no new revision
+                s.fillText(f, text) catch |e| return v.editFailed(e);
+                v.changed();
+                return;
+            };
+        }
+    };
 
     // ---- popup menus -------------------------------------------------------------------------------------
 
@@ -1849,7 +1971,11 @@ const Window = struct {
         const name: []const u8 = if (doc.path) |p| std.fs.path.basename(p) else "New tab";
         var buf: [300]u8 = undefined;
         const text = std.fmt.bufPrintSentinel(&buf, "{s}{s}", .{ if (doc.isDirty()) "* " else "", name }, 0) catch return;
-        self.labels.items[i].setText(text);
+        const label = self.labels.items[i];
+        label.setText(text);
+        // Keep the name readable: the notebook would shrink the label to "…".
+        label.setWidthChars(@intCast(@min(std.unicode.utf8CountCodepoints(text) catch text.len, 24)));
+        label.as(gtk.Widget).setTooltipText(if (doc.path) |p| p else null);
         if (doc.isActive()) {
             var tbuf: [360]u8 = undefined;
             self.window.as(gtk.Window).setTitle(std.fmt.bufPrintSentinel(&tbuf, "{s} \u{2014} PDF Viewer", .{text}, 0) catch "PDF Viewer");
