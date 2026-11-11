@@ -162,6 +162,7 @@ sudo apt install \
 | Display settings | `wlr-randr` 0.4 or newer | Display page says what to install |
 | Printers | `cups`, `cups-client`, `cups-filters` | Printers page says what to install |
 | Archives in Files | `zip`, `unzip`, `tar`, `7zip` (7z), `unrar` (as many as you use) | the menu items are greyed out |
+| Servers in Files (sftp, ftp, smb) | `gvfs`, `gvfs-backends` (sftp, ftp), `gvfs-smb` or `smbclient` as your distribution splits them | File > Connect to Server says what to install; the Network sidebar section is hidden |
 | Removable drives | `gvfs`, `udisks2` | no automatic drive list |
 | Date and time | `chrony` (clock sync; use `ntpd`, `chronyd` or `systemd-timesyncd`, whichever your system has) | the clock is only as right as you set it |
 | Images, icons, fonts | `webp-pixbuf-loader`, `librsvg2-common`, `papirus-icon-theme`, `fonts-noto-*` | missing formats and glyphs |

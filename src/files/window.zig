@@ -13,6 +13,8 @@ const archive = @import("archive.zig");
 const context = @import("context.zig");
 const clipboard = @import("clipboard.zig");
 const ops = @import("ops.zig");
+const folder_model = @import("folder.zig");
+const progress = @import("progress.zig");
 const props = @import("props.zig");
 const pure = @import("pure.zig");
 
@@ -22,7 +24,46 @@ const list_attributes = "standard::name,standard::display-name,standard::type,st
     "standard::content-type,standard::size,standard::is-hidden,standard::is-backup," ++
     "time::modified,access::can-rename,access::can-delete";
 
+/// Sidebar target that opens the Connect to Server dialog instead of a folder.
+const connect_row = "dkde:connect-server";
+
 const Column = enum { name, size, kind, modified };
+
+/// Sort orders offered by the view button; the tag names are the `sort`
+/// values in files.toml.
+const SortKey = enum {
+    @"name-asc",
+    @"name-desc",
+    @"modified-desc",
+    @"modified-asc",
+    @"size-desc",
+    @"kind-asc",
+
+    fn column(self: SortKey) Column {
+        return switch (self) {
+            .@"name-asc", .@"name-desc" => .name,
+            .@"modified-desc", .@"modified-asc" => .modified,
+            .@"size-desc" => .size,
+            .@"kind-asc" => .kind,
+        };
+    }
+
+    fn order(self: SortKey) gtk.SortType {
+        return switch (self) {
+            .@"name-asc", .@"modified-asc", .@"kind-asc" => .ascending,
+            else => .descending,
+        };
+    }
+
+    /// The key for a column clicked in the details view, when the menu has one.
+    fn from(kind: Column, order_: gtk.SortType) ?SortKey {
+        inline for (@typeInfo(SortKey).@"enum".field_names) |name| {
+            const key = @field(SortKey, name);
+            if (key.column() == kind and key.order() == order_) return key;
+        }
+        return null;
+    }
+};
 
 /// How a folder is shown (SPEC.md 5.4). The tag names are the `view` values in files.toml.
 const ViewMode = enum {
@@ -42,7 +83,7 @@ const columns = [_]Column{ .name, .size, .kind, .modified };
 /// Everything that belongs to one tab. The window's own fields of the same
 /// names always hold the *active* tab's state; switching tabs swaps them.
 const Tab = struct {
-    dir_list: *gtk.DirectoryList,
+    folder: *folder_model.Folder,
     filter: *gtk.CustomFilter,
     selection: *gtk.MultiSelection,
     column_view: *gtk.ColumnView,
@@ -63,11 +104,16 @@ pub const FilesWindow = struct {
     config: *common.Config,
     window: *gtk.ApplicationWindow,
     view_mode: ViewMode = .details,
+    /// The icon size the view button returns to from details or list.
+    last_icon_mode: ViewMode = .medium,
+    sort_key: SortKey = .@"name-asc",
+    view_toggle: *gtk.Button = undefined,
+    sort_action: *gio.SimpleAction = undefined,
     /// The terminal below the folder view (F4); the shell starts on first use.
     term_panel: *termembed.Panel,
 
     // Model chain: DirectoryList -> filter -> sort -> selection.
-    dir_list: *gtk.DirectoryList,
+    folder: *folder_model.Folder,
     filter: *gtk.CustomFilter,
     selection: *gtk.MultiSelection,
     column_view: *gtk.ColumnView,
@@ -92,9 +138,8 @@ pub const FilesWindow = struct {
     status: *gtk.Label,
     /// For archive commands that finish after the user may have closed the window.
     proc_guard: *common.proc.Guard(FilesWindow) = undefined,
-    progress_box: *gtk.Box,
-    progress_bar: *gtk.ProgressBar,
-    progress_label: *gtk.Label,
+    /// Copies and moves in progress, shown in the header.
+    operations: *progress.Indicator = undefined,
     back_button: *gtk.Button,
     forward_button: *gtk.Button,
 
@@ -103,6 +148,8 @@ pub const FilesWindow = struct {
     forward: std.ArrayList(*gio.File) = .empty,
 
     show_hidden: bool = false,
+    /// The view was scrolled to the top when the folder's list last changed.
+    was_at_top: bool = true,
     /// Lower-cased type-to-search text; empty shows everything.
     query: [128]u8 = undefined,
     query_len: usize = 0,
@@ -113,7 +160,6 @@ pub const FilesWindow = struct {
     /// True while code (not the user) changes the notebook's page.
     switching: bool = false,
 
-    job: ?*ops.Job = null,
     /// Set by a cell's right-click so the background handler skips it.
     menu_handled: bool = false,
 
@@ -130,7 +176,7 @@ pub const FilesWindow = struct {
             .config = config,
             .window = gtk.ApplicationWindow.new(app),
             .term_panel = try termembed.Panel.create(allocator),
-            .dir_list = undefined,
+            .folder = undefined,
             .filter = undefined,
             .selection = undefined,
             .column_view = undefined,
@@ -145,9 +191,6 @@ pub const FilesWindow = struct {
             .path_entry = gtk.Entry.new(),
             .search = gtk.SearchEntry.new(),
             .status = gtk.Label.new(""),
-            .progress_box = gtk.Box.new(.horizontal, 8),
-            .progress_bar = gtk.ProgressBar.new(),
-            .progress_label = gtk.Label.new(""),
             .back_button = gtk.Button.newFromIconName("go-previous-symbolic"),
             .forward_button = gtk.Button.newFromIconName("go-next-symbolic"),
             .current = start_file,
@@ -158,6 +201,11 @@ pub const FilesWindow = struct {
             defer allocator.free(v);
             self.view_mode = ViewMode.parse(v);
         } else |_| {}
+        if (config.getString(allocator, "files", "sort", "name-asc")) |v| {
+            defer allocator.free(v);
+            self.sort_key = std.meta.stringToEnum(SortKey, v) orelse .@"name-asc";
+        } else |_| {}
+        if (self.view_mode != .details and self.view_mode != .list) self.last_icon_mode = self.view_mode;
         self.makeViews();
         self.buildWindow(app);
         self.registerTab();
@@ -170,7 +218,7 @@ pub const FilesWindow = struct {
 
     fn onWindowDestroy(_: *gtk.ApplicationWindow, self: *FilesWindow) callconv(.c) void {
         self.proc_guard.kill();
-        if (self.job) |job| job.cancel();
+        self.operations.destroy();
         for (self.crumb_ctxs.items) |ctx| {
             self.allocator.free(ctx.path);
             self.allocator.destroy(ctx);
@@ -184,6 +232,7 @@ pub const FilesWindow = struct {
         // The live state is in the window's fields; fold it into its tab, then free all tabs.
         if (self.tabs.items.len > 0) self.snapshotInto(self.tabs.items[self.active_tab]);
         for (self.tabs.items) |tab| {
+            tab.folder.destroy();
             tab.current.as(gobject.Object).unref();
             for (tab.back.items) |f| f.as(gobject.Object).unref();
             tab.back.deinit(self.allocator);
@@ -199,9 +248,8 @@ pub const FilesWindow = struct {
     /// Creates a fresh set of models and views for a new tab and puts them in
     /// the window's per-tab fields (callers save the old set first).
     fn makeViews(self: *FilesWindow) void {
-        self.dir_list = gtk.DirectoryList.new(list_attributes, null);
-        self.dir_list.setIoPriority(glib.PRIORITY_DEFAULT);
-        self.dir_list.setMonitored(1);
+        self.folder = folder_model.Folder.create(list_attributes);
+        self.folder.observer = .{ .data = self, .loaded = onFolderLoaded, .changing = onFolderChanging };
         self.filter = gtk.CustomFilter.new(filterFunc, self, null);
         self.column_view = gtk.ColumnView.new(null);
         self.view_stack = gtk.Stack.new();
@@ -227,9 +275,14 @@ pub const FilesWindow = struct {
     }
 
     fn buildModels(self: *FilesWindow) void {
-        const filtered = gtk.FilterListModel.new(self.dir_list.as(gio.ListModel), self.filter.as(gtk.Filter));
+        // The list model constructors take over the reference they are given
+        // (transfer full), so each gets its own: the folder keeps its store and
+        // the column view its sorter. Without these a closed tab freed both twice.
+        const store: *gio.ListModel = @ptrCast(self.folder.store.as(gobject.Object).ref());
+        const filtered = gtk.FilterListModel.new(store, self.filter.as(gtk.Filter));
         const sorter = self.column_view.getSorter();
-        const sorted = gtk.SortListModel.new(filtered.as(gio.ListModel), sorter);
+        const sorter_ref: ?*gtk.Sorter = if (sorter) |x| @ptrCast(x.as(gobject.Object).ref()) else null;
+        const sorted = gtk.SortListModel.new(filtered.as(gio.ListModel), sorter_ref);
         self.selection = gtk.MultiSelection.new(sorted.as(gio.ListModel));
 
         // Details view.
@@ -242,12 +295,13 @@ pub const FilesWindow = struct {
             _ = gtk.SignalListItemFactory.signals.setup.connect(factory, *FilesWindow, &onCellSetup, self, .{});
             _ = gtk.SignalListItemFactory.signals.bind.connect(factory, *Column, &onCellBind, @constCast(&columns[i]), .{});
             const column = gtk.ColumnViewColumn.new(common.tr(titles[i]), factory.as(gtk.ListItemFactory));
-            column.setSorter(gtk.CustomSorter.new(compareFunc, @ptrCast(@constCast(&columns[i])), null).as(gtk.Sorter));
+            column.setSorter(columnSorter(kind));
             column.setResizable(1);
             column.setExpand(@intFromBool(kind == .name));
             self.column_view.appendColumn(column);
-            if (kind == .name) self.column_view.sortByColumn(column, .ascending);
+            if (kind == self.sort_key.column()) self.column_view.sortByColumn(column, self.sort_key.order());
         }
+        if (sorter) |s| _ = gtk.Sorter.signals.changed.connect(s, *FilesWindow, &onSorterChanged, self, .{});
         _ = gtk.ColumnView.signals.activate.connect(self.column_view, *FilesWindow, &onActivate, self, .{});
 
         // Icon view shares the same selection model.
@@ -276,25 +330,66 @@ pub const FilesWindow = struct {
         _ = gtk.Button.signals.clicked.connect(self.forward_button, *FilesWindow, &onForwardClicked, self, .{});
         const up = gtk.Button.newFromIconName("go-up-symbolic");
         _ = gtk.Button.signals.clicked.connect(up, *FilesWindow, &onUpClicked, self, .{});
-        header.packStart(self.back_button.as(gtk.Widget));
-        header.packStart(self.forward_button.as(gtk.Widget));
-        header.packStart(up.as(gtk.Widget));
+        for ([_]*gtk.Widget{ self.back_button.as(gtk.Widget), self.forward_button.as(gtk.Widget), up.as(gtk.Widget) }) |b| {
+            b.addCssClass("flat");
+            header.packStart(b);
+        }
 
-        self.crumbs.as(gtk.Widget).addCssClass("linked");
         self.path_entry.as(gtk.Widget).setHexpand(1);
         _ = gtk.Entry.signals.activate.connect(self.path_entry, *FilesWindow, &onPathEntryActivate, self, .{});
         const entry_keys = gtk.EventControllerKey.new();
         _ = gtk.EventControllerKey.signals.key_pressed.connect(entry_keys, *FilesWindow, &onPathEntryKey, self, .{});
         self.path_entry.as(gtk.Widget).addController(entry_keys.as(gtk.EventController));
-        _ = self.path_stack.addNamed(self.crumbs.as(gtk.Widget), "crumbs");
+        // Clicking anywhere else puts the crumbs back.
+        const entry_focus = gtk.EventControllerFocus.new();
+        _ = gtk.EventControllerFocus.signals.leave.connect(entry_focus, *FilesWindow, &onPathEntryLeave, self, .{});
+        self.path_entry.as(gtk.Widget).addController(entry_focus.as(gtk.EventController));
+        // The crumbs scroll sideways (no visible bar) instead of widening the
+        // window, and stay scrolled to the end so the current folder shows.
+        const crumb_scroller = gtk.ScrolledWindow.new();
+        crumb_scroller.setPolicy(.external, .never);
+        crumb_scroller.setPropagateNaturalWidth(1);
+        crumb_scroller.setChild(self.crumbs.as(gtk.Widget));
+        crumb_scroller.as(gtk.Widget).setHexpand(1);
+        _ = gtk.Adjustment.signals.changed.connect(crumb_scroller.getHadjustment(), ?*anyopaque, &onCrumbRangeChanged, null, .{});
+        // A click on the bar's empty space (not on a crumb) types a path.
+        const empty_click = gtk.GestureClick.new();
+        _ = gtk.GestureClick.signals.released.connect(empty_click, *FilesWindow, &onPathBarEmptyClick, self, .{});
+        crumb_scroller.as(gtk.Widget).addController(empty_click.as(gtk.EventController));
+        _ = self.path_stack.addNamed(crumb_scroller.as(gtk.Widget), "crumbs");
         _ = self.path_stack.addNamed(self.path_entry.as(gtk.Widget), "entry");
         self.path_stack.as(gtk.Widget).setHexpand(1);
-        header.setTitleWidget(self.path_stack.as(gtk.Widget));
+
+        // Nautilus-style path bar: one rounded bar holding the crumbs (or the
+        // typed path) and, at its end, the menu for the folder being shown.
+        const folder_menu = gtk.Button.newFromIconName("view-more-symbolic");
+        folder_menu.as(gtk.Widget).addCssClass("pathbar-menu");
+        folder_menu.as(gtk.Widget).setTooltipText(common.tr("Folder actions"));
+        folder_menu.as(gtk.Widget).setValign(.center);
+        _ = gtk.Button.signals.clicked.connect(folder_menu, *FilesWindow, &onFolderMenuClicked, self, .{});
+        const pathbar = gtk.Box.new(.horizontal, 0);
+        pathbar.as(gtk.Widget).addCssClass("dkde-pathbar");
+        pathbar.as(gtk.Widget).setHexpand(1);
+        pathbar.append(self.path_stack.as(gtk.Widget));
+        pathbar.append(folder_menu.as(gtk.Widget));
+        // Path bar, search and view button share the header's centre, which
+        // GtkHeaderBar keeps centred; with the sides about equal (icon and
+        // navigation on the left, window buttons on the right) it spans the gap.
+        const middle = gtk.Box.new(.horizontal, 6);
+        middle.as(gtk.Widget).setHexpand(1);
+        middle.append(pathbar.as(gtk.Widget));
+        header.setTitleWidget(middle.as(gtk.Widget));
 
         self.search.setPlaceholderText(common.tr("Search this folder"));
         _ = gtk.SearchEntry.signals.search_changed.connect(self.search, *FilesWindow, &onSearchChanged, self, .{});
         _ = gtk.SearchEntry.signals.stop_search.connect(self.search, *FilesWindow, &onSearchStop, self, .{});
-        header.packEnd(self.search.as(gtk.Widget));
+        // Search, then the view button at the right edge.
+        middle.append(self.search.as(gtk.Widget));
+        middle.append(self.buildViewButton());
+        // Beside the window buttons, not in the centre: GtkHeaderBar caps the
+        // centre's width, and a button there pushed itself out of sight.
+        self.operations = progress.Indicator.create(self.window.as(gtk.Window));
+        header.packEnd(self.operations.widget());
 
         // Tabs.
         self.notebook.setScrollable(1);
@@ -302,18 +397,6 @@ pub const FilesWindow = struct {
         self.notebook.as(gtk.Widget).setHexpand(1);
         self.notebook.as(gtk.Widget).setVexpand(1);
         _ = gtk.Notebook.signals.switch_page.connect(self.notebook, *FilesWindow, &onSwitchPage, self, .{});
-
-        const cancel = gtk.Button.newWithLabel(common.tr("Cancel"));
-        _ = gtk.Button.signals.clicked.connect(cancel, *FilesWindow, &onCancelJob, self, .{});
-        self.progress_label.setXalign(0);
-        self.progress_bar.as(gtk.Widget).setHexpand(1);
-        self.progress_bar.as(gtk.Widget).setValign(.center);
-        self.progress_box.append(self.progress_label.as(gtk.Widget));
-        self.progress_box.append(self.progress_bar.as(gtk.Widget));
-        self.progress_box.append(cancel.as(gtk.Widget));
-        self.progress_box.as(gtk.Widget).setVisible(0);
-        self.progress_box.as(gtk.Widget).setMarginStart(8);
-        self.progress_box.as(gtk.Widget).setMarginEnd(8);
 
         self.status.setXalign(0);
         self.status.as(gtk.Widget).addCssClass("dkde-files-status");
@@ -332,7 +415,6 @@ pub const FilesWindow = struct {
 
         const right = gtk.Box.new(.vertical, 0);
         right.append(self.notebook.as(gtk.Widget));
-        right.append(self.progress_box.as(gtk.Widget));
         right.append(self.status.as(gtk.Widget));
 
         // The folder view above, the terminal panel below (hidden until F4).
@@ -363,6 +445,7 @@ pub const FilesWindow = struct {
                 mb.item("Open in New _Window", "open-window", null),
                 mb.item("Open _Terminal Here", "terminal-here", null),
                 mb.item("Open Folder as _Administrator", "open-admin", null),
+                mb.item("Connect to _Server…", "connect-server", null),
                 mb.item("_Properties", "properties", "<Alt>Return"),
                 .separator,
                 mb.item("_Close Tab", "close-tab", "<Control>w"),
@@ -431,7 +514,7 @@ pub const FilesWindow = struct {
     // ---- tabs -----------------------------------------------------------------
 
     fn snapshotInto(self: *FilesWindow, t: *Tab) void {
-        t.dir_list = self.dir_list;
+        t.folder = self.folder;
         t.filter = self.filter;
         t.selection = self.selection;
         t.column_view = self.column_view;
@@ -447,7 +530,7 @@ pub const FilesWindow = struct {
     }
 
     fn loadFrom(self: *FilesWindow, t: *const Tab) void {
-        self.dir_list = t.dir_list;
+        self.folder = t.folder;
         self.filter = t.filter;
         self.selection = t.selection;
         self.column_view = t.column_view;
@@ -558,13 +641,19 @@ pub const FilesWindow = struct {
         self.snapshotInto(self.tabs.items[self.active_tab]);
         const tab = self.tabs.orderedRemove(index);
         const page = tab.view_stack.as(gtk.Widget);
+        // Removing the page makes GTK switch to a neighbour right away; the
+        // tab list is already shorter, so the switch handler must not run.
+        // The neighbour is loaded below.
+        self.switching = true;
         self.notebook.removePage(@intCast(index));
+        self.switching = false;
         // The close button's data: this runs from its click handler, which does not touch it again.
         for (self.tab_closers.items, 0..) |c, i| if (c.page == page) {
             _ = self.tab_closers.orderedRemove(i);
             self.allocator.destroy(c);
             break;
         };
+        tab.folder.destroy();
         tab.current.as(gobject.Object).unref();
         for (tab.back.items) |f| f.as(gobject.Object).unref();
         tab.back.deinit(self.allocator);
@@ -608,7 +697,7 @@ pub const FilesWindow = struct {
     }
 
     fn afterNavigate(self: *FilesWindow) void {
-        self.dir_list.setFile(self.current);
+        self.folder.setFile(self.current);
         self.search.as(gtk.Editable).setText("");
         self.query_len = 0;
         _ = self.selection.as(gtk.SelectionModel).unselectAll();
@@ -647,12 +736,189 @@ pub const FilesWindow = struct {
     }
 
     fn goPath(self: *FilesWindow, path: []const u8) void {
+        // ftp:, samba:, ssh: and friends connect to the server.
+        if (pure.normalizeRemote(self.allocator, path) catch return) |uri| {
+            defer self.allocator.free(uri);
+            return self.connectTo(uri);
+        }
         const pathz = self.allocator.dupeSentinel(u8, path, 0) catch return;
         defer self.allocator.free(pathz);
         const file = gio.File.newForCommandlineArg(pathz);
         defer file.as(gobject.Object).unref();
+        if (isRemote(path)) return self.mountThenGo(file);
         self.go(file, true);
     }
+
+    /// True for a full URI that is not on this machine's own filesystem.
+    fn isRemote(location: []const u8) bool {
+        const i = std.mem.indexOf(u8, location, "://") orelse return false;
+        return !std.ascii.eqlIgnoreCase(location[0..i], "file");
+    }
+
+    /// Opens a server address (already normalised) after checking gvfs has the
+    /// backend for it.
+    fn connectTo(self: *FilesWindow, uri: []const u8) void {
+        const scheme = pure.schemeOf(uri);
+        if (!schemeSupported(scheme)) {
+            const hint: [:0]const u8 = if (std.mem.eql(u8, scheme, "smb"))
+                common.tr("Windows shares (smb://) need the gvfs SMB backend: install gvfs-smb (or gvfs-backends) and smbclient.")
+            else
+                common.tr("sftp:// and ftp:// need the gvfs network backends: install gvfs-backends (and openssh for sftp://).");
+            common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot connect: backend not installed"), hint);
+            return;
+        }
+        const uriz = self.allocator.dupeSentinel(u8, uri, 0) catch return;
+        defer self.allocator.free(uriz);
+        const file = gio.File.newForUri(uriz);
+        defer file.as(gobject.Object).unref();
+        self.mountThenGo(file);
+    }
+
+    /// Whether gvfs offers `scheme` (sftp, ftp, ftps, smb). Optional: without
+    /// it the file manager still works on local folders.
+    fn schemeSupported(scheme: []const u8) bool {
+        const schemes = gio.Vfs.getDefault().getSupportedUriSchemes();
+        var i: usize = 0;
+        while (schemes[i]) |name| : (i += 1) {
+            if (std.mem.eql(u8, std.mem.span(name), scheme)) return true;
+        }
+        return false;
+    }
+
+    /// Whether gvfs offers the sftp, ftp or smb backends. Optional: without it
+    /// the file manager still works on local folders.
+    fn remoteSupported() bool {
+        return schemeSupported("sftp") or schemeSupported("ftp") or schemeSupported("smb");
+    }
+
+    const MountCtx = struct {
+        window: *FilesWindow,
+        file: *gio.File,
+    };
+
+    /// Mounts the server behind `file` (asking for a password when needed),
+    /// then shows it. A location that is already mounted is shown at once.
+    fn mountThenGo(self: *FilesWindow, file: *gio.File) void {
+        if (!remoteSupported()) {
+            common.dialogs.showError(
+                self.window.as(gtk.Window),
+                common.tr("Remote locations need gvfs"),
+                common.tr("Install gvfs (and gvfs-smb, gvfs-backends) to open sftp://, ftp:// and smb:// locations."),
+            );
+            return;
+        }
+        const ctx = std.heap.c_allocator.create(MountCtx) catch return;
+        ctx.* = .{ .window = self, .file = @ptrCast(file.as(gobject.Object).ref()) };
+        self.status.setText(common.tr("Connecting\u{2026}"));
+        const operation = gtk.MountOperation.new(self.window.as(gtk.Window));
+        defer operation.as(gobject.Object).unref();
+        file.mountEnclosingVolume(.{}, operation.as(gio.MountOperation), null, onMounted, ctx);
+    }
+
+    fn onMounted(source: ?*gobject.Object, result: *gio.AsyncResult, raw: ?*anyopaque) callconv(.c) void {
+        const ctx: *MountCtx = @ptrCast(@alignCast(raw.?));
+        defer {
+            ctx.file.as(gobject.Object).unref();
+            std.heap.c_allocator.destroy(ctx);
+        }
+        const file: *gio.File = @ptrCast(@alignCast(source.?));
+        var err: ?*glib.Error = null;
+        _ = file.mountEnclosingVolumeFinish(result, &err);
+        if (err) |e| {
+            defer e.free();
+            // Already mounted is not a failure.
+            if (e.f_domain != gio.ioErrorQuark() or e.f_code != @intFromEnum(gio.IOErrorEnum.already_mounted)) {
+                ctx.window.updateStatus();
+                if (e.f_code != @intFromEnum(gio.IOErrorEnum.failed_handled)) {
+                    var buf: [512]u8 = undefined;
+                    common.dialogs.showError(
+                        ctx.window.window.as(gtk.Window),
+                        common.tr("Could not connect"),
+                        std.fmt.bufPrintSentinel(&buf, "{s}", .{std.mem.span(e.f_message orelse "")}, 0) catch null,
+                    );
+                }
+                return;
+            }
+        }
+        ctx.window.rebuildSidebar();
+        ctx.window.go(ctx.file, true);
+    }
+
+    /// "Connect to Server": asks for an address such as sftp://host/path.
+    fn connectDialog(self: *FilesWindow) void {
+        const window = gtk.Window.new();
+        window.setTitle(common.tr("Connect to Server"));
+        window.setTransientFor(self.window.as(gtk.Window));
+        window.setModal(1);
+        window.setDefaultSize(420, -1);
+        window.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        box.as(gtk.Widget).setMarginTop(12);
+        box.as(gtk.Widget).setMarginBottom(12);
+        box.as(gtk.Widget).setMarginStart(12);
+        box.as(gtk.Widget).setMarginEnd(12);
+        window.setChild(box.as(gtk.Widget));
+
+        const heading = gtk.Label.new(common.tr("Server address, for example sftp://host/path, ftp://host or smb://host/share:"));
+        heading.setXalign(0);
+        heading.setWrap(1);
+        box.append(heading.as(gtk.Widget));
+        const entry = gtk.Entry.new();
+        entry.setActivatesDefault(1);
+        entry.as(gtk.Editable).setText("sftp://");
+        entry.as(gtk.Editable).setPosition(-1);
+        box.append(entry.as(gtk.Widget));
+        const buttons = gtk.Box.new(.horizontal, 8);
+        buttons.as(gtk.Widget).setHalign(.end);
+        const cancel = gtk.Button.newWithLabel(common.tr("Cancel"));
+        const connect = gtk.Button.newWithLabel(common.tr("Connect"));
+        connect.as(gtk.Widget).addCssClass("suggested-action");
+        buttons.append(cancel.as(gtk.Widget));
+        buttons.append(connect.as(gtk.Widget));
+        box.append(buttons.as(gtk.Widget));
+        window.setDefaultWidget(connect.as(gtk.Widget));
+
+        const ctx = self.allocator.create(ConnectDlg) catch return window.destroy();
+        ctx.* = .{ .window = self, .dialog = window, .entry = entry };
+        _ = gtk.Button.signals.clicked.connect(cancel, *ConnectDlg, &ConnectDlg.onCancel, ctx, .{});
+        _ = gtk.Button.signals.clicked.connect(connect, *ConnectDlg, &ConnectDlg.onConnect, ctx, .{});
+        _ = gtk.Widget.signals.destroy.connect(window.as(gtk.Widget), *ConnectDlg, &ConnectDlg.onDestroy, ctx, .{});
+        window.present();
+    }
+
+    const ConnectDlg = struct {
+        window: *FilesWindow,
+        dialog: *gtk.Window,
+        entry: *gtk.Entry,
+
+        fn onCancel(_: *gtk.Button, self: *ConnectDlg) callconv(.c) void {
+            self.dialog.destroy();
+        }
+
+        fn onConnect(_: *gtk.Button, self: *ConnectDlg) callconv(.c) void {
+            const text = std.mem.trim(u8, std.mem.span(self.entry.as(gtk.Editable).getText()), " \t");
+            const window = self.window;
+            const address = window.allocator.dupe(u8, text) catch return;
+            defer window.allocator.free(address);
+            self.dialog.destroy();
+            if (address.len == 0) return;
+            const is_server = isRemote(address) or blk: {
+                const uri = pure.normalizeRemote(window.allocator, address) catch break :blk false;
+                defer if (uri) |u| window.allocator.free(u);
+                break :blk uri != null;
+            };
+            if (!is_server) return common.dialogs.showError(
+                window.window.as(gtk.Window),
+                common.tr("Not a server address"),
+                common.tr("Start the address with sftp://, ftp:// or smb://."),
+            );
+            window.goPath(address);
+        }
+
+        fn onDestroy(_: *gtk.Widget, self: *ConnectDlg) callconv(.c) void {
+            self.window.allocator.destroy(self);
+        }
+    };
 
     fn isInTrash(self: *const FilesWindow) bool {
         const trash = trashFilesDir(self.allocator) catch return false;
@@ -675,28 +941,113 @@ pub const FilesWindow = struct {
         self.crumb_ctxs.clearRetainingCapacity();
 
         const path_c = self.current.getPath() orelse {
-            const uri = self.current.getUri();
-            defer glib.free(uri);
-            const label = gtk.Label.new(uri);
-            self.crumbs.append(label.as(gtk.Widget));
+            self.rebuildRemoteCrumbs();
             return;
         };
         defer glib.free(path_c);
         const path = std.mem.span(path_c);
         self.path_entry.as(gtk.Editable).setText(path_c);
 
-        const list = pure.breadcrumbs(self.allocator, path) catch return;
+        const list = pure.breadcrumbsHome(self.allocator, path, std.mem.span(glib.getHomeDir())) catch return;
         defer self.allocator.free(list);
-        for (list) |crumb| {
-            const ctx = self.allocator.create(CrumbCtx) catch return;
-            ctx.* = .{ .window = self, .path = self.allocator.dupeSentinel(u8, crumb.path, 0) catch return };
-            self.crumb_ctxs.append(self.allocator, ctx) catch return;
-            const label = self.allocator.dupeSentinel(u8, crumb.label, 0) catch return;
-            defer self.allocator.free(label);
-            const button = gtk.Button.newWithLabel(label);
-            _ = gtk.Button.signals.clicked.connect(button, *CrumbCtx, &onCrumbClicked, ctx, .{});
+        for (list, 0..) |crumb, i| {
+            const is_root = std.mem.eql(u8, crumb.path, "/");
+            const label: []const u8 = if (crumb.home) common.tr("Home") else if (is_root) "" else crumb.label;
+            const icon: ?[:0]const u8 = if (crumb.home) "user-home-symbolic" else if (is_root) "drive-harddisk-symbolic" else null;
+            const button = self.appendCrumb(label, crumb.path, icon, i + 1 == list.len, i == 0) orelse return;
+            if (is_root) button.as(gtk.Widget).setTooltipText(common.tr("File System"));
             if (self.allocator.dupeSentinel(u8, crumb.path, 0)) |p| self.attachDrop(button.as(gtk.Widget), .{ .path = p }) else |_| {}
-            self.crumbs.append(button.as(gtk.Widget));
+        }
+    }
+
+    /// Adds one crumb: a "/" separator unless it is the first, then a flat
+    /// button that opens `target`. The current folder's crumb is bold and
+    /// never shortened; others are shortened in the middle when long.
+    fn appendCrumb(self: *FilesWindow, label: []const u8, target: []const u8, icon: ?[:0]const u8, current: bool, first: bool) ?*gtk.Button {
+        if (!first) {
+            const sep = gtk.Label.new("/");
+            sep.as(gtk.Widget).addCssClass("crumb-sep");
+            self.crumbs.append(sep.as(gtk.Widget));
+        }
+        const ctx = self.allocator.create(CrumbCtx) catch return null;
+        ctx.* = .{ .window = self, .path = self.allocator.dupeSentinel(u8, target, 0) catch {
+            self.allocator.destroy(ctx);
+            return null;
+        } };
+        self.crumb_ctxs.append(self.allocator, ctx) catch return null;
+
+        const content = gtk.Box.new(.horizontal, 4);
+        if (icon) |name| content.append(gtk.Image.newFromIconName(name).as(gtk.Widget));
+        if (label.len > 0) {
+            const text = self.allocator.dupeSentinel(u8, label, 0) catch return null;
+            defer self.allocator.free(text);
+            const l = gtk.Label.new(text);
+            if (!current) {
+                // Long names are shortened in the middle, but no crumb
+                // shrinks below its name (up to 18 characters): a long path
+                // overflows and scrolls, instead of every crumb becoming "…".
+                l.setEllipsize(.middle);
+                l.setMaxWidthChars(18);
+                l.setWidthChars(@intCast(@min(std.unicode.utf8CountCodepoints(label) catch label.len, 18)));
+            }
+            content.append(l.as(gtk.Widget));
+        }
+        const button = gtk.Button.new();
+        button.setChild(content.as(gtk.Widget));
+        button.as(gtk.Widget).addCssClass("crumb");
+        if (current) button.as(gtk.Widget).addCssClass("current");
+        _ = gtk.Button.signals.clicked.connect(button, *CrumbCtx, &onCrumbClicked, ctx, .{});
+        self.crumbs.append(button.as(gtk.Widget));
+        return button;
+    }
+
+    fn onPathBarEmptyClick(_: *gtk.GestureClick, _: c_int, _: f64, _: f64, self: *FilesWindow) callconv(.c) void {
+        self.path_stack.setVisibleChildName("entry");
+        _ = self.path_entry.as(gtk.Widget).grabFocus();
+    }
+
+    fn onFolderMenuClicked(button: *gtk.Button, self: *FilesWindow) callconv(.c) void {
+        _ = self.selection.as(gtk.SelectionModel).unselectAll();
+        const w = button.as(gtk.Widget);
+        self.showContextMenu(w, @as(f64, @floatFromInt(w.getWidth())) / 2, @floatFromInt(w.getHeight()), false);
+    }
+
+    /// Breadcrumbs for a location with no local path (a server): the server
+    /// first, then each folder down to the current one.
+    fn rebuildRemoteCrumbs(self: *FilesWindow) void {
+        const uri_c = self.current.getUri();
+        defer glib.free(uri_c);
+        self.path_entry.as(gtk.Editable).setText(uri_c);
+
+        var chain: std.ArrayList(*gio.File) = .empty;
+        defer {
+            for (chain.items) |f| f.as(gobject.Object).unref();
+            chain.deinit(self.allocator);
+        }
+        var node: ?*gio.File = @ptrCast(self.current.as(gobject.Object).ref());
+        while (node) |f| {
+            chain.append(self.allocator, f) catch {
+                f.as(gobject.Object).unref();
+                return;
+            };
+            node = f.getParent();
+        }
+        var i = chain.items.len;
+        while (i > 0) {
+            i -= 1;
+            const f = chain.items[i];
+            const target = f.getUri();
+            defer glib.free(target);
+
+            const base = f.getBasename();
+            defer if (base) |b| glib.free(b);
+            // The root of a server has no useful basename: use the name gvfs
+            // gives it ("Windows Network", "sftp as me on host"), else the URI.
+            const info = if (i == chain.items.len - 1) f.queryInfo("standard::display-name", .{}, null, null) else null;
+            defer if (info) |x| x.as(gobject.Object).unref();
+            const name: [*:0]const u8 = if (info) |x| x.getDisplayName() else if (base == null or base.?[0] == '/') target else base.?;
+            const root = i == chain.items.len - 1;
+            _ = self.appendCrumb(std.mem.span(name), std.mem.span(target), if (root) "folder-remote-symbolic" else null, i == 0, root);
         }
     }
 
@@ -736,6 +1087,27 @@ pub const FilesWindow = struct {
                 var buf: [256]u8 = undefined;
                 const label = std.fmt.bufPrintSentinel(&buf, "{s}", .{base}, 0) catch continue;
                 self.addSidebarRow(label, "folder-symbolic", path, true);
+            }
+        }
+
+        // Servers connected through gvfs, and a way to connect to more.
+        if (remoteSupported()) {
+            self.addSidebarHeading(common.tr("Network"));
+            self.addSidebarRow(common.tr("Connect to Server\u{2026}"), "network-server-symbolic", connect_row, false);
+            const mounts = gio.VolumeMonitor.get().getMounts();
+            defer mounts.free();
+            var node: ?*glib.List = mounts;
+            while (node) |n| : (node = n.f_next) {
+                const mount: *gio.Mount = @ptrCast(@alignCast(n.f_data orelse continue));
+                defer mount.as(gobject.Object).unref();
+                const root = mount.getRoot();
+                defer root.as(gobject.Object).unref();
+                if (root.isNative() != 0) continue;
+                const uri = root.getUri();
+                defer glib.free(uri);
+                const name = mount.getName();
+                defer glib.free(name);
+                self.addSidebarRow(std.mem.span(name), "folder-remote-symbolic", std.mem.span(uri), false);
             }
         }
 
@@ -802,26 +1174,53 @@ pub const FilesWindow = struct {
         return @intFromBool(std.ascii.findIgnoreCase(name, self.query[0..self.query_len]) != null);
     }
 
-    fn compareFunc(a_raw: ?*const anyopaque, b_raw: ?*const anyopaque, data: ?*anyopaque) callconv(.c) c_int {
-        const a: *gio.FileInfo = @ptrCast(@alignCast(@constCast(a_raw.?)));
-        const b: *gio.FileInfo = @ptrCast(@alignCast(@constCast(b_raw.?)));
-        const column: *const Column = @ptrCast(@alignCast(data.?));
-        // Folders sort before files whatever the column.
-        const a_dir = a.getFileType() == .directory;
-        const b_dir = b.getFileType() == .directory;
-        if (a_dir != b_dir) return if (a_dir) -1 else 1;
+    /// The sorter for one column: folders first, then the column's value.
+    ///
+    /// Built from GTK's own sorters so the sort model can compute a key per
+    /// file once and compare keys, instead of calling back into us (and
+    /// looking attributes up) for every comparison. With a callback, adding a
+    /// batch of files to a 20 000 file folder re-sorted it in about 0.3 s.
+    fn columnSorter(kind: Column) *gtk.Sorter {
+        const sorter = gtk.MultiSorter.new();
+        sorter.append(gtk.NumericSorter.new(expr(gobject.ext.types.int, &keyIsFile)).as(gtk.Sorter));
+        sorter.append(switch (kind) {
+            .name => blk: {
+                const by_name = gtk.StringSorter.new(expr(gobject.ext.types.string, &keyName));
+                // Numbers in names sort by value: "img_2" before "img_10".
+                by_name.setCollation(.filename);
+                break :blk by_name.as(gtk.Sorter);
+            },
+            .size => gtk.NumericSorter.new(expr(gobject.ext.types.int64, &keySize)).as(gtk.Sorter),
+            .kind => gtk.StringSorter.new(expr(gobject.ext.types.string, &keyType)).as(gtk.Sorter),
+            .modified => gtk.NumericSorter.new(expr(gobject.ext.types.uint64, &keyModified)).as(gtk.Sorter),
+        });
+        return sorter.as(gtk.Sorter);
+    }
 
-        const order: std.math.Order = switch (column.*) {
-            .name => std.ascii.orderIgnoreCase(std.mem.span(a.getDisplayName()), std.mem.span(b.getDisplayName())),
-            .size => std.math.order(a.getSize(), b.getSize()),
-            .kind => std.mem.order(u8, std.mem.span(a.getContentType() orelse ""), std.mem.span(b.getContentType() orelse "")),
-            .modified => std.math.order(a.getAttributeUint64("time::modified"), b.getAttributeUint64("time::modified")),
-        };
-        return switch (order) {
-            .lt => -1,
-            .eq => 0,
-            .gt => 1,
-        };
+    /// An expression whose value is `func(file_info)`.
+    fn expr(value_type: gobject.Type, func: *const anyopaque) *gtk.Expression {
+        return gtk.CClosureExpression.new(value_type, null, 0, &[_]*gtk.Expression{}, @ptrCast(@alignCast(func)), null, null).as(gtk.Expression);
+    }
+
+    // Sort keys. Strings are returned newly allocated: the closure takes them.
+    fn keyIsFile(info: *gio.FileInfo, _: ?*anyopaque) callconv(.c) c_int {
+        return @intFromBool(info.getFileType() != .directory);
+    }
+
+    fn keyName(info: *gio.FileInfo, _: ?*anyopaque) callconv(.c) ?[*:0]u8 {
+        return glib.strdup(info.getDisplayName());
+    }
+
+    fn keySize(info: *gio.FileInfo, _: ?*anyopaque) callconv(.c) i64 {
+        return info.getSize();
+    }
+
+    fn keyType(info: *gio.FileInfo, _: ?*anyopaque) callconv(.c) ?[*:0]u8 {
+        return glib.strdup(info.getContentType() orelse "");
+    }
+
+    fn keyModified(info: *gio.FileInfo, _: ?*anyopaque) callconv(.c) u64 {
+        return info.getAttributeUint64("time::modified");
     }
 
     fn fileOf(info: *gio.FileInfo) ?*gio.File {
@@ -859,7 +1258,7 @@ pub const FilesWindow = struct {
             .name => {
                 icon.as(gtk.Widget).setVisible(1);
                 if (info.getIcon()) |gicon| icon.setFromGicon(gicon) else icon.setFromIconName("text-x-generic");
-                label.setText(info.getDisplayName());
+                setNameLabel(label, info);
             },
             .size => {
                 icon.as(gtk.Widget).setVisible(0);
@@ -936,7 +1335,22 @@ pub const FilesWindow = struct {
         const icon: *gtk.Image = @ptrCast(box.as(gtk.Widget).getFirstChild().?);
         const label: *gtk.Label = @ptrCast(icon.as(gtk.Widget).getNextSibling().?);
         if (info.getIcon()) |gicon| icon.setFromGicon(gicon) else icon.setFromIconName("text-x-generic");
-        label.setText(info.getDisplayName());
+        setNameLabel(label, info);
+    }
+
+    /// Shows a file's name; hidden text-direction characters (which can make
+    /// "x\u{202E}gnp.exe" look like "xexe.png") are spelled out and explained.
+    fn setNameLabel(label: *gtk.Label, info: *gio.FileInfo) void {
+        const name = info.getDisplayName();
+        const revealed = pure.revealBidi(std.heap.c_allocator, std.mem.span(name)) catch null;
+        if (revealed) |r| {
+            defer std.heap.c_allocator.free(r);
+            label.setText(r);
+            label.as(gtk.Widget).setTooltipText(common.tr("This name contains hidden characters that change the direction of the text, a trick used to disguise the real file type."));
+        } else {
+            label.setText(name);
+            label.as(gtk.Widget).setTooltipText(null);
+        }
     }
 
     /// Right-click on a cell selects its row (unless already selected) and
@@ -1011,8 +1425,43 @@ pub const FilesWindow = struct {
         const text = if (selected > 0)
             std.fmt.bufPrintSentinel(&buf, "{d} of {d} selected", .{ selected, total }, 0) catch ""
         else
-            std.fmt.bufPrintSentinel(&buf, "{d} items", .{total}, 0) catch "";
+            std.fmt.bufPrintSentinel(&buf, "{d} {s}", .{ total, if (total == 1) "item" else "items" }, 0) catch "";
         self.status.setText(text);
+    }
+
+    /// When a folder finishes loading with an error (no permission, gone,
+    /// server dropped), says so instead of showing an empty folder.
+    /// Files arrive in batches in no particular order. GTK keeps the item at
+    /// the top of the view in place as others sort in above it, so a folder
+    /// would open scrolled into its middle; a view at the top stays there.
+    fn onFolderChanging(data: *anyopaque, folder: *folder_model.Folder, done: bool) void {
+        const self: *FilesWindow = @ptrCast(@alignCast(data));
+        if (folder != self.folder) return;
+        const scroller = if (self.view_mode == .details) self.scroller_list else self.scroller_grid;
+        if (!done) {
+            self.was_at_top = scroller.getVadjustment().getValue() < 1;
+            return;
+        }
+        if (!self.was_at_top or self.selection.as(gio.ListModel).getNItems() == 0) return;
+        self.column_view.scrollTo(0, null, .{}, null);
+        self.grid_view.scrollTo(0, .{}, null);
+    }
+
+    fn onFolderLoaded(data: *anyopaque, folder: *folder_model.Folder) void {
+        const self: *FilesWindow = @ptrCast(@alignCast(data));
+        const err = folder.err orelse return;
+        // Only the tab being looked at reports.
+        if (folder != self.folder) return;
+        const message = std.mem.span(err.f_message orelse "");
+        var status_buf: [512]u8 = undefined;
+        self.status.setText(std.fmt.bufPrintSentinel(&status_buf, "Cannot show this folder: {s}", .{message}, 0) catch "");
+        var detail_buf: [512]u8 = undefined;
+        const denied = err.f_domain == gio.ioErrorQuark() and err.f_code == @intFromEnum(gio.IOErrorEnum.permission_denied);
+        const detail = if (denied)
+            common.tr("You do not have permission to view the contents of this folder.")
+        else
+            std.fmt.bufPrintSentinel(&detail_buf, "{s}", .{message}, 0) catch "";
+        common.dialogs.showError(self.window.as(gtk.Window), common.tr("This folder could not be displayed"), detail);
     }
 
     // ---- file actions ----------------------------------------------------
@@ -1096,7 +1545,7 @@ pub const FilesWindow = struct {
     }
 
     fn paste(self: *FilesWindow) void {
-        if (self.job != null or !self.clipboardHasFiles()) return;
+        if (!self.clipboardHasFiles()) return;
         const mimes = [_]?[*:0]const u8{ clipboard.gnome_mime, clipboard.uri_list_mime, null };
         self.window.as(gtk.Widget).getClipboard().readAsync(@ptrCast(@constCast(&mimes)), glib.PRIORITY_DEFAULT, null, onClipboardRead, self);
     }
@@ -1112,21 +1561,39 @@ pub const FilesWindow = struct {
         };
         defer stream.as(gobject.Object).unref();
 
-        var text: std.ArrayList(u8) = .empty;
-        defer text.deinit(self.allocator);
-        while (text.items.len < 1 << 22) {
-            const chunk = stream.readBytes(65536, null, &err) orelse {
-                if (err) |e| e.free();
-                return;
-            };
-            defer chunk.unref();
-            const n = chunk.getSize();
-            if (n == 0) break;
-            const ptr: [*]const u8 = @ptrCast(chunk.getData(null) orelse break);
-            text.appendSlice(self.allocator, ptr[0..n]) catch return;
-        }
+        // Read without blocking: when the files were copied in this program,
+        // GTK writes them into the stream from this same main loop, so a
+        // blocking read here would wait forever.
+        const ctx = std.heap.c_allocator.create(PasteRead) catch return;
+        ctx.* = .{ .window = self, .clipboard = cb, .sink = gio.MemoryOutputStream.newResizable() };
+        ctx.sink.as(gio.OutputStream).spliceAsync(stream, .{ .close_source = true, .close_target = true }, glib.PRIORITY_DEFAULT, null, onPasteRead, ctx);
+    }
 
-        const parsed = clipboard.parse(self.allocator, text.items) catch return;
+    const PasteRead = struct {
+        window: *FilesWindow,
+        clipboard: *gdk.Clipboard,
+        sink: *gio.MemoryOutputStream,
+    };
+
+    fn onPasteRead(_: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const ctx: *PasteRead = @ptrCast(@alignCast(data.?));
+        defer {
+            ctx.sink.as(gobject.Object).unref();
+            std.heap.c_allocator.destroy(ctx);
+        }
+        var err: ?*glib.Error = null;
+        if (ctx.sink.as(gio.OutputStream).spliceFinish(result, &err) < 0) {
+            if (err) |e| e.free();
+            return;
+        }
+        const size = ctx.sink.getDataSize();
+        const ptr: [*]const u8 = @ptrCast(ctx.sink.getData() orelse return);
+        ctx.window.pasteText(ctx.clipboard, ptr[0..size]);
+    }
+
+    /// Starts copying or moving the files named in clipboard text.
+    fn pasteText(self: *FilesWindow, cb: *gdk.Clipboard, text: []const u8) void {
+        const parsed = clipboard.parse(self.allocator, text) catch return;
         defer parsed.deinit(self.allocator);
         var sources: std.ArrayList(*gio.File) = .empty;
         defer {
@@ -1138,40 +1605,14 @@ pub const FilesWindow = struct {
             defer self.allocator.free(z);
             sources.append(self.allocator, gio.File.newForUri(z)) catch return;
         }
-        if (sources.items.len == 0 or self.job != null) return;
+        if (sources.items.len == 0) return;
         self.startJob(if (parsed.cut) .move else .copy, sources.items, self.current);
         // A cut can be pasted once.
         if (parsed.cut) _ = cb.setContent(null);
     }
 
     fn startJob(self: *FilesWindow, mode: ops.Mode, sources: []const *gio.File, dest: *gio.File) void {
-        self.progress_box.as(gtk.Widget).setVisible(1);
-        self.progress_bar.setFraction(0);
-        self.job = ops.Job.start(self.allocator, mode, sources, dest, self.window.as(gtk.Window), .{
-            .data = self,
-            .progress = onJobProgress,
-            .finished = onJobFinished,
-        }) catch |err| {
-            common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot start the operation"), @errorName(err));
-            self.progress_box.as(gtk.Widget).setVisible(0);
-            return;
-        };
-    }
-
-    fn onJobProgress(data: *anyopaque, text: [:0]const u8, fraction: f64) void {
-        const self: *FilesWindow = @ptrCast(@alignCast(data));
-        if (text.len > 0) self.progress_label.setText(text);
-        self.progress_bar.setFraction(fraction);
-    }
-
-    fn onJobFinished(data: *anyopaque, _: bool) void {
-        const self: *FilesWindow = @ptrCast(@alignCast(data));
-        self.job = null;
-        self.progress_box.as(gtk.Widget).setVisible(0);
-    }
-
-    fn onCancelJob(_: *gtk.Button, self: *FilesWindow) callconv(.c) void {
-        if (self.job) |job| job.cancel();
+        self.operations.start(mode, sources, dest);
     }
 
     fn trashSelection(self: *FilesWindow) void {
@@ -1903,6 +2344,7 @@ pub const FilesWindow = struct {
             return;
         }
         if (eql(u8, action, "open-admin")) return self.openAsAdmin();
+        if (eql(u8, action, "connect-server")) return self.connectDialog();
         if (eql(u8, action, "toggle-terminal") or eql(u8, action, "terminal-cd")) {
             const path = self.current.getPath() orelse return;
             defer glib.free(path);
@@ -2030,7 +2472,6 @@ pub const FilesWindow = struct {
     }
 
     fn dropInto(self: *FilesWindow, files: []const *gio.File, dest: *gio.File, mode: ops.Mode) bool {
-        if (self.job != null) return false;
         // Into the Trash means trash them.
         if (self.isTrashFolder(dest)) {
             for (files) |f| {
@@ -2351,11 +2792,114 @@ pub const FilesWindow = struct {
 
     fn setViewMode(self: *FilesWindow, mode: ViewMode) void {
         self.view_mode = mode;
+        if (mode != .details and mode != .list) self.last_icon_mode = mode;
+        self.syncViewToggle();
         for (self.tabs.items, 0..) |t, i| {
             if (i == self.active_tab) self.applyViewTo(self.view_stack, self.grid_view) else self.applyViewTo(t.view_stack, t.grid_view);
         }
         self.syncViewChecks();
         self.config.setString("files", "view", @tagName(mode)) catch {};
+    }
+
+    /// Nautilus-style split button: the icon switches between the details
+    /// view and icons, the arrow opens view modes, sort order and hidden files.
+    fn buildViewButton(self: *FilesWindow) *gtk.Widget {
+        self.view_toggle = gtk.Button.new();
+        self.view_toggle.as(gtk.Widget).setTooltipText(common.tr("Switch between list and icons"));
+        _ = gtk.Button.signals.clicked.connect(self.view_toggle, *FilesWindow, &onViewToggle, self, .{});
+        self.syncViewToggle();
+
+        // "sort" is a radio action: its state is the chosen SortKey's name.
+        self.sort_action = gio.SimpleAction.newStateful("sort", glib.VariantType.new("s"), glib.Variant.newString(@tagName(self.sort_key)));
+        _ = gio.SimpleAction.signals.change_state.connect(self.sort_action, *FilesWindow, &onSortChosen, self, .{});
+        self.window.as(gio.ActionMap).addAction(self.sort_action.as(gio.Action));
+
+        const menu = gio.Menu.new();
+        const views = gio.Menu.new();
+        views.append(common.tr("Details"), "win.view-details");
+        views.append(common.tr("List"), "win.view-list");
+        views.append(common.tr("Small Icons"), "win.view-small");
+        views.append(common.tr("Medium Icons"), "win.view-medium");
+        views.append(common.tr("Large Icons"), "win.view-large");
+        menu.appendSection(null, views.as(gio.MenuModel));
+        const sorts = gio.Menu.new();
+        sorts.append(common.tr("A\u{2013}Z"), "win.sort::name-asc");
+        sorts.append(common.tr("Z\u{2013}A"), "win.sort::name-desc");
+        sorts.append(common.tr("Last Modified"), "win.sort::modified-desc");
+        sorts.append(common.tr("First Modified"), "win.sort::modified-asc");
+        sorts.append(common.tr("Size"), "win.sort::size-desc");
+        sorts.append(common.tr("Type"), "win.sort::kind-asc");
+        menu.appendSection(common.tr("Sort"), sorts.as(gio.MenuModel));
+        const extra = gio.Menu.new();
+        extra.append(common.tr("Show Hidden Files"), "win.toggle-hidden");
+        menu.appendSection(null, extra.as(gio.MenuModel));
+
+        const arrow = gtk.MenuButton.new();
+        arrow.setMenuModel(menu.as(gio.MenuModel));
+        arrow.as(gtk.Widget).setTooltipText(common.tr("View and sort options"));
+
+        const box = gtk.Box.new(.horizontal, 0);
+        box.as(gtk.Widget).addCssClass("linked");
+        box.append(self.view_toggle.as(gtk.Widget));
+        box.append(arrow.as(gtk.Widget));
+        return box.as(gtk.Widget);
+    }
+
+    /// The toggle shows what clicking it switches to.
+    fn syncViewToggle(self: *FilesWindow) void {
+        const in_list = self.view_mode == .details or self.view_mode == .list;
+        self.view_toggle.setIconName(if (in_list) "view-grid-symbolic" else "view-list-symbolic");
+    }
+
+    fn onViewToggle(_: *gtk.Button, self: *FilesWindow) callconv(.c) void {
+        const in_list = self.view_mode == .details or self.view_mode == .list;
+        self.setViewMode(if (in_list) self.last_icon_mode else .details);
+    }
+
+    fn onSortChosen(action: *gio.SimpleAction, value: ?*glib.Variant, self: *FilesWindow) callconv(.c) void {
+        const v = value orelse return;
+        const key = std.meta.stringToEnum(SortKey, std.mem.span(v.getString(null))) orelse return;
+        action.setState(v);
+        self.applySort(key);
+    }
+
+    /// Sorts every tab by `key` and remembers it.
+    fn applySort(self: *FilesWindow, key: SortKey) void {
+        self.sort_key = key;
+        sortColumnView(self.column_view, key);
+        for (self.tabs.items, 0..) |t, i| if (i != self.active_tab) sortColumnView(t.column_view, key);
+        self.config.setString("files", "sort", @tagName(key)) catch {};
+    }
+
+    fn sortColumnView(view: *gtk.ColumnView, key: SortKey) void {
+        const list = view.getColumns();
+        for (columns, 0..) |kind, i| {
+            if (kind != key.column()) continue;
+            const item: *gobject.Object = @ptrCast(@alignCast(list.getItem(@intCast(i)) orelse return));
+            defer item.unref();
+            const column: *gtk.ColumnViewColumn = @ptrCast(item);
+            view.sortByColumn(column, key.order());
+        }
+    }
+
+    /// A column header was clicked: tick the matching sort in the menu.
+    fn onSorterChanged(sorter: *gtk.Sorter, _: gtk.SorterChange, self: *FilesWindow) callconv(.c) void {
+        if (sorter != self.column_view.getSorter()) return;
+        const view_sorter: *gtk.ColumnViewSorter = @ptrCast(@alignCast(sorter));
+        const column = view_sorter.getPrimarySortColumn() orelse return;
+        const list = self.column_view.getColumns();
+        var i: u32 = 0;
+        while (i < columns.len) : (i += 1) {
+            const item: *gobject.Object = @ptrCast(@alignCast(list.getItem(i) orelse continue));
+            defer item.unref();
+            if (@as(*gtk.ColumnViewColumn, @ptrCast(item)) != column) continue;
+            const key = SortKey.from(columns[i], view_sorter.getPrimarySortOrder()) orelse return;
+            if (key == self.sort_key) return;
+            self.sort_key = key;
+            self.sort_action.setState(glib.Variant.newString(@tagName(key)));
+            self.config.setString("files", "sort", @tagName(key)) catch {};
+            return;
+        }
     }
 
     fn syncViewChecks(self: *FilesWindow) void {
@@ -2427,6 +2971,9 @@ pub const FilesWindow = struct {
 
         // Typing in an entry must keep its own editing keys.
         if (isEditing(self) and !std.mem.startsWith(u8, shortcut.trigger, "<Control>")) return 0;
+        // ...including copy, cut and paste of text.
+        if (isEditing(self) and (std.mem.eql(u8, shortcut.action, "copy") or
+            std.mem.eql(u8, shortcut.action, "cut") or std.mem.eql(u8, shortcut.action, "paste"))) return 0;
 
         const eql = std.mem.eql;
         if (eql(u8, shortcut.action, "focus-path")) {
@@ -2488,6 +3035,23 @@ pub const FilesWindow = struct {
 
     const CrumbCtx = struct { window: *FilesWindow, path: [:0]u8 };
 
+    /// The crumbs changed size: scroll to the end once layout is done (a value
+    /// set during layout is overwritten by the viewport).
+    fn onCrumbRangeChanged(adjustment: *gtk.Adjustment, _: ?*anyopaque) callconv(.c) void {
+        _ = glib.idleAddFull(glib.PRIORITY_DEFAULT_IDLE, scrollCrumbsToEnd, adjustment.as(gobject.Object).ref(), unrefObject);
+    }
+
+    fn scrollCrumbsToEnd(data: ?*anyopaque) callconv(.c) c_int {
+        const adjustment: *gtk.Adjustment = @ptrCast(@alignCast(data.?));
+        adjustment.setValue(adjustment.getUpper() - adjustment.getPageSize());
+        return 0;
+    }
+
+    fn unrefObject(data: ?*anyopaque) callconv(.c) void {
+        const object: *gobject.Object = @ptrCast(@alignCast(data.?));
+        object.unref();
+    }
+
     fn onCrumbClicked(_: *gtk.Button, ctx: *CrumbCtx) callconv(.c) void {
         ctx.window.goPath(ctx.path);
     }
@@ -2497,9 +3061,32 @@ pub const FilesWindow = struct {
         _ = self.view_stack.as(gtk.Widget).grabFocus();
     }
 
+    /// The path field lost focus inside the window: back to the crumbs, and
+    /// drop what was typed. Switching to another window keeps the field as it
+    /// is, so a path can be copied from elsewhere.
+    fn onPathEntryLeave(_: *gtk.EventControllerFocus, self: *FilesWindow) callconv(.c) void {
+        if (self.window.as(gtk.Window).isActive() == 0) return;
+        if (!std.mem.eql(u8, std.mem.span(self.path_stack.getVisibleChildName() orelse ""), "entry")) return;
+        self.path_stack.setVisibleChildName("crumbs");
+        self.resetPathEntry();
+    }
+
+    /// The path field shows the current location again.
+    fn resetPathEntry(self: *FilesWindow) void {
+        if (self.current.getPath()) |path| {
+            defer glib.free(path);
+            self.path_entry.as(gtk.Editable).setText(path);
+        } else {
+            const uri = self.current.getUri();
+            defer glib.free(uri);
+            self.path_entry.as(gtk.Editable).setText(uri);
+        }
+    }
+
     fn onPathEntryKey(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *FilesWindow) callconv(.c) c_int {
         if (keyval == gdk.KEY_Escape) {
             self.path_stack.setVisibleChildName("crumbs");
+            self.resetPathEntry();
             _ = self.view_stack.as(gtk.Widget).grabFocus();
             return 1;
         }
@@ -2521,7 +3108,10 @@ pub const FilesWindow = struct {
     fn onSidebarActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *FilesWindow) callconv(.c) void {
         const index: usize = @intCast(row.getIndex());
         if (index >= self.sidebar_paths.items.len) return;
-        if (self.sidebar_paths.items[index]) |path| self.goPath(path);
+        if (self.sidebar_paths.items[index]) |path| {
+            if (std.mem.eql(u8, path, connect_row)) return self.connectDialog();
+            self.goPath(path);
+        }
     }
 
     fn onSidebarRightClick(gesture: *gtk.GestureClick, _: c_int, x: f64, y: f64, self: *FilesWindow) callconv(.c) void {

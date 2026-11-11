@@ -65,4 +65,5 @@ test {
     _ = @import("clipboard.zig");
     _ = @import("props.zig");
     _ = @import("ops.zig");
+    _ = @import("folder.zig");
 }

@@ -3,6 +3,8 @@
 show-hidden = false
 # details, list, small, medium or large
 view = "details"
+# name-asc, name-desc, modified-desc, modified-asc, size-desc or kind-asc
+sort = "name-asc"
 
 # Folders in the sidebar.
 [bookmarks]

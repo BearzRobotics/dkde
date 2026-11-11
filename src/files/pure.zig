@@ -12,12 +12,81 @@ pub fn formatSize(buf: []u8, bytes: u64) []const u8 {
     return std.fmt.bufPrint(buf, "{d:.1} {s}", .{ value, units[unit] }) catch "?";
 }
 
+/// "40 seconds left", "3 minutes left", "2 hours left": rounded up, so the
+/// estimate does not reach zero before the work does.
+pub fn formatTimeLeft(buf: []u8, seconds: u64) []const u8 {
+    if (seconds < 60) {
+        const n = @max(seconds, 1);
+        return std.fmt.bufPrint(buf, "{d} {s} left", .{ n, if (n == 1) "second" else "seconds" }) catch "";
+    }
+    if (seconds < 3600) {
+        const n = (seconds + 59) / 60;
+        return std.fmt.bufPrint(buf, "{d} {s} left", .{ n, if (n == 1) "minute" else "minutes" }) catch "";
+    }
+    const n = (seconds + 3599) / 3600;
+    return std.fmt.bufPrint(buf, "{d} {s} left", .{ n, if (n == 1) "hour" else "hours" }) catch "";
+}
+
+test "formatTimeLeft" {
+    var buf: [32]u8 = undefined;
+    try std.testing.expectEqualStrings("1 second left", formatTimeLeft(&buf, 0));
+    try std.testing.expectEqualStrings("40 seconds left", formatTimeLeft(&buf, 40));
+    try std.testing.expectEqualStrings("1 minute left", formatTimeLeft(&buf, 60));
+    try std.testing.expectEqualStrings("3 minutes left", formatTimeLeft(&buf, 121));
+    try std.testing.expectEqualStrings("2 hours left", formatTimeLeft(&buf, 3601));
+}
+
 pub const Crumb = struct {
     /// Text shown on the button.
     label: []const u8,
     /// Absolute path the button navigates to (a prefix of the input).
     path: []const u8,
+    /// The home folder, shown as "Home" with an icon.
+    home: bool = false,
 };
+
+/// Like `breadcrumbs`, but a path inside `home` starts at a Home crumb, so
+/// "/home/me/Documents" reads "Home / Documents", as in Nautilus.
+pub fn breadcrumbsHome(allocator: std.mem.Allocator, path: []const u8, home: []const u8) ![]Crumb {
+    const home_trimmed = std.mem.trimEnd(u8, home, "/");
+    const inside = home_trimmed.len > 0 and std.mem.startsWith(u8, path, home_trimmed) and
+        (path.len == home_trimmed.len or path[home_trimmed.len] == '/');
+    if (!inside) return breadcrumbs(allocator, path);
+
+    var out: std.ArrayList(Crumb) = .empty;
+    errdefer out.deinit(allocator);
+    try out.append(allocator, .{ .label = "Home", .path = path[0..home_trimmed.len], .home = true });
+    var end = home_trimmed.len;
+    while (end < path.len) {
+        while (end < path.len and path[end] == '/') end += 1;
+        if (end >= path.len) break;
+        const start = end;
+        while (end < path.len and path[end] != '/') end += 1;
+        try out.append(allocator, .{ .label = path[start..end], .path = path[0..end] });
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+test "breadcrumbsHome starts inside the home folder at Home" {
+    const a = std.testing.allocator;
+    const inside = try breadcrumbsHome(a, "/home/me/Documents/tax", "/home/me");
+    defer a.free(inside);
+    try std.testing.expectEqual(@as(usize, 3), inside.len);
+    try std.testing.expect(inside[0].home);
+    try std.testing.expectEqualStrings("/home/me", inside[0].path);
+    try std.testing.expectEqualStrings("tax", inside[2].label);
+    try std.testing.expectEqualStrings("/home/me/Documents/tax", inside[2].path);
+
+    const at_home = try breadcrumbsHome(a, "/home/me", "/home/me/");
+    defer a.free(at_home);
+    try std.testing.expectEqual(@as(usize, 1), at_home.len);
+
+    // A sibling whose name starts like home is not inside it.
+    const other = try breadcrumbsHome(a, "/home/meg/x", "/home/me");
+    defer a.free(other);
+    try std.testing.expectEqualStrings("/", other[0].label);
+    try std.testing.expect(!other[0].home);
+}
 
 /// Splits an absolute `path` into breadcrumb buttons: "/" then each
 /// component. Slices point into `path`.
@@ -143,6 +212,104 @@ pub fn copyName(allocator: std.mem.Allocator, name: []const u8, n: u32) ![]u8 {
         return std.fmt.allocPrint(allocator, "{s} (copy {d}){s}", .{ name[0..d], n, name[d..] });
     };
     return std.fmt.allocPrint(allocator, "{s} (copy {d})", .{ name, n });
+}
+
+/// Turns what was typed into a server address, or null when it is not one.
+/// Accepts the gvfs schemes and the usual aliases, with or without the
+/// slashes: `ftp:host`, `samba://nas/share`, `ssh:me@host` become
+/// `ftp://host`, `smb://nas/share`, `sftp://me@host`. The caller frees it.
+pub fn normalizeRemote(allocator: std.mem.Allocator, text: []const u8) !?[]u8 {
+    const typed = std.mem.trim(u8, text, " \t");
+    const colon = std.mem.indexOfScalar(u8, typed, ':') orelse return null;
+    const aliases = [_]struct { []const u8, []const u8 }{
+        .{ "sftp", "sftp" }, .{ "ssh", "sftp" },  .{ "ftp", "ftp" },
+        .{ "ftps", "ftps" }, .{ "smb", "smb" },   .{ "samba", "smb" },
+        .{ "cifs", "smb" },
+    };
+    for (aliases) |alias| {
+        if (!std.ascii.eqlIgnoreCase(typed[0..colon], alias[0])) continue;
+        const rest = std.mem.trimStart(u8, typed[colon + 1 ..], "/");
+        return try std.fmt.allocPrint(allocator, "{s}://{s}", .{ alias[1], rest });
+    }
+    return null;
+}
+
+/// The scheme of an address made by `normalizeRemote`.
+pub fn schemeOf(uri: []const u8) []const u8 {
+    return uri[0 .. std.mem.indexOf(u8, uri, "://") orelse uri.len];
+}
+
+test "normalizeRemote" {
+    const a = std.testing.allocator;
+    const cases = [_]struct { []const u8, ?[]const u8 }{
+        .{ "ftp:", "ftp://" },
+        .{ "ftp:host", "ftp://host" },
+        .{ "Samba://nas/share", "smb://nas/share" },
+        .{ "ssh:me@host/home", "sftp://me@host/home" },
+        .{ "  smb:/nas ", "smb://nas" },
+        .{ "/home/me", null },
+        .{ "ftpx:host", null },
+        .{ "file:///tmp", null },
+    };
+    for (cases) |c| {
+        const got = try normalizeRemote(a, c[0]);
+        defer if (got) |g| a.free(g);
+        if (c[1]) |want| try std.testing.expectEqualStrings(want, got.?) else try std.testing.expect(got == null);
+    }
+}
+
+/// Invisible characters that reorder text: a name like "photo\u{202E}gpj.exe"
+/// would display as "photoexe.jpg". Each is shown by name instead.
+const bidi_controls = [_]struct { u21, []const u8 }{
+    .{ 0x061C, "ALM" }, .{ 0x200E, "LRM" }, .{ 0x200F, "RLM" },
+    .{ 0x202A, "LRE" }, .{ 0x202B, "RLE" }, .{ 0x202C, "PDF" },
+    .{ 0x202D, "LRO" }, .{ 0x202E, "RLO" }, .{ 0x2066, "LRI" },
+    .{ 0x2067, "RLI" }, .{ 0x2068, "FSI" }, .{ 0x2069, "PDI" },
+};
+
+fn bidiName(cp: u21) ?[]const u8 {
+    for (bidi_controls) |c| if (c[0] == cp) return c[1];
+    return null;
+}
+
+/// `name` with every text-direction control written as "[RLO]" and so on,
+/// or null when it has none (the usual case: show it as it is). Invalid
+/// UTF-8 is left for GTK to mark. The caller frees the result.
+pub fn revealBidi(allocator: std.mem.Allocator, name: []const u8) !?[:0]u8 {
+    var found = false;
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var i: usize = 0;
+    while (i < name.len) {
+        const len = std.unicode.utf8ByteSequenceLength(name[i]) catch 1;
+        const end = @min(i + len, name.len);
+        const cp = std.unicode.utf8Decode(name[i..end]) catch null;
+        if (cp) |c| if (bidiName(c)) |label| {
+            found = true;
+            try out.print(allocator, "[{s}]", .{label});
+            i = end;
+            continue;
+        };
+        try out.appendSlice(allocator, name[i..end]);
+        i = end;
+    }
+    if (!found) {
+        out.deinit(allocator);
+        return null;
+    }
+    return try out.toOwnedSliceSentinel(allocator, 0);
+}
+
+test "revealBidi names the hidden direction controls" {
+    const a = std.testing.allocator;
+    const spoof = try revealBidi(a, "rtl_\u{202E}gnp.exe");
+    defer if (spoof) |x| a.free(x);
+    try std.testing.expectEqualStrings("rtl_[RLO]gnp.exe", spoof.?);
+    const two = try revealBidi(a, "\u{2067}a\u{2069}");
+    defer if (two) |x| a.free(x);
+    try std.testing.expectEqualStrings("[RLI]a[PDI]", two.?);
+    try std.testing.expect(try revealBidi(a, "plain_日本語_🎉.txt") == null);
+    try std.testing.expect(try revealBidi(a, "bad_\xff\xfe") == null);
 }
 
 test "formatSize" {

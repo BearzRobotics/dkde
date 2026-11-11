@@ -223,7 +223,7 @@ pub fn build(b: *std.Build) void {
             }
             mod.addImport("build_options", build_options_mod);
             mod.addImport("cli", cli);
-            if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "color") or std.mem.eql(u8, name, "parted") or std.mem.eql(u8, name, "pdf")) mod.addImport("cairo1", gobject.module("cairo1"));
+            if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "files") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "color") or std.mem.eql(u8, name, "parted") or std.mem.eql(u8, name, "pdf")) mod.addImport("cairo1", gobject.module("cairo1"));
             if (std.mem.eql(u8, name, "pdf")) {
                 mod.addImport("pdfrender", pdfrender);
                 mod.addImport("pdf", pdf_mod);
