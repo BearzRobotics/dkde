@@ -103,6 +103,10 @@ const DocView = struct {
     layout: ?layout_mod.Layout = null,
     zoom: f64 = 1.0,
     fit: Fit = .width,
+    /// The view turned clockwise by this many quarter turns (the file is not changed).
+    rotation: u2 = 0,
+    /// One column or two pages side by side.
+    mode: layout_mod.Mode = .{},
     cache: [cache_size]CacheEntry = @splat(.{}),
     next_slot: usize = 0,
     /// Set while the page box is updated from scrolling, so that does not scroll again.
@@ -479,19 +483,24 @@ const DocView = struct {
         if (self.pages == 0) return;
         const avail_w = @as(f64, @floatFromInt(self.scroller.as(gtk.Widget).getWidth())) - 2 * margin - 16;
         const avail_h = @as(f64, @floatFromInt(self.scroller.as(gtk.Widget).getHeight())) - 2 * margin;
-        const first = self.page_points[0];
+        const first = self.viewSize(0);
+        // Two pages side by side share the width.
+        const fit_w = if (self.mode.dual) (avail_w - gap) / 2 else avail_w;
         switch (self.fit) {
             .width => if (avail_w > 50) {
-                self.zoom = layout_mod.fitWidth(first.w, avail_w);
+                self.zoom = layout_mod.fitWidth(first.w, fit_w);
             },
             .page => if (avail_w > 50 and avail_h > 50) {
-                self.zoom = layout_mod.fitPage(first.w, first.h, avail_w, avail_h);
+                self.zoom = layout_mod.fitPage(first.w, first.h, fit_w, avail_h);
             },
             .custom => {},
         }
         self.dropCache();
         if (self.layout) |*l| l.deinit(self.allocator);
-        self.layout = layout_mod.compute(self.allocator, self.page_points, self.scale(), gap, margin) catch null;
+        const sizes = self.allocator.alloc(layout_mod.Size, self.pages) catch return;
+        defer self.allocator.free(sizes);
+        for (sizes, 0..) |*sz, i| sz.* = self.viewSize(i);
+        self.layout = layout_mod.computeMode(self.allocator, sizes, self.scale(), gap, margin, self.mode) catch null;
         if (self.layout) |l| {
             self.area.setContentWidth(@intFromFloat(l.max_width + 2 * margin));
             self.area.setContentHeight(@intFromFloat(l.total_height));
@@ -545,7 +554,7 @@ const DocView = struct {
     fn scrollToPoint(self: *DocView, page: usize, y: f64) void {
         const l = self.layout orelse return;
         if (page >= l.tops.len) return;
-        self.scroller.getVadjustment().setValue(l.tops[page] + y * self.scale() - margin);
+        self.scroller.getVadjustment().setValue(self.toView(page, 0, y).y - margin);
     }
 
     fn gotoPageNumber(self: *DocView, number: c_int) void {
@@ -689,8 +698,93 @@ const DocView = struct {
     /// Where page `index` is drawn: its left edge in the area.
     fn pageLeft(self: *const DocView, index: usize) f64 {
         const l = self.layout orelse return 0;
+        return self.columnLeft() + l.xs[index];
+    }
+
+    /// The left edge of the page column (centred in the view).
+    fn columnLeft(self: *const DocView) f64 {
+        const l = self.layout orelse return 0;
         const w: f64 = @floatFromInt(self.area.as(gtk.Widget).getWidth());
-        return @max(0, (w - l.sizes[index].w) / 2);
+        return @max(0, (w - l.max_width) / 2);
+    }
+
+    // ---- rotation: page points (as in the file) and the view --------------------------------------
+
+    /// The page's size as shown: width and height swap for a quarter turn.
+    fn viewSize(self: *const DocView, page: usize) layout_mod.Size {
+        const p = self.page_points[page];
+        return if (self.rotation % 2 == 1) .{ .w = p.h, .h = p.w } else p;
+    }
+
+    const Point = struct { x: f64, y: f64 };
+
+    /// A point of page `page` (in page points from its top left) to the area.
+    fn toView(self: *const DocView, page: usize, px: f64, py: f64) Point {
+        const l = self.layout orelse return .{ .x = 0, .y = 0 };
+        const p = self.page_points[page];
+        const v: Point = switch (self.rotation) {
+            0 => .{ .x = px, .y = py },
+            1 => .{ .x = p.h - py, .y = px },
+            2 => .{ .x = p.w - px, .y = p.h - py },
+            3 => .{ .x = py, .y = p.w - px },
+        };
+        const sc = self.scale();
+        return .{ .x = self.pageLeft(page) + v.x * sc, .y = l.tops[page] + v.y * sc };
+    }
+
+    /// An area point to page `page`, in page points from its top left.
+    fn toPage(self: *const DocView, page: usize, ax: f64, ay: f64) Point {
+        const l = self.layout orelse return .{ .x = 0, .y = 0 };
+        const p = self.page_points[page];
+        const sc = self.scale();
+        const vx = (ax - self.pageLeft(page)) / sc;
+        const vy = (ay - l.tops[page]) / sc;
+        return switch (self.rotation) {
+            0 => .{ .x = vx, .y = vy },
+            1 => .{ .x = vy, .y = p.h - vx },
+            2 => .{ .x = p.w - vx, .y = p.h - vy },
+            3 => .{ .x = p.w - vy, .y = vx },
+        };
+    }
+
+    /// Turns `cr` (origin at the page's top left in the view, in pixels) so
+    /// that drawing in unrotated page pixels lands where `toView` puts it.
+    fn rotateContext(self: *const DocView, cr: *cairo.Context, page: usize) void {
+        const p = self.page_points[page];
+        const sc = self.scale();
+        switch (self.rotation) {
+            0 => {},
+            1 => {
+                cr.translate(p.h * sc, 0);
+                cr.rotate(std.math.pi / 2.0);
+            },
+            2 => {
+                cr.translate(p.w * sc, p.h * sc);
+                cr.rotate(std.math.pi);
+            },
+            3 => {
+                cr.translate(0, p.w * sc);
+                cr.rotate(-std.math.pi / 2.0);
+            },
+        }
+    }
+
+    fn rotate(self: *DocView, clockwise: bool) void {
+        const page = self.currentPage();
+        self.rotation +%= if (clockwise) 1 else 3;
+        self.relayout();
+        self.scrollToPage(page);
+        self.area.as(gtk.Widget).queueDraw();
+    }
+
+    fn setMode(self: *DocView, mode: layout_mod.Mode) void {
+        const page = self.currentPage();
+        self.mode = mode;
+        common.menubar.setChecked(self.window, "toggle-dual", mode.dual);
+        common.menubar.setChecked(self.window, "toggle-cover", mode.cover);
+        self.relayout();
+        self.scrollToPage(page);
+        self.area.as(gtk.Widget).queueDraw();
     }
 
     // ---- drawing -------------------------------------------------------------------------------------
@@ -705,6 +799,7 @@ const DocView = struct {
         defer cr.destroy();
         cr.setSourceRgb(1, 1, 1);
         cr.paint();
+        self.rotateContext(cr, index);
         render.renderPage(self.allocator, s.doc, index, cr, self.scale(), &self.diag) catch |e|
             std.log.warn("page {d} not drawn: {s}", .{ index + 1, @errorName(e) });
 
@@ -720,10 +815,10 @@ const DocView = struct {
         const l = self.layout orelse return;
         const adj = self.scroller.getVadjustment();
         const range = layout_mod.visibleRange(l, adj.getValue() - 50, adj.getValue() + adj.getPageSize() + 50);
-        const w: f64 = @floatFromInt(width);
+        _ = width;
         for (range[0]..@min(range[1], l.tops.len)) |i| {
             const size = l.sizes[i];
-            const x = @max(0, (w - size.w) / 2);
+            const x = self.pageLeft(i);
             const y = l.tops[i];
             // A soft shadow, then the page.
             cr.setSourceRgba(0, 0, 0, 0.25);
@@ -732,7 +827,12 @@ const DocView = struct {
             const surface = self.cached(i) orelse continue;
             cr.setSourceSurface(surface, x, y);
             cr.paint();
-            self.drawOverlays(cr, i, x, y);
+            // Overlays are drawn in page pixels, turned with the page.
+            cr.save();
+            cr.translate(x, y);
+            self.rotateContext(cr, i);
+            self.drawOverlays(cr, i, 0, 0);
+            cr.restore();
         }
     }
 
@@ -854,8 +954,8 @@ const DocView = struct {
             lay.rectsFor(self.allocator, m.start, m.end, &rects) catch {};
             if (rects.items.len > 0) {
                 const adj = self.scroller.getVadjustment();
-                const l = self.layout.?;
-                const top = l.tops[m.page] + rects.items[0].y0 * self.scale();
+                const r0 = rects.items[0];
+                const top = @min(self.toView(m.page, r0.x0, r0.y0).y, self.toView(m.page, r0.x1, r0.y1).y);
                 // Only scroll when the match is out of view, and keep some context above it.
                 if (top < adj.getValue() or top > adj.getValue() + adj.getPageSize() - 60) adj.setValue(top - adj.getPageSize() / 3);
             }
@@ -873,9 +973,9 @@ const DocView = struct {
     fn spotAt(self: *const DocView, ax: f64, ay: f64) ?Spot {
         const l = self.layout orelse return null;
         if (self.pages == 0) return null;
-        const page = layout_mod.pageAt(l, ay);
-        const sc = self.scale();
-        return .{ .page = page, .x = (ax - self.pageLeft(page)) / sc, .y = (ay - l.tops[page]) / sc };
+        const page = layout_mod.pageAtPoint(l, ax - self.columnLeft(), ay);
+        const pt = self.toPage(page, ax, ay);
+        return .{ .page = page, .x = pt.x, .y = pt.y };
     }
 
     fn clearSelection(self: *DocView) void {
@@ -925,11 +1025,10 @@ const DocView = struct {
         self.drag_moved = true;
         const s = self.session orelse return;
         const page = self.sel_page orelse return;
-        const l = self.layout orelse return;
         // Stay on the page the drag began on: points beyond it select to its edge.
-        const sc = self.scale();
-        const px = (self.drag_x + dx - self.pageLeft(page)) / sc;
-        const py = (self.drag_y + dy - l.tops[page]) / sc;
+        const pt = self.toPage(page, self.drag_x + dx, self.drag_y + dy);
+        const px = pt.x;
+        const py = pt.y;
         const lay = s.layout(page) catch return;
         if (!self.anchored) {
             // Begun on a picture: start where the drag first reaches text.
@@ -1272,11 +1371,13 @@ const DocView = struct {
         const wr = f.widgets[which].rect;
         const a = m.apply(wr.x0, wr.y0);
         const b = m.apply(wr.x1, wr.y1);
-        const sc = self.scale();
-        const left = self.pageLeft(page) + @min(a.x, b.x) * sc;
-        const top = l.tops[page] + @min(a.y, b.y) * sc;
-        const w = @abs(b.x - a.x) * sc;
-        const h = @abs(b.y - a.y) * sc;
+        _ = l;
+        const va = self.toView(page, a.x, a.y);
+        const vb = self.toView(page, b.x, b.y);
+        const left = @min(va.x, vb.x);
+        const top = @min(va.y, vb.y);
+        const w = @abs(vb.x - va.x);
+        const h = @abs(vb.y - va.y);
 
         const fe = self.allocator.create(FieldEdit) catch return;
         fe.* = .{ .viewer = self, .name = self.allocator.dupe(u8, f.name) catch {
@@ -1466,9 +1567,8 @@ const DocView = struct {
 
     /// The options of a list or combo box, as a popup menu at the field.
     fn showChoices(self: *DocView, f: pdf.form.Field, spot: Spot) void {
-        const l = self.layout orelse return;
-        const sc = self.scale();
-        const pop = self.newPopover(self.pageLeft(spot.page) + spot.x * sc, l.tops[spot.page] + spot.y * sc);
+        const at = self.toView(spot.page, spot.x, spot.y);
+        const pop = self.newPopover(at.x, at.y);
         const box = gtk.Box.new(.vertical, 0);
         pop.setChild(box.as(gtk.Widget));
         for (f.options) |opt| {
@@ -1840,6 +1940,10 @@ const DocView = struct {
             self.show_fields = !self.show_fields;
             return self.area.as(gtk.Widget).queueDraw();
         }
+        if (eql(u8, action, "rotate-left")) return self.rotate(false);
+        if (eql(u8, action, "rotate-right")) return self.rotate(true);
+        if (eql(u8, action, "toggle-dual")) return self.setMode(.{ .dual = !self.mode.dual, .cover = self.mode.cover });
+        if (eql(u8, action, "toggle-cover")) return self.setMode(.{ .dual = self.mode.dual or !self.mode.cover, .cover = !self.mode.cover });
         if (eql(u8, action, "zoom-in")) return self.setZoom(layout_mod.stepZoom(self.zoom, true));
         if (eql(u8, action, "zoom-out")) return self.setZoom(layout_mod.stepZoom(self.zoom, false));
         if (eql(u8, action, "zoom-100")) return self.setZoom(1.0);
@@ -1939,6 +2043,11 @@ const Window = struct {
                 .separator,
                 mb.item("Fit _width", "fit-width", null),
                 mb.item("Fit _page", "fit-page", null),
+                .separator,
+                mb.item("Rotate _Left", "rotate-left", "<Control>Left"),
+                mb.item("Rotate _Right", "rotate-right", "<Control>Right"),
+                mb.check("_Two Pages", "toggle-dual", false),
+                mb.check("First Page _Alone", "toggle-cover", false),
                 .separator,
                 mb.item("_Sidebar", "toggle-sidebar", "F9"),
                 mb.check("Show form _fields", "toggle-fields", true),
