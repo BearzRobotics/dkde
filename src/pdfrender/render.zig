@@ -17,6 +17,7 @@ const pdf = @import("pdf");
 const truetype = @import("truetype");
 const cff = @import("cff.zig");
 const type1 = @import("type1.zig");
+const codecs = @import("codecs.zig");
 const imgcodec = @import("imgcodec");
 pub const Diag = @import("diag.zig").Diag;
 
@@ -610,16 +611,90 @@ fn drawImage(d: *Draw, cr: *cairo.Context, im: display.Image) void {
         d.diag.note(if (e == error.TooBig) "image-too-big" else "image-failed", "");
         return;
     };
-    const px: pdf.image.Pixels = switch (res) {
+    var px: pdf.image.Pixels = switch (res) {
         .pixels => |p| p,
-        .codec => |k| codecPixels(d, a, im, k) orelse return,
+        .codec => |k| codecPixels(d, a, cr, im, k) orelse return,
     };
+    codecMask(d, a, im, &px);
     paintPixels(d, cr, im, px);
+}
+
+/// Applies a /SMask or stencil /Mask that the PDF library left out because it
+/// needs a codec (JBIG2, JPEG 2000 or JPEG).
+///
+/// Scanned books from the Internet Archive and others are built this way: a
+/// low-resolution background, then the full-resolution page drawn through a
+/// JBIG2 stencil so only the ink shows. Without the mask the page's filler
+/// pixels cover everything.
+fn codecMask(d: *Draw, a: std.mem.Allocator, im: display.Image, px: *pdf.image.Pixels) void {
+    const doc = &d.doc.doc;
+    const dict = im.stream.dict;
+    const sm = doc.get(dict, "SMask");
+    const hm = doc.get(dict, "Mask");
+    const obj = if (sm != null and sm.? == .stream) sm.? else if (hm != null and hm.? == .stream) hm.? else return;
+    const mst = obj.stream;
+    const dec = doc.decodeStreamIn(a, mst) catch return;
+    if (dec.rest.len == 0) return; // the library applied it already
+    const codec = dec.rest[0].name;
+    const stencil = if (doc.get(mst.dict, "ImageMask")) |v| (v == .boolean and v.boolean) else false;
+
+    // The mask as one 8-bit alpha value per mask pixel.
+    var mw: u32 = 0;
+    var mh: u32 = 0;
+    var alpha: []u8 = &.{};
+    if (std.mem.eql(u8, codec, "JBIG2Decode")) {
+        const globals: ?[]const u8 = blk: {
+            const g = doc.get(dec.rest[0].parms, "JBIG2Globals") orelse break :blk null;
+            if (g != .stream) break :blk null;
+            break :blk (doc.decodeStreamIn(a, g.stream) catch break :blk null).data;
+        };
+        const bm = codecs.decodeJbig2(a, dec.data, globals) catch |e| return noteCodec(d, "mask-jbig2", e);
+        mw = bm.width;
+        mh = bm.height;
+        alpha = a.alloc(u8, @as(usize, mw) * mh) catch return;
+        // A stencil paints where its sample is 0, which is the codec's black;
+        // a soft mask's codec black is a sample of 0, fully transparent.
+        const invert = if (doc.getArray(mst.dict, "Decode")) |arr|
+            arr.len >= 2 and (doc.resolve(arr[0]).asNum() orelse 0) > (doc.resolve(arr[1]).asNum() orelse 1)
+        else
+            false;
+        for (0..mh) |y| for (0..mw) |x| {
+            const black = (bm.bits[y * bm.stride + x / 8] >> @intCast(7 - x % 8)) & 1 != 0;
+            // Stencil: painted where the sample is 0 (the codec's black).
+            // Soft mask: the sample (codec black = 0) is the opacity.
+            // /Decode [1 0] swaps either.
+            const opaque_px = if (stencil) black != invert else (!black) != invert;
+            alpha[y * mw + x] = if (opaque_px) 255 else 0;
+        };
+    } else if (std.mem.eql(u8, codec, "JPXDecode")) {
+        const j = codecs.decodeJpx(a, dec.data, false, 0) catch |e| return noteCodec(d, "mask-jpx", e);
+        mw = j.width;
+        mh = j.height;
+        alpha = a.alloc(u8, @as(usize, mw) * mh) catch return;
+        for (alpha, 0..) |*v, i| v.* = j.samples[i * j.channels];
+    } else if (std.mem.eql(u8, codec, "DCTDecode")) {
+        const j = imgcodec.decode(a, dec.data) catch return d.diag.note("mask-jpeg-failed", "");
+        mw = @intCast(j.width);
+        mh = @intCast(j.height);
+        alpha = a.alloc(u8, @as(usize, mw) * mh) catch return;
+        for (alpha, 0..) |*v, i| v.* = j.rgba[i * 4];
+    } else return;
+    if (mw == 0 or mh == 0) return;
+
+    // Nearest mask pixel for each image pixel (the two may differ in size).
+    for (0..px.height) |y| {
+        const my = @min(y * mh / px.height, mh - 1);
+        for (0..px.width) |x| {
+            const mx = @min(x * mw / px.width, mw - 1);
+            const o = (y * px.width + x) * 4 + 3;
+            px.rgba[o] = @intCast(@as(u32, px.rgba[o]) * alpha[my * mw + mx] / 255);
+        }
+    }
 }
 
 /// Pixels for a stream that needs a codec: JPEG through dkde's codec (stb_image
 /// for what it refuses), the rest is marked with a pale box.
-fn codecPixels(d: *Draw, a: std.mem.Allocator, im: display.Image, k: pdf.image.Codec) ?pdf.image.Pixels {
+fn codecPixels(d: *Draw, a: std.mem.Allocator, cr: *cairo.Context, im: display.Image, k: pdf.image.Codec) ?pdf.image.Pixels {
     const doc = &d.doc.doc;
     const name = k.name;
     if (std.mem.eql(u8, name, "DCTDecode")) {
@@ -663,9 +738,148 @@ fn codecPixels(d: *Draw, a: std.mem.Allocator, im: display.Image, k: pdf.image.C
             return null;
         };
     }
-    d.diag.note(if (std.mem.eql(u8, name, "JPXDecode")) "image-jpx" else if (std.mem.eql(u8, name, "JBIG2Decode")) "image-jbig2" else "image-ccitt", "");
+    if (std.mem.eql(u8, name, "JPXDecode")) {
+        if (jpxPixels(d, a, cr, im, k)) |px| return px;
+    } else if (std.mem.eql(u8, name, "JBIG2Decode")) {
+        if (jbig2Pixels(d, a, im, k)) |px| return px;
+    } else d.diag.note("image-ccitt", "");
     // A pale box where the image goes, so the layout is still readable.
     return pale(a);
+}
+
+/// The longest side, in device pixels, the image will be drawn at: a JPEG 2000
+/// scan can be decoded at a lower resolution level when it is shown smaller.
+fn deviceSide(cr: *cairo.Context, im: display.Image) u32 {
+    var m: cairo.Matrix = undefined;
+    cr.getMatrix(&m);
+    const c = cm(im.ctm);
+    // The image's unit square edges, through the image matrix and then the page's.
+    const ux = m.xx * c.xx + m.xy * c.yx;
+    const uy = m.yx * c.xx + m.yy * c.yx;
+    const vx = m.xx * c.xy + m.xy * c.yy;
+    const vy = m.yx * c.xy + m.yy * c.yy;
+    const side = @max(@sqrt(ux * ux + uy * uy), @sqrt(vx * vx + vy * vy));
+    // Twice the size shown, so a rescaled page still looks sharp.
+    return @intFromFloat(std.math.clamp(side * 2, 1, 1 << 20));
+}
+
+fn noteCodec(d: *Draw, kind: []const u8, e: codecs.Error) void {
+    var buf: [48]u8 = undefined;
+    const suffix = switch (e) {
+        error.Unavailable => "nolib",
+        error.TooBig => "too-big",
+        else => "failed",
+    };
+    d.diag.note(std.fmt.bufPrint(&buf, "{s}-{s}", .{ kind, suffix }) catch kind, "");
+}
+
+/// A JPEG 2000 image. With a /ColorSpace in the image dictionary its samples
+/// are in that space (and /Decode, masks apply as for any image); without one
+/// the file's own colour data is used (7.4.9).
+fn jpxPixels(d: *Draw, a: std.mem.Allocator, cr: *cairo.Context, im: display.Image, k: pdf.image.Codec) ?pdf.image.Pixels {
+    const doc = &d.doc.doc;
+    const dict = im.stream.dict;
+    const has_space = doc.get(dict, "ColorSpace") != null or doc.get(dict, "CS") != null;
+    const raw = has_space and im.space == .indexed;
+    const j = codecs.decodeJpx(a, k.data, raw, if (raw) 0 else deviceSide(cr, im)) catch |e| {
+        noteCodec(d, "image-jpx", e);
+        return null;
+    };
+    const colour: usize = j.channels - @intFromBool(j.alpha);
+
+    if (has_space and !im.is_mask and im.space.components() == colour) {
+        // Samples in the dictionary's space: drop the alpha channel (if any)
+        // and let the library apply the space, /Decode and masks.
+        const samples = if (!j.alpha) j.samples else blk: {
+            const out = a.alloc(u8, @as(usize, j.width) * j.height * colour) catch return null;
+            for (0..@as(usize, j.width) * j.height) |i| @memcpy(out[i * colour ..][0..colour], j.samples[i * j.channels ..][0..colour]);
+            break :blk out;
+        };
+        var px = pdf.image.fromSamples(doc, a, im, samples, j.width, j.height, @intCast(colour)) catch {
+            d.diag.note("image-failed", "");
+            return null;
+        };
+        if (j.alpha and doc.get(dict, "SMask") == null) {
+            for (0..@as(usize, j.width) * j.height) |i| px.rgba[i * 4 + 3] = j.samples[i * j.channels + colour];
+        }
+        return px;
+    }
+
+    // The file's own colours.
+    const n = @as(usize, j.width) * j.height;
+    const rgba = a.alloc(u8, n * 4) catch return null;
+    for (0..n) |i| {
+        const s = j.samples[i * j.channels ..][0..j.channels];
+        const o = rgba[i * 4 ..][0..4];
+        switch (j.space) {
+            .gray, .other => @memset(o[0..3], s[0]),
+            .rgb => @memcpy(o[0..3], s[0..3]),
+            .cmyk => {
+                const kk: u32 = 255 - @as(u32, s[3]);
+                o[0] = @intCast((255 - @as(u32, s[0])) * kk / 255);
+                o[1] = @intCast((255 - @as(u32, s[1])) * kk / 255);
+                o[2] = @intCast((255 - @as(u32, s[2])) * kk / 255);
+            },
+        }
+        o[3] = if (j.alpha) s[colour] else 255;
+    }
+    const base: pdf.image.Pixels = .{ .width = j.width, .height = j.height, .rgba = rgba };
+    return pdf.image.withMasks(doc, a, dict, base) catch base;
+}
+
+/// A JBIG2 image: 1 bit per pixel where the codec's 1 is black, so the PDF
+/// sample (0 = black in DeviceGray, "paint" in a stencil) is the inverse.
+fn jbig2Pixels(d: *Draw, a: std.mem.Allocator, im: display.Image, k: pdf.image.Codec) ?pdf.image.Pixels {
+    const doc = &d.doc.doc;
+    const globals: ?[]const u8 = blk: {
+        const g = doc.get(k.parms, "JBIG2Globals") orelse break :blk null;
+        if (g != .stream) break :blk null;
+        const dec = doc.decodeStreamIn(a, g.stream) catch break :blk null;
+        break :blk dec.data;
+    };
+    const bm = codecs.decodeJbig2(a, k.data, globals) catch |e| {
+        noteCodec(d, "image-jbig2", e);
+        return null;
+    };
+    const w: usize = bm.width;
+    const h: usize = bm.height;
+    const black = struct {
+        fn at(b: codecs.Bitmap, x: usize, y: usize) bool {
+            return (b.bits[y * b.stride + x / 8] >> @intCast(7 - x % 8)) & 1 != 0;
+        }
+    }.at;
+
+    if (im.is_mask) {
+        // A stencil: paint the fill colour where the codec's bit is black
+        // (/Decode [1 0] swaps that).
+        const invert = if (doc.getArray(im.stream.dict, "Decode")) |arr|
+            arr.len >= 2 and (doc.resolve(arr[0]).asNum() orelse 0) > (doc.resolve(arr[1]).asNum() orelse 1)
+        else
+            false;
+        const rgb = switch (im.fill) {
+            .color => |c| c,
+            else => pdf.color.Rgb.black,
+        };
+        const rgba = a.alloc(u8, w * h * 4) catch return null;
+        for (0..h) |y| for (0..w) |x| {
+            const o = rgba[(y * w + x) * 4 ..][0..4];
+            o[0] = @intFromFloat(rgb.r * 255 + 0.5);
+            o[1] = @intFromFloat(rgb.g * 255 + 0.5);
+            o[2] = @intFromFloat(rgb.b * 255 + 0.5);
+            o[3] = if (black(bm, x, y) != invert) 255 else 0;
+        };
+        return .{ .width = bm.width, .height = bm.height, .rgba = rgba };
+    }
+
+    // An image: 8-bit gray samples, 0 where the codec says black.
+    const samples = a.alloc(u8, w * h) catch return null;
+    for (0..h) |y| for (0..w) |x| {
+        samples[y * w + x] = if (black(bm, x, y)) 0 else 255;
+    };
+    return pdf.image.fromSamples(doc, a, im, samples, bm.width, bm.height, 1) catch {
+        d.diag.note("image-failed", "");
+        return null;
+    };
 }
 
 /// A 1x1 light grey pixel, stretched over the image's place.
@@ -927,7 +1141,7 @@ test "gradients and tiling patterns are drawn" {
     try std.testing.expect(green > 20 and blank > 20);
 }
 
-test "a JPEG image is decoded, and unsupported image types are counted" {
+test "a JPEG image is decoded, and an image that cannot be decoded is counted" {
     const a = std.testing.allocator;
     var tiny_jpeg: [134]u8 = undefined;
     try std.base64.standard.Decoder.decode(&tiny_jpeg, tiny_jpeg_b64);
@@ -945,7 +1159,11 @@ test "a JPEG image is decoded, and unsupported image types are counted" {
     const surface = try renderTest(a, bytes, &diag, 400, 200);
     defer surface.destroy();
     savePng(surface, "jpeg-and-unsupported");
-    try std.testing.expectEqual(@as(?u32, 1), diag.counts.get("image-jbig2"));
+    // Not real JBIG2 data: counted as a failed decode, or as "no library"
+    // where jbig2dec is not installed. Either way a pale box is drawn.
+    const failed = diag.counts.get("image-jbig2-failed") orelse 0;
+    const nolib = diag.counts.get("image-jbig2-nolib") orelse 0;
+    try std.testing.expectEqual(@as(u32, 1), failed + nolib);
 }
 
 test {
