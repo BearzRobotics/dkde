@@ -98,6 +98,39 @@ pub fn gtkCss(a: std.mem.Allocator, t: Theme) std.mem.Allocator.Error![]u8 {
         \\@define-color theme_base_color {[base]s};
         \\@define-color theme_text_color {[text]s};
         \\
+        \\/* The accent on widgets whose theme bakes its own colour in instead of
+        \\   reading the names above (Ubuntu's Yaru orange, Adwaita's blue). This
+        \\   file is loaded above the theme, so these win. GTK 3 and 4 alike. */
+        \\check:checked, radio:checked,
+        \\check:indeterminate, radio:indeterminate {{
+        \\  background-image: none;
+        \\  background-color: {[accent]s};
+        \\  border-color: {[accent]s};
+        \\  color: #ffffff;
+        \\}}
+        \\switch:checked {{
+        \\  background-image: none;
+        \\  background-color: {[accent]s};
+        \\  border-color: {[accent]s};
+        \\}}
+        \\button.suggested-action {{
+        \\  background-image: none;
+        \\  background-color: {[accent]s};
+        \\  border-color: {[accent]s};
+        \\  color: #ffffff;
+        \\}}
+        \\progressbar progress, scale highlight {{
+        \\  background-image: none;
+        \\  background-color: {[accent]s};
+        \\  border-color: {[accent]s};
+        \\}}
+        \\notebook > header > tabs > tab:checked {{
+        \\  box-shadow: inset 0 -3px {[accent]s};
+        \\}}
+        \\entry:focus, spinbutton:focus {{
+        \\  border-color: {[accent]s};
+        \\}}
+        \\
     , .{ .accent = t.accent, .window = p.window, .base = p.base, .text = p.text });
 }
 
@@ -265,6 +298,9 @@ test "renders every file for a dark theme" {
     const css = try gtkCss(a, t);
     defer a.free(css);
     try std.testing.expect(std.mem.indexOf(u8, css, "accent_bg_color #e66100") != null);
+    // Widgets whose theme hard-codes a colour get the accent too.
+    try std.testing.expect(std.mem.indexOf(u8, css, "radio:checked") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "inset 0 -3px #e66100") != null);
     const q6 = try qtColorScheme(a, t, true);
     defer a.free(q6);
     // Qt 6 lists 21 roles (with Accent), Qt 5 lists 20; three lists per file.
