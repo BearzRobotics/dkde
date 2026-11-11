@@ -5,6 +5,8 @@
 //!
 //! Dependency rule: nothing here imports GTK or GDK.
 
+pub const appdirs = @import("appdirs.zig");
+pub const appimage = @import("appimage.zig");
 pub const appinfo = @import("appinfo.zig");
 pub const apps = @import("apps.zig");
 pub const audio = @import("audio.zig");

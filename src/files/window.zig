@@ -2018,6 +2018,9 @@ pub const FilesWindow = struct {
         is_regular: bool = false,
         is_exec: bool = false,
         archive: ?archive.Kind = null,
+        /// An AppImage, and whether it is in the applications menu.
+        appimage: bool = false,
+        appimage_in_menu: bool = false,
 
         fn deinit(self: *SelectionFacts, _: std.mem.Allocator) void {
             if (self.single) |f| f.as(gobject.Object).unref();
@@ -2039,6 +2042,14 @@ pub const FilesWindow = struct {
         facts.is_regular = info.getFileType() == .regular;
         if (info.hasAttribute("unix::mode") != 0) facts.is_exec = info.getAttributeUint32("unix::mode") & 0o111 != 0;
         if (facts.is_regular) facts.archive = archive.kindOf(std.mem.span(info.getName()));
+        if (facts.is_regular) if (file.getPath()) |p| {
+            defer glib.free(p);
+            const path = std.mem.span(p);
+            if (common.appimage.isAppImage(path)) {
+                facts.appimage = true;
+                facts.appimage_in_menu = common.appimage.isIntegrated(self.allocator, path);
+            }
+        };
         return facts;
     }
 
@@ -2058,6 +2069,10 @@ pub const FilesWindow = struct {
         if (eql(u8, id, "exec")) {
             if (!item or !sel.is_regular or sel.in_trash) return null;
             return .{ .label = if (sel.is_exec) t("Unmark as Executable") else t("Mark as Executable") };
+        }
+        if (eql(u8, id, "appimage-menu")) {
+            if (!item or !sel.appimage or sel.in_trash) return null;
+            return .{ .label = if (sel.appimage_in_menu) t("Remove from Applications Menu") else t("Add to Applications Menu") };
         }
         if (eql(u8, id, "extract")) {
             const kind = sel.archive orelse return null;
@@ -2328,6 +2343,7 @@ pub const FilesWindow = struct {
         if (eql(u8, action, "run")) return self.runSelected(false);
         if (eql(u8, action, "run-admin")) return self.runSelected(true);
         if (eql(u8, action, "exec")) return self.toggleExecutable();
+        if (eql(u8, action, "appimage-menu")) return self.toggleAppImageInMenu();
         if (std.mem.startsWith(u8, action, context.command_prefix)) return self.runCustomCommand(action[context.command_prefix.len..]);
         if (eql(u8, action, "close")) return self.window.as(gtk.Window).close();
         if (eql(u8, action, "close-tab")) return self.closeTab(self.active_tab);
@@ -2746,6 +2762,26 @@ pub const FilesWindow = struct {
     }
 
     /// Sets or clears the three execute bits.
+    /// Adds the AppImage to the applications menu (its name and icon read
+    /// from inside it, in the background), or takes it out.
+    fn toggleAppImageInMenu(self: *FilesWindow) void {
+        const file = self.singleSelected() orelse return;
+        defer file.as(gobject.Object).unref();
+        const p = file.getPath() orelse return;
+        defer glib.free(p);
+        const a = std.heap.c_allocator;
+        if (common.appimage.isIntegrated(a, std.mem.span(p))) return common.appimage.remove(a, std.mem.span(p));
+        const owned = a.dupeSentinel(u8, std.mem.span(p), 0) catch return;
+        const Job = struct {
+            fn run(path: [:0]u8) void {
+                defer std.heap.c_allocator.free(path);
+                common.appimage.integrate(std.heap.c_allocator, path) catch |e|
+                    std.log.warn("cannot add {s} to the menu: {s}", .{ path, @errorName(e) });
+            }
+        };
+        if (std.Thread.spawn(.{}, Job.run, .{owned})) |t| t.detach() else |_| Job.run(owned);
+    }
+
     fn toggleExecutable(self: *FilesWindow) void {
         const file = self.singleSelected() orelse return;
         defer file.as(gobject.Object).unref();

@@ -5,6 +5,8 @@
 const core = @import("core");
 
 // Toolkit-free parts, re-exported so `common.config` and friends keep working.
+pub const appdirs = core.appdirs;
+pub const appimage = core.appimage;
 pub const appinfo = core.appinfo;
 pub const apps = core.apps;
 pub const audio = core.audio;

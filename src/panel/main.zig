@@ -432,6 +432,13 @@ pub fn main(init: std.process.Init.Minimal) !void {
         return sendMessage(init);
     }
 
+    // Flatpak and Snap apps (and their icons) are found through
+    // XDG_DATA_DIRS; programs started from the panel inherit it.
+    common.appdirs.ensure();
+    // AppImages in ~/Applications and the like join the menu, and entries of
+    // deleted ones go. unsquashfs takes a moment per file: not on the UI thread.
+    if (std.Thread.spawn(.{}, syncAppImages, .{})) |t| t.detach() else |_| {}
+
     var debug_allocator: common.perf.Gpa = .{};
     defer debug_allocator.deinit();
     const allocator = debug_allocator.allocator();
@@ -451,6 +458,10 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     const status = gio.Application.run(gtk_app.as(gio.Application), @intCast(init.args.vector.len), @ptrCast(@constCast(init.args.vector.ptr)));
     if (status != 0) std.process.exit(@intCast(status));
+}
+
+fn syncAppImages() void {
+    common.appimage.sync(std.heap.c_allocator);
 }
 
 fn sendMessage(init: std.process.Init.Minimal) !void {

@@ -54,6 +54,19 @@ fi
 [ -f /etc/profile ] && . /etc/profile
 [ -f "$HOME/.profile" ] && . "$HOME/.profile"
 
+# Apps installed with Flatpak or Snap, and their icons, are found through
+# XDG_DATA_DIRS. Their profile scripts add the folders, but not every
+# distribution's /etc/profile runs them: add what exists and is missing.
+data_dirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+for d in "$HOME/.local/share/flatpak/exports/share" /var/lib/flatpak/exports/share; do
+    case ":$data_dirs:" in *":$d:"*|*":$d/:"*) ;; *) [ -d "$d" ] && data_dirs="$d:$data_dirs" ;; esac
+done
+case ":$data_dirs:" in *":/var/lib/snapd/desktop:"*) ;; *) [ -d /var/lib/snapd/desktop ] && data_dirs="$data_dirs:/var/lib/snapd/desktop" ;; esac
+export XDG_DATA_DIRS="$data_dirs"
+# Snap's commands live in /snap/bin.
+case ":$PATH:" in *":/snap/bin:"*) ;; *) [ -d /snap/bin ] && PATH="$PATH:/snap/bin" ;; esac
+export PATH
+
 # The language and formats chosen in Settings > Language & region: plain
 # KEY=value lines in ~/.config/locale.conf. Read line by line, not sourced, and
 # only for the locale variables, so the file cannot run anything.

@@ -24,13 +24,40 @@ pub fn matches(desktop_id: []const u8, wm_class: ?[]const u8, app_id: []const u8
     return std.ascii.eqlIgnoreCase(stem, app_id);
 }
 
+/// A looser match, tried when no entry matches exactly: Snap names its
+/// entries "<snap>_<app>.desktop" while the window says just "<app>" (or
+/// "<snap>"), and some programs use their command's name as `app_id`.
+pub fn matchesLoosely(desktop_id: []const u8, exec_name: ?[]const u8, app_id: []const u8) bool {
+    if (app_id.len == 0) return false;
+    const stem = if (std.mem.endsWith(u8, desktop_id, ".desktop")) desktop_id[0 .. desktop_id.len - ".desktop".len] else desktop_id;
+    if (std.mem.indexOfScalar(u8, stem, '_')) |i| {
+        if (std.ascii.eqlIgnoreCase(stem[i + 1 ..], app_id) or std.ascii.eqlIgnoreCase(stem[0..i], app_id)) return true;
+    }
+    if (exec_name) |e| {
+        if (e.len > 0 and std.ascii.eqlIgnoreCase(e, app_id)) return true;
+    }
+    return false;
+}
+
+/// The command's file name from an Exec line: "/snap/bin/firefox %u" → "firefox".
+fn execName(commandline: []const u8) []const u8 {
+    const t = std.mem.trimStart(u8, commandline, " ");
+    // A quoted command runs to its closing quote; otherwise to the first space.
+    const first = if (t.len > 0 and (t[0] == '"' or t[0] == '\''))
+        t[1 .. 1 + (std.mem.indexOfScalar(u8, t[1..], t[0]) orelse t.len - 1)]
+    else
+        t[0 .. std.mem.indexOfAny(u8, t, " \t") orelse t.len];
+    return std.fs.path.basename(first);
+}
+
 /// Finds the desktop entry for `app_id`, or null. The caller owns the
 /// returned reference.
 pub fn find(app_id: []const u8) ?*gio.AppInfo {
     if (app_id.len == 0) return null;
 
     const all = gio.AppInfo.getAll();
-    defer all.free();
+    defer freeList(all);
+    var loose: ?*gio.AppInfo = null;
     var node: ?*glib.List = all;
     while (node) |n| : (node = n.f_next) {
         const info: *gio.AppInfo = @ptrCast(@alignCast(n.f_data orelse continue));
@@ -38,8 +65,33 @@ pub fn find(app_id: []const u8) ?*gio.AppInfo {
         const desktop: *giounix.DesktopAppInfo = @ptrCast(info);
         const wm_class = if (desktop.getStartupWmClass()) |c| std.mem.span(c) else null;
         if (matches(id, wm_class, app_id)) return @ptrCast(info.as(gobject.Object).ref());
+        if (loose == null) {
+            const exec = if (info.getCommandline()) |c| execName(std.mem.span(c)) else null;
+            if (matchesLoosely(id, exec, app_id)) loose = info;
+        }
     }
+    if (loose) |info| return @ptrCast(info.as(gobject.Object).ref());
     return null;
+}
+
+/// Frees a list from `gio.AppInfo.getAll` and the references it holds.
+fn freeList(list: *glib.List) void {
+    var node: ?*glib.List = list;
+    while (node) |n| : (node = n.f_next) {
+        if (n.f_data) |d| @as(*gobject.Object, @ptrCast(@alignCast(d))).unref();
+    }
+    list.free();
+}
+
+test "Snap entries and command names match loosely" {
+    try std.testing.expect(matchesLoosely("firefox_firefox.desktop", null, "firefox"));
+    try std.testing.expect(matchesLoosely("thunderbird_thunderbird.desktop", null, "Thunderbird"));
+    try std.testing.expect(matchesLoosely("prismlauncher-alpo_prismlauncher.desktop", null, "prismlauncher"));
+    try std.testing.expect(matchesLoosely("x.desktop", "inkscape", "inkscape"));
+    try std.testing.expect(!matchesLoosely("x.desktop", null, "x_y"));
+    try std.testing.expect(!matchesLoosely("firefox_firefox.desktop", null, ""));
+    try std.testing.expectEqualStrings("firefox", execName("/snap/bin/firefox %u"));
+    try std.testing.expectEqualStrings("My App.AppImage", execName("\"/home/u/My App.AppImage\" %U"));
 }
 
 test "matches by desktop id, ignoring case and suffix" {

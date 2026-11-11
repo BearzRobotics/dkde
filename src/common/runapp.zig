@@ -46,6 +46,8 @@ pub fn closeWindows(app: *gtk.Application) void {
 
 pub fn run(comptime app_id: [:0]const u8, comptime Window: type, init: std.process.Init.Minimal) !void {
     perf.init();
+    // Open With and the like should see Flatpak and Snap apps too.
+    @import("core").appdirs.ensure();
     var debug_allocator: perf.Gpa = .{};
     defer debug_allocator.deinit();
 
