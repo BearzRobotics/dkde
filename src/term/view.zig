@@ -24,6 +24,7 @@ const profile_mod = @import("profile.zig");
 const urls = @import("urls.zig");
 const finder_mod = @import("finder.zig");
 const safety = @import("safety.zig");
+const images = @import("images.zig");
 const Pty = @import("pty.zig").Pty;
 
 const log = std.log.scoped(.term);
@@ -145,6 +146,8 @@ pub const TerminalView = struct {
     silence_source: c_uint = 0,
     silence_told: bool = false,
     last_activity_note: i64 = 0,
+    /// Pictures programs placed (Kitty graphics), ready to draw.
+    image_cache: images.Cache = .{},
     /// Text waiting for the paste warning to be answered.
     pending_paste: ?[]u8 = null,
     /// Warn before pasting text that runs commands on its own.
@@ -185,7 +188,10 @@ pub const TerminalView = struct {
             .layout = undefined,
         };
 
+        images.installPngDecoder();
         self.term = try vt.Terminal.init(self.tiny_io.io(), allocator, .{
+            // Room for the pictures programs show (the library's default is 10 MB).
+            .kitty_image_storage_limit = 128 * 1000 * 1000,
             .cols = self.cols,
             .rows = self.rows,
             .max_scrollback_lines = scrollback_lines,
@@ -309,6 +315,7 @@ pub const TerminalView = struct {
         self.shutdown();
         self.searchClose();
         self.finder.deinit(self.allocator);
+        self.image_cache.deinit(self.allocator);
         if (self.search_needle) |n| self.allocator.free(n);
         if (self.hover_link) |l| self.allocator.free(l);
         if (self.menu_link) |l| self.allocator.free(l);
@@ -685,6 +692,7 @@ pub const TerminalView = struct {
     fn refresh(self: *TerminalView) void {
         const surface = self.surface orelse return;
         self.render.update(self.allocator, &self.term) catch return;
+        self.image_cache.collect(self.allocator, &self.render);
 
         const cr = cairo.Context.create(surface);
         defer cr.destroy();
@@ -793,10 +801,20 @@ pub const TerminalView = struct {
             cr.fill();
         }
 
-        // Pass 2: glyphs and decorations.
+        // Pass 2: glyphs and decorations. Right-to-left runs (Arabic,
+        // Hebrew, ...) are laid out by Pango as a whole, so their letters
+        // read right to left and join as they should.
+        var rtl_runs: [16][2]usize = undefined;
+        const n_runs = rtlRuns(raws[0..n], &rtl_runs);
+        var run_i: usize = 0;
         var buf: [32]u8 = undefined;
         for (0..n) |x| {
             const raw = raws[x];
+            if (run_i < n_runs and x >= rtl_runs[run_i][0]) {
+                if (x == rtl_runs[run_i][0]) self.paintRtlRun(cr, raws, styles, graphemes, rtl_runs[run_i], top, default_fg, default_bg, selected);
+                if (x + 1 >= rtl_runs[run_i][1]) run_i += 1;
+                continue;
+            }
             if (raw.wide == .spacer_tail or raw.wide == .spacer_head) continue;
             const style = if (raw.style_id != 0) styles[x] else vt.Style{};
             var colors = self.cellColors(raw, styles[x], default_fg, default_bg, isSelected(selected, x));
@@ -819,6 +837,76 @@ pub const TerminalView = struct {
             pangocairo.showLayout(cr, self.layout);
             self.decorations(cr, style, colors.fg, left, top, if (raw.wide == .wide) 2 else 1);
         }
+    }
+
+    fn isRtl(cp: u21) bool {
+        return (cp >= 0x0590 and cp <= 0x08FF) or (cp >= 0xFB1D and cp <= 0xFDFF) or (cp >= 0xFE70 and cp <= 0xFEFF) or
+            (cp >= 0x10800 and cp <= 0x10FFF) or (cp >= 0x1E800 and cp <= 0x1EFFF);
+    }
+
+    fn cellCp(raw: vt.Cell) u21 {
+        return switch (raw.content_tag) {
+            .codepoint, .codepoint_grapheme => raw.content.codepoint.data,
+            else => 0,
+        };
+    }
+
+    /// The runs of right-to-left text in a row, as [start, end) cells: from
+    /// a right-to-left letter to the last one that follows with only
+    /// spaces, digits or punctuation between.
+    fn rtlRuns(raws: []const vt.Cell, out: [][2]usize) usize {
+        var n: usize = 0;
+        var x: usize = 0;
+        while (x < raws.len and n < out.len) {
+            if (!isRtl(cellCp(raws[x]))) {
+                x += 1;
+                continue;
+            }
+            const start = x;
+            var last = x;
+            var y = x + 1;
+            while (y < raws.len) : (y += 1) {
+                const cp = cellCp(raws[y]);
+                if (isRtl(cp)) {
+                    last = y;
+                    continue;
+                }
+                const neutral = cp == 0 or cp == ' ' or (cp < 0x80 and !std.ascii.isAlphabetic(@intCast(cp)));
+                if (!neutral and raws[y].wide != .spacer_tail) break;
+            }
+            out[n] = .{ start, last + 1 };
+            n += 1;
+            x = last + 1;
+        }
+        return n;
+    }
+
+    fn paintRtlRun(self: *TerminalView, cr: *cairo.Context, raws: anytype, styles: anytype, graphemes: anytype, run: [2]usize, top: f64, default_fg: vt.color.RGB, default_bg: vt.color.RGB, selected: ?[2]vt.size.CellCountInt) void {
+        var text: [1024]u8 = undefined;
+        var len: usize = 0;
+        var buf: [32]u8 = undefined;
+        for (run[0]..run[1]) |x| {
+            if (raws[x].wide == .spacer_tail or raws[x].wide == .spacer_head) continue;
+            const t = cellText(&buf, raws[x], graphemes[x]) orelse continue;
+            const piece: []const u8 = if (t.len == 0) " " else t;
+            if (len + piece.len > text.len) break;
+            @memcpy(text[len..][0..piece.len], piece);
+            len += piece.len;
+        }
+        const style = if (raws[run[0]].style_id != 0) styles[run[0]] else vt.Style{};
+        const colors = self.cellColors(raws[run[0]], styles[run[0]], default_fg, default_bg, isSelected(selected, run[0]));
+        setSource(cr, colors.fg);
+        const font_index: usize = @as(usize, @intFromBool(style.flags.bold)) | (@as(usize, @intFromBool(style.flags.italic)) << 1);
+        self.layout.setFontDescription(self.fonts[font_index]);
+        const width = @as(f64, @floatFromInt(run[1] - run[0])) * self.cell_w;
+        self.layout.setWidth(@intFromFloat(width * pango.SCALE));
+        self.layout.setAlignment(.right);
+        self.layout.setText(@ptrCast(&text), @intCast(len));
+        cr.moveTo(self.pad() + @as(f64, @floatFromInt(run[0])) * self.cell_w, top);
+        pangocairo.showLayout(cr, self.layout);
+        // Back to one cell at a time.
+        self.layout.setWidth(-1);
+        self.layout.setAlignment(.left);
     }
 
     fn decorations(self: *TerminalView, cr: *cairo.Context, style: vt.Style, fg: vt.color.RGB, left: f64, top: f64, cells: f64) void {
@@ -900,6 +988,7 @@ pub const TerminalView = struct {
             cr.setSourceSurface(surface, 0, 0);
             cr.paint();
         }
+        if (!self.image_cache.empty()) self.image_cache.draw(self.allocator, cr, &self.term, self.pad(), self.pad(), self.cell_w, self.cell_h);
         self.drawCursor(cr);
         self.drawOverlays(cr);
     }

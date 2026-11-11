@@ -19,6 +19,8 @@ Pasting text that would run commands by itself (several lines without bracketed 
 
 With shell integration (on by default for bash and zsh) the shell marks its prompts: **Ctrl+Shift+Up** and **Ctrl+Shift+Down** jump between them, and a command that ran 10 seconds or more sends a notification when it ends while you look elsewhere.
 
+Programs can show pictures with the Kitty graphics protocol (as kitten icat, chafa, timg, yazi and ranger do); PNG and raw pixels are accepted. Right-to-left text (Arabic, Hebrew and others) is shown right to left with its letters joined, within the cells it occupies.
+
 **--dropdown** shows or hides the drop-down terminal, which slides down from the top of the screen (bound to **F12** in dkde's labwc settings).
 
 # CONVENTIONS
