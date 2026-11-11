@@ -34,6 +34,9 @@ const cache_size = 6;
 
 const Fit = enum { custom, width, page };
 
+/// The printer and options chosen last, for the next print in this session.
+var print_settings: ?*gtk.PrintSettings = null;
+
 /// One occurrence of the searched text: a byte range in the page's layout text.
 const Match = struct { page: usize, start: u32, end: u32 };
 
@@ -1436,12 +1439,73 @@ const DocView = struct {
     }
 
     /// A menu action for this tab (opening and closing tabs belong to the window).
+    // ---- printing -------------------------------------------------------------------------------
+
+    /// Prints the document as it is on screen, with the annotations and form
+    /// values added (saved or not), through GTK's print dialog: a printer,
+    /// a PDF file, page ranges, copies. Each page is fitted to the paper and
+    /// centred; landscape pages turn the paper.
+    fn printDocument(self: *DocView) void {
+        const s = self.session orelse return;
+        _ = s;
+        const op = gtk.PrintOperation.new();
+        defer op.as(gobject.Object).unref();
+        op.setNPages(@intCast(self.pages));
+        op.setUnit(.points);
+        op.setEmbedPageSetup(1);
+        if (print_settings) |ps| op.setPrintSettings(ps);
+        if (self.path) |p| {
+            var buf: [256]u8 = undefined;
+            op.setJobName(std.fmt.bufPrintSentinel(&buf, "{s}", .{std.fs.path.basename(p)}, 0) catch "PDF");
+        }
+        _ = gtk.PrintOperation.signals.request_page_setup.connect(op, *DocView, &onPrintPageSetup, self, .{});
+        _ = gtk.PrintOperation.signals.draw_page.connect(op, *DocView, &onPrintPage, self, .{});
+        // Not asynchronous: the dialog is modal and the pages are drawn
+        // before run returns, so the tab (and its document) stay open.
+        var err: ?*glib.Error = null;
+        const result = op.run(.print_dialog, self.window.as(gtk.Window), &err);
+        if (err) |e| {
+            defer e.free();
+            common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot print"), if (e.f_message) |m| std.mem.span(m) else "");
+            return;
+        }
+        if (result == .apply) {
+            if (print_settings) |old| old.as(gobject.Object).unref();
+            print_settings = if (op.getPrintSettings()) |ps| @ptrCast(ps.as(gobject.Object).ref()) else null;
+        }
+    }
+
+    fn onPrintPageSetup(_: *gtk.PrintOperation, _: *gtk.PrintContext, page_nr: c_int, setup: *gtk.PageSetup, self: *DocView) callconv(.c) void {
+        const page: usize = @intCast(page_nr);
+        if (page >= self.page_points.len) return;
+        const size = self.page_points[page];
+        setup.setOrientation(if (size.w > size.h) .landscape else .portrait);
+    }
+
+    fn onPrintPage(_: *gtk.PrintOperation, context: *gtk.PrintContext, page_nr: c_int, self: *DocView) callconv(.c) void {
+        const s = self.session orelse return;
+        const page: usize = @intCast(page_nr);
+        if (page >= self.page_points.len) return;
+        const cr = context.getCairoContext();
+        const pw = context.getWidth();
+        const ph = context.getHeight();
+        const size = self.page_points[page];
+        if (size.w <= 0 or size.h <= 0) return;
+        const fit = @min(pw / size.w, ph / size.h);
+        cr.save();
+        defer cr.restore();
+        cr.translate((pw - size.w * fit) / 2, (ph - size.h * fit) / 2);
+        render.renderPage(self.allocator, s.doc, page, cr, fit, &self.diag) catch |e|
+            std.log.warn("printing page {d}: {s}", .{ page + 1, @errorName(e) });
+    }
+
     fn perform(self: *DocView, action: []const u8) void {
         const eql = std.mem.eql;
         if (eql(u8, action, "save")) {
             if (self.session != null) _ = self.save();
             return;
         }
+        if (eql(u8, action, "print")) return self.printDocument();
         if (eql(u8, action, "save-as")) {
             if (self.session == null) return;
             const dialog = gtk.FileDialog.new();
@@ -1560,6 +1624,7 @@ const Window = struct {
                 mb.item("_Open…", "open", "<Control>o"),
                 mb.item("_Save", "save", "<Control>s"),
                 mb.item("Save _As…", "save-as", "<Control><Shift>s"),
+                mb.item("_Print…", "print", "<Control>p"),
                 mb.item("_Reload", "reload", "F5"),
                 .separator,
                 mb.item("_Close Tab", "close-tab", "<Control>w"),
