@@ -513,7 +513,21 @@ const DocView = struct {
     }
 
     fn onResize(_: *gtk.DrawingArea, _: c_int, _: c_int, self: *DocView) callconv(.c) void {
-        if (self.fit != .custom) self.relayout();
+        if (self.fit != .custom) self.relayoutKeepingPlace();
+    }
+
+    /// Lays out again (the zoom follows the width) and keeps the page at the
+    /// top of the view there, at the same point of it: resizing, maximising
+    /// or leaving full screen does not lose the place.
+    fn relayoutKeepingPlace(self: *DocView) void {
+        const before = self.layout orelse return self.relayout();
+        if (self.pages == 0) return self.relayout();
+        const top = self.viewTop();
+        const page = layout_mod.pageAt(before, top);
+        const frac = (top - before.tops[page]) / @max(1.0, before.sizes[page].h);
+        self.relayout();
+        const after = self.layout orelse return;
+        self.scroller.getVadjustment().setValue(after.tops[page] + frac * after.sizes[page].h);
     }
 
     fn setZoom(self: *DocView, zoom: f64) void {
@@ -827,6 +841,15 @@ const DocView = struct {
             const surface = self.cached(i) orelse continue;
             cr.setSourceSurface(surface, x, y);
             cr.paint();
+            if (self.host.night) {
+                // Night mode: white paper becomes black, black ink white.
+                cr.save();
+                cr.setOperator(.difference);
+                cr.setSourceRgb(1, 1, 1);
+                cr.rectangle(x, y, size.w, size.h);
+                cr.fill();
+                cr.restore();
+            }
             // Overlays are drawn in page pixels, turned with the page.
             cr.save();
             cr.translate(x, y);
@@ -1983,6 +2006,18 @@ const Window = struct {
     /// notebook's tab labels with the window), in the same order as `tabs`.
     closers: std.ArrayList(*TabClose) = .empty,
     initial_file: ?[:0]const u8,
+    menu_bar: *gtk.Widget = undefined,
+    toolbar: *gtk.Widget = undefined,
+    /// Pages drawn with their colours inverted (light text on black).
+    night: bool = false,
+    screen: Screen = .normal,
+    /// The tab's fit and zoom before a presentation, to return to.
+    saved_fit: Fit = .width,
+    saved_zoom: f64 = 1.0,
+    sidebar_was_visible: bool = false,
+    restore_page: usize = 0,
+
+    const Screen = enum { normal, full, presentation };
 
     pub fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*Window {
         const self = try allocator.create(Window);
@@ -2050,6 +2085,9 @@ const Window = struct {
                 mb.check("First Page _Alone", "toggle-cover", false),
                 .separator,
                 mb.item("_Sidebar", "toggle-sidebar", "F9"),
+                mb.check("_Night Mode", "toggle-night", false),
+                mb.item("F_ull Screen", "full-screen", "F11"),
+                mb.item("_Presentation", "presentation", "<Control><Shift>p"),
                 mb.check("Show form _fields", "toggle-fields", true),
                 .separator,
                 mb.item("_Next Tab", "next-tab", "<Control>Page_Down"),
@@ -2096,6 +2134,14 @@ const Window = struct {
         self.status.as(gtk.Widget).setMarginTop(2);
         self.status.as(gtk.Widget).setMarginBottom(2);
         self.status.as(gtk.Widget).addCssClass("dkde-files-status");
+
+        self.menu_bar = menu_bar.as(gtk.Widget);
+        self.toolbar = toolbar.as(gtk.Widget);
+        // Keys for full screen and presentations, before the page sees them.
+        const keys = gtk.EventControllerKey.new();
+        keys.as(gtk.EventController).setPropagationPhase(.capture);
+        _ = gtk.EventControllerKey.signals.key_pressed.connect(keys, *Window, &onScreenKey, self, .{});
+        self.window.as(gtk.Widget).addController(keys.as(gtk.EventController));
 
         const root = gtk.Box.new(.vertical, 0);
         root.append(menu_bar.as(gtk.Widget));
@@ -2347,7 +2393,86 @@ const Window = struct {
             const next = if (eql(u8, action, "next-tab")) (cur + 1) % n else (cur + n - 1) % n;
             return self.notebook.setCurrentPage(@intCast(next));
         }
+        if (eql(u8, action, "toggle-night")) {
+            self.night = !self.night;
+            for (self.tabs.items) |d| {
+                d.area.as(gtk.Widget).queueDraw();
+                d.thumbs.as(gtk.Widget).queueDraw();
+            }
+            return;
+        }
+        if (eql(u8, action, "full-screen")) return self.setScreen(if (self.screen == .full) .normal else .full);
+        if (eql(u8, action, "presentation")) return self.setScreen(if (self.screen == .presentation) .normal else .presentation);
         if (self.active()) |d| d.perform(action);
+    }
+
+    /// Full screen hides the menu, toolbar, tabs, status line and sidebar;
+    /// a presentation also shows one page at a time, fitted, on black.
+    fn setScreen(self: *Window, screen: Screen) void {
+        if (screen == self.screen) return;
+        const d = self.active();
+        // Leave the current mode first.
+        if (self.screen == .presentation) if (d) |doc| {
+            doc.scroller.as(gtk.Widget).removeCssClass("dkde-pdf-presentation");
+            doc.fit = self.saved_fit;
+            doc.zoom = self.saved_zoom;
+            // Lay out again once the window is back to its size (it is still
+            // full screen here), on the page the presentation ended on.
+            self.restore_page = doc.currentPage();
+            _ = glib.timeoutAdd(150, onRestoreLayout, self);
+        };
+        const chrome = screen == .normal;
+        self.menu_bar.setVisible(@intFromBool(chrome));
+        self.toolbar.setVisible(@intFromBool(chrome));
+        self.status.as(gtk.Widget).setVisible(@intFromBool(chrome));
+        self.notebook.setShowTabs(@intFromBool(chrome));
+        if (d) |doc| {
+            const side = doc.sidebar.as(gtk.Widget);
+            if (self.screen == .normal) self.sidebar_was_visible = side.getVisible() != 0;
+            side.setVisible(@intFromBool(chrome and self.sidebar_was_visible));
+        }
+        if (screen == .normal) self.window.as(gtk.Window).unfullscreen() else self.window.as(gtk.Window).fullscreen();
+        if (screen == .presentation) if (d) |doc| {
+            self.saved_fit = doc.fit;
+            self.saved_zoom = doc.zoom;
+            doc.scroller.as(gtk.Widget).addCssClass("dkde-pdf-presentation");
+            const page = doc.currentPage();
+            doc.fit = .page;
+            doc.relayout();
+            doc.scrollToPage(page);
+            _ = doc.area.as(gtk.Widget).grabFocus();
+        };
+        self.screen = screen;
+    }
+
+    fn onRestoreLayout(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Window = @ptrCast(@alignCast(data.?));
+        if (self.active()) |doc| {
+            doc.relayout();
+            doc.scrollToPage(@min(self.restore_page, doc.pages -| 1));
+            doc.syncToolbar();
+            doc.area.as(gtk.Widget).queueDraw();
+        }
+        return 0;
+    }
+
+    fn onScreenKey(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *Window) callconv(.c) c_int {
+        if (self.screen == .normal) return 0;
+        if (keyval == gdk.KEY_Escape) {
+            self.setScreen(.normal);
+            return 1;
+        }
+        if (self.screen != .presentation) return 0;
+        const d = self.active() orelse return 0;
+        const page = d.currentPage();
+        switch (keyval) {
+            gdk.KEY_space, gdk.KEY_Page_Down, gdk.KEY_Right, gdk.KEY_Down, gdk.KEY_Return, gdk.KEY_KP_Enter => d.scrollToPage(@min(d.pages -| 1, page + 1)),
+            gdk.KEY_BackSpace, gdk.KEY_Page_Up, gdk.KEY_Left, gdk.KEY_Up => d.scrollToPage(page -| 1),
+            gdk.KEY_Home => d.scrollToPage(0),
+            gdk.KEY_End => d.scrollToPage(d.pages -| 1),
+            else => return 0,
+        }
+        return 1;
     }
 };
 

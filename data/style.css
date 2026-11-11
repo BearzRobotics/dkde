@@ -928,3 +928,9 @@ entry.dkde-snip-text { min-height: 28px; }
 .dkde-rosglyph.compact {
   font-size: 64px;
 }
+
+/* PDF viewer presentation: pages on black. */
+.dkde-pdf-presentation,
+.dkde-pdf-presentation > viewport {
+  background-color: black;
+}
