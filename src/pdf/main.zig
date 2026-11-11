@@ -84,6 +84,16 @@ const DocView = struct {
     paned: *gtk.Paned,
     sidebar: *gtk.Box,
     sidebar_list: *gtk.ListBox,
+    /// Pages and Bookmarks in the sidebar.
+    side_stack: *gtk.Stack,
+    thumbs: *gtk.ListView,
+    /// One (empty) string per page: the model of the thumbnail list.
+    thumb_model: *gtk.StringList,
+    thumb_sel: *gtk.SingleSelection,
+    /// Drawn thumbnails by page, dropped when the document changes.
+    thumb_cache: std.AutoHashMapUnmanaged(usize, *cairo.Surface) = .empty,
+    /// Set while the selection follows scrolling, so it does not scroll back.
+    thumb_syncing: bool = false,
     diag: render.Diag,
 
     session: ?*Session = null,
@@ -145,6 +155,10 @@ const DocView = struct {
             .paned = gtk.Paned.new(.horizontal),
             .sidebar = gtk.Box.new(.vertical, 0),
             .sidebar_list = gtk.ListBox.new(),
+            .side_stack = gtk.Stack.new(),
+            .thumbs = undefined,
+            .thumb_model = gtk.StringList.new(null),
+            .thumb_sel = undefined,
             .diag = render.Diag.init(allocator),
             .author = std.mem.span(glib.getRealName()),
         };
@@ -184,11 +198,6 @@ const DocView = struct {
         side_scroller.as(gtk.Widget).setVexpand(1);
         self.sidebar_list.setSelectionMode(.single);
         _ = gtk.ListBox.signals.row_activated.connect(self.sidebar_list, *DocView, &onRowActivated, self, .{});
-        const side_title = gtk.Label.new(common.tr("Bookmarks"));
-        side_title.setXalign(0);
-        side_title.as(gtk.Widget).setMarginStart(8);
-        side_title.as(gtk.Widget).setMarginTop(6);
-        side_title.as(gtk.Widget).addCssClass("heading");
         const side_buttons = gtk.Box.new(.horizontal, 4);
         side_buttons.as(gtk.Widget).setMarginStart(4);
         side_buttons.as(gtk.Widget).setMarginEnd(4);
@@ -202,9 +211,35 @@ const DocView = struct {
         _ = gtk.Button.signals.clicked.connect(remove_bm, *DocView, &onRemoveBookmarkClicked, self, .{});
         side_buttons.append(add_bm.as(gtk.Widget));
         side_buttons.append(remove_bm.as(gtk.Widget));
-        self.sidebar.append(side_title.as(gtk.Widget));
-        self.sidebar.append(side_scroller.as(gtk.Widget));
-        self.sidebar.append(side_buttons.as(gtk.Widget));
+        const bookmarks = gtk.Box.new(.vertical, 0);
+        bookmarks.append(side_scroller.as(gtk.Widget));
+        bookmarks.append(side_buttons.as(gtk.Widget));
+
+        // Page thumbnails: drawn when their row comes into view, then cached.
+        const factory = gtk.SignalListItemFactory.new();
+        _ = gtk.SignalListItemFactory.signals.setup.connect(factory, *DocView, &onThumbSetup, self, .{});
+        _ = gtk.SignalListItemFactory.signals.bind.connect(factory, *DocView, &onThumbBind, self, .{});
+        // The selection model takes over a reference to the list; the view keeps one too.
+        self.thumb_sel = gtk.SingleSelection.new(@ptrCast(self.thumb_model.as(gobject.Object).ref()));
+        self.thumb_sel.setAutoselect(0);
+        self.thumbs = gtk.ListView.new(@ptrCast(self.thumb_sel.as(gobject.Object).ref()), factory.as(gtk.ListItemFactory));
+        self.thumbs.as(gtk.Widget).addCssClass("dkde-pdf-thumbs");
+        _ = gtk.SelectionModel.signals.selection_changed.connect(self.thumb_sel.as(gtk.SelectionModel), *DocView, &onThumbPicked, self, .{});
+        const thumb_scroller = gtk.ScrolledWindow.new();
+        thumb_scroller.setChild(self.thumbs.as(gtk.Widget));
+        thumb_scroller.setPolicy(.never, .automatic);
+        thumb_scroller.as(gtk.Widget).setVexpand(1);
+
+        _ = self.side_stack.addTitled(thumb_scroller.as(gtk.Widget), "pages", common.tr("Pages"));
+        _ = self.side_stack.addTitled(bookmarks.as(gtk.Widget), "bookmarks", common.tr("Bookmarks"));
+        self.side_stack.as(gtk.Widget).setVexpand(1);
+        const switcher = gtk.StackSwitcher.new();
+        switcher.setStack(self.side_stack);
+        switcher.as(gtk.Widget).setHalign(.center);
+        switcher.as(gtk.Widget).setMarginTop(6);
+        switcher.as(gtk.Widget).setMarginBottom(4);
+        self.sidebar.append(switcher.as(gtk.Widget));
+        self.sidebar.append(self.side_stack.as(gtk.Widget));
         self.sidebar.as(gtk.Widget).setSizeRequest(230, -1);
         self.sidebar.as(gtk.Widget).setVisible(0);
 
@@ -243,6 +278,9 @@ const DocView = struct {
         self.expanded_touched.deinit(self.allocator);
         if (self.outline_arena) |*a| a.deinit();
         if (self.field_arena) |*a| a.deinit();
+        self.dropThumbs();
+        self.thumb_cache.deinit(self.allocator);
+        self.thumb_model.as(gobject.Object).unref();
         self.diag.deinit();
         self.allocator.destroy(self);
     }
@@ -265,6 +303,7 @@ const DocView = struct {
 
     fn closeDocument(self: *DocView) void {
         self.dropCache();
+        self.dropThumbs();
         if (self.layout) |*l| l.deinit(self.allocator);
         self.layout = null;
         if (self.session) |s| s.close();
@@ -321,7 +360,12 @@ const DocView = struct {
         self.scroller.getVadjustment().setValue(0);
         if (self.isActive()) self.syncToolbar() else self.updateTitle();
         self.rebuildSidebar();
-        if (self.rows.items.len > 0) self.sidebar.as(gtk.Widget).setVisible(1);
+        self.resetThumbs();
+        // A document with bookmarks opens with them showing, as before.
+        if (self.rows.items.len > 0) {
+            self.side_stack.setVisibleChildName("bookmarks");
+            self.sidebar.as(gtk.Widget).setVisible(1);
+        } else self.side_stack.setVisibleChildName("pages");
         if (!session.canEdit()) self.status.setText(common.tr("This file cannot be edited in place (it is encrypted or was damaged); you can still read it."));
         // Dev aid: run a search at once, for screenshots.
         if (glib.getenv("DKDE_DEBUG_SEARCH")) |t| self.runSearch(std.mem.span(t));
@@ -510,12 +554,128 @@ const DocView = struct {
         self.scrollToPage(page - 1);
     }
 
+    // ---- thumbnails ---------------------------------------------------------------------------------------
+
+    const thumb_width = 120;
+
+    fn dropThumbs(self: *DocView) void {
+        var it = self.thumb_cache.valueIterator();
+        while (it.next()) |sf| sf.*.destroy();
+        self.thumb_cache.clearRetainingCapacity();
+    }
+
+    /// One row per page, all drawn again (after opening a file or an edit).
+    fn resetThumbs(self: *DocView) void {
+        self.dropThumbs();
+        const n_old = self.thumb_model.as(gio.ListModel).getNItems();
+        const blanks = self.allocator.alloc(?[*:0]const u8, self.pages + 1) catch return;
+        defer self.allocator.free(blanks);
+        @memset(blanks[0..self.pages], "");
+        blanks[self.pages] = null;
+        self.thumb_syncing = true;
+        self.thumb_model.splice(0, n_old, @ptrCast(blanks.ptr));
+        self.thumb_syncing = false;
+        self.followThumbs();
+    }
+
+    /// Selects the thumbnail of the page in view, and keeps it visible.
+    fn followThumbs(self: *DocView) void {
+        if (self.pages == 0) return;
+        const page: c_uint = @intCast(self.currentPage());
+        if (self.thumb_sel.getSelected() == page) return;
+        self.thumb_syncing = true;
+        self.thumb_sel.setSelected(page);
+        self.thumb_syncing = false;
+        if (self.sidebar.as(gtk.Widget).getVisible() != 0) self.thumbs.scrollTo(page, .{}, null);
+    }
+
+    fn onThumbPicked(sel: *gtk.SelectionModel, _: c_uint, _: c_uint, self: *DocView) callconv(.c) void {
+        if (self.thumb_syncing) return;
+        const pos = @as(*gtk.SingleSelection, @ptrCast(sel)).getSelected();
+        if (pos == gtk.INVALID_LIST_POSITION or pos >= self.pages) return;
+        self.scrollToPage(pos);
+    }
+
+    fn onThumbSetup(_: *gtk.SignalListItemFactory, item_obj: *gobject.Object, self: *DocView) callconv(.c) void {
+        const item: *gtk.ListItem = @ptrCast(item_obj);
+        const box = gtk.Box.new(.vertical, 2);
+        box.as(gtk.Widget).setMarginTop(6);
+        box.as(gtk.Widget).setMarginBottom(6);
+        const area = gtk.DrawingArea.new();
+        area.as(gtk.Widget).setHalign(.center);
+        area.setDrawFunc(onThumbDraw, self, null);
+        const label = gtk.Label.new(null);
+        label.as(gtk.Widget).addCssClass("dim-label");
+        box.append(area.as(gtk.Widget));
+        box.append(label.as(gtk.Widget));
+        item.setChild(box.as(gtk.Widget));
+    }
+
+    fn onThumbBind(_: *gtk.SignalListItemFactory, item_obj: *gobject.Object, self: *DocView) callconv(.c) void {
+        const item: *gtk.ListItem = @ptrCast(item_obj);
+        const page: usize = item.getPosition();
+        if (page >= self.page_points.len) return;
+        const box = item.getChild() orelse return;
+        const area: *gtk.DrawingArea = @ptrCast(box.getFirstChild() orelse return);
+        const label: *gtk.Label = @ptrCast(area.as(gtk.Widget).getNextSibling() orelse return);
+        const size = self.page_points[page];
+        area.setContentWidth(thumb_width);
+        area.setContentHeight(@intFromFloat(@max(1, thumb_width * size.h / @max(size.w, 1))));
+        area.as(gobject.Object).setData("dkde-page", @ptrFromInt(page + 1));
+        area.as(gtk.Widget).queueDraw();
+        var buf: [16]u8 = undefined;
+        label.setText(std.fmt.bufPrintSentinel(&buf, "{d}", .{page + 1}, 0) catch "");
+    }
+
+    fn onThumbDraw(area: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, data: ?*anyopaque) callconv(.c) void {
+        const self: *DocView = @ptrCast(@alignCast(data.?));
+        const tag = @intFromPtr(area.as(gobject.Object).getData("dkde-page") orelse return);
+        const page = tag - 1;
+        const w: f64 = @floatFromInt(width);
+        const h: f64 = @floatFromInt(height);
+        if (self.thumbSurface(page, width, height)) |sf| {
+            cr.setSourceSurface(sf, 0, 0);
+            cr.paint();
+        } else {
+            cr.setSourceRgb(1, 1, 1);
+            cr.rectangle(0, 0, w, h);
+            cr.fill();
+        }
+        // A thin frame, as in the page column.
+        cr.setSourceRgba(0, 0, 0, 0.25);
+        cr.setLineWidth(1);
+        cr.rectangle(0.5, 0.5, w - 1, h - 1);
+        cr.stroke();
+    }
+
+    fn thumbSurface(self: *DocView, page: usize, width: c_int, height: c_int) ?*cairo.Surface {
+        if (self.thumb_cache.get(page)) |sf| return sf;
+        const s = self.session orelse return null;
+        if (page >= self.page_points.len) return null;
+        // Keep memory bounded on very long documents: start over past 400.
+        if (self.thumb_cache.count() > 400) self.dropThumbs();
+        const sf = cairo.Surface.imageCreate(.argb32, width, height);
+        const cr = cairo.Context.create(sf);
+        defer cr.destroy();
+        cr.setSourceRgb(1, 1, 1);
+        cr.paint();
+        const scale_ = @as(f64, @floatFromInt(width)) / @max(self.page_points[page].w, 1);
+        render.renderPage(self.allocator, s.doc, page, cr, scale_, &self.diag) catch {};
+        sf.flush();
+        self.thumb_cache.put(self.allocator, page, sf) catch {
+            sf.destroy();
+            return null;
+        };
+        return sf;
+    }
+
     fn onScrolled(_: *gtk.Adjustment, self: *DocView) callconv(.c) void {
         if (self.isActive()) {
             self.syncing = true;
             self.page_spin.setValue(@floatFromInt(self.currentPage() + 1));
             self.syncing = false;
         }
+        self.followThumbs();
         self.area.as(gtk.Widget).queueDraw();
     }
 
@@ -876,6 +1036,7 @@ const DocView = struct {
     /// An edit happened: redraw everything that depends on the file.
     fn changed(self: *DocView) void {
         self.dropCache();
+        self.resetThumbs();
         self.clearSelection();
         self.matches.clearRetainingCapacity();
         self.fields_generation = std.math.maxInt(u32);
@@ -1779,7 +1940,7 @@ const Window = struct {
                 mb.item("Fit _width", "fit-width", null),
                 mb.item("Fit _page", "fit-page", null),
                 .separator,
-                mb.item("_Bookmarks", "toggle-sidebar", "F9"),
+                mb.item("_Sidebar", "toggle-sidebar", "F9"),
                 mb.check("Show form _fields", "toggle-fields", true),
                 .separator,
                 mb.item("_Next Tab", "next-tab", "<Control>Page_Down"),
