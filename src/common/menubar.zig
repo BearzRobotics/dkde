@@ -23,6 +23,9 @@ pub const Entry = union(enum) {
     item: Item,
     /// A line between groups of items.
     separator,
+    /// A submenu the app fills while it runs (e.g. recent files); find it
+    /// with `submenu(window, id)`.
+    submenu: struct { label: [:0]const u8, id: [:0]const u8 },
 };
 
 pub const Menu = struct {
@@ -32,6 +35,10 @@ pub const Menu = struct {
 
 pub fn item(label: [:0]const u8, action: [:0]const u8, accel: ?[:0]const u8) Entry {
     return .{ .item = .{ .label = label, .action = action, .accel = accel } };
+}
+
+pub fn dynamic(label: [:0]const u8, id: [:0]const u8) Entry {
+    return .{ .submenu = .{ .label = label, .id = id } };
 }
 
 pub fn check(label: [:0]const u8, action: [:0]const u8, initial: bool) Entry {
@@ -81,6 +88,15 @@ pub fn build(
                 group.as(gobject.Object).unref();
                 group = gio.Menu.new();
             },
+            .submenu => |sm| {
+                const sub = gio.Menu.new();
+                group.appendSubmenu(sm.label, sub.as(gio.MenuModel));
+                var key_buf: [96]u8 = undefined;
+                const key = std.fmt.bufPrintSentinel(&key_buf, "dkde-submenu-{s}", .{sm.id}, 0) catch continue;
+                // The bar's model keeps the submenu alive as long as the window.
+                window.as(gobject.Object).setData(key, sub);
+                sub.as(gobject.Object).unref();
+            },
             .item => |it| {
                 var detailed_buf: [96]u8 = undefined;
                 const detailed = std.fmt.bufPrintSentinel(&detailed_buf, "win.{s}", .{it.action}, 0) catch continue;
@@ -109,6 +125,14 @@ pub fn build(
     const bar = gtk.PopoverMenuBar.newFromModel(model.as(gio.MenuModel));
     bar.as(gtk.Widget).addCssClass("dkde-menubar");
     return bar;
+}
+
+/// The submenu added with `dynamic(_, id)`, to empty and fill again.
+pub fn submenu(window: *gtk.ApplicationWindow, id: []const u8) ?*gio.Menu {
+    var key_buf: [96]u8 = undefined;
+    const key = std.fmt.bufPrintSentinel(&key_buf, "dkde-submenu-{s}", .{id}, 0) catch return null;
+    const data = window.as(gobject.Object).getData(key) orelse return null;
+    return @ptrCast(@alignCast(data));
 }
 
 /// Sets a check item's state without triggering the callback.

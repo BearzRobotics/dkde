@@ -22,6 +22,7 @@ const common = @import("common");
 const pdf = @import("pdf");
 
 const layout_mod = @import("layout.zig");
+const places = @import("places.zig");
 const render = @import("pdfrender");
 const session_mod = @import("session.zig");
 const Session = session_mod.Session;
@@ -32,7 +33,10 @@ const gap = 12.0;
 const margin = 16.0;
 const cache_size = 6;
 
-const Fit = enum { custom, width, page };
+const Fit = places.Fit;
+
+/// The most documents listed under Open Recent and on the start page.
+const recent_shown = 12;
 
 /// The printer and options chosen last, for the next print in this session.
 var print_settings: ?*gtk.PrintSettings = null;
@@ -88,6 +92,12 @@ const DocView = struct {
     zoom_label: *gtk.Label,
     search: *gtk.SearchEntry,
     status: *gtk.Label,
+    /// The start page (recent documents) of an empty tab, or the document.
+    stack: *gtk.Stack,
+    start_list: *gtk.ListBox,
+    /// The page to scroll to once the view has its full height (a document
+    /// opened where it was left, before the window is laid out).
+    pending_page: ?usize = null,
     paned: *gtk.Paned,
     sidebar: *gtk.Box,
     sidebar_list: *gtk.ListBox,
@@ -128,8 +138,6 @@ const DocView = struct {
     mode: layout_mod.Mode = .{},
     cache: [cache_size]CacheEntry = @splat(.{}),
     next_slot: usize = 0,
-    /// Set while the page box is updated from scrolling, so that does not scroll again.
-    syncing: bool = false,
 
     needle: ?[:0]u8 = null,
     matches: std.ArrayList(Match) = .empty,
@@ -175,6 +183,8 @@ const DocView = struct {
             .zoom_label = host.zoom_label,
             .search = host.search,
             .status = host.status,
+            .stack = gtk.Stack.new(),
+            .start_list = gtk.ListBox.new(),
             .paned = gtk.Paned.new(.horizontal),
             .sidebar = gtk.Box.new(.vertical, 0),
             .sidebar_list = gtk.ListBox.new(),
@@ -194,6 +204,7 @@ const DocView = struct {
         self.scroller.as(gtk.Widget).setHexpand(1);
         self.scroller.as(gtk.Widget).addCssClass("dkde-pdf-scroller");
         _ = gtk.Adjustment.signals.value_changed.connect(self.scroller.getVadjustment(), *DocView, &onScrolled, self, .{});
+        _ = gtk.Adjustment.signals.changed.connect(self.scroller.getVadjustment(), *DocView, &onVadjChanged, self, .{});
         _ = gtk.DrawingArea.signals.resize.connect(self.area, *DocView, &onResize, self, .{});
 
         const zoom_keys = gtk.EventControllerScroll.new(.{ .vertical = true });
@@ -272,12 +283,129 @@ const DocView = struct {
         self.paned.setResizeStartChild(0);
         self.paned.as(gtk.Widget).setVexpand(1);
 
+        // The start page: the documents opened lately, as in Evince.
+        const heading = gtk.Label.new(common.tr("Recent Documents"));
+        heading.setXalign(0);
+        heading.as(gtk.Widget).addCssClass("title-3");
+        self.start_list.setSelectionMode(.none);
+        self.start_list.as(gtk.Widget).addCssClass("boxed-list");
+        self.start_list.as(gtk.Widget).addCssClass("dkde-pdf-recent");
+        _ = gtk.ListBox.signals.row_activated.connect(self.start_list, *DocView, &onRecentRow, self, .{});
+        const hint = gtk.Label.new(common.tr("Open a PDF with File \u{203a} Open (Ctrl+O), or drop one on this window."));
+        hint.setWrap(1);
+        hint.setXalign(0);
+        hint.as(gtk.Widget).addCssClass("dim-label");
+        const column = gtk.Box.new(.vertical, 12);
+        column.as(gtk.Widget).setSizeRequest(460, -1);
+        column.as(gtk.Widget).setHalign(.center);
+        column.as(gtk.Widget).setMarginTop(32);
+        column.as(gtk.Widget).setMarginBottom(32);
+        column.append(heading.as(gtk.Widget));
+        column.append(self.start_list.as(gtk.Widget));
+        column.append(hint.as(gtk.Widget));
+        const start = gtk.ScrolledWindow.new();
+        start.setPolicy(.never, .automatic);
+        start.setChild(column.as(gtk.Widget));
+        _ = self.stack.addNamed(start.as(gtk.Widget), "start");
+        _ = self.stack.addNamed(self.paned.as(gtk.Widget), "doc");
+        self.stack.as(gtk.Widget).setVexpand(1);
+        self.fillStart();
+
         return self;
     }
 
     /// The widget the notebook shows for this tab.
     fn widget(self: *DocView) *gtk.Widget {
-        return self.paned.as(gtk.Widget);
+        return self.stack.as(gtk.Widget);
+    }
+
+    /// Lists the window's recent documents on the start page.
+    fn fillStart(self: *DocView) void {
+        self.start_list.removeAll();
+        const recent = self.host.recent.items;
+        self.start_list.as(gtk.Widget).setVisible(@intFromBool(recent.len > 0));
+        for (recent) |path| {
+            const icon = gtk.Image.newFromIconName("application-pdf");
+            icon.setPixelSize(32);
+            // The base name ends where the path does, at its 0.
+            const base = std.fs.path.basename(path);
+            const name = gtk.Label.new(path[path.len - base.len ..].ptr);
+            name.setXalign(0);
+            name.setEllipsize(.middle);
+            // The folder, with the home folder shortened to "~".
+            var buf: [600]u8 = undefined;
+            const dir = std.fs.path.dirname(path) orelse "/";
+            const home = std.mem.span(glib.getHomeDir());
+            const shown = if (home.len > 1 and std.mem.startsWith(u8, dir, home) and (dir.len == home.len or dir[home.len] == '/'))
+                std.fmt.bufPrintSentinel(&buf, "~{s}", .{dir[home.len..]}, 0) catch ""
+            else
+                std.fmt.bufPrintSentinel(&buf, "{s}", .{dir}, 0) catch "";
+            const where = gtk.Label.new(shown.ptr);
+            where.setXalign(0);
+            where.setEllipsize(.middle);
+            where.as(gtk.Widget).addCssClass("dim-label");
+            const texts = gtk.Box.new(.vertical, 2);
+            texts.as(gtk.Widget).setHexpand(1);
+            texts.append(name.as(gtk.Widget));
+            texts.append(where.as(gtk.Widget));
+            const row = gtk.Box.new(.horizontal, 10);
+            row.as(gtk.Widget).setMarginTop(6);
+            row.as(gtk.Widget).setMarginBottom(6);
+            row.as(gtk.Widget).setMarginStart(8);
+            row.as(gtk.Widget).setMarginEnd(8);
+            row.append(icon.as(gtk.Widget));
+            row.append(texts.as(gtk.Widget));
+            row.as(gtk.Widget).setTooltipText(path.ptr);
+            self.start_list.append(row.as(gtk.Widget));
+        }
+    }
+
+    fn onRecentRow(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *DocView) callconv(.c) void {
+        const i: usize = @intCast(@max(0, row.getIndex()));
+        const recent = self.host.recent.items;
+        if (i >= recent.len) return;
+        // Opening may refill this list, or close this tab when the file is
+        // open in another one: use only copies after it.
+        const gpa = self.allocator;
+        const host = self.host;
+        const path = gpa.dupeSentinel(u8, recent[i], 0) catch return;
+        defer gpa.free(path);
+        host.openFile(path);
+    }
+
+    /// Scrolls to the page the document was left at, once the view is tall
+    /// enough to reach it.
+    fn onVadjChanged(adj: *gtk.Adjustment, self: *DocView) callconv(.c) void {
+        const page = self.pending_page orelse return;
+        const l = self.layout orelse return;
+        if (page >= l.tops.len) {
+            self.pending_page = null;
+            return;
+        }
+        const want = l.tops[page] - margin / 2;
+        if (adj.getUpper() - adj.getPageSize() + 0.5 < want) return;
+        self.pending_page = null;
+        adj.setValue(want);
+    }
+
+    /// Remembers where this document is being left, for next time.
+    fn rememberPlace(self: *DocView) void {
+        if (self.session == null) return;
+        const path = self.path orelse return;
+        const page = self.pending_page orelse self.currentPage();
+        savePlace(self.allocator, path, .{ .page = page, .fit = self.fit, .zoom = self.zoom });
+    }
+
+    /// Goes back to where `path` was left last time, if it was opened before.
+    fn restorePlace(self: *DocView, path: []const u8) void {
+        const place = loadPlace(self.allocator, path) orelse return;
+        if (place.page >= self.pages) return;
+        self.fit = place.fit;
+        if (place.fit == .custom) self.zoom = place.zoom;
+        self.relayout();
+        if (place.page == 0) return;
+        self.pending_page = place.page;
+        onVadjChanged(self.scroller.getVadjustment(), self);
     }
 
     fn isActive(self: *const DocView) bool {
@@ -311,10 +439,10 @@ const DocView = struct {
 
     /// Puts this tab's page count, zoom and title in the shared toolbar.
     fn syncToolbar(self: *DocView) void {
-        self.syncing = true;
+        self.host.syncing = true;
         self.page_spin.setRange(1, @floatFromInt(@max(1, self.pages)));
         self.page_spin.setValue(@floatFromInt(self.currentPage() + 1));
-        self.syncing = false;
+        self.host.syncing = false;
         var buf: [32]u8 = undefined;
         self.page_total.setText(std.fmt.bufPrintSentinel(&buf, "/ {d}", .{self.pages}, 0) catch "");
         var zb: [16]u8 = undefined;
@@ -325,7 +453,10 @@ const DocView = struct {
 
     // ---- documents ------------------------------------------------------------------------------
 
+    /// Frees the document. Its place is remembered first by the callers that
+    /// still have a laid-out view (`rememberPlace`); at teardown it is gone.
     fn closeDocument(self: *DocView) void {
+        self.pending_page = null;
         self.dropCache();
         self.dropThumbs();
         if (self.layout) |*l| l.deinit(self.allocator);
@@ -366,6 +497,7 @@ const DocView = struct {
             }
             return .failed;
         };
+        self.rememberPlace();
         self.closeDocument();
         self.session = session;
         const count = session.pageCount();
@@ -379,9 +511,12 @@ const DocView = struct {
         if (self.path) |old| self.allocator.free(old);
         self.path = owned;
 
+        self.stack.setVisibleChildName("doc");
         self.fit = .width;
         self.relayout();
         self.scroller.getVadjustment().setValue(0);
+        self.restorePlace(owned);
+        self.host.noteRecent(owned);
         if (self.isActive()) self.syncToolbar() else self.updateTitle();
         self.rebuildSidebar();
         self.resetThumbs();
@@ -592,7 +727,7 @@ const DocView = struct {
     }
 
     fn gotoPageNumber(self: *DocView, number: c_int) void {
-        if (self.syncing) return;
+        if (self.host.syncing) return;
         const page: usize = @intCast(@max(1, number));
         self.scrollToPage(page - 1);
     }
@@ -714,9 +849,9 @@ const DocView = struct {
 
     fn onScrolled(_: *gtk.Adjustment, self: *DocView) callconv(.c) void {
         if (self.isActive()) {
-            self.syncing = true;
+            self.host.syncing = true;
             self.page_spin.setValue(@floatFromInt(self.currentPage() + 1));
-            self.syncing = false;
+            self.host.syncing = false;
         }
         self.followThumbs();
         self.area.as(gtk.Widget).queueDraw();
@@ -2156,7 +2291,14 @@ const Window = struct {
     /// The data of each tab's close button, owned here (GTK does not destroy a
     /// notebook's tab labels with the window), in the same order as `tabs`.
     closers: std.ArrayList(*TabClose) = .empty,
-    initial_file: ?[:0]const u8,
+    /// The PDFs opened lately (newest first, at most `recent_shown`), from
+    /// the desktop's shared recent-files list.
+    recent: std.ArrayList([:0]u8) = .empty,
+    recent_handler: c_ulong = 0,
+    /// Set while a tab writes its page into the shared page box, so that
+    /// does not scroll: not again, and not the tab being left (the box changes
+    /// while the notebook still reports that one as showing).
+    syncing: bool = false,
     menu_bar: *gtk.Widget = undefined,
     toolbar: *gtk.Widget = undefined,
     /// Pages drawn with their colours inverted (light text on black).
@@ -2182,7 +2324,6 @@ const Window = struct {
             .zoom_label = gtk.Label.new("100%"),
             .search = gtk.SearchEntry.new(),
             .status = gtk.Label.new(""),
-            .initial_file = initial_path,
         };
         const window = self.window.as(gtk.Window);
         window.setTitle(common.tr("PDF Viewer"));
@@ -2195,6 +2336,7 @@ const Window = struct {
             .{ .label = "_File", .entries = &.{
                 mb.item("New _Tab", "new-tab", "<Control>t"),
                 mb.item("_Open…", "open", "<Control>o"),
+                mb.dynamic("Open _Recent", "recent"),
                 mb.item("_Save", "save", "<Control>s"),
                 mb.item("Save _As…", "save-as", "<Control><Shift>s"),
                 mb.item("_Print…", "print", "<Control>p"),
@@ -2256,6 +2398,15 @@ const Window = struct {
             } },
         };
         const menu_bar = mb.build(app, self.window, &menus, Window, onMenubarAction, self);
+        // Open Recent's items carry the file's path.
+        const string_type = glib.VariantType.new("s");
+        defer string_type.free();
+        const open_recent = gio.SimpleAction.new("open-recent", string_type);
+        _ = gio.SimpleAction.signals.activate.connect(open_recent, *Window, &onOpenRecent, self, .{});
+        self.window.as(gio.ActionMap).addAction(open_recent.as(gio.Action));
+        open_recent.as(gobject.Object).unref();
+        self.loadRecent();
+        self.recent_handler = gtk.RecentManager.signals.changed.connect(gtk.RecentManager.getDefault(), *Window, &onRecentChanged, self, .{});
 
         // Toolbar: page, zoom, search (they act on the tab that is showing).
         const toolbar = gtk.Box.new(.horizontal, 8);
@@ -2305,6 +2456,11 @@ const Window = struct {
         root.append(self.status.as(gtk.Widget));
         window.setChild(root.as(gtk.Widget));
 
+        // PDFs dropped anywhere on the window open in tabs.
+        const drop = gtk.DropTarget.new(gdk.FileList.getGObjectType(), .{ .copy = true });
+        _ = gtk.DropTarget.signals.drop.connect(drop, *Window, &onDropFiles, self, .{});
+        root.as(gtk.Widget).addController(drop.as(gtk.EventController));
+
         _ = gtk.Window.signals.close_request.connect(window, *Window, &onCloseRequest, self, .{});
         _ = gtk.Widget.signals.destroy.connect(self.window, *Window, &onDestroy, self, .{});
         _ = self.newTab() catch return error.OutOfMemory;
@@ -2313,7 +2469,134 @@ const Window = struct {
 
     pub fn present(self: *Window) void {
         self.window.as(gtk.Window).present();
-        if (self.initial_file) |p| self.openFile(p);
+        // Every file named on the command line opens in its own tab.
+        for (common.runapp.args) |arg| self.openArg(std.mem.span(arg));
+    }
+
+    /// Opens a command-line argument: a path or a file:// URI.
+    fn openArg(self: *Window, arg: []const u8) void {
+        if (arg.len > 0 and arg[0] == '-') return;
+        const file = gio.File.newForCommandlineArg(@ptrCast(arg.ptr));
+        defer file.as(gobject.Object).unref();
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        self.openFile(std.mem.span(path));
+    }
+
+    // ---- recent documents ---------------------------------------------------------------------------
+
+    /// Reads the PDFs opened lately from the desktop's recent-files list
+    /// (shared with Files and other programs), then shows them in Open Recent
+    /// and on the start page of empty tabs.
+    fn loadRecent(self: *Window) void {
+        for (self.recent.items) |p| self.allocator.free(p);
+        self.recent.clearRetainingCapacity();
+
+        const Found = struct { path: [:0]u8, when: i64 };
+        var found: std.ArrayList(Found) = .empty;
+        defer found.deinit(self.allocator);
+        // The first `moved` paths go to `recent`; the rest are freed here.
+        var moved: usize = 0;
+        defer for (found.items[moved..]) |f| self.allocator.free(f.path);
+        var node: ?*glib.List = gtk.RecentManager.getDefault().getItems();
+        const head = node;
+        while (node) |n| : (node = n.f_next) {
+            const info: *gtk.RecentInfo = @ptrCast(@alignCast(n.f_data orelse continue));
+            defer info.unref();
+            const mime = std.mem.span(info.getMimeType());
+            if (!std.mem.eql(u8, mime, "application/pdf")) continue;
+            const file = gio.File.newForUri(info.getUri());
+            defer file.as(gobject.Object).unref();
+            const path = file.getPath() orelse continue;
+            defer glib.free(path);
+            if (!common.fsio.exists(std.mem.span(path))) continue;
+            const owned = self.allocator.dupeSentinel(u8, std.mem.span(path), 0) catch continue;
+            found.append(self.allocator, .{ .path = owned, .when = info.getModified().toUnix() }) catch self.allocator.free(owned);
+        }
+        if (head) |h| h.free();
+
+        std.mem.sort(Found, found.items, {}, struct {
+            fn newer(_: void, a: Found, b: Found) bool {
+                return a.when > b.when;
+            }
+        }.newer);
+        for (found.items) |f| {
+            if (moved >= recent_shown) break;
+            self.recent.append(self.allocator, f.path) catch break;
+            moved += 1;
+        }
+
+        if (common.menubar.submenu(self.window, "recent")) |menu| {
+            menu.removeAll();
+            for (self.recent.items) |path| {
+                var buf: [300]u8 = undefined;
+                // A "_" in a name would become a mnemonic: double it.
+                const label = mnemonicSafe(&buf, std.fs.path.basename(path));
+                const it = gio.MenuItem.new(label, null);
+                defer it.as(gobject.Object).unref();
+                it.setActionAndTargetValue("win.open-recent", glib.Variant.newString(path));
+                menu.appendItem(it);
+            }
+        }
+        for (self.tabs.items) |t| if (t.session == null) t.fillStart();
+    }
+
+    fn mnemonicSafe(buf: []u8, name: []const u8) [:0]const u8 {
+        var n: usize = 0;
+        for (name) |c| {
+            if (n + 3 >= buf.len) break;
+            buf[n] = c;
+            n += 1;
+            if (c == '_') {
+                buf[n] = '_';
+                n += 1;
+            }
+        }
+        buf[n] = 0;
+        return buf[0..n :0];
+    }
+
+    /// Adds `path` to the desktop's recent files (the list then changes and
+    /// is read again).
+    fn noteRecent(_: *Window, path: [:0]const u8) void {
+        const file = gio.File.newForPath(path);
+        defer file.as(gobject.Object).unref();
+        const uri = file.getUri();
+        defer glib.free(uri);
+        _ = gtk.RecentManager.getDefault().addItem(uri);
+    }
+
+    fn onRecentChanged(_: *gtk.RecentManager, self: *Window) callconv(.c) void {
+        self.loadRecent();
+    }
+
+    fn onOpenRecent(_: *gio.SimpleAction, param: ?*glib.Variant, self: *Window) callconv(.c) void {
+        const v = param orelse return;
+        var len: usize = 0;
+        const path = self.allocator.dupeSentinel(u8, std.mem.span(v.getString(&len)), 0) catch return;
+        defer self.allocator.free(path);
+        if (!common.fsio.exists(path)) {
+            common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot open the file"), common.tr("The file is no longer there."));
+            return;
+        }
+        self.openFile(path);
+    }
+
+    fn onDropFiles(_: *gtk.DropTarget, value: *gobject.Value, _: f64, _: f64, self: *Window) callconv(.c) c_int {
+        const boxed = value.getBoxed() orelse return 0;
+        const list: *gdk.FileList = @ptrCast(@alignCast(boxed));
+        var opened = false;
+        var node: ?*glib.SList = list.getFiles();
+        const head = node;
+        while (node) |n| : (node = n.f_next) {
+            const f: *gio.File = @ptrCast(@alignCast(n.f_data orelse continue));
+            const path = f.getPath() orelse continue;
+            defer glib.free(path);
+            self.openFile(std.mem.span(path));
+            opened = true;
+        }
+        if (head) |h| h.free();
+        return @intFromBool(opened);
     }
 
     fn zoomButton(self: *Window, icon: [:0]const u8, tip: [:0]const u8, comptime handler: fn (*gtk.Button, *Window) callconv(.c) void) *gtk.Widget {
@@ -2324,6 +2607,10 @@ const Window = struct {
     }
 
     fn onDestroy(_: *gtk.ApplicationWindow, self: *Window) callconv(.c) void {
+        // The recent-files list outlives the window.
+        if (self.recent_handler != 0) gobject.signalHandlerDisconnect(gtk.RecentManager.getDefault().as(gobject.Object), self.recent_handler);
+        for (self.recent.items) |p| self.allocator.free(p);
+        self.recent.deinit(self.allocator);
         for (self.tabs.items) |t| t.deinit();
         self.tabs.deinit(self.allocator);
         self.labels.deinit(self.allocator);
@@ -2406,6 +2693,7 @@ const Window = struct {
 
     fn removeTab(self: *Window, doc: *DocView) void {
         const i = self.indexOf(doc) orelse return;
+        doc.rememberPlace();
         // The last tab is emptied, not removed: the window always shows something.
         if (self.tabs.items.len == 1) {
             if (doc.session == null) return;
@@ -2428,8 +2716,17 @@ const Window = struct {
         self.allocator.destroy(tc);
     }
 
-    /// Opens `path` in the empty tab that is showing, or in a new tab.
+    /// Opens `path` in the empty tab that is showing, or in a new tab. A file
+    /// that is open already is shown, not opened twice.
     fn openFile(self: *Window, path: [:0]const u8) void {
+        for (self.tabs.items, 0..) |t, i| {
+            const p = t.path orelse continue;
+            if (t.session == null or !std.mem.eql(u8, p, path)) continue;
+            // An empty tab that was opened just to pick the file goes away.
+            if (self.active()) |a| if (a != t and a.session == null) self.removeTab(a);
+            self.notebook.setCurrentPage(@intCast(self.indexOf(t) orelse i));
+            return;
+        }
         var doc = self.active() orelse return;
         if (doc.session != null) doc = self.newTab() catch return;
         const result = doc.openPath(path, null);
@@ -2496,7 +2793,11 @@ const Window = struct {
         for (self.tabs.items) |t| {
             if (t.isDirty()) dirty = true;
         }
-        if (!dirty) return 0;
+        if (!dirty) {
+            // While the views are still laid out.
+            for (self.tabs.items) |t| t.rememberPlace();
+            return 0;
+        }
         common.dialogs.choose(self.window.as(gtk.Window), common.tr("Save the changes to your PDFs?"), common.tr("Your annotations, bookmarks and form entries are not saved yet."), &.{ "Save all", "Discard", "Cancel" }, 2, Window, onWindowCloseChoice, self);
         return 1;
     }
@@ -2638,16 +2939,38 @@ const Window = struct {
     }
 };
 
-/// The file named on the command line, if any.
-var initial_path: ?[:0]const u8 = null;
+// ---- where documents were left ----------------------------------------------------------------
+
+fn placesFile(gpa: std.mem.Allocator) ?[:0]u8 {
+    return common.paths.userStateFile(gpa, "pdf-places") catch null;
+}
+
+fn loadPlace(gpa: std.mem.Allocator, path: []const u8) ?places.Place {
+    const file = placesFile(gpa) orelse return null;
+    defer gpa.free(file);
+    const text = (common.fsio.readFile(gpa, file, 1 << 20) catch return null) orelse return null;
+    defer gpa.free(text);
+    return places.find(text, path);
+}
+
+fn savePlace(gpa: std.mem.Allocator, path: []const u8, place: places.Place) void {
+    const file = placesFile(gpa) orelse return;
+    defer gpa.free(file);
+    const old = (common.fsio.readFile(gpa, file, 1 << 20) catch null) orelse gpa.dupe(u8, "") catch return;
+    defer gpa.free(old);
+    const new = places.put(gpa, old, path, place) catch return;
+    defer gpa.free(new);
+    if (std.fs.path.dirname(file)) |dir| common.fsio.makePath(dir) catch {};
+    common.fsio.writeFileAtomic(file, new) catch |e| std.log.warn("cannot save {s}: {s}", .{ file, @errorName(e) });
+}
 
 pub fn main(init: std.process.Init.Minimal) !void {
-    cli.handle(init.args, .{ .name = "dkde-pdf", .summary = "PDF viewer and annotator", .usage = "[FILE]" });
-    if (init.args.vector.len > 1) initial_path = std.mem.span(init.args.vector[1]);
+    cli.handle(init.args, .{ .name = "dkde-pdf", .summary = "PDF viewer and annotator", .usage = "[FILE...]" });
     try common.runapp.run("org.dkde.pdf", Window, init);
 }
 
 test {
     _ = @import("layout.zig");
+    _ = @import("places.zig");
     _ = @import("session.zig");
 }
