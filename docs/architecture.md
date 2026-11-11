@@ -32,7 +32,7 @@ No program imports another program's source. They start each other only as optio
 
 ## Build
 
-`build.zig` is the only build script. `zig build` builds everything; `zig build -Dapp=<name>` builds, tests (`test-<name>`) and installs one program, with `share/dkde/{style.css,dkde.toml}` and that program's own defaults. Lazy dependencies (`gobject`, `wayland`) are fetched only when a GTK program is selected. Dependencies are pinned by hash in `build.zig.zon`; during development a sibling checkout can be used by replacing a `.url` with `.path = "../name"`.
+`build.zig` sets up what the programs share (GTK and GLib bindings, `core`, `common`, the Wayland protocols, the image and PDF modules) and calls `src/<name>/build.zig` for each program, which adds that program's own imports, libraries and embedded files and names its data files and menu entry. `zig build` (or `-Dapp=all`) builds everything; `zig build -Dapp=<name>` builds, tests (`test-<name>`) and installs one program, with `share/dkde/{style.css,dkde.toml}` and that program's own defaults; `-Dapp=term,edit` builds a few. Lazy dependencies (`gobject`, `wayland`) are fetched only when a GTK program is selected. Dependencies are pinned by hash in `build.zig.zon`; during development a sibling checkout can be used by replacing a `.url` with `.path = "../name"`.
 
 ## Programs worth knowing about
 

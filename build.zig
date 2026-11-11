@@ -1,41 +1,127 @@
+//! The build of every dkde program. What each program needs (libraries,
+//! modules, embedded files, data files, a menu entry) is in its own
+//! `src/<name>/build.zig`; this file sets up what programs share and calls
+//! each of them.
+//!
+//!   zig build                    every program (also: -Dapp=all)
+//!   zig build -Dapp=calc         one program, with only its own data
+//!   zig build -Dapp=term,edit    a few programs
+//!   zig build test               the tests of what is selected
+//!   zig build run-<name>         build and run one program from the tree
+
 const std = @import("std");
 
-/// Programs that can be built on their own with -Dapp=<name> and are built
-/// outside the `components` loop.
-const standalone = [_][]const u8{ "polkit", "pdfcheck" };
+/// Every program, in the order they are configured. Each has a
+/// `src/<name>/build.zig`; see `Ctx` for what one may declare.
+const programs = .{
+    .{ "panel", @import("src/panel/build.zig") },
+    .{ "term", @import("src/term/build.zig") },
+    .{ "files", @import("src/files/build.zig") },
+    .{ "settings", @import("src/settings/build.zig") },
+    .{ "calc", @import("src/calc/build.zig") },
+    .{ "edit", @import("src/edit/build.zig") },
+    .{ "view", @import("src/view/build.zig") },
+    .{ "tasks", @import("src/tasks/build.zig") },
+    .{ "snip", @import("src/snip/build.zig") },
+    .{ "setup", @import("src/setup/build.zig") },
+    .{ "greeter", @import("src/greeter/build.zig") },
+    .{ "pointer", @import("src/pointer/build.zig") },
+    .{ "charmap", @import("src/charmap/build.zig") },
+    .{ "clock", @import("src/clock/build.zig") },
+    .{ "calendar", @import("src/calendar/build.zig") },
+    .{ "color", @import("src/color/build.zig") },
+    .{ "idle", @import("src/idle/build.zig") },
+    .{ "pdf", @import("src/pdf/build.zig") },
+    .{ "parted", @import("src/parted/build.zig") },
+    .{ "notify", @import("src/notify/build.zig") },
+    .{ "polkit", @import("src/polkit/build.zig") },
+    .{ "polkit-ui", @import("src/polkit-ui/build.zig") },
+    .{ "help", @import("src/help/build.zig") },
+    .{ "pdfcheck", @import("src/pdfcheck/build.zig") },
+};
 
-/// Data files (under data/) installed with each program in a per-app install.
-/// Every program reads the shared appearance defaults; the rest read their own.
+/// Data files (under data/) installed with every program in a per-app install.
 const shared_data = [_][]const u8{ "style.css", "dkde.toml" };
 
-fn appData(name: []const u8) []const []const u8 {
-    const pairs = .{
-        .{ "panel", &[_][]const u8{"panel.toml"} },
-        .{ "term", &[_][]const u8{"term.toml"} },
-        .{ "files", &[_][]const u8{"files.toml"} },
-        .{ "edit", &[_][]const u8{"edit.toml"} },
-        .{ "calendar", &[_][]const u8{"calendar.toml"} },
-        // Settings edits every program's configuration, so it reads all defaults.
-        .{ "settings", &[_][]const u8{ "panel.toml", "term.toml", "files.toml", "edit.toml", "calendar.toml" } },
-        // Programs that read the panel's settings.
-        .{ "view", &[_][]const u8{"panel.toml"} },
-        .{ "idle", &[_][]const u8{"panel.toml"} },
-    };
-    inline for (pairs) |pair| {
-        if (std.mem.eql(u8, name, pair[0])) return pair[1];
+/// What a program's `build.zig` is given. A program's build file declares:
+///
+///   pub fn configure(ctx: *const Ctx, mod: *std.Build.Module) void
+///       adds the program's imports and libraries to its root module
+///       (`src/<name>/main.zig`); it must call `ctx.gtk(mod)` or
+///       `ctx.glib(mod)` for the toolkit it uses.
+///   pub const data: []const []const u8   its own files under data/ (optional)
+///   pub const menu_entry = true          installs data/dkde-<name>.desktop (optional)
+pub const Ctx = struct {
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    gobject: *std.Build.Dependency,
+    /// The command-line contract (--help, --version); every program has it.
+    cli: *std.Build.Module,
+    build_options: *std.Build.Module,
+    /// Toolkit-free shared code (GLib/GIO only).
+    core: *std.Build.Module,
+    /// `core` plus the GTK widgets.
+    common: *std.Build.Module,
+    util_unix: *std.Build.Module,
+    /// Bindings for the Wayland protocols GTK does not expose.
+    wayland_protocols: *std.Build.Module,
+    /// Image decoding in Zig (vendored zigimg).
+    imgcodec: *std.Build.Module,
+    /// The PDF page renderer and pdf-zig.
+    pdfrender: *std.Build.Module,
+    pdf: *std.Build.Module,
+    /// polkit's line protocol, shared by the agent and its dialog.
+    polkit_proto: *std.Build.Module,
+
+    /// GTK 4 and what comes with it (GLib, Pango, GdkPixbuf).
+    pub fn gtk(ctx: *const Ctx, mod: *std.Build.Module) void {
+        mod.addImport("common", ctx.common);
+        mod.linkSystemLibrary("gtk4", .{});
+        ctx.imports(mod, &.{ "glib2", "gobject2", "gio2", "giounix2", "gtk4", "gdk4", "pango1", "gdkpixbuf2" });
     }
-    return &.{};
-}
 
-/// Programs that open no window and import only `core`.
-const gtk_free = [_][]const u8{ "notify", "setup", "idle" };
+    /// GLib and GIO without GTK, for programs that open no window.
+    pub fn glib(ctx: *const Ctx, mod: *std.Build.Module) void {
+        mod.addImport("core", ctx.core);
+        ctx.glibOnly(mod);
+    }
 
-fn isGtkFree(name: []const u8) bool {
-    for (gtk_free) |n| if (std.mem.eql(u8, n, name)) return true;
-    return false;
-}
+    /// GLib and GIO without dkde's `core`.
+    pub fn glibOnly(ctx: *const Ctx, mod: *std.Build.Module) void {
+        mod.linkSystemLibrary("gio-2.0", .{});
+        ctx.imports(mod, &.{ "glib2", "gobject2", "gio2", "giounix2" });
+    }
 
-const components = [_][]const u8{ "panel", "term", "files", "settings", "calc", "edit", "view", "tasks", "snip", "setup", "greeter", "pointer", "charmap", "clock", "calendar", "color", "idle", "pdf", "parted", "notify", "polkit-ui", "help" };
+    /// Modules from the GObject bindings, e.g. "cairo1", "pangocairo1".
+    pub fn imports(ctx: *const Ctx, mod: *std.Build.Module, names: []const []const u8) void {
+        for (names) |name| mod.addImport(name, ctx.gobject.module(name));
+    }
+
+    /// The Wayland protocol bindings and libwayland-client.
+    pub fn wayland(ctx: *const Ctx, mod: *std.Build.Module) void {
+        mod.addImport("gdkwayland4", ctx.gobject.module("gdkwayland4"));
+        mod.addImport("wayland", ctx.wayland_protocols);
+        mod.linkSystemLibrary("wayland-client", .{});
+    }
+
+    /// DKTermCore, which builds libghostty-vt once for every user of it.
+    pub fn dkterm(ctx: *const Ctx) *std.Build.Dependency {
+        return ctx.b.dependency("dkterm", .{ .target = ctx.target, .optimize = ctx.optimize });
+    }
+
+    /// The terminal as a widget other programs can host (dkde-files,
+    /// dkde-edit): the same view dkde-term uses.
+    pub fn termEmbed(ctx: *const Ctx) *std.Build.Module {
+        const m = ctx.b.createModule(.{ .root_source_file = ctx.b.path("src/term/embed.zig"), .target = ctx.target, .optimize = ctx.optimize, .link_libc = true });
+        m.addImport("common", ctx.common);
+        const dep = ctx.dkterm();
+        m.addImport("ghostty-vt", dep.module("ghostty-vt"));
+        m.addImport("termcore", dep.module("termcore"));
+        ctx.imports(m, &.{ "glib2", "gobject2", "gio2", "gtk4", "gdk4", "pango1", "pangocairo1", "cairo1", "gdkpixbuf2" });
+        return m;
+    }
+};
 
 pub fn build(b: *std.Build) void {
     addWindowsCalendar(b);
@@ -48,10 +134,11 @@ pub fn build(b: *std.Build) void {
     // unless -Dstrip=false asks for it (for perf or a debugger).
     const strip = b.option(bool, "strip", "Drop debug information from the programs (default: all builds but Debug)") orelse (optimize != .debug);
 
-    // -Dapp=<name> builds, tests and installs one program and what it needs;
-    // nothing else is configured or compiled. Without it, everything is.
-    const app = b.option([]const u8, "app", "Build only this program (e.g. -Dapp=calc); default: all");
-    if (app) |name| validateApp(b, name);
+    // -Dapp=<name>[,<name>...] builds, tests and installs those programs and
+    // what they need; nothing else is configured or compiled. Without it (or
+    // with -Dapp=all), everything is.
+    const app_option = b.option([]const u8, "app", "Build only these programs (e.g. -Dapp=calc or -Dapp=term,edit); default: all");
+    const selection = Selection.parse(b, app_option);
 
     const build_options = b.addOptions();
     // Shown on the About page and by --version.
@@ -62,24 +149,12 @@ pub fn build(b: *std.Build) void {
     const Scanner = (b.lazyImport(@This(), "wayland") orelse return).Scanner;
     const gobject = b.lazyDependency("gobject", .{ .target = target, .optimize = optimize }) orelse return;
 
-    // The command-line contract (--help, --version, unknown options). Needs
-    // no GTK, so it is also used by the programs that do not link it.
-    const cli = b.createModule(.{
-        .root_source_file = b.path("src/cli.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
+    const cli = b.createModule(.{ .root_source_file = b.path("src/cli.zig"), .target = target, .optimize = optimize, .link_libc = true });
     cli.addImport("build_options", build_options_mod);
 
-    // core: toolkit-free (GLib/GIO only); common: core plus the GTK widgets.
-    const core = b.addModule("core", .{
-        .root_source_file = b.path("src/common/core.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    addGlib(core, gobject);
+    const core = b.addModule("core", .{ .root_source_file = b.path("src/common/core.zig"), .target = target, .optimize = optimize, .link_libc = true });
+    core.linkSystemLibrary("gio-2.0", .{});
+    inline for (.{ "glib2", "gobject2", "gio2", "giounix2" }) |name| core.addImport(name, gobject.module(name));
     // The shipped defaults, so core's tests can check that they parse.
     inline for (.{ "dkde", "panel", "term", "files", "edit", "calendar" }) |name| {
         core.addAnonymousImport("data-" ++ name ++ ".toml", .{ .root_source_file = b.path("data/" ++ name ++ ".toml") });
@@ -89,23 +164,16 @@ pub fn build(b: *std.Build) void {
     const util_unix = b.dependency("util_unix", .{ .target = target, .optimize = optimize }).module("util_unix");
     core.addImport("util_unix", util_unix);
 
-    const common = b.addModule("common", .{
-        .root_source_file = b.path("src/common/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
+    const common = b.addModule("common", .{ .root_source_file = b.path("src/common/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
     common.addImport("core", core);
-    addGtk(common, gobject);
+    common.linkSystemLibrary("gtk4", .{});
+    inline for (.{ "glib2", "gobject2", "gio2", "giounix2", "gtk4", "gdk4", "pango1", "gdkpixbuf2" }) |name| common.addImport(name, gobject.module(name));
 
     // Protocol bindings for what GTK does not expose (SPEC.md 3).
     const scanner = Scanner.create(b, .{});
-    scanner.addCustomProtocol(b.path("protocols/wlr-foreign-toplevel-management-unstable-v1.xml"));
-    scanner.addCustomProtocol(b.path("protocols/wlr-screencopy-unstable-v1.xml"));
-    scanner.addCustomProtocol(b.path("protocols/wlr-virtual-pointer-unstable-v1.xml"));
-    scanner.addCustomProtocol(b.path("protocols/ext-workspace-v1.xml"));
-    scanner.addCustomProtocol(b.path("protocols/ext-idle-notify-v1.xml"));
-    scanner.addCustomProtocol(b.path("protocols/virtual-keyboard-unstable-v1.xml"));
+    inline for (.{ "wlr-foreign-toplevel-management-unstable-v1", "wlr-screencopy-unstable-v1", "wlr-virtual-pointer-unstable-v1", "ext-workspace-v1", "ext-idle-notify-v1", "virtual-keyboard-unstable-v1" }) |p| {
+        scanner.addCustomProtocol(b.path("protocols/" ++ p ++ ".xml"));
+    }
     scanner.generate("wl_seat", 1);
     scanner.generate("wl_output", 1);
     scanner.generate("zwlr_foreign_toplevel_manager_v1", 3);
@@ -117,63 +185,68 @@ pub fn build(b: *std.Build) void {
     scanner.generate("zwp_virtual_keyboard_manager_v1", 1);
     const wayland_module = b.createModule(.{ .root_source_file = scanner.result, .target = target, .optimize = optimize });
 
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = cli })).step);
-    // core and common are dependencies of most programs, so their tests always run.
-    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = core })).step);
-    const common_tests = b.addTest(.{ .root_module = common });
-    test_step.dependOn(&b.addRunArtifact(common_tests).step);
-
-    // Image decoding in Zig (vendored zigimg), shared by dkde-view and the PDF renderer.
     const zigimg = b.dependency("zigimg", .{ .target = target, .optimize = optimize });
     const imgcodec = b.createModule(.{ .root_source_file = b.path("src/imgcodec/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
     imgcodec.addImport("zigimg", zigimg.module("zigimg"));
-    if (wanted(app, "view") or wanted(app, "pdf") or wanted(app, "pdfcheck")) {
-        const imgcodec_run = b.addRunArtifact(b.addTest(.{ .root_module = imgcodec }));
-        imgcodec_run.has_side_effects = true; // DKDE_TEST_IMAGE is read from the environment
-        test_step.dependOn(&imgcodec_run.step);
-    }
 
     // The PDF page renderer: cairo drawing from pdf-zig's display list.
-    // It does not need GTK, so its tests always run.
-    const pdf_dep = b.dependency("pdf", .{ .target = target, .optimize = optimize });
-    const pdf_mod = pdf_dep.module("pdf");
+    const pdf_mod = b.dependency("pdf", .{ .target = target, .optimize = optimize }).module("pdf");
+    const truetype = b.createModule(.{ .root_source_file = b.path("src/truetype.zig"), .target = target, .optimize = optimize, .link_libc = true });
     const pdfrender = b.createModule(.{ .root_source_file = b.path("src/pdfrender/render.zig"), .target = target, .optimize = optimize, .link_libc = true });
     pdfrender.addImport("pdf", pdf_mod);
-    pdfrender.addImport("truetype", truetypeModule(b, target, optimize));
+    pdfrender.addImport("truetype", truetype);
     pdfrender.addImport("imgcodec", imgcodec);
     pdfrender.addImport("cairo1", gobject.module("cairo1"));
     pdfrender.linkSystemLibrary("cairo", .{});
     // JPEG decoding for image streams: stb_image, vendored, built by Zig's own C compiler.
     pdfrender.addCSourceFile(.{ .file = b.path("third_party/stb/stb_impl.c"), .flags = &.{"-O2"} });
     pdfrender.addIncludePath(b.path("third_party/stb"));
-    if (wanted(app, "pdf") or wanted(app, "pdfcheck")) {
-        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = pdfrender })).step);
-        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = truetypeModule(b, target, optimize) })).step);
-    }
 
-    // dkde-pdfcheck: draws many PDFs without a display and reports what was not drawn.
-    const check_mod = b.createModule(.{ .root_source_file = b.path("src/pdfcheck/main.zig"), .target = target, .optimize = optimize, .link_libc = true, .strip = strip });
-    check_mod.addImport("cli", cli);
-    check_mod.addImport("pdfrender", pdfrender);
-    check_mod.addImport("cairo1", gobject.module("cairo1"));
-    check_mod.addImport("glib2", gobject.module("glib2"));
-    check_mod.linkSystemLibrary("cairo", .{});
-    check_mod.linkSystemLibrary("glib-2.0", .{});
-    if (wanted(app, "pdfcheck")) b.installArtifact(b.addExecutable(.{ .name = "dkde-pdfcheck", .root_module = check_mod }));
+    const polkit_proto = b.createModule(.{ .root_source_file = b.path("src/polkit/proto.zig"), .target = target, .optimize = optimize });
 
-    // polkit's line protocol and session helpers, shared by the agent and its dialog.
-    const polkitProtoModule = b.createModule(.{
-        .root_source_file = b.path("src/polkit/proto.zig"),
+    const ctx: Ctx = .{
+        .b = b,
         .target = target,
         .optimize = optimize,
-    });
-    if (wanted(app, "polkit") or wanted(app, "polkit-ui")) {
-        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = polkitProtoModule })).step);
-    }
+        .gobject = gobject,
+        .cli = cli,
+        .build_options = build_options_mod,
+        .core = core,
+        .common = common,
+        .util_unix = util_unix,
+        .wayland_protocols = wayland_module,
+        .imgcodec = imgcodec,
+        .pdfrender = pdfrender,
+        .pdf = pdf_mod,
+        .polkit_proto = polkit_proto,
+    };
 
-    inline for (components) |name| {
-        if (wanted(app, name)) {
+    const test_step = b.step("test", "Run unit tests");
+    const addTests = struct {
+        fn f(bb: *std.Build, step: *std.Build.Step, mod: *std.Build.Module) *std.Build.Step.Run {
+            const run = bb.addRunArtifact(bb.addTest(.{ .root_module = mod }));
+            step.dependOn(&run.step);
+            return run;
+        }
+    }.f;
+    // core and common are dependencies of most programs, so their tests always run.
+    _ = addTests(b, test_step, cli);
+    _ = addTests(b, test_step, core);
+    _ = addTests(b, test_step, common);
+    // Shared modules are tested when a program that uses them is selected.
+    if (selection.any(&.{ "view", "pdf", "pdfcheck" })) {
+        addTests(b, test_step, imgcodec).has_side_effects = true; // DKDE_TEST_IMAGE is read from the environment
+    }
+    if (selection.any(&.{ "pdf", "pdfcheck" })) {
+        _ = addTests(b, test_step, pdfrender);
+        _ = addTests(b, test_step, truetype);
+    }
+    if (selection.any(&.{ "polkit", "polkit-ui" })) _ = addTests(b, test_step, polkit_proto);
+
+    inline for (programs) |p| {
+        const name = p[0];
+        const sub = p[1];
+        if (selection.has(name)) {
             const mod = b.createModule(.{
                 .root_source_file = b.path("src/" ++ name ++ "/main.zig"),
                 .target = target,
@@ -181,72 +254,9 @@ pub fn build(b: *std.Build) void {
                 .link_libc = true,
                 .strip = strip,
             });
-            if (isGtkFree(name)) {
-                // No window: GLib and GIO only, so no GTK is linked or loaded.
-                mod.addImport("core", core);
-                addGlib(mod, gobject);
-            } else {
-                mod.addImport("common", common);
-                // gtk4-layer-shell must be linked before libwayland, so before GTK.
-                if (std.mem.eql(u8, name, "panel")) mod.linkSystemLibrary("gtk4-layer-shell-0", .{});
-                addGtk(mod, gobject);
-            }
-            if (std.mem.eql(u8, name, "polkit-ui")) mod.addImport("polkitproto", polkitProtoModule);
-            if (std.mem.eql(u8, name, "calendar")) {
-                mod.linkSystemLibrary("fontconfig", .{});
-                // The glyph font is built into the program.
-                mod.addAnonymousImport("rosquin-font", .{ .root_source_file = b.path("data/fonts/RosquinGlyphs.ttf") });
-                mod.addAnonymousImport("branding", .{ .root_source_file = b.path("data/branding.png") });
-                // The open-source fonts for the native names of the Chinese, Hebrew, Coptic and Ethiopian calendars.
-                mod.addAnonymousImport("font-cjk", .{ .root_source_file = b.path("data/fonts/native/DroidSansFallbackSubset.ttf") });
-                mod.addAnonymousImport("font-he", .{ .root_source_file = b.path("data/fonts/native/NotoSansHebrew-Regular.ttf") });
-                mod.addAnonymousImport("font-et", .{ .root_source_file = b.path("data/fonts/native/NotoSansEthiopic-Regular.ttf") });
-                mod.addAnonymousImport("font-cop", .{ .root_source_file = b.path("data/fonts/native/NotoSansCoptic-Regular.ttf") });
-            }
-            if (std.mem.eql(u8, name, "settings")) {
-                // The Terminal page previews colour schemes with termcore's tables.
-                const termcore_mod = b.dependency("dkterm", .{ .target = target, .optimize = optimize }).module("termcore");
-                mod.addImport("termcore", termcore_mod);
-                // The scheme names and colours dkde-term offers.
-                const termschemes = b.createModule(.{ .root_source_file = b.path("src/term/schemes.zig"), .target = target, .optimize = optimize });
-                termschemes.addImport("termcore", termcore_mod);
-                mod.addImport("termschemes", termschemes);
-            }
-            if (std.mem.eql(u8, name, "files") or std.mem.eql(u8, name, "edit")) {
-                mod.addImport("termembed", termEmbedModule(b, target, optimize, common, gobject));
-            }
-            if (std.mem.eql(u8, name, "term")) {
-                // Debug builds of libghostty-vt run integrity checks on every linefeed,
-                // which makes a screenful of output take seconds. Always build it fast.
-                // termcore must use the same libghostty-vt as the program that imports it:
-                // take both from DKTermCore, which builds libghostty-vt once.
-                const dkterm = b.dependency("dkterm", .{ .target = target, .optimize = optimize });
-                mod.addImport("ghostty-vt", dkterm.module("ghostty-vt"));
-                mod.addImport("termcore", dkterm.module("termcore"));
-                mod.addImport("cairo1", gobject.module("cairo1"));
-                mod.addImport("pangocairo1", gobject.module("pangocairo1"));
-                mod.addImport("graphene1", gobject.module("graphene1"));
-            }
             mod.addImport("build_options", build_options_mod);
             mod.addImport("cli", cli);
-            if (std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "files") or std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "tasks") or std.mem.eql(u8, name, "color") or std.mem.eql(u8, name, "parted") or std.mem.eql(u8, name, "pdf") or std.mem.eql(u8, name, "edit")) mod.addImport("cairo1", gobject.module("cairo1"));
-            if (std.mem.eql(u8, name, "pdf")) {
-                mod.addImport("pdfrender", pdfrender);
-                mod.addImport("pdf", pdf_mod);
-            }
-            if (std.mem.eql(u8, name, "parted") or std.mem.eql(u8, name, "edit")) mod.addImport("pangocairo1", gobject.module("pangocairo1"));
-            if (std.mem.eql(u8, name, "view")) mod.addImport("imgcodec", imgcodec);
-            if (std.mem.eql(u8, name, "settings") or std.mem.eql(u8, name, "tasks")) mod.addImport("util_unix", util_unix);
-            if (std.mem.eql(u8, name, "help")) {
-                // Manual-page lookup and rendering: dkman's library (which brings md-zig and gtroff-zig).
-                const dkman = b.lazyDependency("dkman", .{ .target = target, .optimize = optimize }) orelse return;
-                mod.addImport("dkman", dkman.module("dkman"));
-            }
-            if (std.mem.eql(u8, name, "panel") or std.mem.eql(u8, name, "snip") or std.mem.eql(u8, name, "pointer") or std.mem.eql(u8, name, "idle")) {
-                mod.addImport("gdkwayland4", gobject.module("gdkwayland4"));
-                mod.addImport("wayland", wayland_module);
-                mod.linkSystemLibrary("wayland-client", .{});
-            }
+            sub.configure(&ctx, mod);
 
             const exe = b.addExecutable(.{ .name = "dkde-" ++ name, .root_module = mod });
             b.installArtifact(exe);
@@ -258,49 +268,32 @@ pub fn build(b: *std.Build) void {
             run.setEnvironmentVariable("DKDE_HELP_DIR", "docs/manpages");
             b.step("run-" ++ name, "Build and run dkde-" ++ name).dependOn(&run.step);
 
-            const run_tests = b.addRunArtifact(b.addTest(.{ .root_module = mod }));
-            test_step.dependOn(&run_tests.step);
+            const run_tests = addTests(b, test_step, mod);
             b.step("test-" ++ name, "Run the tests of dkde-" ++ name).dependOn(&run_tests.step);
+
+            if (@hasDecl(sub, "menu_entry") and sub.menu_entry) {
+                b.getInstallStep().dependOn(&b.addInstallFileWithDir(
+                    b.path("data/dkde-" ++ name ++ ".desktop"),
+                    .prefix,
+                    "share/applications/dkde-" ++ name ++ ".desktop",
+                ).step);
+            }
+            if (selection.single() and @hasDecl(sub, "data")) {
+                for (sub.data) |file| installDataFile(b, file);
+            }
+            if (@hasDecl(sub, "install")) sub.install(&ctx);
         }
     }
 
-    // The polkit agent: D-Bus only, so it links GLib and GIO but not GTK and
-    // idles in a few megabytes (SPEC.md 5.12). Its dialog is `dkde-polkit-ui`.
-    if (wanted(app, "polkit")) {
-        const mod = b.createModule(.{
-            .root_source_file = b.path("src/polkit/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-            .strip = strip,
-        });
-        mod.addImport("polkitproto", polkitProtoModule);
-        mod.addImport("cli", cli);
-        mod.linkSystemLibrary("gio-2.0", .{});
-        inline for (.{ "glib2", "gobject2", "gio2" }) |name| mod.addImport(name, gobject.module(name));
-        b.installArtifact(b.addExecutable(.{ .name = "dkde-polkit", .root_module = mod }));
-        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
-    }
-
-    for ([_][]const u8{ "dkde-files", "dkde-term", "dkde-settings", "dkde-calc", "dkde-edit", "dkde-view", "dkde-pdf", "dkde-tasks", "dkde-snip", "dkde-charmap", "dkde-clock", "dkde-calendar", "dkde-color", "dkde-parted", "dkde-help" }) |name| {
-        if (!wanted(app, name["dkde-".len..])) continue;
-        b.getInstallStep().dependOn(&b.addInstallFileWithDir(
-            b.path(b.fmt("data/{s}.desktop", .{name})),
-            .prefix,
-            b.fmt("share/applications/{s}.desktop", .{name}),
-        ).step);
-    }
-
-    // The help viewer shows these (and the system's manual pages).
-    if (wanted(app, "help")) {
-        b.installDirectory(.{ .source_dir = b.path("docs/manpages"), .install_dir = .prefix, .install_subdir = "share/dkde/help", .exclude_extensions = &.{} });
-    }
-
-    if (app) |name| {
+    if (selection.single()) {
         // A per-app install carries only that program's data (and the shared defaults).
         for (shared_data) |file| installDataFile(b, file);
-        for (appData(name)) |file| installDataFile(b, file);
     } else {
+        // Several programs share data/, so the whole folder is installed.
+        b.installDirectory(.{ .source_dir = b.path("data"), .install_dir = .prefix, .install_subdir = "share/dkde" });
+    }
+
+    if (selection.all) {
         // Session scripts and the login-manager entry.
         for ([_][]const u8{ "dkde-session", "dkde-greeter-session", "dkde-greeter-start", "dkde-seatd" }) |script| {
             // @VERSION@ in a script is replaced by the package version.
@@ -311,81 +304,59 @@ pub fn build(b: *std.Build) void {
         }
         // The Wayland session entry for greetd and other login managers.
         b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path("data/dkde.desktop"), .prefix, "share/wayland-sessions/dkde.desktop").step);
-
-        b.installDirectory(.{
-            .source_dir = b.path("data"),
-            .install_dir = .prefix,
-            .install_subdir = "share/dkde",
-        });
         // The Fluent icon theme goes where every toolkit looks for icon themes.
-        b.installDirectory(.{
-            .source_dir = b.path("icons/Fluent"),
-            .install_dir = .prefix,
-            .install_subdir = "share/icons/Fluent",
-        });
+        b.installDirectory(.{ .source_dir = b.path("icons/Fluent"), .install_dir = .prefix, .install_subdir = "share/icons/Fluent" });
         // Microsoft's Fluent UI System Icons for dkde's own controls; it inherits Fluent.
-        b.installDirectory(.{
-            .source_dir = b.path("icons/dkde-ui"),
-            .install_dir = .prefix,
-            .install_subdir = "share/icons/dkde-ui",
-        });
+        b.installDirectory(.{ .source_dir = b.path("icons/dkde-ui"), .install_dir = .prefix, .install_subdir = "share/icons/dkde-ui" });
     }
 }
+
+/// The programs -Dapp chose.
+const Selection = struct {
+    all: bool,
+    names: []const []const u8,
+
+    fn parse(b: *std.Build, option: ?[]const u8) Selection {
+        const text = option orelse return .{ .all = true, .names = &.{} };
+        var names: std.ArrayList([]const u8) = .empty;
+        var it = std.mem.tokenizeAny(u8, text, ", ");
+        while (it.next()) |name| {
+            if (std.mem.eql(u8, name, "all")) return .{ .all = true, .names = &.{} };
+            if (!known(name)) {
+                var list: std.ArrayList(u8) = .empty;
+                inline for (programs) |p| list.print(b.allocator, " {s}", .{p[0]}) catch @panic("OOM");
+                std.process.fatal("unknown -Dapp={s}; choose all or any of:{s}", .{ name, list.items });
+            }
+            names.append(b.allocator, name) catch @panic("OOM");
+        }
+        if (names.items.len == 0) return .{ .all = true, .names = &.{} };
+        return .{ .all = false, .names = names.items };
+    }
+
+    fn known(name: []const u8) bool {
+        inline for (programs) |p| if (std.mem.eql(u8, p[0], name)) return true;
+        return false;
+    }
+
+    fn has(self: Selection, name: []const u8) bool {
+        if (self.all) return true;
+        for (self.names) |n| if (std.mem.eql(u8, n, name)) return true;
+        return false;
+    }
+
+    fn any(self: Selection, names: []const []const u8) bool {
+        for (names) |n| if (self.has(n)) return true;
+        return false;
+    }
+
+    /// One program chosen: install only its own data.
+    fn single(self: Selection) bool {
+        return !self.all and self.names.len == 1;
+    }
+};
 
 fn installDataFile(b: *std.Build, file: []const u8) void {
     b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path(b.fmt("data/{s}", .{file})), .prefix, b.fmt("share/dkde/{s}", .{file})).step);
-}
-
-fn isApp(app: ?[]const u8, name: []const u8) bool {
-    return if (app) |a| std.mem.eql(u8, a, name) else false;
-}
-
-/// Is `name` part of this build? Everything is when no -Dapp was given.
-fn wanted(app: ?[]const u8, name: []const u8) bool {
-    return app == null or isApp(app, name);
-}
-
-fn validateApp(b: *std.Build, name: []const u8) void {
-    for (components) |c| if (std.mem.eql(u8, c, name)) return;
-    for (standalone) |c| if (std.mem.eql(u8, c, name)) return;
-    var list: std.ArrayList(u8) = .empty;
-    for (components ++ standalone) |c| list.print(b.allocator, " {s}", .{c}) catch @panic("OOM");
-    std.process.fatal("unknown -Dapp={s}; choose one of:{s}", .{ name, list.items });
-}
-
-/// GLib and GIO, without GTK.
-fn addGlib(mod: *std.Build.Module, gobject: *std.Build.Dependency) void {
-    mod.linkSystemLibrary("gio-2.0", .{});
-    inline for (.{ "glib2", "gobject2", "gio2", "giounix2" }) |name| {
-        mod.addImport(name, gobject.module(name));
-    }
-}
-
-fn addGtk(mod: *std.Build.Module, gobject: *std.Build.Dependency) void {
-    mod.linkSystemLibrary("gtk4", .{});
-    inline for (.{ "glib2", "gobject2", "gio2", "giounix2", "gtk4", "gdk4", "pango1", "gdkpixbuf2" }) |name| {
-        mod.addImport(name, gobject.module(name));
-    }
-}
-
-/// The terminal as a widget other programs can host (dkde-files, dkde-edit):
-/// the same view dkde-term uses, on DKTermCore. Compiled only into the
-/// programs that import it.
-fn termEmbedModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, common: *std.Build.Module, gobject: *std.Build.Dependency) *std.Build.Module {
-    const m = b.createModule(.{ .root_source_file = b.path("src/term/embed.zig"), .target = target, .optimize = optimize, .link_libc = true });
-    m.addImport("common", common);
-    const dkterm = b.dependency("dkterm", .{ .target = target, .optimize = optimize });
-    m.addImport("ghostty-vt", dkterm.module("ghostty-vt"));
-    m.addImport("termcore", dkterm.module("termcore"));
-    inline for (.{ "glib2", "gobject2", "gio2", "gtk4", "gdk4", "pango1", "pangocairo1", "cairo1", "gdkpixbuf2" }) |name| {
-        m.addImport(name, gobject.module(name));
-    }
-    return m;
-}
-
-/// The TrueType reader used by the PDF renderer. Pure Zig.
-fn truetypeModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Module {
-    return b.createModule(.{ .root_source_file = b.path("src/truetype.zig"), .target = target, .optimize = optimize, .link_libc = true });
 }
 
 /// `zig build wincal`: the standalone Windows calendar (zig-out/bin/rosquin-calendar.exe).
