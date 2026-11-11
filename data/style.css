@@ -934,3 +934,27 @@ entry.dkde-snip-text { min-height: 28px; }
 .dkde-pdf-presentation > viewport {
   background-color: black;
 }
+
+/* dkde-term: the title bar of each pane of a split tab (as in Konsole),
+   compact, with the pane that has the keyboard marked. */
+.dkde-pane-header {
+  min-height: 20px;
+  padding: 0 2px 0 6px;
+  font-size: 0.85em;
+  background: alpha(currentColor, 0.05);
+  border-bottom: 1px solid alpha(currentColor, 0.12);
+}
+.dkde-pane-header.active {
+  background: alpha(@dkde_accent, 0.22);
+  box-shadow: inset 0 -2px 0 @dkde_accent;
+}
+.dkde-pane-header button {
+  min-height: 16px;
+  min-width: 16px;
+  padding: 1px;
+  margin: 1px 0;
+}
+/* A tab whose bell rang while it was not showing. */
+headerbar .dkde-tabs button.dkde-tab.dkde-tab-attention {
+  background: alpha(#e5a50a, 0.35);
+}

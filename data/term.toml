@@ -4,6 +4,28 @@
 default-profile = "Default"
 # Lines kept for scrolling back.
 scrollback-lines = 10000
+# Open the tabs (with their splits and folders) of the last session when
+# started without a command.
+restore-session = true
+# Show a title bar on each pane of a split tab, as Konsole does.
+pane-headers = true
+# The drop-down terminal (dkde-term --dropdown, F12): percent of the screen.
+dropdown-height = 45
+# The window's size, remembered when it closes.
+width = 900
+height = 560
+
+# Shortcuts: any window action can get another key, or none with "". The
+# actions are new-tab, new-window, close-pane, close-tab, save-output, quit,
+# copy, copy-html, paste, select-all, find, clear-scrollback, reset,
+# read-only, preferences, zoom-in, zoom-out, zoom-reset, fullscreen,
+# monitor-activity, monitor-silence, split-right, split-down, maximize-pane,
+# grow-pane, shrink-pane, equal-panes, focus-left, focus-right, focus-up,
+# focus-down, rename-tab, move-tab-left, move-tab-right, detach-tab,
+# next-tab and prev-tab. For example:
+#[shortcuts]
+#split-right = "<Control><Shift>d"
+#new-tab = ""
 
 # Profiles are not listed here: a profile in this file could not be deleted by
 # you. Create one by adding a table like the example below to your own term.toml
@@ -15,6 +37,9 @@ scrollback-lines = 10000
 ## Starting folder; empty is your home.
 #directory = ""
 #font = "Monospace 11"
+## campbell, one-half-dark, one-half-light, solarized-dark, solarized-light,
+## tango-dark, tango-light, breeze, xterm, dracula, gruvbox-dark, nord,
+## monokai, tomorrow-night or catppuccin-mocha
 #color-scheme = "campbell"
 ## block, bar or underline
 #cursor-style = "block"
@@ -37,3 +62,9 @@ scrollback-lines = 10000
 #rows = 0
 #padding = 4
 #copy-on-select = true
+## Ask before a paste that would run commands by itself (several lines,
+## sudo, control characters).
+#paste-warning = true
+## Teach bash and zsh to mark prompts (Ctrl+Shift+Up/Down jumps between
+## them) and to report a long command finishing while you look elsewhere.
+#shell-integration = true

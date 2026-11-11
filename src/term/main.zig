@@ -8,6 +8,7 @@ const gtk = @import("gtk4");
 const common = @import("common");
 
 const TermWindow = @import("window.zig").TermWindow;
+const dropdown = @import("dropdown.zig");
 
 const App = struct {
     allocator: std.mem.Allocator,
@@ -15,16 +16,27 @@ const App = struct {
     appearance: ?*common.style.Appearance = null,
     /// Command given after `-e`, run in the first tab instead of the shell.
     command: ?[]const []const u8,
+    /// `--dropdown`: the drop-down terminal.
+    dropdown: bool = false,
 
     fn activate(app: *gtk.Application, self: *App) callconv(.c) void {
         common.style.load(self.allocator) catch |err|
             std.log.warn("stylesheet not loaded: {s}", .{@errorName(err)});
         self.appearance = common.style.Appearance.create(self.allocator) catch null;
 
-        const window = TermWindow.create(self.allocator, app, &self.config, self.command) catch |err| {
+        // Without a command, the tabs of the last session come back.
+        const window = (if (self.command == null and !self.dropdown) blk: {
+            const w = TermWindow.createEmpty(self.allocator, app, &self.config) catch |err| break :blk err;
+            if (!w.restoreSession()) w.newDefaultTab();
+            break :blk w;
+        } else TermWindow.create(self.allocator, app, &self.config, self.command)) catch |err| {
             std.log.err("cannot create the window: {s}", .{@errorName(err)});
             return;
         };
+        if (self.dropdown) {
+            window.makeDropdown(@intCast(std.math.clamp(self.config.getInt("terminal", "dropdown-height", 45), 10, 95)));
+            dropdown.listen(window.window.as(gtk.Window));
+        }
         window.present();
     }
 };
@@ -32,7 +44,24 @@ const App = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
-    cli.handle(init.args, .{ .name = "dkde-term", .summary = "Terminal emulator", .usage = "[-e COMMAND [ARG...]]", .stop_at = &.{"-e"} });
+    cli.handle(init.args, .{
+        .name = "dkde-term",
+        .summary = "Terminal emulator",
+        .usage = "[--dropdown] [-e COMMAND [ARG...]]",
+        .options = "  --dropdown  show or hide the drop-down terminal (bind it to a key, F12 in dkde)",
+        .accepted = &.{"--dropdown"},
+        .stop_at = &.{"-e"},
+    });
+    var want_dropdown = false;
+    for (init.args.vector[1..]) |a| {
+        if (std.mem.eql(u8, std.mem.span(a), "-e")) break;
+        if (std.mem.eql(u8, std.mem.span(a), "--dropdown")) want_dropdown = true;
+    }
+    if (want_dropdown) {
+        // A running drop-down terminal only shows or hides itself.
+        if (dropdown.toggleRunning()) return;
+        dropdown.reexecWithLayerShell(@ptrCast(init.args.vector));
+    }
     common.perf.init();
     var debug_allocator: common.perf.Gpa = .{};
     defer debug_allocator.deinit();
@@ -41,16 +70,17 @@ pub fn main(init: std.process.Init.Minimal) !void {
     // `dkde-term -e command args...` runs `command` instead of the shell.
     var command: std.ArrayList([]const u8) = .empty;
     defer command.deinit(allocator);
-    var args = init.args.vector[1..];
-    if (args.len > 0 and std.mem.eql(u8, std.mem.span(args[0]), "-e")) {
-        for (args[1..]) |arg| try command.append(allocator, std.mem.span(arg));
-        args = args[0..0];
-    }
+    const args = init.args.vector[1..];
+    for (args, 0..) |a, i| if (std.mem.eql(u8, std.mem.span(a), "-e")) {
+        for (args[i + 1 ..]) |arg| try command.append(allocator, std.mem.span(arg));
+        break;
+    };
 
     var app: App = .{
         .allocator = allocator,
         .config = try common.Config.load(allocator, "term.toml"),
         .command = if (command.items.len > 0) command.items else null,
+        .dropdown = want_dropdown,
     };
     defer app.config.deinit();
     defer if (app.appearance) |a| a.destroy();
@@ -73,6 +103,12 @@ test {
     _ = @import("view.zig");
     _ = @import("window.zig");
     _ = @import("embed.zig");
+    _ = @import("urls.zig");
+    _ = @import("finder.zig");
+    _ = @import("safety.zig");
+    _ = @import("session.zig");
+    _ = @import("dropdown.zig");
+    _ = @import("schemes.zig");
 }
 
 test "libghostty-vt parses a sequence" {

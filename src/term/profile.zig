@@ -4,6 +4,7 @@
 const std = @import("std");
 const common = @import("common");
 const termcore = @import("termcore");
+const schemes = @import("schemes.zig");
 
 pub const CursorStyle = enum { block, bar, underline };
 pub const Startup = enum { windowed, maximized, fullscreen };
@@ -12,7 +13,9 @@ pub const CloseOnExit = enum { always, never, success };
 
 pub const Scheme = termcore.schemes.Scheme;
 pub const default_scheme = termcore.schemes.default_scheme;
-pub const scheme = termcore.schemes.scheme;
+
+pub const scheme_names = schemes.names;
+pub const scheme = schemes.scheme;
 
 pub fn parseCursor(text: []const u8) CursorStyle {
     if (std.ascii.eqlIgnoreCase(text, "bar")) return .bar;
@@ -48,6 +51,11 @@ pub const Profile = struct {
     /// Space around the text, in pixels.
     padding: u8,
     copy_on_select: bool,
+    /// Ask before a paste that would run commands by itself.
+    paste_warning: bool = true,
+    /// Teach bash and zsh to mark prompts and report long commands (see
+    /// data/term-shell/).
+    shell_integration: bool = true,
 
     pub fn deinit(self: *Profile, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
@@ -139,6 +147,8 @@ pub fn load(allocator: std.mem.Allocator, cfg: *const common.Config, name: []con
         .close_on_exit = parseCloseOnExit(close_text),
         .padding = @intCast(std.math.clamp(cfg.getInt(group, "padding", 4), 0, 40)),
         .copy_on_select = cfg.getBool(group, "copy-on-select", true),
+        .paste_warning = cfg.getBool(group, "paste-warning", true),
+        .shell_integration = cfg.getBool(group, "shell-integration", true),
     };
 }
 

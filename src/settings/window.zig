@@ -3,6 +3,7 @@
 //! running components pick the change up through their file monitors.
 
 const std = @import("std");
+const termschemes = @import("termschemes");
 const gdk = @import("gdk4");
 const gio = @import("gio2");
 const giounix = @import("giounix2");
@@ -1795,7 +1796,7 @@ pub const SettingsWindow = struct {
             self.term_previews.append(self.allocator, preview) catch preview.destroy();
             inner.append(preview.widget());
             addRow(inner, common.tr("Font"), self.fontButton(&self.term, group, "font", "Monospace 11").as(gtk.Widget));
-            addRow(inner, common.tr("Colour scheme"), self.choice(&self.term, group, "color-scheme", &.{ "campbell", "one-half-dark", "solarized-dark", "solarized-light" }, "campbell").as(gtk.Widget));
+            addRow(inner, common.tr("Colour scheme"), self.choice(&self.term, group, "color-scheme", &termschemes.names, "campbell").as(gtk.Widget));
             addRow(inner, common.tr("Cursor"), self.choice(&self.term, group, "cursor-style", &.{ "block", "bar", "underline" }, "block").as(gtk.Widget));
             addRow(inner, common.tr("Background opacity (%)"), self.spin(&self.term, group, "opacity", 20, 100, 100).as(gtk.Widget));
             addRow(inner, common.tr("Padding (pixels)"), self.spin(&self.term, group, "padding", 0, 40, 4).as(gtk.Widget));

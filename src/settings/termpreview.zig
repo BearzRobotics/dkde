@@ -3,6 +3,7 @@
 //! opacity and padding. It follows the controls as they change, before Apply.
 
 const std = @import("std");
+const termschemes = @import("termschemes");
 const glib = @import("glib2");
 const gtk = @import("gtk4");
 const common = @import("common");
@@ -56,7 +57,7 @@ pub const TermPreview = struct {
         defer gpa.free(cursor);
         const opacity = std.math.clamp(self.config.getInt(self.group, "opacity", 100), 20, 100);
         const padding = std.math.clamp(self.config.getInt(self.group, "padding", 4), 0, 40);
-        const s = termcore.schemes.scheme(scheme_name);
+        const s = termschemes.scheme(scheme_name);
 
         var css_buf: [256]u8 = undefined;
         const css = std.fmt.bufPrintSentinel(&css_buf, "box {{ background-color: rgba({d},{d},{d},{d:.2}); padding: {d}px; border-radius: 4px; border: 1px solid rgba(128,128,128,0.4); }}", .{

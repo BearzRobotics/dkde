@@ -8,6 +8,10 @@
 <keybind key="C-S-Escape">
   <action name="Execute" command="dkde-tasks"/>
 </keybind>
+<!-- The drop-down terminal: F12 shows and hides it. -->
+<keybind key="F12">
+  <action name="Execute" command="dkde-term --dropdown"/>
+</keybind>
 <keybind key="Print">
   <action name="Execute" command="dkde-snip"/>
 </keybind>

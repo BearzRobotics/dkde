@@ -205,7 +205,12 @@ pub fn build(b: *std.Build) void {
             }
             if (std.mem.eql(u8, name, "settings")) {
                 // The Terminal page previews colour schemes with termcore's tables.
-                mod.addImport("termcore", b.dependency("dkterm", .{ .target = target, .optimize = optimize }).module("termcore"));
+                const termcore_mod = b.dependency("dkterm", .{ .target = target, .optimize = optimize }).module("termcore");
+                mod.addImport("termcore", termcore_mod);
+                // The scheme names and colours dkde-term offers.
+                const termschemes = b.createModule(.{ .root_source_file = b.path("src/term/schemes.zig"), .target = target, .optimize = optimize });
+                termschemes.addImport("termcore", termcore_mod);
+                mod.addImport("termschemes", termschemes);
             }
             if (std.mem.eql(u8, name, "files") or std.mem.eql(u8, name, "edit")) {
                 mod.addImport("termembed", termEmbedModule(b, target, optimize, common, gobject));
@@ -220,6 +225,7 @@ pub fn build(b: *std.Build) void {
                 mod.addImport("termcore", dkterm.module("termcore"));
                 mod.addImport("cairo1", gobject.module("cairo1"));
                 mod.addImport("pangocairo1", gobject.module("pangocairo1"));
+                mod.addImport("graphene1", gobject.module("graphene1"));
             }
             mod.addImport("build_options", build_options_mod);
             mod.addImport("cli", cli);
