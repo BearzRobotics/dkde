@@ -25,6 +25,8 @@ pub fn Decoder(comptime endian: std.builtin.Endian) type {
         const Self = @This();
 
         pub fn init(allocator: std.mem.Allocator, initial_code_size: u8, early_change: u8) !Self {
+            // dkde: a damaged file may give any size; codes are at most 12 bits.
+            if (initial_code_size == 0 or initial_code_size >= MaxCodeSize) return error.InvalidData;
             var result: Self = .{
                 .area_allocator = std.heap.ArenaAllocator.init(allocator),
                 .code_size = initial_code_size,

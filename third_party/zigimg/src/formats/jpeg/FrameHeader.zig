@@ -82,7 +82,8 @@ pub fn read(allocator: std.mem.Allocator, reader: *std.Io.Reader) Image.ReadErro
     }
 
     // see B 8.2 table for the meaning of this check.
-    std.debug.assert(segment_size == 8 + 3 * component_count);
+    // dkde: a damaged size is an error, not an assumption.
+    if (segment_size != 8 + 3 * component_count) return Image.ReadError.InvalidData;
 
     return FrameHeader{
         .allocator = allocator,

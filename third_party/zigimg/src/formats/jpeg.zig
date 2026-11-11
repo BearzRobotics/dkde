@@ -55,6 +55,8 @@ pub const JPEG = struct {
     fn parseDefineQuantizationTables(self: *JPEG, reader: *std.Io.Reader) Image.ReadError!void {
         var segment_size = try reader.takeInt(u16, .big);
         if (JPEG_DEBUG) std.debug.print("DefineQuantizationTables: segment size = 0x{X}\n", .{segment_size});
+        // dkde: damaged sizes are refused, not trusted.
+        if (segment_size < 2) return Image.ReadError.InvalidData;
         segment_size -= 2;
 
         while (segment_size > 0) {
@@ -63,10 +65,12 @@ pub const JPEG = struct {
             const table_destination = precision_and_destination & 0b11;
 
             const quantization_table = try QuantizationTable.read(table_precision, reader);
-            switch (quantization_table) {
-                .q8 => segment_size -= 64 + 1,
-                .q16 => segment_size -= 128 + 1,
-            }
+            const table_size: u16 = switch (quantization_table) {
+                .q8 => 64 + 1,
+                .q16 => 128 + 1,
+            };
+            if (table_size > segment_size) return Image.ReadError.InvalidData;
+            segment_size -= table_size;
 
             self.quantization_tables[table_destination] = quantization_table;
             if (JPEG_DEBUG) std.debug.print("  Table with precision {} installed at {}\n", .{ table_precision, table_destination });
@@ -117,13 +121,15 @@ pub const JPEG = struct {
 
             if (JPEG_DEBUG) std.debug.print("Parsing marker value: 0x{X}\n", .{marker});
 
-            switch (@as(Markers, @fromBackingInt(@intCast(marker)))) {
+            // dkde: a damaged file may hold any value here; refuse it rather than panic.
+            const known_marker = std.enums.fromInt(Markers, marker) orelse return Image.ReadError.InvalidData;
+            switch (known_marker) {
                 .sof0, .sof2 => { // Baseline DCT, progressive DCT Huffman coding
                     if (self.frame != null) {
                         return Image.Error.Unsupported;
                     }
 
-                    self.frame = try Frame.read(self.allocator, @fromBackingInt(@intCast(marker)), &self.quantization_tables, &self.dc_huffman_tables, &self.ac_huffman_tables, reader);
+                    self.frame = try Frame.read(self.allocator, known_marker, &self.quantization_tables, &self.dc_huffman_tables, &self.ac_huffman_tables, reader);
                     try self.initializePixels(pixels_opt);
                 },
 
@@ -153,12 +159,14 @@ pub const JPEG = struct {
                     if (JPEG_DEBUG) std.debug.print("Skipping comment segment\n", .{});
 
                     const comment_length = try reader.takeInt(u16, .big);
+                    if (comment_length < 2) return Image.ReadError.InvalidData;
                     try read_stream.seekBy(comment_length - 2);
                 },
 
                 .app0, .app1, .app2, .app3, .app4, .app5, .app6, .app7, .app8, .app9, .app10, .app11, .app12, .app13, .app14, .app15 => {
                     if (JPEG_DEBUG) std.debug.print("Skipping application data segment\n", .{});
                     const application_data_length = try reader.takeInt(u16, .big);
+                    if (application_data_length < 2) return Image.ReadError.InvalidData;
                     try read_stream.seekBy(application_data_length - 2);
                 },
                 .define_restart_interval => {
@@ -283,14 +291,22 @@ pub const JPEG = struct {
     fn parseDefineHuffmanTables(self: *JPEG, reader: *std.Io.Reader) Image.ReadError!void {
         var segment_size = try reader.takeInt(u16, .big);
         if (JPEG_DEBUG) std.debug.print("DefineHuffmanTables: segment size = 0x{X}\n", .{segment_size});
+        // dkde: damaged sizes and table numbers are refused, not trusted.
+        if (segment_size < 2) return Image.ReadError.InvalidData;
         segment_size -= 2;
 
         while (segment_size > 0) {
             const class_and_destination = try reader.takeByte();
             const table_class = class_and_destination >> 4;
             const table_destination = class_and_destination & 0x0F;
+            if (table_destination >= self.dc_huffman_tables.len or table_class > 1) return Image.ReadError.InvalidData;
 
-            const huffman_table = try HuffmanTable.read(self.allocator, table_class, reader);
+            var huffman_table = try HuffmanTable.read(self.allocator, table_class, reader);
+            const table_size = 1 + 16 + huffman_table.code_map.count();
+            if (table_size > segment_size) {
+                huffman_table.deinit();
+                return Image.ReadError.InvalidData;
+            }
 
             if (table_class == 0) {
                 if (self.dc_huffman_tables[table_destination]) |*old_huffman_table| {
@@ -307,13 +323,13 @@ pub const JPEG = struct {
             if (JPEG_DEBUG) std.debug.print("  Table with class {} installed at {}\n", .{ table_class, table_destination });
 
             // Class+Destination + code counts + code table
-            segment_size -= 1 + 16 + @as(u16, @intCast(huffman_table.code_map.count()));
+            segment_size -= @intCast(table_size);
         }
     }
 
     fn parseDefineRestartInterval(self: *JPEG, reader: *std.Io.Reader) !void {
         const segment_length = try reader.takeInt(u16, .big);
-        std.debug.assert(segment_length - 4 == 0);
+        if (segment_length != 4) return Image.ReadError.InvalidData;
 
         self.restart_interval = try reader.takeInt(u16, .big);
 

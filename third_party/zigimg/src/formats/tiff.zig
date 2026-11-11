@@ -196,6 +196,8 @@ pub const TIFF = struct {
         const bitmap = &self.bitmap;
         var total_bits: usize = 0;
 
+        // dkde: a damaged file may claim more samples than it lists sizes for.
+        if (bitmap.samples_per_pixel > bitmap.bits_per_sample.data.len) return Image.ReadError.InvalidData;
         for (0..bitmap.samples_per_pixel) |index| {
             total_bits += bitmap.bits_per_sample.data[index];
         }
@@ -211,6 +213,8 @@ pub const TIFF = struct {
 
     pub fn readStrips(self: *TIFF, allocator: std.mem.Allocator, read_stream: *io.ReadStream, pixel_storage: *color.PixelStorage) Image.ReadError!void {
         const bitmap = &self.bitmap;
+        // dkde: a damaged file may say zero rows per strip, or no strips.
+        if (bitmap.rows_per_strip == 0 or bitmap.image_height == 0 or bitmap.strip_byte_counts == null or bitmap.strip_offsets == null) return Image.ReadError.InvalidData;
         const total_strips = (bitmap.image_height + bitmap.rows_per_strip - 1) / bitmap.rows_per_strip;
         const byte_counts_array = bitmap.strip_byte_counts.?;
         const offsets_array = bitmap.strip_offsets.?;
@@ -225,6 +229,7 @@ pub const TIFF = struct {
         const last_strip_row_count = if (image_height > rows_per_strip and row_remainder > 0) row_remainder else rows_per_strip;
         const row_byte_size = try self.calRowByteSize();
         const reader = read_stream.reader();
+        if (total_strips > byte_counts_array.len or total_strips > offsets_array.len) return Image.ReadError.InvalidData;
 
         for (0..total_strips) |index| {
             // last strip may have less rows than rows_per_strip

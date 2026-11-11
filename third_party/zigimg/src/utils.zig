@@ -9,7 +9,8 @@ pub fn FixedStorage(comptime T: type, comptime storage_size: usize) type {
         const Self = @This();
 
         pub fn resize(self: *Self, size: usize) void {
-            self.data = self.storage[0..size];
+            // dkde: a damaged file may ask for more than there is room for.
+            self.data = self.storage[0..@min(size, storage_size)];
         }
     };
 }

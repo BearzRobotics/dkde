@@ -163,6 +163,8 @@ pub const BitmapDescriptor = struct {
                     },
                     4 => {
                         // 4 channels: RGBA or RGB/pre-multiplied
+                        // dkde: a damaged file may have no extra-samples entry.
+                        if (self.extra_samples.data.len == 0) return Image.Error.Unsupported;
                         const extra_sample_format = self.extra_samples.data[0];
 
                         if (bits[0] == 8 and bits[1] == 8 and bits[2] == 8 and bits[3] == 8 and (extra_sample_format == 2 or extra_sample_format == 1))
@@ -253,8 +255,12 @@ pub const TagField = extern struct {
     }
 
     pub fn readTagData(self: *const TagField, allocator: std.mem.Allocator, read_stream: *io.ReadStream, endianess: std.builtin.Endian) ![]u32 {
+        // dkde: only shorts and longs are read here, and a damaged count is not trusted.
+        if (self.data_type != @backingInt(TagType.short) and self.data_type != @backingInt(TagType.long)) return error.InvalidData;
+        if (self.data_count == 0 or self.data_count > 1 << 24) return error.InvalidData;
         const byte_size = if (self.data_type == @backingInt(TagType.short)) self.data_count * 2 else self.data_count * 4;
         const long_data: []u32 = try allocator.alloc(u32, self.data_count);
+        errdefer allocator.free(long_data);
 
         // the offset is enough to hold the data so
         // the offset already holds the data
@@ -322,7 +328,7 @@ pub const IFD = struct {
         const reader = read_stream.reader();
 
         const num_tag_entries = try reader.takeInt(u16, endianess);
-        const tags_array: []u8 = try self.allocator.alloc(u8, @sizeOf(PackedTag) * num_tag_entries);
+        const tags_array: []u8 = try self.allocator.alloc(u8, @sizeOf(PackedTag) * @as(usize, num_tag_entries));
         defer self.allocator.free(tags_array);
         _ = try reader.readSliceAll(tags_array);
         const next_ifd_offset = try reader.takeInt(u32, endianess);

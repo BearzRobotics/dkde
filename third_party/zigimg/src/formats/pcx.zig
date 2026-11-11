@@ -426,7 +426,8 @@ pub const PCX = struct {
 
         var decoder = RLEDecoder.init(reader);
 
-        const scanline_length = (self.header.stride * self.header.planes);
+        // dkde: in usize, so a damaged stride and plane count cannot overflow.
+        const scanline_length = @as(usize, self.header.stride) * self.header.planes;
 
         var y: usize = 0;
         while (y < image_height) : (y += 1) {

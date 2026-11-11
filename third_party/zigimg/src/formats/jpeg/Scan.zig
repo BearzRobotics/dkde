@@ -55,6 +55,8 @@ pub fn init(frame: *const Frame, read_stream: *io.ReadStream) Image.ReadError!Sc
             }
         }
 
+        // dkde: only four tables of each kind exist.
+        if (components[i].?.dc_table_selector >= frame.dc_huffman_tables.len or components[i].?.ac_table_selector >= frame.ac_huffman_tables.len) return Image.ReadError.InvalidData;
         if (frame.dc_huffman_tables[components[i].?.dc_table_selector] != null) {
             valid_component = true;
         }
@@ -99,7 +101,8 @@ pub fn init(frame: *const Frame, read_stream: *io.ReadStream) Image.ReadError!Sc
     const approximation_low: u4 = @intCast(approximation_bits & 0b1111);
     if (JPEG_VERY_DEBUG) std.debug.print("  Approximation bit position: high={} low={}\n", .{ approximation_high, approximation_low });
 
-    std.debug.assert(segment_size == 2 * component_count + 1 + 2 + 1 + 2);
+    // dkde: a damaged size is an error, not an assumption.
+    if (segment_size != 2 * component_count + 1 + 2 + 1 + 2) return Image.ReadError.InvalidData;
 
     return Scan{
         .frame = frame,
@@ -154,9 +157,10 @@ pub fn performScan(frame: *const Frame, restart_interval: u16, read_stream: *io.
             for (0..self.component_count) |index| {
                 const component: ScanComponentSpec = self.components[index].?;
 
-                var component_index: usize = undefined;
-                var v_max: usize = undefined;
-                var h_max: usize = undefined;
+                // dkde: a scan may name a component the frame does not have.
+                var component_index: usize = std.math.maxInt(usize);
+                var v_max: usize = 0;
+                var h_max: usize = 0;
 
                 for (self.frame.frame_header.components, 0..) |frame_component, i| {
                     if (frame_component.id == component.component_id) {
@@ -167,9 +171,11 @@ pub fn performScan(frame: *const Frame, restart_interval: u16, read_stream: *io.
                     }
                 }
 
+                if (component_index == std.math.maxInt(usize)) return Image.ReadError.InvalidData;
                 for (0..v_max) |v| {
                     for (0..h_max) |h| {
                         const block_id = (y + v) * self.frame.block_width_actual + (x + h);
+                        if (block_id >= self.frame.block_storage.len or component_index >= self.frame.block_storage[block_id].len) return Image.ReadError.InvalidData;
                         const block = &self.frame.block_storage[block_id][component_index];
 
                         self.reader.fillBits(24) catch {};
@@ -188,7 +194,7 @@ pub fn performScan(frame: *const Frame, restart_interval: u16, read_stream: *io.
 
 fn decodeBlockProgressive(self: *Scan, component: *const ScanComponentSpec, block: *Block, component_index: usize, skips: *u32) Image.ReadError!void {
     if (self.start_of_spectral_selection == 0) {
-        self.reader.setHuffmanTable(&self.frame.dc_huffman_tables[component.dc_table_selector].?);
+        if (self.frame.dc_huffman_tables[component.dc_table_selector]) |*table| self.reader.setHuffmanTable(table) else return Image.ReadError.InvalidData; // dkde: a missing table is damage
         if (self.approximation_high == 0) {
             const maybe_magnitude = try self.reader.readCode();
             if (maybe_magnitude > 11) return Image.ReadError.InvalidData;
@@ -201,7 +207,7 @@ fn decodeBlockProgressive(self: *Scan, component: *const ScanComponentSpec, bloc
             block[0] += @bitCast(bit << self.approximation_low);
         }
     } else if (self.start_of_spectral_selection != 0) {
-        self.reader.setHuffmanTable(&self.frame.ac_huffman_tables[component.ac_table_selector].?);
+        if (self.frame.ac_huffman_tables[component.ac_table_selector]) |*table| self.reader.setHuffmanTable(table) else return Image.ReadError.InvalidData; // dkde: a missing table is damage
         if (self.approximation_high == 0) {
             var ac: usize = self.start_of_spectral_selection;
             if (skips.* == 0) {
@@ -299,7 +305,7 @@ fn decodeBlockProgressive(self: *Scan, component: *const ScanComponentSpec, bloc
 
 fn decodeBlockBaseline(self: *Scan, component: *const ScanComponentSpec, block: *Block, component_destination: usize) Image.ReadError!void {
     // decode DC coefficient
-    self.reader.setHuffmanTable(&self.frame.dc_huffman_tables[component.dc_table_selector].?);
+    if (self.frame.dc_huffman_tables[component.dc_table_selector]) |*table| self.reader.setHuffmanTable(table) else return Image.ReadError.InvalidData; // dkde: a missing table is damage
     var maybe_magnitude = try self.reader.readCode();
     if (maybe_magnitude > 11) return Image.ReadError.InvalidData;
     const diff: i32 = try self.reader.readMagnitudeCoded(@intCast(maybe_magnitude));
@@ -309,7 +315,7 @@ fn decodeBlockBaseline(self: *Scan, component: *const ScanComponentSpec, block: 
     block[0] = dc_coefficient;
 
     // decode AC coefficients
-    self.reader.setHuffmanTable(&self.frame.ac_huffman_tables[component.ac_table_selector].?);
+    if (self.frame.ac_huffman_tables[component.ac_table_selector]) |*table| self.reader.setHuffmanTable(table) else return Image.ReadError.InvalidData; // dkde: a missing table is damage
     var ac: usize = 1;
     while (ac < 64) : (ac += 1) {
         const zero_run_length_and_magnitude = try self.reader.readCode();
@@ -327,6 +333,8 @@ fn decodeBlockBaseline(self: *Scan, component: *const ScanComponentSpec, block: 
 
         const ac_coefficient: i11 = @intCast(try self.reader.readMagnitudeCoded(@intCast(maybe_magnitude)));
 
+        // dkde: a damaged run would write past the block.
+        if (ac + zero_run_length >= 64) return Image.ReadError.InvalidData;
         for (0..zero_run_length) |_| {
             block[ZigzagOffsets[ac]] = 0;
             ac += 1;

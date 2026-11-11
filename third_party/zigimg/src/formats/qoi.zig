@@ -182,7 +182,14 @@ pub const QOI = struct {
             return Image.ReadError.InvalidData;
         }
 
-        self.header = reader.takeStruct(Header, .big) catch return Image.ReadError.InvalidData;
+        // dkde: read field by field, so an unknown format or colour space is refused, not a panic.
+        const raw = reader.takeArray(10) catch return Image.ReadError.InvalidData;
+        self.header = .{
+            .width = std.mem.readInt(u32, raw[0..4], .big),
+            .height = std.mem.readInt(u32, raw[4..8], .big),
+            .format = std.enums.fromInt(Format, raw[8]) orelse return Image.ReadError.InvalidData,
+            .colorspace = std.enums.fromInt(Colorspace, raw[9]) orelse return Image.ReadError.InvalidData,
+        };
 
         const pixel_format = try self.pixelFormat();
 

@@ -72,7 +72,8 @@ pub const Table = struct {
                     const first_index = code << fast_bits - @as(u4, @intCast(i + 1));
                     const num_indexes = @as(usize, 1) << @as(u4, @intCast(fast_bits - (i + 1)));
                     for (0..num_indexes) |index| {
-                        std.debug.assert(fast_table[first_index + index] == 255);
+                        // dkde: overlapping codes come from a damaged table.
+                        if (first_index + index >= fast_table.len or fast_table[first_index + index] != 255) return Image.ReadError.InvalidData;
                         fast_table[first_index + index] = byte;
                         fast_size[first_index + index] = @as(u5, @intCast(i + 1));
                     }
@@ -153,7 +154,12 @@ pub const Reader = struct {
     }
 
     pub fn consumeBits(self: *Reader, num_bits: u5) void {
-        std.debug.assert(num_bits <= self.bit_count and num_bits <= 16);
+        // dkde: past the end of damaged data there are no bits left to take.
+        if (num_bits > self.bit_count) {
+            self.bit_buffer = 0;
+            self.bit_count = 0;
+            return;
+        }
 
         self.bit_buffer <<= num_bits;
         self.bit_count -= num_bits;

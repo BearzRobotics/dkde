@@ -494,7 +494,8 @@ fn readAllData(
         else => |leftover_err| return leftover_err,
     };
 
-    std.debug.assert(should_be_zero == 0);
+    // dkde: data after the image is ignored, as other decoders do.
+    _ = should_be_zero;
 
     return result;
 }
