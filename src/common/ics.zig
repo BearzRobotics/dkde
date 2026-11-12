@@ -355,7 +355,15 @@ pub fn parseWith(allocator: std.mem.Allocator, text: []const u8, utc_to_local: ?
                 if (opts.window == null) {
                     try result.append(a, ev);
                 } else try raws.append(a, .{
-                    .ev = ev,
+                    // Repeats and changed days are matched by UID, so every event needs one.
+                    .ev = blk: {
+                        var withuid = ev;
+                        if (withuid.uid.len == 0) {
+                            var db: [16]u8 = undefined;
+                            withuid.uid = try std.fmt.allocPrint(a, "{s}-{s}-{d}", .{ ev.title, events.formatDate(&db, ev.date), ev.start });
+                        }
+                        break :blk withuid;
+                    },
                     .draft_rrule = draft.rrule,
                     .exdates = try draft.exdates.toOwnedSlice(a),
                     .recurrence_id = draft.recurrence_id,
@@ -601,4 +609,16 @@ test "parse without a window keeps the old behaviour" {
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, 1), parsed.events.len);
     try std.testing.expectEqual(events.Repeat.weekly, parsed.events[0].repeat);
+}
+
+test "events without a UID get their own, so two repeats on one day stay apart" {
+    const a = std.testing.allocator;
+    const window: Window = .{ .from = .{ .year = 2026, .month = 1, .day = 1 }, .to = .{ .year = 2027, .month = 12, .day = 31 } };
+    const text =
+        "BEGIN:VEVENT\r\nDTSTART:20261103T100000\r\nSUMMARY:Gym\r\nRRULE:FREQ=WEEKLY;COUNT=2\r\nEND:VEVENT\r\n" ++
+        "BEGIN:VEVENT\r\nDTSTART:20261103T110000\r\nSUMMARY:Class\r\nRRULE:FREQ=WEEKLY;COUNT=2\r\nEND:VEVENT\r\n";
+    var parsed = try parseWith(a, text, null, .{ .window = window });
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(usize, 4), parsed.events.len);
+    for (parsed.events, 0..) |x, i| for (parsed.events[i + 1 ..]) |y| try std.testing.expect(!std.mem.eql(u8, x.uid, y.uid));
 }

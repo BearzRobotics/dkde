@@ -174,7 +174,22 @@ pub fn hostOf(url: []const u8) []const u8 {
 
 // ---- fetching ---------------------------------------------------------------------------------
 
-pub const FetchError = error{ HttpStatus, TooLarge, UnsupportedEncoding, NotACalendar } || std.mem.Allocator.Error;
+pub const FetchError = error{ HttpStatus, TooLarge, UnsupportedEncoding, NotACalendar, InsecureRedirect, TooManyRedirects } || std.mem.Allocator.Error;
+
+/// At most this many redirects are followed.
+const max_redirects = 3;
+
+/// Where a redirect from `current` to `location` goes. Only an https address, or a
+/// path on the same server, is followed: a redirect to plain http would send the
+/// secret link over the network in the clear.
+fn redirectTarget(allocator: std.mem.Allocator, current: []const u8, location: []const u8) (FetchError)![]u8 {
+    if (std.ascii.startsWithIgnoreCase(location, "https://")) return allocator.dupe(u8, location);
+    if (location.len > 0 and location[0] == '/' and !std.mem.startsWith(u8, location, "//")) {
+        const scheme_end = std.mem.indexOf(u8, current, "://") orelse return error.InsecureRedirect;
+        return std.fmt.allocPrint(allocator, "{s}://{s}{s}", .{ current[0..scheme_end], hostOf(current), location });
+    }
+    return error.InsecureRedirect;
+}
 
 /// Downloads `url` (already normalized) and returns the body, at most
 /// `max_feed_bytes`. Blocks until done: call it from a worker thread. It makes
@@ -185,30 +200,43 @@ pub fn fetchText(allocator: std.mem.Allocator, url: []const u8) ![]u8 {
     var client: std.http.Client = .{ .allocator = allocator, .io = threaded.io() };
     defer client.deinit();
 
-    const uri = try std.Uri.parse(url);
-    var req = try client.request(.GET, uri, .{
-        .redirect_behavior = .init(3),
-        // The body is read as sent; a feed is text and the limit below counts what arrives.
-        .headers = .{
-            .accept_encoding = .{ .override = "identity" },
-            .user_agent = .{ .override = "dkde-calendar" },
-        },
-        .extra_headers = &.{.{ .name = "Accept", .value = "text/calendar, text/plain;q=0.5" }},
-    });
-    defer req.deinit();
-    try req.sendBodiless();
-    var redirect_buffer: [8 * 1024]u8 = undefined;
-    var response = try req.receiveHead(&redirect_buffer);
-    if (response.head.status != .ok) return error.HttpStatus;
-    if (response.head.content_encoding != .identity) return error.UnsupportedEncoding;
-    if (response.head.content_length) |n| if (n > max_feed_bytes) return error.TooLarge;
-    var transfer_buffer: [64]u8 = undefined;
-    const reader = response.reader(&transfer_buffer);
-    return reader.allocRemaining(allocator, .limited(max_feed_bytes)) catch |e| switch (e) {
-        error.StreamTooLong => error.TooLarge,
-        error.ReadFailed => response.bodyErr() orelse error.ReadFailed,
-        else => e,
-    };
+    // Redirects are followed here, not by the client, so each one can be checked.
+    var current = try allocator.dupe(u8, url);
+    defer allocator.free(current);
+    var hops: u8 = 0;
+    while (true) {
+        const uri = try std.Uri.parse(current);
+        var req = try client.request(.GET, uri, .{
+            .redirect_behavior = .unhandled,
+            // The body is read as sent; a feed is text and the limit below counts what arrives.
+            .headers = .{
+                .accept_encoding = .{ .override = "identity" },
+                .user_agent = .{ .override = "dkde-calendar" },
+            },
+            .extra_headers = &.{.{ .name = "Accept", .value = "text/calendar, text/plain;q=0.5" }},
+        });
+        defer req.deinit();
+        try req.sendBodiless();
+        var response = try req.receiveHead(&.{});
+        if (response.head.status.class() == .redirect) {
+            if (hops >= max_redirects) return error.TooManyRedirects;
+            const next = try redirectTarget(allocator, current, response.head.location orelse return error.HttpStatus);
+            allocator.free(current);
+            current = next;
+            hops += 1;
+            continue;
+        }
+        if (response.head.status != .ok) return error.HttpStatus;
+        if (response.head.content_encoding != .identity) return error.UnsupportedEncoding;
+        if (response.head.content_length) |n| if (n > max_feed_bytes) return error.TooLarge;
+        var transfer_buffer: [64]u8 = undefined;
+        const reader = response.reader(&transfer_buffer);
+        return reader.allocRemaining(allocator, .limited(max_feed_bytes)) catch |e| switch (e) {
+            error.StreamTooLong => error.TooLarge,
+            error.ReadFailed => response.bodyErr() orelse error.ReadFailed,
+            else => e,
+        };
+    }
 }
 
 /// A short sentence for an error from a refresh, for the status line.
@@ -218,6 +246,8 @@ pub fn describe(err: anyerror) []const u8 {
         error.NotHttps => "Only https links are used; a plain http link would show the secret to the network.",
         error.HttpStatus => "The server did not return the calendar (wrong link, or access removed).",
         error.TooLarge => "The calendar is larger than 8 MB.",
+        error.InsecureRedirect => "The server tried to send the request to a plain http address, which is refused.",
+        error.TooManyRedirects => "The server redirected the request too many times.",
         error.NotACalendar => "The address did not return an iCalendar file.",
         error.UnknownHostName, error.TemporaryNameServerFailure, error.NameServerFailure, error.ConnectionRefused, error.NetworkUnreachable, error.ConnectionTimedOut, error.ConnectionResetByPeer => "The server could not be reached.",
         error.TlsInitializationFailed, error.CertificateBundleLoadFailure => "A secure connection could not be made.",
@@ -263,6 +293,44 @@ pub fn lastSync(allocator: std.mem.Allocator, id: []const u8) ?i64 {
     var threaded: std.Io.Threaded = .init_single_threaded;
     const st = std.Io.Dir.cwd().statFile(threaded.io(), path, .{}) catch return null;
     return @intCast(@divFloor(st.mtime.nanoseconds, std.time.ns_per_s));
+}
+
+/// Deletes the copy of every account in `ran` that is no longer in `current`: the user
+/// removed it while its update was running, and the update wrote the copy back.
+pub fn dropOrphans(allocator: std.mem.Allocator, ran: []const Account, current: []const Account) void {
+    for (ran) |acct| {
+        var still = false;
+        for (current) |c| if (std.mem.eql(u8, c.id, acct.id)) {
+            still = true;
+        };
+        if (still) continue;
+        const path = cachePath(allocator, acct.id) catch continue;
+        defer allocator.free(path);
+        const z = allocator.dupeSentinel(u8, path, 0) catch continue;
+        defer allocator.free(z);
+        _ = std.c.unlink(z);
+    }
+}
+
+/// True when two lists name the same accounts with the same settings: used to skip a
+/// reload when the file changed for some other reason.
+pub fn sameAccounts(a: []const Account, b: []const Account) bool {
+    if (a.len != b.len) return false;
+    for (a, b) |x, y| {
+        if (!std.mem.eql(u8, x.id, y.id) or !std.mem.eql(u8, x.url, y.url)) return false;
+        if (x.enabled != y.enabled or x.color != y.color or x.refresh_minutes != y.refresh_minutes) return false;
+    }
+    return true;
+}
+
+/// Tells programs that watch calendar.toml (the panel, for its reminders) that the
+/// copies changed. For programs, such as Settings, that do not hold calendar.toml open.
+pub fn markUpdated(allocator: std.mem.Allocator) void {
+    var cfg = config_mod.Config.load(allocator, "calendar.toml") catch return;
+    defer cfg.deinit();
+    var b: [24]u8 = undefined;
+    const stamp = std.fmt.bufPrintSentinel(&b, "{d}", .{@divFloor(glib.getRealTime(), std.time.us_per_s)}, 0) catch return;
+    cfg.setString("sync", "feeds-updated", stamp) catch {};
 }
 
 /// True when `acct` should be refreshed on start: it is on, has an interval
@@ -553,6 +621,8 @@ test "every public function compiles (Zig skips what nothing uses)" {
     _ = &refreshAll;
     _ = &loadAll;
     _ = &utcToLocal;
+    _ = &dropOrphans;
+    _ = &markUpdated;
     _ = &lastSync;
     _ = &isDue;
     _ = &Job.start;
@@ -629,4 +699,26 @@ test "fetchText reads a feed from a server and rejects an error page" {
     defer testing.allocator.free(got);
     try testing.expectEqualStrings(feed, got);
     try testing.expectError(error.HttpStatus, fetchFromLocalServer(.not_found, "gone"));
+}
+
+test "redirects: https and same-server paths only" {
+    const a = testing.allocator;
+    const ok = try redirectTarget(a, "https://cal.example.org/a/b.ics", "https://other.example.net/x.ics");
+    defer a.free(ok);
+    try testing.expectEqualStrings("https://other.example.net/x.ics", ok);
+    const rel = try redirectTarget(a, "https://cal.example.org/a/b.ics", "/moved/b.ics");
+    defer a.free(rel);
+    try testing.expectEqualStrings("https://cal.example.org/moved/b.ics", rel);
+    try testing.expectError(error.InsecureRedirect, redirectTarget(a, "https://cal.example.org/a", "http://cal.example.org/a"));
+    try testing.expectError(error.InsecureRedirect, redirectTarget(a, "https://cal.example.org/a", "//evil.example.net/a"));
+    try testing.expectError(error.InsecureRedirect, redirectTarget(a, "https://cal.example.org/a", "relative.ics"));
+}
+
+test "sameAccounts notices a change and ignores a rename" {
+    const a1 = [_]Account{.{ .id = "x", .name = "One", .url = "https://h/p" }};
+    const a2 = [_]Account{.{ .id = "x", .name = "Renamed", .url = "https://h/p" }};
+    const a3 = [_]Account{.{ .id = "x", .name = "One", .url = "https://h/p", .enabled = false }};
+    try testing.expect(sameAccounts(&a1, &a2));
+    try testing.expect(!sameAccounts(&a1, &a3));
+    try testing.expect(!sameAccounts(&a1, &.{}));
 }

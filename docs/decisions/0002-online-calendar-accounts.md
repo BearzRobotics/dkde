@@ -19,7 +19,7 @@ An *account* is a private **https link to an iCalendar feed**, stored as an `[ac
 
 - Code: `src/common/feeds.zig` (accounts, fetch, cache, loading), `src/common/rrule.zig` (recurrence rules), `ics.parseWith` (feeds: removed, changed and cancelled occurrences), `Event.source` (marks an event as online and read-only).
 - UI: `src/settings/onlinepage.zig` (the only place accounts are added, switched or removed); dkde-calendar has Sync now, a start-up update for accounts that asked for it, and a button that opens the settings page.
-- Network: `std.http.Client` with the system's root certificates, on a worker thread with its own `std.Io`; https only, three redirects, 8 MB limit, `Accept-Encoding: identity`.
+- Network: `std.http.Client` with the system's root certificates, on a worker thread with its own `std.Io`; https only, up to three redirects followed by dkde itself and only to https (or a path on the same server), 8 MB limit, `Accept-Encoding: identity`.
 
 ## 4. Alternatives considered
 
@@ -36,6 +36,7 @@ An *account* is a private **https link to an iCalendar feed**, stored as an `[ac
 - The secret link sits in `dkde.toml` in the clear. It is documented (man pages, the settings page, `data/dkde.toml`), shown only as its host name, and plain http is refused. A keyring is a possible later step.
 - Feed events cannot be edited or deleted in dkde and are left out of Export and the sync file.
 - Repeat rules beyond FREQ, INTERVAL, COUNT, UNTIL and weekly BYDAY are approximated as their FREQ. TZID times are taken as local time (existing behaviour of the iCalendar reader). Both are written in dkde-calendar(1), ONLINE CALENDARS.
+- UTC-anchored repeats are converted once, so they can be an hour off after a daylight-saving change; a rule dkde cannot expand is kept as its FREQ (documented in the man page).
 - Repeats from a feed are expanded for 3 years back and 5 ahead of today, at most 4000 occurrences per rule.
 - The panel's reminders include online events: it loads the accounts from `dkde.toml` and the copies from the cache, and reloads when `dkde.toml` changes or when dkde-calendar writes `sync.feeds-updated` to `calendar.toml` after an update (the panel already watches that file, so no polling is added). The panel never downloads anything itself.
 

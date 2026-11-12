@@ -45,7 +45,7 @@ pub const Reminders = struct {
         self.config.watch(Reminders, onFileChanged, self) catch |err|
             log.warn("calendar not watched: {s}", .{@errorName(err)});
         // An account switched on or off in Settings changes the reminders too.
-        self.shared.watch(Reminders, onFileChanged, self) catch |err|
+        self.shared.watch(Reminders, onSharedChanged, self) catch |err|
             log.warn("accounts not watched: {s}", .{@errorName(err)});
         self.arm();
         return self;
@@ -69,13 +69,22 @@ pub const Reminders = struct {
         return .{ .minute = days * 1440 + dt.getHour() * 60 + dt.getMinute(), .second = dt.getSecond() };
     }
 
-    /// The calendar app changed its file, or an online calendar was updated or
-    /// switched (the files have reloaded already).
+    /// dkde.toml changed. It holds many settings; only a change to the online accounts
+    /// is worth re-reading the events for.
+    fn onSharedChanged(self: *Reminders) void {
+        var accounts = feeds.loadAccounts(self.allocator, &self.shared) catch return;
+        if (feeds.sameAccounts(self.accounts.items, accounts.items)) {
+            accounts.deinit();
+            return;
+        }
+        self.accounts.deinit();
+        self.accounts = accounts;
+        self.onFileChanged();
+    }
+
+    /// The calendar app changed its file, or an online calendar was updated (the
+    /// file has reloaded already).
     fn onFileChanged(self: *Reminders) void {
-        if (feeds.loadAccounts(self.allocator, &self.shared)) |accounts| {
-            self.accounts.deinit();
-            self.accounts = accounts;
-        } else |_| {}
         const fresh = feeds.loadAll(self.allocator, &self.config, self.accounts.items, null) catch |err| {
             log.warn("cannot read the events: {s}", .{@errorName(err)});
             return;

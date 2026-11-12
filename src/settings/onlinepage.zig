@@ -35,15 +35,25 @@ pub const OnlinePage = struct {
     interval: *gtk.DropDown,
     refresh_button: *gtk.Button,
     busy: bool = false,
+    /// An account was added while an update was running: update again when it ends.
+    pending: bool = false,
     /// The page was destroyed while a refresh was still running; the refresh frees it.
     dead: bool = false,
 
     pub fn build(window: *SettingsWindow) *gtk.Box {
         const page = SettingsWindow.newPage(common.tr("Online accounts"));
+        const cfg = common.Config.load(gpa, "dkde.toml") catch {
+            // Not a reason to take Settings down: say what is wrong and leave the page empty.
+            const msg = gtk.Label.new(common.tr("dkde.toml could not be read, so online calendars cannot be set up. Fix or remove the file and open this page again."));
+            msg.setXalign(0);
+            msg.setWrap(1);
+            page.append(msg.as(gtk.Widget));
+            return page;
+        };
         const self = gpa.create(OnlinePage) catch @panic("OOM");
         self.* = .{
             .window = window,
-            .cfg = common.Config.load(gpa, "dkde.toml") catch @panic("config"),
+            .cfg = cfg,
             .accounts = .{ .arena = std.heap.ArenaAllocator.init(gpa), .items = &.{} },
             .list = gtk.ListBox.new(),
             .status = gtk.Label.new(""),
@@ -301,10 +311,16 @@ pub const OnlinePage = struct {
     }
 
     fn refreshNow(self: *OnlinePage) void {
-        if (self.busy) return;
+        if (self.busy) {
+            self.pending = true; // started again as soon as this one ends
+            return;
+        }
         const started = feeds.Job.start(gpa, self.accounts.items, false, &refreshed, self) catch false;
         if (!started) return self.say("Nothing to update.");
         self.busy = true;
+        // No adding, switching or removing while the download runs: it would write a copy
+        // for an account that was just removed.
+        self.list.as(gtk.Widget).setSensitive(0);
         self.refresh_button.as(gtk.Widget).setSensitive(0);
         self.say("Updating…");
     }
@@ -323,6 +339,14 @@ pub const OnlinePage = struct {
             } else out.print(gpa, "{s}: {d} events.", .{ acct.name, res.count }) catch {};
         }
         self.say(out.items);
+        self.list.as(gtk.Widget).setSensitive(1);
         self.reload();
+        // The panel's reminders read the new copies when it hears of them.
+        feeds.dropOrphans(gpa, job.accounts, self.accounts.items);
+        feeds.markUpdated(gpa);
+        if (self.pending) {
+            self.pending = false;
+            self.refreshNow();
+        }
     }
 };

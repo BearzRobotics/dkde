@@ -1507,6 +1507,13 @@ pub const CalendarApp = struct {
         const self: *CalendarApp = @ptrCast(@alignCast(user.?));
         self.feed_busy = false;
         if (self.closing) return self.freeAll();
+        // An account may have been removed in Settings while this ran: forget its copy.
+        self.shared.reload() catch {};
+        if (feeds.loadAccounts(self.allocator, &self.shared)) |fresh| {
+            self.accounts.deinit();
+            self.accounts = fresh;
+        } else |_| {}
+        feeds.dropOrphans(self.allocator, job.accounts, self.accounts.items);
         var failed: ?[]const u8 = null;
         var failed_name: []const u8 = "";
         var events_read: usize = 0;
