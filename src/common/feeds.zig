@@ -475,11 +475,14 @@ pub const Job = struct {
             .refresh_minutes = src.refresh_minutes,
             .color = src.color,
         };
+        // Everything that allocates from the arena is done before `job.*` is assigned: the
+        // assignment copies the arena's state, which must not change after that.
+        const results = try a.alloc(Result, accounts.len);
         job.* = .{
             .allocator = allocator,
             .arena = job.arena,
             .accounts = copy,
-            .results = try a.alloc(Result, accounts.len),
+            .results = results,
             .only_due = only_due,
             .now = now,
             .done = done,
