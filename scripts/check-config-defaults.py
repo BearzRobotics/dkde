@@ -20,7 +20,7 @@ for f in glob.glob(os.path.join(root, "data", "*.toml")):
 
 missing = collections.defaultdict(set)
 for f in glob.glob(os.path.join(root, "src", "**", "*.zig"), recursive=True):
-    if f.endswith(("common/config.zig", "common/migrate.zig", "common/tomltext.zig", "termcore/ini.zig")):
+    if f.endswith(("common/config.zig", "common/migrate.zig", "common/tomltext.zig")):
         continue  # their tests use made-up keys
     for g, k in re.findall(r'"([a-z]+)",\s*"([a-z][a-z0-9-]*)"', open(f).read()):
         if g in groups and k not in have[g]:
