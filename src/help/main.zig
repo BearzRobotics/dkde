@@ -7,6 +7,7 @@
 const std = @import("std");
 const cli = @import("cli");
 const glib = @import("glib2");
+const gio = @import("gio2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const pango = @import("pango1");
@@ -25,7 +26,12 @@ const Help = struct {
     dirs: []const []const u8 = &.{},
     window: *gtk.ApplicationWindow,
     search: *gtk.SearchEntry,
-    list: *gtk.ListBox,
+    /// How the list is grouped, and the groups (in the arena).
+    browse: *gtk.DropDown,
+    grouping: index.Grouping = .topic,
+    groups: []index.Group = &.{},
+    list: *gtk.ListView,
+    selection: ?*gtk.SingleSelection = null,
     tabs: *gtk.Notebook,
     tag_table: *gtk.TextTagTable,
     /// One per notebook page, in page order (tabs are not reorderable).
@@ -39,7 +45,8 @@ const Help = struct {
             .arena = .init(allocator),
             .window = gtk.ApplicationWindow.new(app),
             .search = gtk.SearchEntry.new(),
-            .list = gtk.ListBox.new(),
+            .browse = undefined,
+            .list = gtk.ListView.new(null, null),
             .tabs = gtk.Notebook.new(),
             .tag_table = gtk.TextTagTable.new(),
         };
@@ -53,12 +60,23 @@ const Help = struct {
 
         self.search.setPlaceholderText(common.tr("Search help"));
         inline for (.{ "setMarginStart", "setMarginEnd", "setMarginTop", "setMarginBottom" }) |m| @field(gtk.Widget, m)(self.search.as(gtk.Widget), 8);
-        self.list.setSelectionMode(.single);
+        // How to browse: by topic, section, folder or letter.
+        var names: [5:null]?[*:0]const u8 = .{ index.Grouping.topic.label(), index.Grouping.section.label(), index.Grouping.folder.label(), index.Grouping.letter.label(), null };
+        self.browse = gtk.DropDown.newFromStrings(@ptrCast(&names));
+        self.browse.as(gtk.Widget).setTooltipText(common.tr("How the list is arranged"));
+        inline for (.{ "setMarginStart", "setMarginEnd", "setMarginBottom" }) |m| @field(gtk.Widget, m)(self.browse.as(gtk.Widget), 8);
+        const factory = gtk.SignalListItemFactory.new();
+        _ = gtk.SignalListItemFactory.signals.setup.connect(factory, *Help, &onItemSetup, self, .{});
+        _ = gtk.SignalListItemFactory.signals.bind.connect(factory, *Help, &onItemBind, self, .{});
+        self.list.setFactory(factory.as(gtk.ListItemFactory));
+        factory.as(gobject.Object).unref();
+        self.list.as(gtk.Widget).addCssClass("navigation-sidebar");
         const list_scroller = gtk.ScrolledWindow.new();
         list_scroller.setChild(self.list.as(gtk.Widget));
         list_scroller.as(gtk.Widget).setVexpand(1);
         const side = gtk.Box.new(.vertical, 0);
         side.append(self.search.as(gtk.Widget));
+        side.append(self.browse.as(gtk.Widget));
         side.append(list_scroller.as(gtk.Widget));
 
         addTags(self.tag_table);
@@ -87,8 +105,8 @@ const Help = struct {
         window.setChild(paned.as(gtk.Widget));
 
         self.loadIndex();
-        _ = gtk.ListBox.signals.row_selected.connect(self.list, *Help, &onRow, self, .{});
-        _ = gtk.ListBox.signals.row_activated.connect(self.list, *Help, &onRowActivated, self, .{});
+        _ = gtk.ListView.signals.activate.connect(self.list, *Help, &onListActivate, self, .{});
+        _ = gobject.Object.signals.notify.connect(self.browse, *Help, &onBrowse, self, .{ .detail = "selected" });
         _ = gtk.SearchEntry.signals.search_changed.connect(self.search, *Help, &onSearch, self, .{});
         _ = gtk.SearchEntry.signals.activate.connect(self.search, *Help, &onActivate, self, .{});
 
@@ -217,12 +235,133 @@ const Help = struct {
         self.window.as(gtk.Window).setTitle(self.titleFor(text));
     }
 
-    /// Double-click or Enter on a list row opens the page in a new tab.
-    fn onRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Help) callconv(.c) void {
-        const i: usize = @intCast(row.getIndex());
-        if (i >= self.entries.len) return;
+    // ---- the list ---------------------------------------------------------------------------
+    //
+    // A ListView over a TreeListModel: each item is a GtkStringObject, "g<n>"
+    // for group n or "e<n>" for entry n. While searching, the matches are
+    // listed without groups.
+
+    const Item = union(enum) { group: usize, entry: usize };
+
+    fn itemOf(obj: *gobject.Object) ?Item {
+        const so: *gtk.StringObject = @ptrCast(@alignCast(obj));
+        const text = std.mem.span(so.getString());
+        if (text.len < 2) return null;
+        const n = std.fmt.parseInt(usize, text[1..], 10) catch return null;
+        return if (text[0] == 'g') .{ .group = n } else .{ .entry = n };
+    }
+
+    /// The children of a group (entries have none).
+    fn childrenOf(obj: *gobject.Object, data: ?*anyopaque) callconv(.c) ?*gio.ListModel {
+        const self: *Help = @ptrCast(@alignCast(data.?));
+        const item = itemOf(obj) orelse return null;
+        if (item != .group or item.group >= self.groups.len) return null;
+        return self.stringList(.entry, self.groups[item.group].members);
+    }
+
+    fn stringList(self: *Help, comptime kind: std.meta.Tag(Item), ids: anytype) *gio.ListModel {
+        const list = gtk.StringList.new(null);
+        var buf: [24]u8 = undefined;
+        for (ids, 0..) |id, i| {
+            const n: usize = if (kind == .group) i else id;
+            const text = std.fmt.bufPrintSentinel(&buf, "{c}{d}", .{ @as(u8, if (kind == .group) 'g' else 'e'), n }, 0) catch continue;
+            list.append(text);
+        }
+        _ = self;
+        return list.as(gio.ListModel);
+    }
+
+    /// Shows `root` (groups or matches) in the list.
+    fn setRoot(self: *Help, root: *gio.ListModel) void {
+        const tree = gtk.TreeListModel.new(root, 0, 0, childrenOf, self, null);
+        const sel = gtk.SingleSelection.new(tree.as(gio.ListModel));
+        sel.setAutoselect(0);
+        sel.setCanUnselect(1);
+        _ = gtk.SelectionModel.signals.selection_changed.connect(sel.as(gtk.SelectionModel), *Help, &onSelection, self, .{});
+        self.list.setModel(sel.as(gtk.SelectionModel));
+        sel.as(gobject.Object).unref();
+        self.selection = sel;
+    }
+
+    fn showGroups(self: *Help) void {
+        self.groups = index.group(self.arena.allocator(), self.entries, self.grouping) catch &.{};
+        self.setRoot(self.stringList(.group, self.groups));
+    }
+
+    fn onItemSetup(_: *gtk.SignalListItemFactory, obj: *gobject.Object, _: *Help) callconv(.c) void {
+        const item: *gtk.ListItem = @ptrCast(@alignCast(obj));
+        const expander = gtk.TreeExpander.new();
+        const label = gtk.Label.new("");
+        label.setXalign(0);
+        label.setEllipsize(.end);
+        expander.setChild(label.as(gtk.Widget));
+        item.setChild(expander.as(gtk.Widget));
+    }
+
+    fn onItemBind(_: *gtk.SignalListItemFactory, obj: *gobject.Object, self: *Help) callconv(.c) void {
+        const item: *gtk.ListItem = @ptrCast(@alignCast(obj));
+        const row: *gtk.TreeListRow = @ptrCast(@alignCast(item.getItem() orelse return));
+        const expander: *gtk.TreeExpander = @ptrCast(@alignCast(item.getChild() orelse return));
+        expander.setListRow(row);
+        const label: *gtk.Label = @ptrCast(@alignCast(expander.getChild() orelse return));
+        const what = itemOf(row.getItem() orelse return) orelse return;
+        var buf: [300]u8 = undefined;
+        switch (what) {
+            .group => |g| {
+                if (g >= self.groups.len) return;
+                const grp = self.groups[g];
+                label.setText(std.fmt.bufPrintSentinel(&buf, "{s}  ({d})", .{ grp.title, grp.members.len }, 0) catch "");
+                label.as(gtk.Widget).addCssClass("heading");
+            },
+            .entry => |e| {
+                if (e >= self.entries.len) return;
+                var lb: [160]u8 = undefined;
+                label.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{self.entries[e].label(&lb)}, 0) catch "");
+                label.as(gtk.Widget).removeCssClass("heading");
+            },
+        }
+    }
+
+    fn rowAt(self: *Help, position: c_uint) ?*gtk.TreeListRow {
+        const sel = self.selection orelse return null;
+        const model = sel.getModel() orelse return null;
+        const obj = model.getItem(position) orelse return null;
+        return @ptrCast(@alignCast(obj));
+    }
+
+    /// A click: a page shows in the current tab; a group opens or closes.
+    fn onSelection(sel: *gtk.SelectionModel, _: c_uint, _: c_uint, self: *Help) callconv(.c) void {
+        const single: *gtk.SingleSelection = @ptrCast(@alignCast(sel));
+        const obj = single.getSelectedItem() orelse return;
+        const row: *gtk.TreeListRow = @ptrCast(@alignCast(obj));
+        const what = itemOf(row.getItem() orelse return) orelse return;
+        switch (what) {
+            .entry => |e| if (e < self.entries.len) self.openEntry(e),
+            .group => {
+                row.setExpanded(@intFromBool(row.getExpanded() == 0));
+                _ = single.as(gtk.SelectionModel).unselectAll();
+            },
+        }
+    }
+
+    /// Double-click or Enter on a page opens it in a new tab.
+    fn onListActivate(_: *gtk.ListView, position: c_uint, self: *Help) callconv(.c) void {
+        const row = self.rowAt(position) orelse return;
+        defer row.as(gobject.Object).unref();
+        const what = itemOf(row.getItem() orelse return) orelse return;
+        if (what != .entry or what.entry >= self.entries.len) return;
         _ = self.newTab();
-        self.openEntry(i);
+        self.openEntry(what.entry);
+    }
+
+    fn onBrowse(dd: *gtk.DropDown, _: *gobject.ParamSpec, self: *Help) callconv(.c) void {
+        self.grouping = switch (dd.getSelected()) {
+            1 => .section,
+            2 => .folder,
+            3 => .letter,
+            else => .topic,
+        };
+        if (std.mem.span(self.search.as(gtk.Editable).getText()).len == 0) self.showGroups();
     }
 
     fn openEntry(self: *Help, i: usize) void {
@@ -241,20 +380,11 @@ const Help = struct {
         const help_dir: ?[]const u8 = helpDir(a);
         self.dirs = dkman.paths.searchDirs(a, manpath) catch &.{};
         self.entries = index.all(a, common.fsio.io(), help_dir, manpath) catch &.{};
-
-        var buf: [160]u8 = undefined;
-        for (self.entries) |e| {
-            const text = std.fmt.allocPrintSentinel(a, "{s}", .{e.label(&buf)}, 0) catch continue;
-            const label = gtk.Label.new(text);
-            label.setXalign(0);
-            label.as(gtk.Widget).setMarginStart(8);
-            label.as(gtk.Widget).setMarginEnd(8);
-            self.list.append(label.as(gtk.Widget));
-        }
+        self.showGroups();
     }
 
     fn selectRow(self: *Help, i: usize) void {
-        if (self.list.getRowAtIndex(@intCast(i))) |row| self.list.selectRow(row);
+        if (i < self.entries.len) self.openEntry(i);
     }
 
     /// Operands: `NAME`, `SECTION NAME` or a file path, as man(1) takes them.
@@ -316,26 +446,13 @@ const Help = struct {
         _ = view.scrollToIter(&start, 0, 0, 0, 0);
     }
 
-    /// Clicking a row shows the page in the current tab.
-    fn onRow(_: *gtk.ListBox, row: ?*gtk.ListBoxRow, self: *Help) callconv(.c) void {
-        const r = row orelse return;
-        const i: usize = @intCast(r.getIndex());
-        if (i >= self.entries.len) return;
-        self.openEntry(i);
-    }
-
+    /// Typing lists the matches without groups; an empty box shows the groups again.
     fn onSearch(entry: *gtk.SearchEntry, self: *Help) callconv(.c) void {
-        const query = std.mem.span(entry.as(gtk.Editable).getText());
+        const query = std.mem.trim(u8, std.mem.span(entry.as(gtk.Editable).getText()), " ");
+        if (query.len == 0) return self.showGroups();
         const hits = index.filter(self.allocator, self.entries, query) catch return;
         defer self.allocator.free(hits);
-        // Rows are shown or hidden, never rebuilt, so the selection and the
-        // scroll position survive typing.
-        var next: usize = 0;
-        for (self.entries, 0..) |_, i| {
-            const visible = next < hits.len and hits[next] == i;
-            if (visible) next += 1;
-            if (self.list.getRowAtIndex(@intCast(i))) |row| row.as(gtk.Widget).setVisible(@intFromBool(visible));
-        }
+        self.setRoot(self.stringList(.entry, hits));
     }
 
     /// Enter in the search box opens the first match.
@@ -375,6 +492,9 @@ fn addTags(table: *gtk.TextTagTable) void {
     addTag(table, "link", .{ .{ "foreground", @as([*:0]const u8, "#2a6ebb") }, .{ "underline", pango.Underline.single } });
     addTag(table, "strike", .{.{ "strikethrough", true }});
     addTag(table, "term", .{.{ "weight", @as(c_int, 700) }});
+    // Columns line up only in a fixed-width font.
+    // Not wrapped either: a wide table scrolls sideways instead.
+    addTag(table, "table", .{ .{ "family", @as([*:0]const u8, "monospace") }, .{ "left-margin", @as(c_int, 12) }, .{ "wrap-mode", gtk.WrapMode.none } });
 }
 
 fn addTag(table: *gtk.TextTagTable, comptime name: [:0]const u8, props: anytype) void {

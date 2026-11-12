@@ -13,7 +13,16 @@ Three kinds of source are read: Markdown files (`.md`, with GitHub-flavoured tab
 
 Finding, reading and parsing pages is done by the dkman library; Markdown is parsed by md-zig and roff by gtroff-zig. The same page therefore reads the same in dkde-help and in the dkman command.
 
-The window has a search box and page list on the left and the pages on the right. DKDE's own documents are listed first, then the system pages sorted by name and section. Typing in the search box hides pages whose name does not contain the text, ignoring case; Enter opens the first match.
+The window has a search box and page list on the left and the pages on the right. The list is in groups that open and close (click a group), arranged in one of four ways, chosen under the search box:
+
+- **By Topic** (the default): DKDE Applications, DKDE Desktop and System, DKDE Guides, then the system's pages by what their manual section holds (User Commands, System Calls, Library Functions, Devices and Special Files, File Formats and Configuration, Games, Overviews, Conventions and Miscellany, System Administration, Kernel Routines …).
+- **By Section**: every page, DKDE's included, under its manual section.
+- **By Folder**: under the folder the pages are installed in (DKDE's help folder, /usr/share/man, /usr/local/share/man …).
+- **A to Z**: by first letter.
+
+Each group shows how many pages it holds. Typing in the search box lists the pages whose name contains the text (ignoring case), without groups; Enter opens the first match; clearing the box brings the groups back.
+
+Tables are laid out in columns in a fixed-width font, the header in bold; a table wider than the window scrolls sideways.
 
 Several pages can be open at once in tabs. Clicking a page in the list shows it in the current tab. Double-clicking a page, or pressing Enter on it, opens it in a new tab. The tab bar appears when there is more than one tab. Closing the last tab leaves an empty one.
 

@@ -22,6 +22,8 @@ pub const Style = enum {
     link,
     strike,
     term,
+    /// A table, laid out in columns (needs a fixed-width font).
+    table,
 };
 
 pub const Error = Allocator.Error;
@@ -134,8 +136,10 @@ pub fn render(gpa: Allocator, doc: *const md.Document) Allocator.Error!Rendered 
                     try b.put(rule);
                     try b.blankLine();
                 },
-                .table_cell => {
-                    if (node.prev != null) try b.put(" \u{2502} ");
+                .table => {
+                    // Laid out here as a whole, then its parts are skipped.
+                    try renderTable(&b, node);
+                    while (walker.next()) |e| if (e.node == node and !e.entering) break;
                 },
                 // Raw HTML and front matter are not shown.
                 .html_block, .html_inline, .front_matter => {},
@@ -173,8 +177,6 @@ pub fn render(gpa: Allocator, doc: *const md.Document) Allocator.Error!Rendered 
                     if (tight) try b.lineBreak() else try b.blankLine();
                 },
                 .list => if (node.parent == null or node.parent.?.kind != .item) try b.blankLine(),
-                .table_row => try b.lineBreak(),
-                .table => try b.blankLine(),
                 else => {},
             }
         }
@@ -190,6 +192,88 @@ pub fn render(gpa: Allocator, doc: *const md.Document) Allocator.Error!Rendered 
     const text = try b.text.toOwnedSlice(gpa);
     errdefer gpa.free(text);
     return .{ .text = text, .spans = try b.spans.toOwnedSlice(gpa) };
+}
+
+/// The text of a table cell, without its styling.
+fn cellText(gpa: Allocator, cell: *const md.Node, out: *std.ArrayList(u8)) Allocator.Error!void {
+    var child = cell.first_child;
+    while (child) |c| : (child = c.next) {
+        switch (c.kind) {
+            .text, .code => try out.appendSlice(gpa, c.literal),
+            .softbreak, .linebreak => try out.append(gpa, ' '),
+            else => try cellText(gpa, c, out),
+        }
+    }
+}
+
+fn width(s: []const u8) usize {
+    return std.unicode.utf8CountCodepoints(s) catch s.len;
+}
+
+/// A table in aligned columns: cells padded to their column's width, the
+/// header row bold with a rule under it.
+fn renderTable(b: *Builder, table: *const md.Node) Allocator.Error!void {
+    const gpa = b.gpa;
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+
+    const Row = struct { cells: [][]const u8, header: bool };
+    var rows: std.ArrayList(Row) = .empty;
+    var aligns: std.ArrayList(@TypeOf(table.align_)) = .empty;
+    var widths: std.ArrayList(usize) = .empty;
+    var row_node = table.first_child;
+    while (row_node) |r| : (row_node = r.next) {
+        if (r.kind != .table_row) continue;
+        var cells: std.ArrayList([]const u8) = .empty;
+        var cell = r.first_child;
+        var col: usize = 0;
+        while (cell) |c| : (cell = c.next) {
+            var text: std.ArrayList(u8) = .empty;
+            try cellText(a, c, &text);
+            const trimmed = std.mem.trim(u8, text.items, " ");
+            try cells.append(a, trimmed);
+            if (col >= widths.items.len) {
+                try widths.append(a, 0);
+                try aligns.append(a, c.align_);
+            }
+            widths.items[col] = @max(widths.items[col], width(trimmed));
+            col += 1;
+        }
+        try rows.append(a, .{ .cells = cells.items, .header = r.header });
+    }
+    if (rows.items.len == 0) return;
+
+    try b.lineBreak();
+    const start = b.chars;
+    for (rows.items) |row| {
+        const row_start = b.chars;
+        for (widths.items, 0..) |w, i| {
+            if (i > 0) try b.put(" \u{2502} ");
+            const cell = if (i < row.cells.len) row.cells[i] else "";
+            const pad = w - @min(w, width(cell));
+            const left = switch (aligns.items[i]) {
+                .right => pad,
+                .center => pad / 2,
+                else => 0,
+            };
+            for (0..left) |_| try b.put(" ");
+            try b.put(cell);
+            // No trailing spaces at the end of a line.
+            if (i + 1 < widths.items.len) for (0..pad - left) |_| try b.put(" ");
+        }
+        if (row.header) try b.span(row_start, .bold);
+        try b.put("\n");
+        if (row.header) {
+            for (widths.items, 0..) |w, i| {
+                if (i > 0) try b.put("\u{2500}\u{253C}\u{2500}");
+                for (0..w) |_| try b.put("\u{2500}");
+            }
+            try b.put("\n");
+        }
+    }
+    try b.span(start, .table);
+    try b.blankLine();
 }
 
 fn parseForTest(gpa: Allocator, source: []const u8) !md.Document {
@@ -259,4 +343,21 @@ test "empty and plain documents give empty text" {
     const r = try render(t.allocator, &doc);
     defer r.deinit(t.allocator);
     try t.expectEqual(@as(usize, 0), r.text.len);
+}
+
+test "tables are laid out in columns" {
+    const t = std.testing;
+    var doc = try parseForTest(t.allocator, "| Key | Default |\n|---|---:|\n| width | 380 |\n| a | 5 |\n");
+    defer doc.deinit();
+    const r = try render(t.allocator, &doc);
+    defer r.deinit(t.allocator);
+    try t.expect(std.mem.indexOf(u8, r.text, "Key   \u{2502} Default\n") != null);
+    try t.expect(std.mem.indexOf(u8, r.text, "width \u{2502}     380\n") != null);
+    try t.expect(std.mem.indexOf(u8, r.text, "a     \u{2502}       5") != null);
+    // The header row is bold: 15 characters from the start.
+    const bold = for (r.spans) |sp| {
+        if (sp.style == .bold) break sp;
+    } else return error.TestUnexpectedResult;
+    try t.expectEqual(@as(u32, 0), bold.start);
+    try t.expectEqual(@as(u32, 15), bold.end);
 }
