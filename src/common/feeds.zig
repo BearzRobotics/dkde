@@ -112,7 +112,9 @@ pub fn saveAccount(allocator: std.mem.Allocator, cfg: *config_mod.Config, acct: 
     try cfg.setString(group, "url", url);
     try cfg.setBool(group, "enabled", acct.enabled);
     try cfg.setInt(group, "refresh-minutes", acct.refresh_minutes);
-    try cfg.setString(group, "color", acct.color.name());
+    const color = try allocator.dupeSentinel(u8, acct.color.name(), 0);
+    defer allocator.free(color);
+    try cfg.setString(group, "color", color);
 }
 
 /// Removes an account and its cached copy.
@@ -123,7 +125,10 @@ pub fn removeAccount(allocator: std.mem.Allocator, cfg: *config_mod.Config, id: 
     try cfg.removeGroup(group);
     if (cachePath(allocator, id)) |path| {
         defer allocator.free(path);
-        _ = std.c.unlink(path);
+        if (allocator.dupeSentinel(u8, path, 0)) |z| {
+            defer allocator.free(z);
+            _ = std.c.unlink(z);
+        } else |_| {}
     } else |_| {}
 }
 
@@ -254,11 +259,10 @@ fn readWhole(allocator: std.mem.Allocator, path: []const u8) !?[]u8 {
 pub fn lastSync(allocator: std.mem.Allocator, id: []const u8) ?i64 {
     const path = cachePath(allocator, id) catch return null;
     defer allocator.free(path);
-    const z = allocator.dupeSentinel(u8, path, 0) catch return null;
-    defer allocator.free(z);
-    var st: std.c.Stat = undefined;
-    if (std.c.stat(z, &st) != 0) return null;
-    return @intCast(st.mtime().sec);
+    // Its own Io: this is also called from the refresh thread.
+    var threaded: std.Io.Threaded = .init_single_threaded;
+    const st = std.Io.Dir.cwd().statFile(threaded.io(), path, .{}) catch return null;
+    return @intCast(@divFloor(st.mtime.nanoseconds, std.time.ns_per_s));
 }
 
 /// True when `acct` should be refreshed on start: it is on, has an interval
@@ -527,6 +531,19 @@ test "validId keeps ids safe as file names" {
     try testing.expect(validId(long[0..64]));
 }
 
+test "every public function compiles (Zig skips what nothing uses)" {
+    _ = &saveAccount;
+    _ = &removeAccount;
+    _ = &fetchText;
+    _ = &refresh;
+    _ = &refreshAll;
+    _ = &loadAll;
+    _ = &lastSync;
+    _ = &isDue;
+    _ = &Job.start;
+    _ = &describe;
+}
+
 test "looksLikeCalendar" {
     try testing.expect(looksLikeCalendar("BEGIN:VCALENDAR\r\n"));
     try testing.expect(looksLikeCalendar("\xEF\xBB\xBF\r\nbegin:vcalendar\r\n"));
@@ -562,4 +579,39 @@ test "events are read from a copy, marked read-only and given their account" {
     try testing.expectEqualStrings("work", e.source);
     try testing.expect(std.mem.startsWith(u8, e.id, "work-"));
     try testing.expectEqual(events.Color.blue, e.color);
+}
+
+/// Answers one request with `status` and `body`, then returns.
+fn serveOnce(server: *std.Io.net.Server, io: std.Io, status: std.http.Status, body: []const u8) void {
+    const stream = server.accept(io) catch return;
+    defer stream.close(io);
+    var read_buffer: [4096]u8 = undefined;
+    var write_buffer: [4096]u8 = undefined;
+    var reader = stream.reader(io, &read_buffer);
+    var writer = stream.writer(io, &write_buffer);
+    var http_server = std.http.Server.init(&reader.interface, &writer.interface);
+    var request = http_server.receiveHead() catch return;
+    request.respond(body, .{ .status = status }) catch {};
+}
+
+fn fetchFromLocalServer(status: std.http.Status, body: []const u8) ![]u8 {
+    var threaded: std.Io.Threaded = .init(testing.allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+    const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
+    var server = try address.listen(io, .{});
+    defer server.deinit(io);
+    const thread = try std.Thread.spawn(.{}, serveOnce, .{ &server, io, status, body });
+    defer thread.join();
+    var url_buf: [64]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/private/cal.ics", .{server.socket.address.ip4.port});
+    return fetchText(testing.allocator, url);
+}
+
+test "fetchText reads a feed from a server and rejects an error page" {
+    const feed = "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n";
+    const got = try fetchFromLocalServer(.ok, feed);
+    defer testing.allocator.free(got);
+    try testing.expectEqualStrings(feed, got);
+    try testing.expectError(error.HttpStatus, fetchFromLocalServer(.not_found, "gone"));
 }
