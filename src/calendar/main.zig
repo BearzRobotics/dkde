@@ -439,6 +439,9 @@ pub const CalendarApp = struct {
         const grid_scroll = gtk.ScrolledWindow.new();
         grid_scroll.setChild(self.grid.as(gtk.Widget));
         grid_scroll.setPolicy(.automatic, .automatic);
+        // Room for the seven columns of an ordinary month, so the side panel (whose long date
+        // lines would otherwise take the width) never hides Saturday. Wider layouts scroll.
+        grid_scroll.setMinContentWidth(690);
         grid_scroll.as(gtk.Widget).setHexpand(1);
         grid_scroll.as(gtk.Widget).setVexpand(1);
         month_box.append(grid_scroll.as(gtk.Widget));
@@ -476,6 +479,8 @@ pub const CalendarApp = struct {
         day_scroller.setChild(day_content.as(gtk.Widget));
         day_scroller.as(gtk.Widget).setVexpand(1);
         day_scroller.setPolicy(.never, .automatic);
+        // The other calendars' dates above can be tall; the events below must stay readable.
+        day_scroller.setMinContentHeight(150);
 
         const right = gtk.Box.new(.vertical, 6);
         right.as(gtk.Widget).setSizeRequest(180, -1);
