@@ -9,6 +9,7 @@ const glib = @import("glib2");
 const common = @import("common");
 
 const events = common.events;
+const feeds = common.feeds;
 const civil = common.civil;
 const log = std.log.scoped(.reminders);
 
@@ -22,6 +23,9 @@ const grace_minutes: i64 = 12 * 60;
 pub const Reminders = struct {
     allocator: std.mem.Allocator,
     config: common.Config,
+    /// dkde.toml: the optional online calendars (Settings, Online accounts).
+    shared: common.Config,
+    accounts: feeds.Accounts,
     list: events.List,
     timer: c_uint = 0,
     /// Everything due up to this minute has been sent.
@@ -32,10 +36,17 @@ pub const Reminders = struct {
         errdefer allocator.destroy(self);
         var config = try common.Config.load(allocator, "calendar.toml");
         errdefer config.deinit();
-        const list = try events.load(allocator, &config);
-        self.* = .{ .allocator = allocator, .config = config, .list = list, .checked = nowMinutes().minute };
+        var shared = try common.Config.load(allocator, "dkde.toml");
+        errdefer shared.deinit();
+        var accounts = try feeds.loadAccounts(allocator, &shared);
+        errdefer accounts.deinit();
+        const list = try feeds.loadAll(allocator, &config, accounts.items, null);
+        self.* = .{ .allocator = allocator, .config = config, .shared = shared, .accounts = accounts, .list = list, .checked = nowMinutes().minute };
         self.config.watch(Reminders, onFileChanged, self) catch |err|
             log.warn("calendar not watched: {s}", .{@errorName(err)});
+        // An account switched on or off in Settings changes the reminders too.
+        self.shared.watch(Reminders, onFileChanged, self) catch |err|
+            log.warn("accounts not watched: {s}", .{@errorName(err)});
         self.arm();
         return self;
     }
@@ -43,6 +54,8 @@ pub const Reminders = struct {
     pub fn destroy(self: *Reminders) void {
         if (self.timer != 0) _ = glib.Source.remove(self.timer);
         self.list.deinit();
+        self.accounts.deinit();
+        self.shared.deinit();
         self.config.deinit();
         self.allocator.destroy(self);
     }
@@ -56,9 +69,14 @@ pub const Reminders = struct {
         return .{ .minute = days * 1440 + dt.getHour() * 60 + dt.getMinute(), .second = dt.getSecond() };
     }
 
-    /// The calendar app changed the file (config has reloaded already).
+    /// The calendar app changed its file, or an online calendar was updated or
+    /// switched (the files have reloaded already).
     fn onFileChanged(self: *Reminders) void {
-        const fresh = events.load(self.allocator, &self.config) catch |err| {
+        if (feeds.loadAccounts(self.allocator, &self.shared)) |accounts| {
+            self.accounts.deinit();
+            self.accounts = accounts;
+        } else |_| {}
+        const fresh = feeds.loadAll(self.allocator, &self.config, self.accounts.items, null) catch |err| {
             log.warn("cannot read the events: {s}", .{@errorName(err)});
             return;
         };

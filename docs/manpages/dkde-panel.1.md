@@ -37,6 +37,9 @@ msg COMMAND
 0 on a normal exit. 2 when an option is not recognised (the message goes to standard error). Other nonzero values mean the program could not start; the reason is written to standard error.
 
 # FILES
+~/.config/dkde/calendar.toml
+: The calendar's events. The panel sends desktop notifications for their reminders, whether or not dkde-calendar is running. If online calendars were added in Settings (Online accounts), their last downloaded copies in ~/.cache/dkde/feeds/ are included. The panel never downloads them; dkde-calendar does, and tells the panel by changing sync.feeds-updated in this file.
+
 ~/.config/dkde/panel.toml
 : Panel, Start menu and power settings. Settings (dkde-settings) edits it, and the panel reads it again when it changes.
 

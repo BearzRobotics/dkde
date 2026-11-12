@@ -40,3 +40,7 @@ timezone = "America/Detroit"
 # A .ics file to read events from (for example one kept in sync by a tool you
 # run yourself). Empty: none.
 ics-file = ""
+# When dkde-calendar last updated the online calendars (set in Settings, Online
+# accounts). The panel watches this file, so a change here makes it re-read them
+# for its reminders. Leave it alone.
+feeds-updated = ""

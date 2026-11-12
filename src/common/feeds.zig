@@ -368,6 +368,17 @@ fn appendFromDir(
     }
 }
 
+/// Local wall-clock minutes (days * 1440 + minute of day) for a UTC time given the
+/// same way: what `ics.parse` needs to show a UTC time in the user's zone.
+pub fn utcToLocal(utc_minutes: i64) i64 {
+    const utc = glib.DateTime.newFromUnixUtc(utc_minutes * 60) orelse return utc_minutes;
+    defer utc.unref();
+    const local = utc.toLocal() orelse return utc_minutes;
+    defer local.unref();
+    const days = civil.daysFromCivil(local.getYear(), @intCast(local.getMonth()), @intCast(local.getDayOfMonth()));
+    return days * 1440 + local.getHour() * 60 + local.getMinute();
+}
+
 /// All the events to show: the user's own (dkde's calendar.toml) and those of the
 /// enabled accounts' copies. With no accounts this is just `events.load`, and
 /// no feed file is touched.
@@ -392,7 +403,7 @@ pub fn loadAll(
     defer allocator.free(dir);
     var temp_arena = std.heap.ArenaAllocator.init(allocator);
     defer temp_arena.deinit();
-    try appendFromDir(a, temp_arena.allocator(), dir, accounts, utc_to_local, defaultWindow(), &items);
+    try appendFromDir(a, temp_arena.allocator(), dir, accounts, utc_to_local orelse utcToLocal, defaultWindow(), &items);
     list.items = try items.toOwnedSlice(a);
     return list;
 }
@@ -538,6 +549,7 @@ test "every public function compiles (Zig skips what nothing uses)" {
     _ = &refresh;
     _ = &refreshAll;
     _ = &loadAll;
+    _ = &utcToLocal;
     _ = &lastSync;
     _ = &isDue;
     _ = &Job.start;

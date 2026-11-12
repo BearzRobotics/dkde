@@ -1516,9 +1516,17 @@ pub const CalendarApp = struct {
         if (failed) |why| {
             self.say(bufZ(&b, "{s}: {s}", .{ failed_name, why }) catch "An online calendar could not be updated.");
         } else self.say(bufZ(&b, "Online calendars updated: {d} events.", .{events_read}) catch "Updated.");
+        // Tell the panel, which watches this file, to read the new copies for its reminders.
+        if (events_read > 0 or failed == null) self.markFeedsUpdated();
         self.reloadEvents();
         self.rebuildGrid();
         self.showEvents();
+    }
+
+    fn markFeedsUpdated(self: *CalendarApp) void {
+        var b: [24]u8 = undefined;
+        const stamp = std.fmt.bufPrintSentinel(&b, "{d}", .{@divFloor(glib.getRealTime(), std.time.us_per_s)}, 0) catch return;
+        self.cfg.setString("sync", "feeds-updated", stamp) catch {};
     }
 
     /// The sync file's path (owned), or null when none is set.

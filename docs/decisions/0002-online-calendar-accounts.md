@@ -37,11 +37,10 @@ An *account* is a private **https link to an iCalendar feed**, stored as an `[ac
 - Feed events cannot be edited or deleted in dkde and are left out of Export and the sync file.
 - Repeat rules beyond FREQ, INTERVAL, COUNT, UNTIL and weekly BYDAY are approximated as their FREQ. TZID times are taken as local time (existing behaviour of the iCalendar reader). Both are written in dkde-calendar(1), ONLINE CALENDARS.
 - Repeats from a feed are expanded for 3 years back and 5 ahead of today, at most 4000 occurrences per rule.
-- The panel's reminders do **not** yet include online events (it loads only `calendar.toml`); see §6.
+- The panel's reminders include online events: it loads the accounts from `dkde.toml` and the copies from the cache, and reloads when `dkde.toml` changes or when dkde-calendar writes `sync.feeds-updated` to `calendar.toml` after an update (the panel already watches that file, so no polling is added). The panel never downloads anything itself.
 
 ## 6. Not done
 
-- Reminders for online events in the panel (needs the panel to load `feeds.loadAll`, and a way to learn that a copy changed).
 - CalDAV, write-back, sign-in flows.
 - The Windows build (`win.zig`) has no online calendars.
 
