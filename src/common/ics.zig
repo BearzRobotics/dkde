@@ -12,6 +12,7 @@
 const std = @import("std");
 const events = @import("events.zig");
 const civil = @import("civil.zig");
+const rrule = @import("rrule.zig");
 
 const Event = events.Event;
 const Date = civil.Date;
@@ -241,9 +242,34 @@ const Draft = struct {
     repeat: events.Repeat = .none,
     color: events.Color = .default,
     remind: i32 = -1,
+    rrule: []const u8 = "",
+    /// Days (since 1970-01-01) that an EXDATE removes from the repeat.
+    exdates: std.ArrayList(i64) = .empty,
+    /// Set on an event that replaces one occurrence of another event of the same UID.
+    recurrence_id: ?i64 = null,
+    cancelled: bool = false,
 };
 
+/// What `parseWith` adds to `parse`.
+pub const Options = struct {
+    /// When set, repeats are worked out for this range of days: a rule with a
+    /// COUNT, UNTIL, INTERVAL or weekdays (and any repeat with removed or
+    /// changed days) becomes one event per day, cancelled events are dropped
+    /// and a changed occurrence replaces the original. Without it, a repeat is
+    /// only its FREQ and goes on forever.
+    window: ?Window = null,
+};
+
+pub const Window = struct { from: Date, to: Date };
+
+/// One VEVENT as read, before the repeats are looked at.
+const Raw = struct { ev: Event, draft_rrule: []const u8, exdates: []const i64, recurrence_id: ?i64, cancelled: bool };
+
 pub fn parse(allocator: std.mem.Allocator, text: []const u8, utc_to_local: ?UtcToLocal) !Parsed {
+    return parseWith(allocator, text, utc_to_local, .{});
+}
+
+pub fn parseWith(allocator: std.mem.Allocator, text: []const u8, utc_to_local: ?UtcToLocal, opts: Options) !Parsed {
     var arena = std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit();
     const a = arena.allocator();
@@ -263,6 +289,7 @@ pub fn parse(allocator: std.mem.Allocator, text: []const u8, utc_to_local: ?UtcT
     }
 
     var result: std.ArrayList(Event) = .empty;
+    var raws: std.ArrayList(Raw) = .empty;
     var draft: Draft = .{};
     var in_event = false;
     var in_alarm = false;
@@ -310,7 +337,7 @@ pub fn parse(allocator: std.mem.Allocator, text: []const u8, utc_to_local: ?UtcT
                 var end_minute: u16 = end.minute;
                 if (!start.all_day and draft.end == null) end_minute = @min(start.minute + 60, 23 * 60 + 59);
                 if (!start.all_day and end_date.eql(start.date) and end_minute < start.minute) end_minute = start.minute;
-                try result.append(a, .{
+                const ev: Event = .{
                     .id = "",
                     .uid = draft.uid,
                     .title = draft.title,
@@ -324,6 +351,15 @@ pub fn parse(allocator: std.mem.Allocator, text: []const u8, utc_to_local: ?UtcT
                     .repeat = draft.repeat,
                     .color = draft.color,
                     .remind = draft.remind,
+                };
+                if (opts.window == null) {
+                    try result.append(a, ev);
+                } else try raws.append(a, .{
+                    .ev = ev,
+                    .draft_rrule = draft.rrule,
+                    .exdates = try draft.exdates.toOwnedSlice(a),
+                    .recurrence_id = draft.recurrence_id,
+                    .cancelled = draft.cancelled,
                 });
             }
             continue;
@@ -350,11 +386,68 @@ pub fn parse(allocator: std.mem.Allocator, text: []const u8, utc_to_local: ?UtcT
             draft.end = parseStamp(value, convert);
         } else if (std.ascii.eqlIgnoreCase(name, "RRULE")) {
             draft.repeat = parseRule(value);
+            draft.rrule = try a.dupe(u8, value);
+        } else if (std.ascii.eqlIgnoreCase(name, "EXDATE")) {
+            var each = std.mem.splitScalar(u8, value, ',');
+            while (each.next()) |one| if (parseStamp(one, convert)) |st| try draft.exdates.append(a, st.date.days());
+        } else if (std.ascii.eqlIgnoreCase(name, "RECURRENCE-ID")) {
+            if (parseStamp(value, convert)) |st| draft.recurrence_id = st.date.days();
+        } else if (std.ascii.eqlIgnoreCase(name, "STATUS")) {
+            draft.cancelled = std.ascii.eqlIgnoreCase(value, "CANCELLED");
         } else if (std.ascii.eqlIgnoreCase(name, "COLOR")) {
             draft.color = events.Color.parse(lower(a, value));
         }
     }
+    if (opts.window) |w| try expandRepeats(a, raws.items, w, &result);
     return .{ .arena = arena, .events = try result.toOwnedSlice(a) };
+}
+
+/// Turns the events read into the ones to show: see `Options.window`.
+fn expandRepeats(a: std.mem.Allocator, raws: []const Raw, w: Window, result: *std.ArrayList(Event)) !void {
+    for (raws) |r| {
+        if (r.cancelled) continue;
+        const span = r.ev.end_date.days() - r.ev.date.days();
+        if (r.recurrence_id != null) {
+            // One changed occurrence: its own event, with a UID of its own.
+            var ev = r.ev;
+            ev.repeat = .none;
+            ev.uid = try std.fmt.allocPrint(a, "{s}#{d}", .{ r.ev.uid, r.recurrence_id.? });
+            try result.append(a, ev);
+            continue;
+        }
+        const rule = if (r.draft_rrule.len > 0) rrule.parse(r.draft_rrule) else null;
+        const changed = r.exdates.len > 0 or hasOverride(raws, r.ev.uid);
+        if (rule == null or (rule.?.isPlain() and !changed)) {
+            // No repeat, a rule dkde cannot expand (kept as its FREQ), or one it already says.
+            try result.append(a, r.ev);
+            continue;
+        }
+        var days: std.ArrayList(i64) = .empty;
+        defer days.deinit(a);
+        try rrule.occurrences(a, rule.?, r.ev.date, w.from.days() - span, w.to.days(), &days);
+        for (days.items) |day| {
+            if (std.mem.indexOfScalar(i64, r.exdates, day) != null) continue;
+            if (overridden(raws, r.ev.uid, day)) continue;
+            var ev = r.ev;
+            ev.repeat = .none;
+            ev.date = Date.fromDays(day);
+            ev.end_date = Date.fromDays(day + span);
+            ev.uid = try std.fmt.allocPrint(a, "{s}#{d}", .{ r.ev.uid, day });
+            try result.append(a, ev);
+        }
+    }
+}
+
+fn hasOverride(raws: []const Raw, uid: []const u8) bool {
+    for (raws) |r| if (r.recurrence_id != null and std.mem.eql(u8, r.ev.uid, uid)) return true;
+    return false;
+}
+
+fn overridden(raws: []const Raw, uid: []const u8, day: i64) bool {
+    for (raws) |r| if (r.recurrence_id) |id| {
+        if (id == day and std.mem.eql(u8, r.ev.uid, uid)) return true;
+    };
+    return false;
 }
 
 fn lower(a: std.mem.Allocator, text: []const u8) []const u8 {
@@ -465,4 +558,47 @@ test "reading what a phone writes" {
     var buf: [32]u8 = undefined;
     try std.testing.expectEqualStrings("ab12", idForUid(&buf, "ab12@dkde"));
     try std.testing.expect(idForUid(&buf, "abc-123").len > 1);
+}
+
+test "a feed: counts, removed days, changed days and cancelled events" {
+    const a = std.testing.allocator;
+    const window: Window = .{ .from = .{ .year = 2026, .month = 1, .day = 1 }, .to = .{ .year = 2027, .month = 12, .day = 31 } };
+    const text =
+        "BEGIN:VCALENDAR\r\n" ++
+        // Tuesdays, four times: Nov 3, 10, 17, 24. The 10th is removed, the 17th is moved to the 18th.
+        "BEGIN:VEVENT\r\nUID:series\r\nDTSTART:20261103T100000\r\nDTEND:20261103T110000\r\nSUMMARY:Standup\r\n" ++
+        "RRULE:FREQ=WEEKLY;COUNT=4\r\nEXDATE:20261110T100000\r\nEND:VEVENT\r\n" ++
+        "BEGIN:VEVENT\r\nUID:series\r\nRECURRENCE-ID:20261117T100000\r\nDTSTART:20261118T100000\r\nDTEND:20261118T110000\r\nSUMMARY:Standup (moved)\r\nEND:VEVENT\r\n" ++
+        "BEGIN:VEVENT\r\nUID:gone\r\nDTSTART;VALUE=DATE:20261105\r\nSUMMARY:Cancelled\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\n" ++
+        // A plain endless rule stays an ordinary repeat.
+        "BEGIN:VEVENT\r\nUID:forever\r\nDTSTART;VALUE=DATE:20260101\r\nSUMMARY:Birthday\r\nRRULE:FREQ=YEARLY\r\nEND:VEVENT\r\n" ++
+        "END:VCALENDAR\r\n";
+    var parsed = try parseWith(a, text, null, .{ .window = window });
+    defer parsed.deinit();
+    // Standup on Nov 3, Nov 24, the moved one on Nov 18, and the birthday.
+    try std.testing.expectEqual(@as(usize, 4), parsed.events.len);
+    var standups: usize = 0;
+    var forever: ?Event = null;
+    for (parsed.events) |e| {
+        if (std.mem.startsWith(u8, e.title, "Standup")) {
+            standups += 1;
+            try std.testing.expectEqual(events.Repeat.none, e.repeat);
+            const ok = (e.date.month == 11) and (e.date.day == 3 or e.date.day == 24 or e.date.day == 18);
+            try std.testing.expect(ok);
+        }
+        if (std.mem.eql(u8, e.title, "Birthday")) forever = e;
+    }
+    try std.testing.expectEqual(@as(usize, 3), standups);
+    try std.testing.expectEqual(events.Repeat.yearly, forever.?.repeat);
+    // Every expanded event has its own UID, so the ids do not clash.
+    for (parsed.events, 0..) |x, i| for (parsed.events[i + 1 ..]) |y| try std.testing.expect(!std.mem.eql(u8, x.uid, y.uid));
+}
+
+test "parse without a window keeps the old behaviour" {
+    const a = std.testing.allocator;
+    const text = "BEGIN:VEVENT\r\nUID:x\r\nDTSTART:20261103T100000\r\nSUMMARY:S\r\nRRULE:FREQ=WEEKLY;COUNT=4\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\n";
+    var parsed = try parse(a, text, null);
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(usize, 1), parsed.events.len);
+    try std.testing.expectEqual(events.Repeat.weekly, parsed.events[0].repeat);
 }

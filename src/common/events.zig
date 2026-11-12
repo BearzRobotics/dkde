@@ -84,6 +84,10 @@ pub const Event = struct {
     color: Color = .default,
     /// Minutes before the start to send a reminder; negative for none.
     remind: i32 = -1,
+    /// The online account this event came from (see feeds.zig); empty for the
+    /// user's own events. An event with a source is read-only: the next sync
+    /// would bring it back.
+    source: []const u8 = "",
 };
 
 /// An all-day event's reminder counts back from this time of day.
