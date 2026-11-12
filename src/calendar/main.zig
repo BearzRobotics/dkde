@@ -14,6 +14,7 @@ const gdk = @import("gdk4");
 const common = @import("common");
 const liturgy = @import("liturgy.zig");
 const editor = @import("editor.zig");
+const feeds = common.feeds;
 const goto = @import("goto.zig");
 const calsys = @import("calsys.zig");
 const lunar = @import("lunar.zig");
@@ -135,6 +136,13 @@ pub const CalendarApp = struct {
     window: *gtk.ApplicationWindow,
     cfg: common.Config,
     list: events.List,
+    /// dkde.toml, where the optional online calendars are set up (in Settings).
+    shared: common.Config,
+    accounts: feeds.Accounts,
+    /// An online refresh is running on a worker thread.
+    feed_busy: bool = false,
+    /// The window closed during a refresh; the refresh's callback frees the rest.
+    closing: bool = false,
 
     // What is shown. `year` and `month` are in the calendar system `sys`.
     sys: calsys.System,
@@ -191,7 +199,11 @@ pub const CalendarApp = struct {
         errdefer allocator.destroy(self);
         var cfg = try common.Config.load(allocator, "calendar.toml");
         errdefer cfg.deinit();
-        var list = try events.load(allocator, &cfg);
+        var shared = try common.Config.load(allocator, "dkde.toml");
+        errdefer shared.deinit();
+        var accounts = try feeds.loadAccounts(allocator, &shared);
+        errdefer accounts.deinit();
+        var list = try feeds.loadAll(allocator, &cfg, accounts.items, utcToLocal);
         errdefer list.deinit();
 
         const now = glib.DateTime.newNowLocal() orelse return error.NoClock;
@@ -223,6 +235,8 @@ pub const CalendarApp = struct {
             .window = gtk.ApplicationWindow.new(app),
             .cfg = cfg,
             .list = list,
+            .shared = shared,
+            .accounts = accounts,
             .sys = sys,
             .site = site,
             .year = here.year,
@@ -389,6 +403,11 @@ pub const CalendarApp = struct {
         sync_now.as(gtk.Widget).addCssClass("flat");
         _ = gtk.Button.signals.clicked.connect(sync_now, *CalendarApp, &onSyncNow, self, .{});
         options_box.append(sync_now.as(gtk.Widget));
+        const online = gtk.Button.newWithLabel(common.tr("Online calendars…"));
+        online.as(gtk.Widget).addCssClass("flat");
+        online.as(gtk.Widget).setTooltipText(common.tr("Add or remove calendars from the internet, in Settings"));
+        _ = gtk.Button.signals.clicked.connect(online, *CalendarApp, &onOnlineAccounts, self, .{});
+        options_box.append(online.as(gtk.Widget));
         const status = gtk.Label.new("");
         status.setXalign(0);
         status.setWrap(1);
@@ -479,6 +498,8 @@ pub const CalendarApp = struct {
         _ = gtk.Window.signals.close_request.connect(self.window.as(gtk.Window), *CalendarApp, &onCloseRequest, self, .{});
         _ = gtk.Widget.signals.destroy.connect(self.window, *CalendarApp, &onDestroy, self, .{});
         self.syncNow(false);
+        // Online calendars the user set to update on start, if their copy is old enough.
+        _ = self.refreshFeeds(true);
         self.rebuildGrid();
         self.showDay();
         self.showSyncStatus();
@@ -505,7 +526,17 @@ pub const CalendarApp = struct {
         if (self.table_no) |*t| t.deinit();
         if (self.table_tlm) |*t| t.deinit();
         if (self.table_ru) |*t| t.deinit();
+        if (self.feed_busy) {
+            self.closing = true; // the refresh in progress frees the app when it is done
+            return;
+        }
+        self.freeAll();
+    }
+
+    fn freeAll(self: *CalendarApp) void {
         self.list.deinit();
+        self.accounts.deinit();
+        self.shared.deinit();
         self.cfg.deinit();
         self.allocator.destroy(self);
     }
@@ -1256,6 +1287,13 @@ pub const CalendarApp = struct {
             loc.as(gtk.Widget).addCssClass("dim-label");
             text.append(loc.as(gtk.Widget));
         }
+        if (ev.source.len > 0) {
+            var from: [96]u8 = undefined;
+            const l = gtk.Label.new(bufZ(&from, "From {s}", .{self.accountName(ev.source)}) catch "Online calendar");
+            l.setXalign(0);
+            l.as(gtk.Widget).addCssClass("dim-label");
+            text.append(l.as(gtk.Widget));
+        }
         if (ev.repeat != .none or ev.remind >= 0) {
             var extra: [96]u8 = undefined;
             const t = bufZ(&extra, "{s}{s}{s}", .{
@@ -1269,6 +1307,11 @@ pub const CalendarApp = struct {
             text.append(l.as(gtk.Widget));
         }
         row.append(text.as(gtk.Widget));
+        // An event from an online calendar is read-only: the next update would undo an edit.
+        if (ev.source.len > 0) {
+            row.as(gtk.Widget).setTooltipText(common.tr("From an online calendar; change it there"));
+            return row;
+        }
 
         const id = self.allocator.dupeSentinel(u8, ev.id, 0) catch return row;
         const edit = gtk.Button.newFromIconName("document-edit-symbolic");
@@ -1332,9 +1375,7 @@ pub const CalendarApp = struct {
 
     /// Re-reads the events after the editor or a delete changed them.
     pub fn eventsChanged(self: *CalendarApp) void {
-        const fresh = events.load(self.allocator, &self.cfg) catch return;
-        self.list.deinit();
-        self.list = fresh;
+        self.reloadEvents();
         self.exportToSyncFile();
         self.rebuildGrid();
         self.showEvents();
@@ -1413,10 +1454,71 @@ pub const CalendarApp = struct {
     }
 
     fn onSyncNow(_: *gtk.Button, self: *CalendarApp) callconv(.c) void {
+        const started = self.refreshFeeds(false);
         if (self.syncPath()) |p| {
             self.allocator.free(p);
             self.syncNow(true);
-        } else self.say("Choose a sync file first.");
+        } else if (!started and !self.feed_busy) {
+            self.say("Nothing to sync. Choose a file, or add an online calendar in Settings.");
+        }
+    }
+
+    fn onOnlineAccounts(_: *gtk.Button, _: *CalendarApp) callconv(.c) void {
+        common.appinfo.spawn(std.heap.c_allocator, &.{ "dkde-settings", "--page", "online" });
+    }
+
+    /// The name the user gave an online calendar, for an account id.
+    fn accountName(self: *CalendarApp, id: []const u8) []const u8 {
+        for (self.accounts.items) |a| if (std.mem.eql(u8, a.id, id)) return a.name;
+        return "an online calendar";
+    }
+
+    /// Updates the online calendars on a worker thread, if there are any that should be
+    /// (with `only_due`, only those whose interval has passed). Returns whether a refresh
+    /// started. With no accounts nothing happens at all.
+    fn refreshFeeds(self: *CalendarApp, only_due: bool) bool {
+        if (self.feed_busy) return false;
+        self.shared.reload() catch {};
+        const fresh = feeds.loadAccounts(self.allocator, &self.shared) catch return false;
+        self.accounts.deinit();
+        self.accounts = fresh;
+        const started = feeds.Job.start(std.heap.c_allocator, self.accounts.items, only_due, &feedsDone, self) catch false;
+        if (!started) {
+            // The account list may have changed (one removed in Settings): show what is left.
+            // At start-up the window is drawn right after, so there is nothing to redo.
+            if (!only_due) {
+                self.reloadEvents();
+                self.rebuildGrid();
+                self.showEvents();
+            }
+            return false;
+        }
+        self.feed_busy = true;
+        if (!only_due) self.say("Updating online calendars…");
+        return true;
+    }
+
+    fn feedsDone(job: *const feeds.Job, user: ?*anyopaque) void {
+        const self: *CalendarApp = @ptrCast(@alignCast(user.?));
+        self.feed_busy = false;
+        if (self.closing) return self.freeAll();
+        var failed: ?[]const u8 = null;
+        var failed_name: []const u8 = "";
+        var events_read: usize = 0;
+        for (job.accounts, job.results) |acct, res| {
+            if (!res.ran) continue;
+            if (res.err) |e| {
+                failed = feeds.describe(e);
+                failed_name = acct.name;
+            } else events_read += res.count;
+        }
+        var b: [300]u8 = undefined;
+        if (failed) |why| {
+            self.say(bufZ(&b, "{s}: {s}", .{ failed_name, why }) catch "An online calendar could not be updated.");
+        } else self.say(bufZ(&b, "Online calendars updated: {d} events.", .{events_read}) catch "Updated.");
+        self.reloadEvents();
+        self.rebuildGrid();
+        self.showEvents();
     }
 
     /// The sync file's path (owned), or null when none is set.
@@ -1443,7 +1545,11 @@ pub const CalendarApp = struct {
         defer now.unref();
         const stamp = now.format("%Y%m%dT%H%M%SZ") orelse return error.NoClock;
         defer glib.free(stamp);
-        const text = try common.ics.write(self.allocator, self.list.items, std.mem.span(stamp));
+        // Events from online calendars belong to their server, not to this file.
+        var own: std.ArrayList(events.Event) = .empty;
+        defer own.deinit(self.allocator);
+        for (self.list.items) |ev| if (ev.source.len == 0) try own.append(self.allocator, ev);
+        const text = try common.ics.write(self.allocator, own.items, std.mem.span(stamp));
         defer self.allocator.free(text);
         const z = try self.allocator.dupeSentinel(u8, path, 0);
         defer self.allocator.free(z);
@@ -1487,7 +1593,7 @@ pub const CalendarApp = struct {
     }
 
     fn reloadEvents(self: *CalendarApp) void {
-        const fresh = events.load(self.allocator, &self.cfg) catch return;
+        const fresh = feeds.loadAll(self.allocator, &self.cfg, self.accounts.items, utcToLocal) catch return;
         self.list.deinit();
         self.list = fresh;
     }

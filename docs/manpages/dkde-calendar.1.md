@@ -225,6 +225,17 @@ The Notes box under the day holds one free-text note per civil day, saved when t
 
 Import and Export read and write an iCalendar (.ics) file. Import merges: an event whose UID is already present replaces it, and the others are added. A file chosen for sync is read again whenever Sync now is used. Times in an imported file are converted from UTC to the local zone.
 
+ONLINE CALENDARS
+Optional. An online calendar is a private https link to an iCalendar (.ics) feed, such as Google Calendar's "Secret address in iCal format", a Nextcloud or Fastmail subscription link, or an Outlook published calendar. Its events are shown with the user's own, in the grid, the day panel and the panel's reminders, with a "From NAME" line and in the colour chosen for it. They are read-only: they have no Edit or Delete buttons, because the next update would undo the change, and they are left out of Export and of the sync file. Nothing is ever sent to the server.
+
+Online calendars are added, switched off and removed only in dkde-settings, on the Online accounts page (Options, Online calendars… opens it). Until one is added, nothing in this section happens: no connection is made and no file is read.
+
+Updating. The calendar updates an online calendar only (a) when Sync now is used, and (b) on start, if the calendar was set to update on start and its copy is older than the interval chosen for it. It never polls in the background and never asks the user to sign in. The download runs on its own thread, so the window stays usable, and the previous copy is kept when an update fails; the reason is shown under Sync now. The last good copy is shown while the computer is offline.
+
+Repeats. A feed's repeating events are worked out for three years back and five years ahead of today: FREQ with INTERVAL, COUNT, UNTIL and weekly BYDAY, removed days (EXDATE), changed days (a RECURRENCE-ID entry replaces that day) and cancelled events (STATUS:CANCELLED are not shown). A repeat that is only FREQ stays a plain repeat and goes on forever. A rule of another kind (a monthly rule on "the second Tuesday", BYMONTHDAY, BYMONTH, BYSETPOS) is shown as its FREQ alone, which is only an approximation.
+
+Limits. Times in UTC are converted to the local zone. A time with a zone name (TZID) is taken as local wall-clock time, so an event kept in another zone can be shown at the wrong hour. A feed larger than 8 MB, a link that is not https, and a reply that is not an iCalendar file are refused. Invitations, attendees and attachments are ignored. Only reading is done: there is no CalDAV, no sign-in, and a calendar that needs a password cannot be used.
+
 INPUT
 Configuration is TOML. The calendar file is calendar.toml in the user's configuration directory. Imported events are iCalendar text. Liturgical tables are line-oriented text files. A malformed configuration file is not an error for reading: the program uses the defaults and does not overwrite the file until it is fixed.
 
@@ -275,6 +286,12 @@ FILES
 
 An iCalendar file of the user's choice
 : Kept in sync when sync.ics-file is set.
+
+~/.config/dkde/dkde.toml
+: Holds the online calendars, as [account.ID] groups. Written by dkde-settings; the calendar only reads it. The link in it is a secret (anyone who has it can read that calendar), so keep the file private on a shared computer.
+
+~/.cache/dkde/feeds/ID.ics
+: The last downloaded copy of each online calendar. The directory is private (mode 700) and may be deleted at any time; the next update brings the copies back.
 
 CONFIGURATION
 Search paths and precedence
@@ -339,10 +356,12 @@ liturgical calendar not loaded: ERROR
 : A user-supplied liturgical table could not be read. That overlay is not shown.
 
 SECURITY CONSIDERATIONS
-The program runs as the user with no elevated privilege and starts no other program. An imported .ics file is parsed as data and is never run; event text is shown as text and is not interpreted as markup. The configuration file and the glyph font are read from the user's and the system's data directories; the font is parsed by fontconfig and FreeType in the process, so only install fonts from a source you trust.
+The program runs as the user with no elevated privilege. It starts one other program, and only when asked: Options, Online calendars… runs dkde-settings. An imported .ics file is parsed as data and is never run; event text is shown as text and is not interpreted as markup. The configuration file and the glyph font are read from the user's and the system's data directories; the font is parsed by fontconfig and FreeType in the process, so only install fonts from a source you trust.
+
+Online calendars (see ONLINE CALENDARS) are the only thing that uses the network, and only after the user adds one. The program makes an https request to that link and to nothing else, sends no cookie, no account name and no event, and follows at most three redirects. Plain http links are refused, since the link is a secret. The server learns that the link was fetched, the computer's address and the program name "dkde-calendar".
 
 PRIVACY
-Nothing is sent anywhere. Events, notes and the location live in the user's calendar.toml, in the clear and readable by the user's other programs. The latitude and longitude are only used for the moon-phase clock, and are used for nothing else, but they are stored in that file. Remove [location] to stop storing them.
+Unless the user adds an online calendar, nothing is sent anywhere. Events, notes and the location live in the user's calendar.toml, in the clear and readable by the user's other programs. The latitude and longitude are only used for the moon-phase clock, and are used for nothing else, but they are stored in that file. Remove [location] to stop storing them.
 
 RESOURCE USAGE
 The month grid holds 54 cells; the Rosquin glyph stacks up to 20 labels per cell. The moon phases of a month need a few hundred evaluations of the lunar series and take well under a millisecond. These are estimates, not measurements.

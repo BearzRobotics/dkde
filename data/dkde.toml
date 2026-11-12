@@ -37,3 +37,17 @@ renderer = "cairo"
 [user]
 # A picture for your account card in Settings. Empty shows the default.
 picture = ""
+
+# Optional online calendars. Add and remove them in Settings, Accounts, Online
+# accounts; nothing is contacted unless you do. Each one is a group like this:
+#
+# [account.1a2b3c]
+# name = "Work"
+# # The private https link of the calendar (iCal / .ics). It is a secret: anyone
+# # who has it can read that calendar, so keep this file private.
+# url = "https://calendar.example.org/private/abc123/basic.ics"
+# enabled = true
+# # Update on start of dkde-calendar when the copy is older than this many
+# # minutes; 0 updates only when you press Sync now.
+# refresh-minutes = 0
+# color = "default"
