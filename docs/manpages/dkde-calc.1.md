@@ -50,7 +50,7 @@ Unit Conversion (**Ctrl+U**)
 : Converts between units of length, area, volume, mass, temperature, time, speed, pressure, energy, power, data, angle and fuel economy. The amount may be an expression.
 
 Date Calculation (**Ctrl+E**)
-: The time between two dates (in years, months, weeks and days, and in days alone), or a date plus or minus a number of years, months and days, with its weekday.
+: The time between two dates (in years, months and days, and in days and weeks), or a date plus or minus a number of years, months and days. It works in every calendar dkde-calendar(1) shows: Julian, Gregorian, the International Fixed calendar, the Rosquin calendar in its three layouts, Chinese, Hebrew, Coptic and Ethiopian. Dates are typed year-month-day in the chosen calendar's own numbering (or picked on a Gregorian calendar and converted), each is described under its field with its Gregorian date, and changing the calendar keeps the same days. Years and months are counted in the chosen calendar: a Hebrew year from Kislev 1 is Kislev 1 the next year.
 
 Graph (**Ctrl+G**)
 : Draws up to six functions of x, each in its own colour. Drag to move, scroll or pinch to zoom. Where a curve crosses zero, and where two curves cross, a point is marked; point at it for its coordinates. Point near a curve to read its value. **Save as Picture** writes a PNG. Graphs are drawn in radians.
@@ -134,6 +134,7 @@ All keys are in the **[calc]** group.
 | decimals | number | 10 | decimal places at most (0 to 30) |
 | grouping | true/false | true | group thousands |
 | notation | text | auto | auto, scientific or engineering |
+| date-calendar | text | gregorian | the Date Calculation calendar: gregorian, julian, fixed, rosquin_weeks, rosquin_months, rosquin_quarters, chinese, hebrew, coptic or ethiopian |
 | history-size | number | 200 | calculations kept in the history |
 | width, height | number | 380, 520 | the window's size, remembered |
 

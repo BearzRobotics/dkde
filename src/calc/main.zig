@@ -160,6 +160,9 @@ const Calc = struct {
     unit_result: *gtk.Label = undefined,
     // Date Calculation.
     date_kind: *gtk.DropDown = undefined,
+    date_system: *gtk.DropDown = undefined,
+    date_sys: dates.System = .gregorian,
+    date_fields: std.ArrayList(*DateField) = .empty,
     date_pages: *gtk.Stack = undefined,
     date_from: *gtk.Entry = undefined,
     date_to: *gtk.Entry = undefined,
@@ -1343,6 +1346,10 @@ const Calc = struct {
     }
 
     // ---- date calculation -------------------------------------------------------------------
+    //
+    // In any calendar dkde-calendar knows. Dates are typed in the calendar's
+    // own numbering; the calendar picker (Gregorian) converts into it, and
+    // each date is described under its field, with its Gregorian date.
 
     fn buildDates(self: *Calc) *gtk.Widget {
         const box = gtk.Box.new(.vertical, 8);
@@ -1350,14 +1357,21 @@ const Calc = struct {
         title.setXalign(0);
         title.as(gtk.Widget).addCssClass("heading");
         box.append(title.as(gtk.Widget));
+
+        var names: [dates.all_systems.len + 1:null]?[*:0]const u8 = @splat(null);
+        for (dates.all_systems, 0..) |sys, i| names[i] = sys.label().ptr;
+        self.date_system = gtk.DropDown.newFromStrings(@ptrCast(&names));
+        var buf: [32]u8 = undefined;
+        self.date_sys = dates.System.parse(self.configString(&buf, "date-calendar", "gregorian"));
+        for (dates.all_systems, 0..) |sys, i| if (sys == self.date_sys) self.date_system.setSelected(@intCast(i));
+        self.date_system.as(gtk.Widget).setTooltipText(t("The calendar the dates are written in"));
+        box.append(self.date_system.as(gtk.Widget));
+
         var kinds = [_:null]?[*:0]const u8{ "Time between two dates", "Add to or subtract from a date" };
         self.date_kind = gtk.DropDown.newFromStrings(@ptrCast(&kinds));
-        _ = gobject.Object.signals.notify.connect(self.date_kind, *Calc, &onDateKind, self, .{ .detail = "selected" });
         box.append(self.date_kind.as(gtk.Widget));
 
-        var today_buf: [16]u8 = undefined;
-        const today = todayText(&today_buf);
-
+        const today = dates.calsys.fromCivil(self.date_sys, todayCivil());
         self.date_pages = gtk.Stack.new();
         // Between two dates.
         const between = gtk.Box.new(.vertical, 6);
@@ -1377,12 +1391,12 @@ const Calc = struct {
         inline for (.{ .{ "Years", "date_years" }, .{ "Months", "date_months" }, .{ "Days", "date_days" } }, 0..) |p, i| {
             const l = gtk.Label.new(p[0]);
             l.setXalign(0);
-            const s = gtk.SpinButton.newWithRange(0, 100000, 1);
-            s.as(gtk.Widget).setHexpand(1);
-            _ = gtk.SpinButton.signals.value_changed.connect(s, *Calc, &onDateSpin, self, .{});
-            @field(self, p[1]) = s;
+            const sb = gtk.SpinButton.newWithRange(0, 100000, 1);
+            sb.as(gtk.Widget).setHexpand(1);
+            _ = gtk.SpinButton.signals.value_changed.connect(sb, *Calc, &onDateSpin, self, .{});
+            @field(self, p[1]) = sb;
             amounts.attach(l.as(gtk.Widget), 0, @intCast(i), 1, 1);
-            amounts.attach(s.as(gtk.Widget), 1, @intCast(i), 1, 1);
+            amounts.attach(sb.as(gtk.Widget), 1, @intCast(i), 1, 1);
         }
         adding.append(amounts.as(gtk.Widget));
         _ = self.date_pages.addNamed(adding.as(gtk.Widget), "add");
@@ -1394,56 +1408,84 @@ const Calc = struct {
         self.date_result.setSelectable(1);
         self.date_result.as(gtk.Widget).addCssClass("dkde-calc-unit-result");
         box.append(self.date_result.as(gtk.Widget));
+        // Connected last: the handlers read the widgets above.
+        _ = gobject.Object.signals.notify.connect(self.date_kind, *Calc, &onDateKind, self, .{ .detail = "selected" });
+        _ = gobject.Object.signals.notify.connect(self.date_system, *Calc, &onDateSystem, self, .{ .detail = "selected" });
         self.workDates();
         return box.as(gtk.Widget);
     }
 
-    fn todayText(buf: []u8) [:0]const u8 {
-        const now = glib.DateTime.newNowLocal() orelse return "2000-01-01";
+    fn todayCivil() dates.calsys.Date {
+        const now = glib.DateTime.newNowLocal() orelse return .{ .year = 2000, .month = 1, .day = 1 };
         defer now.unref();
-        return std.fmt.bufPrintSentinel(buf, "{d:0>4}-{d:0>2}-{d:0>2}", .{ @as(u32, @intCast(now.getYear())), @as(u32, @intCast(now.getMonth())), @as(u32, @intCast(now.getDayOfMonth())) }, 0) catch "2000-01-01";
+        return .{ .year = @intCast(now.getYear()), .month = @intCast(now.getMonth()), .day = @intCast(now.getDayOfMonth()) };
     }
 
-    const DateField = struct { calc: *Calc, entry: *gtk.Entry, popover: *gtk.Popover, calendar: *gtk.Calendar };
+    const DateField = struct { calc: *Calc, entry: *gtk.Entry, popover: *gtk.Popover, about: *gtk.Label };
 
-    /// A date entry with a calendar to pick from.
-    fn dateField(self: *Calc, box: *gtk.Box, label: [:0]const u8, initial: [:0]const u8) *gtk.Entry {
+    /// A date entry (in the chosen calendar), a calendar to pick from, and
+    /// the date described under it.
+    fn dateField(self: *Calc, box: *gtk.Box, label: [:0]const u8, initial: dates.Ymd) *gtk.Entry {
         const l = gtk.Label.new(label);
         l.setXalign(0);
         box.append(l.as(gtk.Widget));
         const row = gtk.Box.new(.horizontal, 4);
         const entry = gtk.Entry.new();
-        entry.as(gtk.Editable).setText(initial);
-        entry.setPlaceholderText("YYYY-MM-DD");
+        var buf: [32]u8 = undefined;
+        entry.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{dates.write(buf[16..], initial)}, 0) catch "");
+        entry.setPlaceholderText(t("year-month-day"));
         entry.as(gtk.Widget).setHexpand(1);
-        _ = gtk.Editable.signals.changed.connect(entry.as(gtk.Editable), *Calc, &onDateChanged, self, .{});
         row.append(entry.as(gtk.Widget));
         const button = gtk.MenuButton.new();
         button.setIconName("x-office-calendar-symbolic");
-        button.as(gtk.Widget).setTooltipText(t("Choose on a calendar"));
+        button.as(gtk.Widget).setTooltipText(t("Choose on a (Gregorian) calendar"));
         const popover = gtk.Popover.new();
         const calendar = gtk.Calendar.new();
         popover.setChild(calendar.as(gtk.Widget));
         button.setPopover(popover);
-        const field = self.gpa.create(DateField) catch return entry;
-        field.* = .{ .calc = self, .entry = entry, .popover = popover, .calendar = calendar };
-        _ = gtk.Calendar.signals.day_selected.connect(calendar, *DateField, &onCalendarDay, field, .{});
-        _ = gtk.Widget.signals.destroy.connect(button, *DateField, &onFieldDestroy, field, .{});
         row.append(button.as(gtk.Widget));
         box.append(row.as(gtk.Widget));
+        const about = gtk.Label.new("");
+        about.setXalign(0);
+        about.setWrap(1);
+        about.as(gtk.Widget).addCssClass("dim-label");
+        box.append(about.as(gtk.Widget));
+        const field = self.gpa.create(DateField) catch return entry;
+        field.* = .{ .calc = self, .entry = entry, .popover = popover, .about = about };
+        self.date_fields.append(self.gpa, field) catch {};
+        _ = gtk.Calendar.signals.day_selected.connect(calendar, *DateField, &onCalendarDay, field, .{});
+        _ = gtk.Editable.signals.changed.connect(entry.as(gtk.Editable), *Calc, &onDateChanged, self, .{});
         return entry;
     }
 
     fn onCalendarDay(cal: *gtk.Calendar, field: *DateField) callconv(.c) void {
         const d = cal.getDate();
         defer d.unref();
-        var buf: [16]u8 = undefined;
-        field.entry.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{d:0>4}-{d:0>2}-{d:0>2}", .{ @as(u32, @intCast(d.getYear())), @as(u32, @intCast(d.getMonth())), @as(u32, @intCast(d.getDayOfMonth())) }, 0) catch return);
+        const civil_date: dates.calsys.Date = .{ .year = @intCast(d.getYear()), .month = @intCast(d.getMonth()), .day = @intCast(d.getDayOfMonth()) };
+        var buf: [32]u8 = undefined;
+        const text = dates.write(&buf, dates.calsys.fromCivil(field.calc.date_sys, civil_date));
+        var zb: [32]u8 = undefined;
+        field.entry.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&zb, "{s}", .{text}, 0) catch return);
         field.popover.popdown();
     }
 
-    fn onFieldDestroy(_: *gtk.MenuButton, field: *DateField) callconv(.c) void {
-        field.calc.gpa.destroy(field);
+    /// The calendar changed: the same days, written in the new one.
+    fn onDateSystem(dd: *gtk.DropDown, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        const i = dd.getSelected();
+        if (i >= dates.all_systems.len) return;
+        const old = self.date_sys;
+        const new = dates.all_systems[i];
+        for (self.date_fields.items) |f| {
+            const v = dates.parse(old, std.mem.span(f.entry.as(gtk.Editable).getText())) orelse continue;
+            const moved = dates.calsys.fromCivil(new, dates.calsys.toCivil(old, v));
+            var buf: [32]u8 = undefined;
+            var zb: [32]u8 = undefined;
+            self.date_sys = new;
+            f.entry.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&zb, "{s}", .{dates.write(&buf, moved)}, 0) catch continue);
+        }
+        self.date_sys = new;
+        self.config.setString("calc", "date-calendar", new.name()) catch {};
+        self.workDates();
     }
 
     fn onDateKind(dd: *gtk.DropDown, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
@@ -1463,18 +1505,36 @@ const Calc = struct {
         self.workDates();
     }
 
+    /// "Tuesday, Heshvan 20, 5787 (2026-11-11)".
+    fn describeDate(self: *Calc, buf: []u8, v: dates.Ymd) []const u8 {
+        const civil_date = dates.calsys.toCivil(self.date_sys, v);
+        var db: [256]u8 = undefined;
+        const d = dates.calsys.describe(&db, self.date_sys, civil_date);
+        if (self.date_sys == .gregorian) return std.fmt.bufPrint(buf, "{s}", .{d}) catch "";
+        return std.fmt.bufPrint(buf, "{s}  ({d}-{d:0>2}-{d:0>2} Gregorian)", .{ d, civil_date.year, civil_date.month, civil_date.day }) catch "";
+    }
+
     fn workDates(self: *Calc) void {
-        var buf: [256]u8 = undefined;
+        var buf: [512]u8 = undefined;
+        const sys = self.date_sys;
+        // Each date described under its field.
+        for (self.date_fields.items) |f| {
+            if (dates.parse(sys, std.mem.span(f.entry.as(gtk.Editable).getText()))) |v| {
+                f.about.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{self.describeDate(buf[256..], v)}, 0) catch "");
+            } else {
+                f.about.setText(t("Not a date in this calendar (year-month-day)"));
+            }
+        }
         const kind = self.date_kind.getSelected();
         if (kind == 0) {
-            const a = dates.parse(std.mem.span(self.date_from.as(gtk.Editable).getText())) orelse return self.date_result.setText(t("Write dates as 2024-07-19."));
-            const b = dates.parse(std.mem.span(self.date_to.as(gtk.Editable).getText())) orelse return self.date_result.setText(t("Write dates as 2024-07-19."));
-            const s = dates.between(a, b);
+            const a = dates.parse(sys, std.mem.span(self.date_from.as(gtk.Editable).getText())) orelse return self.date_result.setText("");
+            const b = dates.parse(sys, std.mem.span(self.date_to.as(gtk.Editable).getText())) orelse return self.date_result.setText("");
+            const s = dates.between(sys, a, b);
             if (s.total_days == 0) return self.date_result.setText(t("The same day"));
-            var parts: [4][]const u8 = undefined;
+            var parts: [3][]const u8 = undefined;
             var n: usize = 0;
-            var pbuf: [4][32]u8 = undefined;
-            inline for (.{ .{ s.years, "year" }, .{ s.months, "month" }, .{ s.weeks, "week" }, .{ s.days, "day" } }) |p| {
+            var pbuf: [3][32]u8 = undefined;
+            inline for (.{ .{ s.years, "year" }, .{ s.months, "month" }, .{ s.days, "day" } }) |p| {
                 if (p[0] != 0) {
                     parts[n] = std.fmt.bufPrint(&pbuf[n], "{d} {s}{s}", .{ p[0], p[1], if (p[0] == 1) "" else "s" }) catch "";
                     n += 1;
@@ -1486,15 +1546,19 @@ const Calc = struct {
                 if (i > 0) w.writeAll(", ") catch {};
                 w.writeAll(p) catch {};
             }
-            self.date_result.setText(std.fmt.bufPrintSentinel(&buf, "{s}\n{d} days in all", .{ w.buffered(), s.total_days }, 0) catch "");
+            const weeks = @divFloor(s.total_days, 7);
+            const extra = @mod(s.total_days, 7);
+            self.date_result.setText(std.fmt.bufPrintSentinel(&buf, "{s}\n{d} days in all ({d} weeks and {d} days)", .{ w.buffered(), s.total_days, weeks, extra }, 0) catch "");
         } else {
-            const start = dates.parse(std.mem.span(self.date_start.as(gtk.Editable).getText())) orelse return self.date_result.setText(t("Write dates as 2024-07-19."));
+            const start = dates.parse(sys, std.mem.span(self.date_start.as(gtk.Editable).getText())) orelse return self.date_result.setText("");
             const sign: i64 = if (self.date_sign.getSelected() == 1) -1 else 1;
             const y: i64 = @intFromFloat(self.date_years.getValue());
             const m: i64 = @intFromFloat(self.date_months.getValue());
             const d: i64 = @intFromFloat(self.date_days.getValue());
-            const r = dates.add(start, sign * y, sign * m, sign * d);
-            self.date_result.setText(std.fmt.bufPrintSentinel(&buf, "{s}, {d:0>4}-{d:0>2}-{d:0>2}", .{ dates.weekday(r), @as(u32, @intCast(@max(0, r.year))), r.month, r.day }, 0) catch "");
+            const r = dates.add(sys, start, sign * y, sign * m, sign * d);
+            var wb: [32]u8 = undefined;
+            var db: [300]u8 = undefined;
+            self.date_result.setText(std.fmt.bufPrintSentinel(&buf, "{s}\n{s}", .{ dates.write(&wb, r), self.describeDate(&db, r) }, 0) catch "");
         }
     }
 
@@ -2109,6 +2173,8 @@ const Calc = struct {
     fn onDestroy(_: *gtk.ApplicationWindow, self: *Calc) callconv(.c) void {
         for (self.keys.items) |key| self.gpa.destroy(key);
         self.keys.deinit(self.gpa);
+        for (self.date_fields.items) |f| self.gpa.destroy(f);
+        self.date_fields.deinit(self.gpa);
         for (self.history.items) |h| {
             self.gpa.free(h.expr);
             self.gpa.free(h.result);

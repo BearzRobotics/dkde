@@ -181,7 +181,11 @@ In degrees, derivatives of trigonometric functions carry the factor π/180 (the 
 The Unit Conversion pane (**Ctrl+U**) lists every unit: length, area, volume, mass, temperature, time, speed, pressure, energy, power, data (decimal and binary prefixes), angle and fuel economy (including litres per 100 km).
 
 # DATES
-The Date Calculation pane (**Ctrl+E**) gives the time between two dates in years, months, weeks and days (and in days alone), or the date a number of years, months and days before or after another, with its weekday. A day that does not exist in the month reached (31 February) becomes the month's last day. Dates are written **2024-07-19** (or **19.7.2024**), or picked on a calendar.
+The Date Calculation pane (**Ctrl+E**) gives the time between two dates in years, months and days (and in days and weeks), or the date a number of years, months and days before or after another.
+
+It works in any calendar dkde-calendar(1) shows: Julian, Gregorian, Fixed (13 months of 28 days), Rosquin (as 28 weeks, as 7 months of 4 weeks, or as 4 quarters of 7 weeks), Chinese, Hebrew, Coptic and Ethiopian. Choose the calendar at the top of the pane; dates are then written year-month-day in its own numbering (**5787-3-1** is Kislev 1, 5787 in the Hebrew calendar), and each date is described under its field, with its Gregorian date. The calendar button picks a Gregorian day and writes it in the chosen calendar. Changing the calendar rewrites the dates in it, keeping the same days.
+
+Years and months are counted in the chosen calendar, so "one year later" in the Hebrew or Chinese calendar is the same month and day of the next year there, whatever the number of days. A day that does not exist in the month reached (31 February, a Leap Day in a common year) becomes the month's last day. In the Rosquin calendar, the inter-calendar days, which belong to no month, count from the page they are shown with.
 
 # PROGRAMMER MODE
 **Alt+3** works with whole numbers of 8, 16, 32 or 64 bits (byte, word, dword, qword), negative numbers in two's complement. The base buttons choose how numbers are typed and shown; all four bases are shown under the display, and the bits under them (click a bit to flip it).

@@ -17,6 +17,10 @@ decimals = 10
 grouping = true
 # "auto", "scientific" or "engineering".
 notation = "auto"
+# The calendar of the Date Calculation pane: gregorian, julian, fixed,
+# rosquin_weeks, rosquin_months, rosquin_quarters, chinese, hebrew, coptic
+# or ethiopian (the calendars dkde-calendar shows).
+date-calendar = "gregorian"
 # Lines of history kept.
 history-size = 200
 # The window's size, remembered.
