@@ -979,3 +979,59 @@ headerbar .dkde-tabs button.dkde-tab.dkde-tab-attention {
   padding: 6px;
   border-radius: 6px;
 }
+
+/* Calculator. Operator labels are large and bold so "=" never reads as "−". */
+.dkde-calc-display {
+  font-size: 22pt;
+  min-height: 52px;
+}
+.dkde-calc-expr,
+.dkde-calc-preview {
+  font-size: 11pt;
+  opacity: 0.75;
+}
+.dkde-calc-preview.error {
+  opacity: 1;
+}
+.dkde-calc-memory {
+  font-weight: bold;
+  color: @dkde_accent;
+}
+.dkde-calc-key {
+  min-height: 34px;
+  min-width: 40px;
+}
+.dkde-calc-key label {
+  font-size: 13pt;
+}
+.dkde-calc-op label {
+  font-weight: bold;
+}
+.dkde-calc-enter label,
+.dkde-calc-equals label {
+  font-size: 17pt;
+  font-weight: bold;
+}
+.dkde-calc-bit {
+  min-width: 14px;
+  min-height: 0;
+  padding: 0 1px;
+  font-family: monospace;
+  font-size: 9pt;
+}
+.dkde-calc-bases label.monospace {
+  font-family: monospace;
+}
+.dkde-calc-history-result {
+  font-weight: bold;
+}
+.dkde-calc-unit-result {
+  font-size: 15pt;
+}
+.dkde-calc-formula {
+  font-size: 14pt;
+}
+.dkde-calc-formula-letter {
+  font-weight: bold;
+  min-width: 24px;
+}

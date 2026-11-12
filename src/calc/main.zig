@@ -1,276 +1,2130 @@
-//! dkde-calc: calculator with standard and scientific modes (SPEC.md 5.6).
+//! dkde-calc: the calculator (SPEC.md 5.6), on the lines of the Windows 7
+//! calculator, GNOME Calculator, KCalc and Qalculate.
+//!
+//! - Exact arithmetic on fractions and big numbers (num.zig); an entry is an
+//!   expression, a variable (x = 5), a function of one's own (f(x) = x² + 1)
+//!   or an equation solved for its unknown (eval.zig). Enter works it out;
+//!   "=" is part of what is typed.
+//! - Standard, Scientific and Programmer keypads (Alt+1, 2, 3); memory keys;
+//!   a preview of the result while typing; errors point at where they are.
+//! - Panes: History with variables and functions (Ctrl+H), Unit Conversion
+//!   (Ctrl+U, also "5 km in mi" in the entry), Date Calculation (Ctrl+E) and
+//!   Graph (Ctrl+G).
 
 const std = @import("std");
 const cli = @import("cli");
+const gdk = @import("gdk4");
 const gio = @import("gio2");
+const glib = @import("glib2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const common = @import("common");
 
+const num = @import("num.zig");
 const eval = @import("eval.zig");
+const units = @import("units.zig");
+const dates = @import("dates.zig");
+const graph_mod = @import("graph.zig");
+const simplify = @import("simplify.zig");
+const formulas = @import("formulas.zig");
 
-const App = struct {
-    allocator: std.mem.Allocator,
-    appearance: ?*common.style.Appearance = null,
+const t = common.tr;
+/// Thousands are grouped with a narrow no-break space, which can never be
+/// mistaken for the comma between a function's arguments.
+const group_sep = "\u{202F}";
 
-    fn activate(app: *gtk.Application, self: *App) callconv(.c) void {
-        common.style.load(self.allocator) catch |err|
-            std.log.warn("stylesheet not loaded: {s}", .{@errorName(err)});
-        self.appearance = common.style.Appearance.create(self.allocator) catch null;
-        const calc = Calculator.create(self.allocator, app) catch |err| {
-            std.log.err("cannot create the window: {s}", .{@errorName(err)});
-            return;
-        };
-        calc.window.as(gtk.Window).present();
-    }
+const Mode = enum { standard, scientific, programmer };
+const Pane = enum { none, history, units, dates, graph, formulas };
+
+const Cmd = enum { insert, enter, clear, back, negate, reciprocal, mc, mr, ms, mplus, mminus, plot };
+
+const Spec = struct {
+    label: [:0]const u8,
+    insert: []const u8 = "",
+    cmd: Cmd = .insert,
+    css: ?[:0]const u8 = null,
+    tip: ?[:0]const u8 = null,
 };
 
-const Calculator = struct {
-    allocator: std.mem.Allocator,
+fn k(label: [:0]const u8, insert: []const u8) Spec {
+    return .{ .label = label, .insert = insert };
+}
+
+fn op(label: [:0]const u8, insert: []const u8) Spec {
+    return .{ .label = label, .insert = insert, .css = "dkde-calc-op" };
+}
+
+fn cmd(label: [:0]const u8, c: Cmd, tip: ?[:0]const u8) Spec {
+    return .{ .label = label, .cmd = c, .css = "dkde-calc-op", .tip = tip };
+}
+
+const enter_key: Spec = .{ .label = "⏎", .cmd = .enter, .css = "dkde-calc-enter", .tip = "Work it out (Enter)" };
+
+const standard_keys = [_][5]Spec{
+    .{ cmd("C", .clear, "Clear (Esc)"), cmd("⌫", .back, "Delete the last character (BackSpace)"), op("(", "("), op(")", ")"), op("÷", "÷") },
+    .{ k("7", "7"), k("8", "8"), k("9", "9"), op("×", "×"), op("√", "√(") },
+    .{ k("4", "4"), k("5", "5"), k("6", "6"), op("−", "−"), op("x²", "²") },
+    .{ k("1", "1"), k("2", "2"), k("3", "3"), op("+", "+"), op("%", "%") },
+    .{ cmd("±", .negate, "Change the sign"), k("0", "0"), k(".", "."), .{ .label = "=", .insert = "=", .css = "dkde-calc-equals" }, enter_key },
+};
+
+const scientific_keys = [_][5]Spec{
+    .{ op("sin", "sin("), op("cos", "cos("), op("tan", "tan("), op("π", "π"), op("e", "e") },
+    .{ op("asin", "asin("), op("acos", "acos("), op("atan", "atan("), op("x", "x"), op("ans", "ans") },
+    .{ op("ln", "ln("), op("log", "log("), op("10ˣ", "10^"), op("eˣ", "e^"), op("xʸ", "^") },
+    .{ op("∛", "∛("), op("n!", "!"), op("mod", " mod "), op("|x|", "abs("), cmd("1/x", .reciprocal, "Reciprocal") },
+    .{ op("sinh", "sinh("), op("cosh", "cosh("), op("tanh", "tanh("), op(",", ", "), .{ .label = "Plot", .cmd = .plot, .css = "dkde-calc-op", .tip = "Draw the entry as a graph of x" } },
+};
+
+const programmer_keys = [_][5]Spec{
+    .{ k("A", "A"), k("B", "B"), k("C", "C"), op("And", " and "), op("Or", " or ") },
+    .{ k("D", "D"), k("E", "E"), k("F", "F"), op("Xor", " xor "), op("Not", "not ") },
+    .{ op("Lsh", " << "), op("Rsh", " >> "), op("RoL", "rol("), op("RoR", "ror("), op("Mod", " mod ") },
+};
+
+const memory_keys = [_]Spec{
+    cmd("MC", .mc, "Clear the memory"),
+    cmd("MR", .mr, "Recall the memory"),
+    cmd("MS", .ms, "Store the result in the memory"),
+    cmd("M+", .mplus, "Add the result to the memory"),
+    cmd("M−", .mminus, "Subtract the result from the memory"),
+};
+
+const HistoryItem = struct { expr: []u8, result: []u8 };
+
+/// The formula in the entry: a built-in one or one of the user's own.
+const Picked = union(enum) { builtin: usize, own: usize };
+
+/// A field of the Formulas pane: a value for one letter.
+const Field = struct { calc: *Calc, name: []u8, entry: *gtk.Entry };
+
+const Key = struct { calc: *Calc, spec: *const Spec };
+
+const Calc = struct {
+    gpa: std.mem.Allocator,
+    app: *gtk.Application,
     window: *gtk.ApplicationWindow,
+    config: common.Config,
+    session: eval.Session,
+
     entry: *gtk.Entry,
-    history: *gtk.Label,
-    scientific: *gtk.Revealer,
-    degrees: bool = true,
-    /// Set after "=": the next digit starts a new expression.
+    expr_label: *gtk.Label,
+    preview: *gtk.Label,
+    memory_label: *gtk.Label,
+    keypad: *gtk.Box,
+    bases: *gtk.Box,
+    bits: *gtk.Grid,
+    side: *gtk.Stack,
+    history_list: *gtk.ListBox,
+    vars_list: *gtk.ListBox,
+    graph: *graph_mod.Graph,
+    formula_list: *gtk.ListBox,
+    formula_form: *gtk.Box,
+    formula_search: *gtk.SearchEntry,
+
+    /// The entry holds a formula from the Formulas pane: Enter solves it.
+    formula: ?Picked = null,
+    /// The user's own formulas ("Save Entry as Formula").
+    own_formulas: std.ArrayList([]u8) = .empty,
+    formula_fields: std.ArrayList(Field) = .empty,
+
+    mode: Mode = .standard,
+    pane: Pane = .none,
+    angle: eval.Angle = .degrees,
+    base: u8 = 10,
+    word: u8 = 64,
+    style: num.Style = .{ .group_sep = group_sep },
+
+    /// The entry shows a result: typing a digit starts again, an operator goes on.
     fresh: bool = false,
+    /// The last result, unformatted (to go on from).
+    plain: ?[]u8 = null,
+    /// The value of the last result or preview in programmer mode, for the bits.
+    int_value: i128 = 0,
+    memory: ?eval.Stored = null,
+    history: std.ArrayList(HistoryItem) = .empty,
+    /// Up and Down in the entry go through the history.
+    recall: ?usize = null,
+    keys: std.ArrayList(*Key) = .empty,
+    bit_buttons: [64]*gtk.Button = undefined,
+    base_labels: [4]*gtk.Label = undefined,
+    finished: bool = false,
+    /// The entry is being set by the calculator, not typed in.
+    quiet: bool = false,
 
-    const standard_keys = [_][4][:0]const u8{
-        .{ "C", "⌫", "(", ")" },
-        .{ "7", "8", "9", "÷" },
-        .{ "4", "5", "6", "×" },
-        .{ "1", "2", "3", "−" },
-        .{ "0", ".", "=", "+" },
-    };
-    const scientific_keys = [_][3][:0]const u8{
-        .{ "sin(", "cos(", "tan(" },
-        .{ "asin(", "acos(", "atan(" },
-        .{ "ln(", "log(", "√" },
-        .{ "^", "!", "%" },
-        .{ "π", "e", "mod" },
-    };
+    // Unit Conversion.
+    unit_category: *gtk.DropDown = undefined,
+    unit_from: *gtk.DropDown = undefined,
+    unit_to: *gtk.DropDown = undefined,
+    unit_value: *gtk.Entry = undefined,
+    unit_result: *gtk.Label = undefined,
+    // Date Calculation.
+    date_kind: *gtk.DropDown = undefined,
+    date_pages: *gtk.Stack = undefined,
+    date_from: *gtk.Entry = undefined,
+    date_to: *gtk.Entry = undefined,
+    date_start: *gtk.Entry = undefined,
+    date_sign: *gtk.DropDown = undefined,
+    date_years: *gtk.SpinButton = undefined,
+    date_months: *gtk.SpinButton = undefined,
+    date_days: *gtk.SpinButton = undefined,
+    date_result: *gtk.Label = undefined,
 
-    fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*Calculator {
-        const self = try allocator.create(Calculator);
+    pub fn create(gpa: std.mem.Allocator, app: *gtk.Application) !*Calc {
+        const self = try gpa.create(Calc);
+        errdefer gpa.destroy(self);
         self.* = .{
-            .allocator = allocator,
+            .gpa = gpa,
+            .app = app,
             .window = gtk.ApplicationWindow.new(app),
+            .config = try common.Config.load(gpa, "calc.toml"),
+            .session = .{ .gpa = gpa },
             .entry = gtk.Entry.new(),
-            .history = gtk.Label.new(""),
-            .scientific = gtk.Revealer.new(),
+            .expr_label = gtk.Label.new(""),
+            .preview = gtk.Label.new(""),
+            .memory_label = gtk.Label.new(""),
+            .keypad = gtk.Box.new(.horizontal, 8),
+            .bases = gtk.Box.new(.vertical, 0),
+            .bits = gtk.Grid.new(),
+            .side = gtk.Stack.new(),
+            .history_list = gtk.ListBox.new(),
+            .vars_list = gtk.ListBox.new(),
+            .graph = undefined,
+            .formula_list = gtk.ListBox.new(),
+            .formula_form = gtk.Box.new(.vertical, 6),
+            .formula_search = gtk.SearchEntry.new(),
         };
-        const window = self.window;
-        window.as(gtk.Window).setTitle(common.tr("Calculator"));
-        window.as(gtk.Window).setResizable(0);
-        window.as(gtk.Window).setDefaultSize(340, -1);
-        window.as(gtk.Widget).addCssClass("dkde");
+        self.graph = try graph_mod.Graph.create(gpa, &self.session);
+        self.readSettings();
+        self.loadState();
 
-        _ = common.header.create(window.as(gtk.Window), "accessories-calculator", true);
+        const win = self.window.as(gtk.Window);
+        win.setTitle(t("Calculator"));
+        win.setDefaultSize(self.config.getInt("calc", "width", 380), self.config.getInt("calc", "height", 520));
+        self.window.as(gtk.Widget).addCssClass("dkde");
+        _ = common.header.create(win, "accessories-calculator", true);
 
-        const mb = common.menubar;
-        const menus = [_]mb.Menu{
-            .{ .label = "_File", .entries = &.{
-                mb.item("E_xit", "close", "<Control>q"),
-            } },
-            .{ .label = "_Edit", .entries = &.{
-                mb.item("_Copy", "copy", "<Control>c"),
-                mb.item("_Paste", "paste", "<Control>v"),
-                .separator,
-                mb.item("C_lear", "clear", "Escape"),
-            } },
-            .{ .label = "_View", .entries = &.{
-                mb.check("_Scientific", "scientific", false),
-                mb.check("_Degrees (off for radians)", "degrees", true),
-            } },
-        };
-        const menu_bar = mb.build(app, window, &menus, Calculator, onMenuAction, self);
+        const menu_bar = self.buildMenus();
 
-        const root = gtk.Box.new(.vertical, 8);
-        root.as(gtk.Widget).setMarginTop(12);
-        root.as(gtk.Widget).setMarginBottom(12);
-        root.as(gtk.Widget).setMarginStart(12);
-        root.as(gtk.Widget).setMarginEnd(12);
-
-        self.history.setXalign(1);
-        self.history.as(gtk.Widget).addCssClass("dim-label");
-        root.append(self.history.as(gtk.Widget));
-
+        // The display.
+        const display = gtk.Box.new(.vertical, 2);
+        display.as(gtk.Widget).addCssClass("dkde-calc-screen");
+        const top = gtk.Box.new(.horizontal, 6);
+        self.memory_label.as(gtk.Widget).addCssClass("dkde-calc-memory");
+        self.memory_label.as(gtk.Widget).setTooltipText(t("A value is in the memory"));
+        top.append(self.memory_label.as(gtk.Widget));
+        self.expr_label.setXalign(1);
+        self.expr_label.setEllipsize(.start);
+        self.expr_label.setSelectable(1);
+        self.expr_label.as(gtk.Widget).setHexpand(1);
+        self.expr_label.as(gtk.Widget).addCssClass("dkde-calc-expr");
+        top.append(self.expr_label.as(gtk.Widget));
+        display.append(top.as(gtk.Widget));
         self.entry.setAlignment(1);
         self.entry.as(gtk.Widget).addCssClass("dkde-calc-display");
         self.entry.setPlaceholderText("0");
-        _ = gtk.Entry.signals.activate.connect(self.entry, *Calculator, &onActivate, self, .{});
+        _ = gtk.Entry.signals.activate.connect(self.entry, *Calc, &onActivate, self, .{});
+        _ = gtk.Editable.signals.changed.connect(self.entry.as(gtk.Editable), *Calc, &onChanged, self, .{});
+        display.append(self.entry.as(gtk.Widget));
+        self.preview.setXalign(1);
+        self.preview.setEllipsize(.end);
+        self.preview.setSelectable(1);
+        self.preview.as(gtk.Widget).addCssClass("dkde-calc-preview");
+        display.append(self.preview.as(gtk.Widget));
+
+        // Programmer: the value in every base, and its bits.
+        self.buildBases();
+        self.buildBits();
+
+        const memory = gtk.Grid.new();
+        memory.setColumnHomogeneous(1);
+        memory.setColumnSpacing(4);
+        for (&memory_keys, 0..) |*s, i| {
+            const key = self.keyButton(s);
+            // The memory row stays one key high; the keypad below takes the room.
+            key.setVexpand(0);
+            memory.attach(key, @intCast(i), 0, 1, 1);
+        }
+
+        self.keypad.as(gtk.Widget).setVexpand(1);
+        self.keypad.setHomogeneous(0);
+
+        const left = gtk.Box.new(.vertical, 8);
+        left.as(gtk.Widget).setMarginTop(10);
+        left.as(gtk.Widget).setMarginBottom(10);
+        left.as(gtk.Widget).setMarginStart(10);
+        left.as(gtk.Widget).setMarginEnd(10);
+        left.as(gtk.Widget).setHexpand(1);
+        left.append(display.as(gtk.Widget));
+        left.append(self.bases.as(gtk.Widget));
+        left.append(self.bits.as(gtk.Widget));
+        left.append(memory.as(gtk.Widget));
+        left.append(self.keypad.as(gtk.Widget));
+
+        // The panes on the right.
+        self.side.as(gtk.Widget).setSizeRequest(320, -1);
+        self.side.as(gtk.Widget).setMarginTop(10);
+        self.side.as(gtk.Widget).setMarginBottom(10);
+        self.side.as(gtk.Widget).setMarginEnd(10);
+        self.side.as(gtk.Widget).setHexpand(1);
+        _ = self.side.addNamed(self.buildHistory(), "history");
+        _ = self.side.addNamed(self.buildUnits(), "units");
+        _ = self.side.addNamed(self.buildDates(), "dates");
+        _ = self.side.addNamed(self.graph.widget(), "graph");
+        _ = self.side.addNamed(self.buildFormulas(), "formulas");
+
+        const body = gtk.Box.new(.horizontal, 0);
+        body.append(left.as(gtk.Widget));
+        body.append(self.side.as(gtk.Widget));
+        body.as(gtk.Widget).setVexpand(1);
+
+        const root = gtk.Box.new(.vertical, 0);
+        root.append(menu_bar);
+        root.append(body.as(gtk.Widget));
+        win.setChild(root.as(gtk.Widget));
+
         const keys = gtk.EventControllerKey.new();
         keys.as(gtk.EventController).setPropagationPhase(.capture);
-        _ = gtk.EventControllerKey.signals.key_pressed.connect(keys, *Calculator, &onKey, self, .{});
-        self.entry.as(gtk.Widget).addController(keys.as(gtk.EventController));
-        root.append(self.entry.as(gtk.Widget));
+        _ = gtk.EventControllerKey.signals.key_pressed.connect(keys, *Calc, &onKey, self, .{});
+        self.window.as(gtk.Widget).addController(keys.as(gtk.EventController));
 
-        const body = gtk.Box.new(.horizontal, 8);
-        body.as(gtk.Widget).setHexpand(1);
+        _ = gtk.Window.signals.close_request.connect(win, *Calc, &onCloseRequest, self, .{});
+        _ = gtk.Widget.signals.destroy.connect(self.window, *Calc, &onDestroy, self, .{});
 
-        const sci_grid = gtk.Grid.new();
-        sci_grid.setRowSpacing(4);
-        sci_grid.setColumnSpacing(4);
-        sci_grid.setRowHomogeneous(1);
-        sci_grid.setColumnHomogeneous(1);
-        for (scientific_keys, 0..) |row, y| {
-            for (row, 0..) |label, x| sci_grid.attach(self.keyButton(label).as(gtk.Widget), @intCast(x), @intCast(y), 1, 1);
-        }
-        self.scientific.setChild(sci_grid.as(gtk.Widget));
-        self.scientific.setTransitionType(.slide_right);
-        body.append(self.scientific.as(gtk.Widget));
-
-        const grid = gtk.Grid.new();
-        grid.setRowSpacing(4);
-        grid.setColumnSpacing(4);
-        grid.setRowHomogeneous(1);
-        grid.setColumnHomogeneous(1);
-        for (standard_keys, 0..) |row, y| {
-            for (row, 0..) |label, x| grid.attach(self.keyButton(label).as(gtk.Widget), @intCast(x), @intCast(y), 1, 1);
-        }
-        grid.as(gtk.Widget).setSizeRequest(300, 250);
-        grid.as(gtk.Widget).setHexpand(1);
-        body.append(grid.as(gtk.Widget));
-        root.append(body.as(gtk.Widget));
-
-        const outer = gtk.Box.new(.vertical, 0);
-        outer.append(menu_bar.as(gtk.Widget));
-        outer.append(root.as(gtk.Widget));
-        window.as(gtk.Window).setChild(outer.as(gtk.Widget));
+        self.setMode(self.mode);
+        self.showPane(self.pane);
+        self.fillHistory();
+        self.fillVars();
+        self.updateMemory();
         _ = self.entry.as(gtk.Widget).grabFocus();
-        _ = gtk.Widget.signals.destroy.connect(window, *Calculator, &onDestroy, self, .{});
         return self;
     }
 
-    fn onDestroy(_: *gtk.ApplicationWindow, self: *Calculator) callconv(.c) void {
-        self.allocator.destroy(self);
+    pub fn present(self: *Calc) void {
+        self.window.as(gtk.Window).present();
     }
 
-    fn keyButton(self: *Calculator, label: [:0]const u8) *gtk.Button {
-        const button = gtk.Button.newWithLabel(label);
-        const is_operator = std.mem.eql(u8, label, "=");
-        if (is_operator) button.as(gtk.Widget).addCssClass("suggested-action");
-        const key = Key.make(self, label);
-        _ = gtk.Button.signals.clicked.connect(button, *Key, &onKeyClicked, key, .{});
-        _ = gtk.Widget.signals.destroy.connect(button, *Key, &onKeyDestroy, key, .{});
-        return button;
+    fn readSettings(self: *Calc) void {
+        var buf: [32]u8 = undefined;
+        self.mode = std.meta.stringToEnum(Mode, self.configString(&buf, "mode", "standard")) orelse .standard;
+        self.pane = std.meta.stringToEnum(Pane, self.configString(&buf, "pane", "none")) orelse .none;
+        self.angle = eval.Angle.parse(self.configString(&buf, "angle", "degrees"));
+        const b = self.config.getInt("calc", "base", 10);
+        self.base = if (b == 2 or b == 8 or b == 16) @intCast(b) else 10;
+        const w = self.config.getInt("calc", "word-bits", 64);
+        self.word = if (w == 8 or w == 16 or w == 32) @intCast(w) else 64;
+        self.style.decimals = @intCast(std.math.clamp(self.config.getInt("calc", "decimals", 10), 0, 30));
+        self.style.grouping = self.config.getBool("calc", "grouping", true);
+        self.style.notation = std.meta.stringToEnum(num.Notation, self.configString(&buf, "notation", "auto")) orelse .auto;
     }
 
-    // Button context; allocated per key and freed with the button.
-    const Key = struct {
-        calc: *Calculator,
-        label: [:0]const u8,
-        fn make(calc: *Calculator, label: [:0]const u8) *Key {
-            const key = calc.allocator.create(Key) catch @panic("OOM");
-            key.* = .{ .calc = calc, .label = label };
-            return key;
+    fn configString(self: *Calc, buf: []u8, key: [:0]const u8, default: []const u8) []const u8 {
+        const v = self.config.getString(self.gpa, "calc", key, default) catch return default;
+        defer self.gpa.free(v);
+        const n = @min(v.len, buf.len);
+        @memcpy(buf[0..n], v[0..n]);
+        return buf[0..n];
+    }
+
+    fn evalMode(self: *const Calc) eval.Mode {
+        return .{
+            .angle = self.angle,
+            .programmer = self.mode == .programmer,
+            .base = if (self.mode == .programmer) self.base else 10,
+            .bits = self.word,
+            .solve_only = self.formula != null,
+        };
+    }
+
+    fn buildMenus(self: *Calc) *gtk.Widget {
+        const mb = common.menubar;
+        const menus = [_]mb.Menu{
+            .{ .label = "_File", .entries = &.{
+                mb.item("_Close", "close", "<Control>w"),
+            } },
+            .{ .label = "_Edit", .entries = &.{
+                mb.item("_Copy Result", "copy", "<Control><Shift>c"),
+                mb.item("_Paste", "paste", null),
+                .separator,
+                mb.item("C_lear", "clear", null),
+                mb.item("Clear _History", "clear-history", null),
+                mb.item("Clear _Variables and Functions", "clear-vars", null),
+            } },
+            .{ .label = "_View", .entries = &.{
+                mb.checkKey("_Standard", "mode-standard", self.mode == .standard, "<Alt>1"),
+                mb.checkKey("S_cientific", "mode-scientific", self.mode == .scientific, "<Alt>2"),
+                mb.checkKey("_Programmer", "mode-programmer", self.mode == .programmer, "<Alt>3"),
+                .separator,
+                mb.checkKey("_History", "pane-history", self.pane == .history, "<Control>h"),
+                mb.checkKey("_Unit Conversion", "pane-units", self.pane == .units, "<Control>u"),
+                mb.checkKey("_Date Calculation", "pane-dates", self.pane == .dates, "<Control>e"),
+                mb.checkKey("_Graph", "pane-graph", self.pane == .graph, "<Control>g"),
+                mb.checkKey("_Formulas", "pane-formulas", self.pane == .formulas, "<Control><Shift>f"),
+                .separator,
+                mb.check("_Degrees", "angle-degrees", self.angle == .degrees),
+                mb.check("_Radians", "angle-radians", self.angle == .radians),
+                mb.check("_Gradians", "angle-gradians", self.angle == .gradians),
+                .separator,
+                mb.check("Digit G_rouping", "grouping", self.style.grouping),
+                mb.check("Scientific _Notation", "notation-scientific", self.style.notation == .scientific),
+                mb.check("_Engineering Notation", "notation-engineering", self.style.notation == .engineering),
+                mb.dynamic("Decimal _Places", "decimals"),
+            } },
+        };
+        const bar = mb.build(self.app, self.window, &menus, Calc, onMenuAction, self);
+        const string_type = glib.VariantType.new("s");
+        defer string_type.free();
+        const action = gio.SimpleAction.new("decimals", string_type);
+        _ = gio.SimpleAction.signals.activate.connect(action, *Calc, &onDecimals, self, .{});
+        self.window.as(gio.ActionMap).addAction(action.as(gio.Action));
+        action.as(gobject.Object).unref();
+        if (mb.submenu(self.window, "decimals")) |m| {
+            for ([_][:0]const u8{ "0", "2", "4", "6", "8", "10", "15", "20", "30" }) |d| {
+                const it = gio.MenuItem.new(d, null);
+                defer it.as(gobject.Object).unref();
+                it.setActionAndTargetValue("win.decimals", glib.Variant.newString(d));
+                m.appendItem(it);
+            }
         }
-    };
+        return bar.as(gtk.Widget);
+    }
 
-    fn onKeyDestroy(_: *gtk.Button, key: *Key) callconv(.c) void {
-        key.calc.allocator.destroy(key);
+    // ---- keys ------------------------------------------------------------------------
+
+    fn keyButton(self: *Calc, spec: *const Spec) *gtk.Widget {
+        const button = gtk.Button.newWithLabel(spec.label);
+        const w = button.as(gtk.Widget);
+        w.addCssClass("dkde-calc-key");
+        if (spec.css) |c| w.addCssClass(c);
+        if (spec.cmd == .enter) w.addCssClass("suggested-action");
+        if (spec.tip) |tip| w.setTooltipText(tip) else if (std.mem.eql(u8, spec.label, "=")) w.setTooltipText(t("Equals: for equations (2x + 3 = 11), variables (x = 5) and functions (f(x) = x² + 1)"));
+        w.setFocusOnClick(0);
+        w.setHexpand(1);
+        w.setVexpand(1);
+        // Keys that depend on the base or mode say what they are (not their label: C is also Clear).
+        if (spec.cmd == .insert and spec.insert.len == 1 and std.ascii.isHex(spec.insert[0])) {
+            var nb: [16]u8 = undefined;
+            w.setName(std.fmt.bufPrintSentinel(&nb, "digit-{c}", .{spec.insert[0]}, 0) catch "");
+        } else if (std.mem.eql(u8, spec.label, ".") or std.mem.eql(u8, spec.label, "√") or std.mem.eql(u8, spec.label, "x²") or std.mem.eql(u8, spec.label, "%")) {
+            w.setName("not-programmer");
+        }
+        const key = self.gpa.create(Key) catch return w;
+        key.* = .{ .calc = self, .spec = spec };
+        self.keys.append(self.gpa, key) catch {};
+        _ = gtk.Button.signals.clicked.connect(button, *Key, &onKeyClicked, key, .{});
+        return w;
     }
 
     fn onKeyClicked(_: *gtk.Button, key: *Key) callconv(.c) void {
-        key.calc.press(key.label);
+        key.calc.press(key.spec);
     }
 
-    fn press(self: *Calculator, label: []const u8) void {
-        const eql = std.mem.eql;
-        if (eql(u8, label, "C")) {
-            self.entry.as(gtk.Editable).setText("");
-            self.history.setText("");
-            self.fresh = false;
-        } else if (eql(u8, label, "⌫")) {
-            self.backspace();
-        } else if (eql(u8, label, "=")) {
-            self.calculate();
-        } else {
-            self.insert(label);
+    fn grid(self: *Calc, rows: anytype) *gtk.Grid {
+        const g = gtk.Grid.new();
+        g.setRowSpacing(4);
+        g.setColumnSpacing(4);
+        g.setRowHomogeneous(1);
+        g.setColumnHomogeneous(1);
+        g.as(gtk.Widget).setHexpand(1);
+        g.as(gtk.Widget).setVexpand(1);
+        for (rows, 0..) |*row, y| for (row, 0..) |*s, x| g.attach(self.keyButton(s), @intCast(x), @intCast(y), 1, 1);
+        return g;
+    }
+
+    fn setMode(self: *Calc, mode: Mode) void {
+        self.mode = mode;
+        while (self.keypad.as(gtk.Widget).getFirstChild()) |c| self.keypad.remove(c);
+        for (self.keys.items) |key| self.gpa.destroy(key);
+        self.keys.clearRetainingCapacity();
+        // The memory row's keys were made before; keep them alive.
+        self.keepMemoryKeys();
+        switch (mode) {
+            .standard => {},
+            .scientific => self.keypad.append(self.scientificPanel()),
+            .programmer => self.keypad.append(self.programmerPanel()),
+        }
+        self.keypad.append(self.grid(&standard_keys).as(gtk.Widget));
+        self.bases.as(gtk.Widget).setVisible(@intFromBool(mode == .programmer));
+        self.bits.as(gtk.Widget).setVisible(@intFromBool(mode == .programmer));
+        inline for (.{ "standard", "scientific", "programmer" }) |name| {
+            common.menubar.setChecked(self.window, "mode-" ++ name, std.mem.eql(u8, @tagName(mode), name));
+        }
+        self.config.setString("calc", "mode", @tagName(mode)) catch {};
+        self.window.as(gtk.Window).setDefaultSize(-1, -1);
+        self.updateKeys();
+        self.refreshPreview();
+    }
+
+    /// The memory keys are made once, in `create`; setMode only frees the keypad's.
+    fn keepMemoryKeys(self: *Calc) void {
+        _ = self;
+    }
+
+    fn scientificPanel(self: *Calc) *gtk.Widget {
+        const box = gtk.Box.new(.vertical, 4);
+        box.as(gtk.Widget).setHexpand(1);
+        // Degrees, radians, gradians, as in the Windows calculator.
+        const angles = gtk.Box.new(.horizontal, 0);
+        angles.as(gtk.Widget).addCssClass("linked");
+        var first: ?*gtk.ToggleButton = null;
+        inline for (.{ .{ "Deg", eval.Angle.degrees }, .{ "Rad", eval.Angle.radians }, .{ "Grad", eval.Angle.gradians } }) |p| {
+            const b = gtk.ToggleButton.newWithLabel(p[0]);
+            b.as(gtk.Widget).setHexpand(1);
+            b.as(gtk.Widget).setFocusOnClick(0);
+            if (first) |f| b.setGroup(f) else first = b;
+            if (self.angle == p[1]) b.setActive(1);
+            _ = gtk.ToggleButton.signals.toggled.connect(b, *Calc, &struct {
+                fn f(tb: *gtk.ToggleButton, c: *Calc) callconv(.c) void {
+                    if (tb.getActive() != 0) c.setAngle(p[1]);
+                }
+            }.f, self, .{});
+            angles.append(b.as(gtk.Widget));
+        }
+        box.append(angles.as(gtk.Widget));
+        box.append(self.grid(&scientific_keys).as(gtk.Widget));
+        return box.as(gtk.Widget);
+    }
+
+    fn programmerPanel(self: *Calc) *gtk.Widget {
+        const box = gtk.Box.new(.vertical, 4);
+        box.as(gtk.Widget).setHexpand(1);
+        const row = gtk.Box.new(.horizontal, 6);
+        const bases = gtk.Box.new(.horizontal, 0);
+        bases.as(gtk.Widget).addCssClass("linked");
+        var first: ?*gtk.ToggleButton = null;
+        inline for (.{ .{ "Hex", 16 }, .{ "Dec", 10 }, .{ "Oct", 8 }, .{ "Bin", 2 } }) |p| {
+            const b = gtk.ToggleButton.newWithLabel(p[0]);
+            b.as(gtk.Widget).setFocusOnClick(0);
+            if (first) |f| b.setGroup(f) else first = b;
+            if (self.base == p[1]) b.setActive(1);
+            _ = gtk.ToggleButton.signals.toggled.connect(b, *Calc, &struct {
+                fn f(tb: *gtk.ToggleButton, c: *Calc) callconv(.c) void {
+                    if (tb.getActive() != 0) c.setBase(p[1]);
+                }
+            }.f, self, .{});
+            bases.append(b.as(gtk.Widget));
+        }
+        row.append(bases.as(gtk.Widget));
+        var words = [_:null]?[*:0]const u8{ "Qword (64)", "Dword (32)", "Word (16)", "Byte (8)" };
+        const word = gtk.DropDown.newFromStrings(@ptrCast(&words));
+        word.setSelected(switch (self.word) {
+            8 => 3,
+            16 => 2,
+            32 => 1,
+            else => 0,
+        });
+        word.as(gtk.Widget).setHexpand(1);
+        word.as(gtk.Widget).setFocusOnClick(0);
+        _ = gobject.Object.signals.notify.connect(word, *Calc, &onWord, self, .{ .detail = "selected" });
+        row.append(word.as(gtk.Widget));
+        box.append(row.as(gtk.Widget));
+        box.append(self.grid(&programmer_keys).as(gtk.Widget));
+        return box.as(gtk.Widget);
+    }
+
+    fn onWord(dd: *gtk.DropDown, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        self.word = switch (dd.getSelected()) {
+            1 => 32,
+            2 => 16,
+            3 => 8,
+            else => 64,
+        };
+        self.config.setInt("calc", "word-bits", self.word) catch {};
+        self.int_value = num.wrap(self.int_value, self.word);
+        self.showProgrammerValue();
+        self.refreshPreview();
+    }
+
+    fn setAngle(self: *Calc, a: eval.Angle) void {
+        self.angle = a;
+        inline for (.{ "degrees", "radians", "gradians" }) |name| {
+            common.menubar.setChecked(self.window, "angle-" ++ name, std.mem.eql(u8, @tagName(a), name));
+        }
+        self.config.setString("calc", "angle", @tagName(a)) catch {};
+        self.refreshPreview();
+    }
+
+    fn setBase(self: *Calc, base: u8) void {
+        const was = self.base;
+        self.base = base;
+        self.config.setInt("calc", "base", base) catch {};
+        // A shown result is written again in the new base.
+        if (self.fresh or std.mem.span(self.entry.as(gtk.Editable).getText()).len == 0 or was == base) {
+            if (self.fresh) self.showResultText(self.int_value);
+        }
+        self.updateKeys();
+        self.refreshPreview();
+    }
+
+    /// Digits that do not exist in the current base, and the point in
+    /// programmer mode, are greyed out.
+    fn updateKeys(self: *Calc) void {
+        var child = self.keypad.as(gtk.Widget).getFirstChild();
+        while (child) |c| : (child = c.getNextSibling()) self.updateKeysIn(c);
+    }
+
+    fn updateKeysIn(self: *Calc, w: *gtk.Widget) void {
+        var child = w.getFirstChild();
+        while (child) |c| : (child = c.getNextSibling()) {
+            const name = std.mem.span(c.getName());
+            if (std.mem.startsWith(u8, name, "digit-")) {
+                const value = std.fmt.charToDigit(name[6], 16) catch 0;
+                const base: u8 = if (self.mode == .programmer) self.base else 10;
+                c.setSensitive(@intFromBool(value < base));
+            } else if (std.mem.eql(u8, name, "not-programmer")) {
+                c.setSensitive(@intFromBool(self.mode != .programmer));
+            } else self.updateKeysIn(c);
+        }
+    }
+
+    fn press(self: *Calc, spec: *const Spec) void {
+        self.recall = null;
+        switch (spec.cmd) {
+            .insert => self.insert(spec.insert),
+            .enter => self.calculate(),
+            .clear => self.clear(),
+            .back => self.backspace(),
+            .negate => self.wrapEntry("−(", ")", true),
+            .reciprocal => self.wrapEntry("1/(", ")", false),
+            .mc => {
+                if (self.memory) |m| m.deinit(self.gpa);
+                self.memory = null;
+                self.updateMemory();
+            },
+            .mr => if (self.memory) |m| {
+                var arena = std.heap.ArenaAllocator.init(self.gpa);
+                defer arena.deinit();
+                const v = m.load(arena.allocator()) catch return;
+                const text = self.plainText(arena.allocator(), v) catch return;
+                self.insert(text);
+            },
+            .ms, .mplus, .mminus => self.memoryOp(spec.cmd),
+            .plot => self.plotEntry(),
         }
         _ = self.entry.as(gtk.Widget).grabFocus();
         self.entry.as(gtk.Editable).setPosition(-1);
     }
 
-    fn insert(self: *Calculator, text: []const u8) void {
-        // After a result, typing a number starts over; an operator continues it.
-        if (self.fresh) {
-            const continues = text.len == 0 or !std.ascii.isDigit(text[0]) and !std.ascii.isAlphabetic(text[0]) and !std.mem.startsWith(u8, text, "π") and !std.mem.startsWith(u8, text, "√");
-            if (!continues) self.entry.as(gtk.Editable).setText("");
-            self.fresh = false;
-        }
-        var buf: [128]u8 = undefined;
+    fn entryText(self: *Calc) []const u8 {
+        return std.mem.span(self.entry.as(gtk.Editable).getText());
+    }
+
+    fn setEntry(self: *Calc, text: []const u8) void {
+        var buf: [4096]u8 = undefined;
         const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{text}, 0) catch return;
-        var pos: c_int = -1;
-        self.entry.as(gtk.Editable).insertText(z, -1, &pos);
-    }
-
-    fn backspace(self: *Calculator) void {
-        const text = std.mem.span(self.entry.as(gtk.Editable).getText());
-        if (text.len == 0) return;
-        // Remove one whole UTF-8 character.
-        var end = text.len - 1;
-        while (end > 0 and (text[end] & 0xC0) == 0x80) end -= 1;
-        var buf: [256]u8 = undefined;
-        const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{text[0..end]}, 0) catch return;
+        self.quiet = true;
+        defer self.quiet = false;
         self.entry.as(gtk.Editable).setText(z);
+        self.entry.as(gtk.Editable).setPosition(-1);
     }
 
-    fn calculate(self: *Calculator) void {
-        const text = std.mem.span(self.entry.as(gtk.Editable).getText());
+    fn insert(self: *Calc, text: []const u8) void {
+        if (self.fresh) {
+            self.fresh = false;
+            // After a result an operator goes on from it; anything else starts over.
+            const goes_on = text.len > 0 and (std.mem.indexOfScalar(u8, "+−-×*÷/^²³!%=)", text[0]) != null or
+                std.mem.startsWith(u8, text, "−") or std.mem.startsWith(u8, text, "×") or std.mem.startsWith(u8, text, "÷") or
+                std.mem.startsWith(u8, text, "²") or std.mem.startsWith(u8, text, " "));
+            self.setEntry(if (goes_on) (self.plain orelse "") else "");
+            self.formula = null;
+        }
+        var buf: [256]u8 = undefined;
+        const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{text}, 0) catch return;
+        const editable = self.entry.as(gtk.Editable);
+        var start: c_int = 0;
+        var end: c_int = 0;
+        if (editable.getSelectionBounds(&start, &end) != 0) editable.deleteText(start, end);
+        var pos: c_int = editable.getPosition();
+        editable.insertText(z, -1, &pos);
+        editable.setPosition(pos);
+    }
+
+    fn clear(self: *Calc) void {
+        self.formula = null;
+        self.setEntry("");
+        self.expr_label.setText("");
+        self.preview.setText("");
+        self.fresh = false;
+        self.recall = null;
+    }
+
+    fn backspace(self: *Calc) void {
+        if (self.fresh) return self.clear();
+        const editable = self.entry.as(gtk.Editable);
+        var start: c_int = 0;
+        var end: c_int = 0;
+        if (editable.getSelectionBounds(&start, &end) != 0) return editable.deleteText(start, end);
+        const pos = editable.getPosition();
+        if (pos > 0) editable.deleteText(pos - 1, pos);
+    }
+
+    /// "± " and "1/x" act on the whole entry (or the last result).
+    fn wrapEntry(self: *Calc, before: []const u8, after: []const u8, toggle: bool) void {
+        const text = if (self.fresh) (self.plain orelse "") else self.entryText();
+        self.fresh = false;
         if (text.len == 0) return;
-        const mode: eval.AngleMode = if (self.degrees) .degrees else .radians;
-        const value = eval.evaluate(text, mode) catch |err| {
-            self.history.setText(switch (err) {
-                error.DivisionByZero => common.tr("Cannot divide by zero"),
-                error.Domain => common.tr("Result is undefined"),
-                error.UnknownName => common.tr("Unknown function"),
-                error.Syntax => common.tr("Invalid expression"),
-            });
+        var buf: [4096]u8 = undefined;
+        if (toggle) {
+            if (std.mem.startsWith(u8, text, "−(") and std.mem.endsWith(u8, text, ")")) return self.setEntry(text["−(".len .. text.len - 1]);
+            if (isPlainNumber(text)) {
+                if (std.mem.startsWith(u8, text, "-")) return self.setEntry(text[1..]);
+                if (std.mem.startsWith(u8, text, "−")) return self.setEntry(text["−".len..]);
+                return self.setEntry(std.fmt.bufPrint(&buf, "-{s}", .{text}) catch return);
+            }
+        }
+        self.setEntry(std.fmt.bufPrint(&buf, "{s}{s}{s}", .{ before, text, after }) catch return);
+    }
+
+    fn isPlainNumber(text: []const u8) bool {
+        for (text, 0..) |c, i| {
+            if (std.ascii.isDigit(c) or c == '.') continue;
+            if (i == 0 and c == '-') continue;
+            return false;
+        }
+        return text.len > 0;
+    }
+
+    // ---- working it out -------------------------------------------------------------------
+
+    /// The entry without the narrow spaces that group digits.
+    fn cleaned(a: std.mem.Allocator, text: []const u8) ![]u8 {
+        return std.mem.replaceOwned(u8, a, text, group_sep, "");
+    }
+
+    fn calculate(self: *Calc) void {
+        const raw = self.entryText();
+        if (std.mem.trim(u8, raw, " ").len == 0) return;
+        if (self.fresh) return; // the result of the last calculation: nothing new
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const text = cleaned(a, raw) catch return;
+        const expr_copy = a.dupe(u8, raw) catch return;
+
+        // "5 km in mi".
+        if (self.mode != .programmer) if (units.request(text)) |req| {
+            var p: eval.Problem = .{};
+            const amount = eval.run(a, &self.session, req.amount, self.evalMode(), &p) catch |e| return self.showError(e, p, text);
+            if (amount != .value) return self.showError(error.Syntax, p, text);
+            const v = units.convert(req.from.category, req.from.unit, req.to.unit, amount.value.toFloat());
+            const shown = num.format(a, .{ .approx = v }, self.style) catch return;
+            const result = std.fmt.allocPrint(a, "{s} {s}", .{ shown, units.shortName(req.to) }) catch return;
+            self.finishResult(expr_copy, result, num.fromFloat(v) catch null, a);
             return;
         };
-        var result_buf: [64]u8 = undefined;
-        const result = eval.format(&result_buf, value);
-        var line: [320]u8 = undefined;
-        const history = std.fmt.bufPrintSentinel(&line, "{s} =", .{text}, 0) catch return;
-        self.history.setText(history);
-        var out: [96]u8 = undefined;
-        const result_z = std.fmt.bufPrintSentinel(&out, "{s}", .{result}, 0) catch return;
-        self.entry.as(gtk.Editable).setText(result_z);
+
+        var p: eval.Problem = .{};
+        const outcome = eval.run(a, &self.session, text, self.evalMode(), &p) catch |e| return self.showError(e, p, text);
+        switch (outcome) {
+            .value => |v| {
+                const shown = self.displayText(a, v) catch return;
+                self.finishResult(expr_copy, shown, v, a);
+            },
+            .assigned => |s| {
+                const shown = self.displayText(a, s.value) catch return;
+                const line = std.fmt.allocPrint(a, "{s} = {s}", .{ s.name, shown }) catch return;
+                self.finishResult(expr_copy, line, s.value, a);
+                self.saveState();
+                self.fillVars();
+                self.graph.refresh();
+            },
+            .defined => |name| {
+                self.addHistory(expr_copy, std.fmt.allocPrint(a, "{s} defined", .{name}) catch return);
+                var buf: [128]u8 = undefined;
+                self.expr_label.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{expr_copy}, 0) catch "");
+                self.preview.setText(std.fmt.bufPrintSentinel(&buf, "{s} is defined: use it as {s}(…)", .{ name, name }, 0) catch "");
+                self.setEntry("");
+                self.saveState();
+                self.fillVars();
+                self.graph.refresh();
+            },
+            .solved => |s| {
+                var parts: std.ArrayList(u8) = .empty;
+                for (s.roots, 0..) |r, i| {
+                    if (i > 0) parts.appendSlice(a, ";  ") catch return;
+                    const shown = num.format(a, r, self.style) catch return;
+                    // In letters too when that says more: A = 9π ≈ 28.27.
+                    if (s.form) |f| if (!r.isExact() and !std.mem.eql(u8, f, shown) and f.len < 60 and !looksNumeric(f)) {
+                        parts.print(a, "{s} = {s} ≈ {s}", .{ s.name, f, shown }) catch return;
+                        continue;
+                    };
+                    parts.print(a, "{s} {s} {s}", .{ s.name, if (r.isExact()) "=" else "≈", shown }) catch return;
+                }
+                self.finishResult(expr_copy, parts.items, if (s.roots.len == 1) s.roots[0] else null, a);
+                // The answer cannot be typed on from; Enter again does nothing.
+                if (s.roots.len != 1) {
+                    if (self.plain) |pl| self.gpa.free(pl);
+                    self.plain = null;
+                }
+            },
+            .truth => |yes| self.finishResult(expr_copy, if (yes) t("true") else t("false"), null, a),
+            .simplified => |x| {
+                self.finishResult(expr_copy, x, null, a);
+                if (self.plain) |pl| self.gpa.free(pl);
+                self.plain = self.gpa.dupe(u8, x) catch null;
+                var buf: [256]u8 = undefined;
+                self.preview.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{t("Simplified: give the other letters values to work it out")}, 0) catch "");
+            },
+        }
+    }
+
+    fn looksNumeric(text: []const u8) bool {
+        for (text) |c| if (!(std.ascii.isDigit(c) or c == '.' or c == '-' or c == ' ')) return false;
+        return true;
+    }
+
+    fn displayText(self: *Calc, a: std.mem.Allocator, v: num.Number) ![]u8 {
+        if (self.mode == .programmer) {
+            const i = num.int128(v) orelse return num.format(a, v, self.style);
+            return num.formatBase(a, i, self.base, self.word, false);
+        }
+        return num.format(a, v, self.style);
+    }
+
+    /// Text that can be typed back in (no grouping, plain point).
+    fn plainText(self: *Calc, a: std.mem.Allocator, v: num.Number) ![]u8 {
+        if (self.mode == .programmer) {
+            const i = num.int128(v) orelse return error.Domain;
+            return num.formatBase(a, i, self.base, self.word, false);
+        }
+        var style = self.style;
+        style.grouping = false;
+        // Enough digits to go on with.
+        style.decimals = @max(style.decimals, 15);
+        return num.format(a, v, style);
+    }
+
+    fn finishResult(self: *Calc, expr: []const u8, shown: []const u8, value: ?num.Number, a: std.mem.Allocator) void {
+        self.finishResultAs(expr, shown, value, a, std.mem.indexOfScalar(u8, expr, '=') == null);
+    }
+
+    fn finishResultAs(self: *Calc, expr: []const u8, shown: []const u8, value: ?num.Number, a: std.mem.Allocator, equals: bool) void {
+        var line_buf: [4096]u8 = undefined;
+        // The expression above, with "≈" when the result is rounded and the fraction when there is one.
+        var tail: []const u8 = "";
+        if (value) |v| {
+            if (num.fraction(a, v) catch null) |f| {
+                if (self.mode != .programmer) tail = std.fmt.allocPrint(a, "   (= {s})", .{f}) catch "";
+            }
+        }
+        const approx = if (value) |v| !v.isExact() else false;
+        const mark: []const u8 = if (!equals) "" else if (approx) " ≈" else " =";
+        self.expr_label.setText(std.fmt.bufPrintSentinel(&line_buf, "{s}{s}{s}", .{ expr, mark, tail }, 0) catch "");
+        self.preview.setText("");
+        self.preview.as(gtk.Widget).removeCssClass("error");
+        self.addHistory(expr, shown);
+        if (self.plain) |pl| self.gpa.free(pl);
+        self.plain = null;
+        if (value) |v| {
+            self.session.setAns(v) catch {};
+            self.plain = if (self.plainText(a, v)) |pt| self.gpa.dupe(u8, pt) catch null else |_| null;
+            if (num.int128(v)) |i| self.int_value = num.wrap(i, self.word);
+            self.showProgrammerValue();
+        }
+        self.setEntry(shown);
+        self.fresh = true;
+        self.saveState();
+    }
+
+    fn showResultText(self: *Calc, v: i128) void {
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const text = num.formatBase(a, v, self.base, self.word, false) catch return;
+        if (self.plain) |pl| self.gpa.free(pl);
+        self.plain = self.gpa.dupe(u8, text) catch null;
+        self.setEntry(text);
         self.fresh = true;
     }
 
-    fn onActivate(_: *gtk.Entry, self: *Calculator) callconv(.c) void {
+    fn showError(self: *Calc, e: eval.Error, p: eval.Problem, text: []const u8) void {
+        var buf: [256]u8 = undefined;
+        const message: [:0]const u8 = switch (e) {
+            error.Syntax => t("Something is missing or out of place here"),
+            error.DivisionByZero => t("Cannot divide by zero"),
+            error.Domain => t("The result is undefined"),
+            error.UnknownName => std.fmt.bufPrintSentinel(&buf, "Unknown name: {s}", .{p.name}, 0) catch "Unknown name",
+            error.TooLarge => t("The number is too large"),
+            error.NotInteger => t("Programmer mode works with whole numbers"),
+            error.WrongArguments => std.fmt.bufPrintSentinel(&buf, "Wrong number of values for {s}", .{p.name}, 0) catch "Wrong number of values",
+            error.TooManyUnknowns => std.fmt.bufPrintSentinel(&buf, "More than one unknown (also {s}): give the others values first", .{p.name}, 0) catch "More than one unknown",
+            error.NoSolution => t("No real solution was found"),
+            error.Recursion => t("A function uses itself without end"),
+            error.OutOfMemory => t("Not enough memory"),
+        };
+        self.preview.setText(message);
+        self.preview.as(gtk.Widget).addCssClass("error");
+        // Select from where the problem is.
+        if (e == error.Syntax or e == error.UnknownName or e == error.WrongArguments) {
+            const at = @min(p.pos, text.len);
+            const chars = std.unicode.utf8CountCodepoints(text[0..at]) catch at;
+            self.entry.as(gtk.Editable).selectRegion(@intCast(chars), -1);
+        }
+    }
+
+    fn onActivate(_: *gtk.Entry, self: *Calc) callconv(.c) void {
         self.calculate();
     }
 
-    /// Escape clears; everything else is the entry's own typing.
-    fn onKey(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: @import("gdk4").ModifierType, self: *Calculator) callconv(.c) c_int {
-        if (keyval == @import("gdk4").KEY_Escape) {
-            self.press("C");
-            return 1;
+    /// While typing: the result so far, under the entry.
+    fn onChanged(_: *gtk.Editable, self: *Calc) callconv(.c) void {
+        if (self.quiet) return;
+        // Editing a shown result by hand goes on from it.
+        self.fresh = false;
+        self.refreshPreview();
+    }
+
+    fn refreshPreview(self: *Calc) void {
+        if (self.fresh) return;
+        self.preview.as(gtk.Widget).removeCssClass("error");
+        const raw = self.entryText();
+        if (std.mem.trim(u8, raw, " ").len == 0) return self.preview.setText("");
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const text = cleaned(a, raw) catch return;
+        if (self.mode != .programmer) if (units.request(text)) |req| {
+            var p: eval.Problem = .{};
+            const st = eval.parse(a, req.amount, self.evalMode(), &p) catch return self.preview.setText("");
+            if (st != .expr) return self.preview.setText("");
+            var ev: eval.Eval = .{ .a = a, .session = &self.session, .mode = self.evalMode(), .problem = &p };
+            const v = ev.eval(st.expr, null) catch return self.preview.setText("");
+            const shown = num.format(a, .{ .approx = units.convert(req.from.category, req.from.unit, req.to.unit, v.toFloat()) }, self.style) catch return;
+            var buf: [256]u8 = undefined;
+            return self.preview.setText(std.fmt.bufPrintSentinel(&buf, "= {s} {s}", .{ shown, units.shortName(req.to) }, 0) catch "");
+        };
+        var p: eval.Problem = .{};
+        const st = eval.parse(a, text, self.evalMode(), &p) catch return self.preview.setText("");
+        switch (st) {
+            .equation => |eq| {
+                const hint: [:0]const u8 = if (eq.l.* == .name) t("Enter sets the variable or solves the equation") else if (eq.l.* == .call) t("Enter defines the function or solves the equation") else t("Enter solves the equation");
+                self.preview.setText(hint);
+            },
+            .expr => |n| {
+                var ev: eval.Eval = .{ .a = a, .session = &self.session, .mode = self.evalMode(), .problem = &p };
+                const v = ev.eval(n, null) catch |e| {
+                    if (e == error.UnknownName and self.mode != .programmer) {
+                        const tidy = simplify.simplify(a, &ev, n) catch return self.preview.setText("");
+                        var buf: [1024]u8 = undefined;
+                        return self.preview.setText(std.fmt.bufPrintSentinel(&buf, "→ {s}", .{tidy}, 0) catch "");
+                    }
+                    return self.preview.setText("");
+                };
+                const shown = self.displayText(a, v) catch return;
+                var buf: [1024]u8 = undefined;
+                self.preview.setText(std.fmt.bufPrintSentinel(&buf, "{s} {s}", .{ if (v.isExact()) "=" else "≈", shown }, 0) catch "");
+                if (self.mode == .programmer) if (num.int128(v)) |i| {
+                    self.int_value = num.wrap(i, self.word);
+                    self.showProgrammerValue();
+                };
+            },
         }
+    }
+
+    // ---- memory ----------------------------------------------------------------------------
+
+    /// The value to store: the last result, or what the entry works out to.
+    fn currentValue(self: *Calc, a: std.mem.Allocator) ?num.Number {
+        const text = if (self.fresh) (self.plain orelse return null) else self.entryText();
+        if (std.mem.trim(u8, text, " ").len == 0) return null;
+        const c = cleaned(a, text) catch return null;
+        var p: eval.Problem = .{};
+        const st = eval.parse(a, c, self.evalMode(), &p) catch return null;
+        if (st != .expr) return null;
+        var ev: eval.Eval = .{ .a = a, .session = &self.session, .mode = self.evalMode(), .problem = &p };
+        return ev.eval(st.expr, null) catch null;
+    }
+
+    fn memoryOp(self: *Calc, c: Cmd) void {
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const v = self.currentValue(a) orelse return;
+        var result = v;
+        if (c != .ms) {
+            const old = if (self.memory) |m| (m.load(a) catch return) else (num.fromInt(a, 0) catch return);
+            result = (if (c == .mplus) num.add(a, old, v) else num.sub(a, old, v)) catch return;
+        }
+        const stored = eval.Stored.of(self.gpa, result) catch return;
+        if (self.memory) |m| m.deinit(self.gpa);
+        self.memory = stored;
+        self.updateMemory();
+        self.saveState();
+    }
+
+    fn updateMemory(self: *Calc) void {
+        self.memory_label.setText(if (self.memory != null) "M" else "");
+    }
+
+    // ---- programmer mode: bases and bits ------------------------------------------------------
+
+    fn buildBases(self: *Calc) void {
+        self.bases.as(gtk.Widget).addCssClass("dkde-calc-bases");
+        const names = [_][:0]const u8{ "HEX", "DEC", "OCT", "BIN" };
+        const values = [_]u8{ 16, 10, 8, 2 };
+        for (names, values, 0..) |n, v, i| {
+            const row = gtk.Box.new(.horizontal, 8);
+            const name = gtk.Label.new(n);
+            name.as(gtk.Widget).addCssClass("dim-label");
+            name.as(gtk.Widget).setSizeRequest(36, -1);
+            name.setXalign(0);
+            const value = gtk.Label.new("0");
+            value.setXalign(1);
+            value.setSelectable(1);
+            value.setEllipsize(.start);
+            value.as(gtk.Widget).setHexpand(1);
+            value.as(gtk.Widget).addCssClass("monospace");
+            self.base_labels[i] = value;
+            row.append(name.as(gtk.Widget));
+            row.append(value.as(gtk.Widget));
+            const button = gtk.Button.new();
+            button.setChild(row.as(gtk.Widget));
+            button.setHasFrame(0);
+            button.as(gtk.Widget).setFocusOnClick(0);
+            button.as(gtk.Widget).setTooltipText(t("Work in this base"));
+            const BaseClick = struct {
+                fn f(_: *gtk.Button, c: *Calc) callconv(.c) void {
+                    _ = c;
+                }
+            };
+            _ = BaseClick;
+            _ = v;
+            self.bases.append(button.as(gtk.Widget));
+        }
+    }
+
+    fn buildBits(self: *Calc) void {
+        self.bits.setColumnSpacing(0);
+        self.bits.setRowSpacing(0);
+        self.bits.as(gtk.Widget).addCssClass("dkde-calc-bits");
+        self.bits.as(gtk.Widget).setHalign(.center);
+        // Four rows of 16 bits, highest first, with a gap every four.
+        for (0..64) |i| {
+            const bit: u6 = @intCast(63 - i);
+            const b = gtk.Button.newWithLabel("0");
+            b.setHasFrame(0);
+            b.as(gtk.Widget).setFocusOnClick(0);
+            b.as(gtk.Widget).addCssClass("dkde-calc-bit");
+            var tip: [32]u8 = undefined;
+            b.as(gtk.Widget).setTooltipText(std.fmt.bufPrintSentinel(&tip, "Bit {d}", .{bit}, 0) catch null);
+            self.bit_buttons[bit] = b;
+            const row: c_int = @intCast(i / 16);
+            const col: c_int = @intCast((i % 16) + (i % 16) / 4);
+            self.bits.attach(b.as(gtk.Widget), col, row, 1, 1);
+            _ = gtk.Button.signals.clicked.connect(b, *Calc, &onBit, self, .{});
+            if (i % 16 == 15) {
+                var nb: [8]u8 = undefined;
+                const label = gtk.Label.new(std.fmt.bufPrintSentinel(&nb, "{d}", .{bit}, 0) catch "");
+                label.as(gtk.Widget).addCssClass("dim-label");
+                label.as(gtk.Widget).setMarginStart(6);
+                self.bits.attach(label.as(gtk.Widget), 20, row, 1, 1);
+            }
+        }
+    }
+
+    fn onBit(button: *gtk.Button, self: *Calc) callconv(.c) void {
+        for (self.bit_buttons, 0..) |b, i| {
+            if (b != button) continue;
+            if (i >= self.word) return;
+            self.int_value = num.wrap(self.int_value ^ (@as(i128, 1) << @intCast(i)), self.word);
+            self.showResultText(self.int_value);
+            self.showProgrammerValue();
+            return;
+        }
+    }
+
+    fn showProgrammerValue(self: *Calc) void {
+        if (self.mode != .programmer) return;
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const v = self.int_value;
+        for ([_]u8{ 16, 10, 8, 2 }, 0..) |base, i| {
+            const text = num.formatBase(a, v, base, self.word, true) catch continue;
+            const z = a.dupeSentinel(u8, text, 0) catch continue;
+            self.base_labels[i].setText(z);
+            self.base_labels[i].as(gtk.Widget).getParent().?.getParent().?.setSensitive(1);
+        }
+        const mask: u128 = if (self.word >= 128) std.math.maxInt(u128) else (@as(u128, 1) << @intCast(self.word)) - 1;
+        const u: u128 = @as(u128, @bitCast(v)) & mask;
+        for (self.bit_buttons, 0..) |b, i| {
+            b.setLabel(if (i < 128 and (u >> @intCast(i)) & 1 == 1) "1" else "0");
+            b.as(gtk.Widget).setSensitive(@intFromBool(i < self.word));
+        }
+    }
+
+    // ---- history, variables and functions ------------------------------------------------------
+
+    fn buildHistory(self: *Calc) *gtk.Widget {
+        const box = gtk.Box.new(.vertical, 6);
+        const title = gtk.Label.new(t("History"));
+        title.setXalign(0);
+        title.as(gtk.Widget).addCssClass("heading");
+        box.append(title.as(gtk.Widget));
+        const scroll = gtk.ScrolledWindow.new();
+        scroll.setChild(self.history_list.as(gtk.Widget));
+        scroll.as(gtk.Widget).setVexpand(1);
+        scroll.setPolicy(.never, .automatic);
+        self.history_list.setSelectionMode(.none);
+        self.history_list.setActivateOnSingleClick(1);
+        self.history_list.as(gtk.Widget).addCssClass("dkde-calc-history");
+        _ = gtk.ListBox.signals.row_activated.connect(self.history_list, *Calc, &onHistoryRow, self, .{});
+        box.append(scroll.as(gtk.Widget));
+        const hint = gtk.Label.new(t("Click a line to use its result."));
+        hint.setXalign(0);
+        hint.as(gtk.Widget).addCssClass("dim-label");
+        box.append(hint.as(gtk.Widget));
+
+        const vtitle = gtk.Label.new(t("Variables and Functions"));
+        vtitle.setXalign(0);
+        vtitle.as(gtk.Widget).addCssClass("heading");
+        vtitle.as(gtk.Widget).setMarginTop(8);
+        box.append(vtitle.as(gtk.Widget));
+        const vscroll = gtk.ScrolledWindow.new();
+        vscroll.setChild(self.vars_list.as(gtk.Widget));
+        vscroll.setPolicy(.never, .automatic);
+        vscroll.as(gtk.Widget).setSizeRequest(-1, 120);
+        self.vars_list.setSelectionMode(.none);
+        self.vars_list.setActivateOnSingleClick(1);
+        _ = gtk.ListBox.signals.row_activated.connect(self.vars_list, *Calc, &onVarRow, self, .{});
+        box.append(vscroll.as(gtk.Widget));
+        const vhint = gtk.Label.new(t("Set one with x = 5 or f(x) = x² + 1."));
+        vhint.setXalign(0);
+        vhint.setWrap(1);
+        vhint.as(gtk.Widget).addCssClass("dim-label");
+        box.append(vhint.as(gtk.Widget));
+        return box.as(gtk.Widget);
+    }
+
+    fn addHistory(self: *Calc, expr: []const u8, result: []const u8) void {
+        const e = self.gpa.dupe(u8, expr) catch return;
+        const r = self.gpa.dupe(u8, result) catch {
+            self.gpa.free(e);
+            return;
+        };
+        self.history.append(self.gpa, .{ .expr = e, .result = r }) catch {
+            self.gpa.free(e);
+            self.gpa.free(r);
+            return;
+        };
+        const limit: usize = @intCast(std.math.clamp(self.config.getInt("calc", "history-size", 200), 0, 10000));
+        while (self.history.items.len > limit) {
+            const old = self.history.orderedRemove(0);
+            self.gpa.free(old.expr);
+            self.gpa.free(old.result);
+        }
+        self.fillHistory();
+    }
+
+    fn fillHistory(self: *Calc) void {
+        self.history_list.removeAll();
+        var i = self.history.items.len;
+        // Newest first.
+        while (i > 0) {
+            i -= 1;
+            const h = self.history.items[i];
+            const box = gtk.Box.new(.vertical, 0);
+            box.as(gtk.Widget).setMarginTop(4);
+            box.as(gtk.Widget).setMarginBottom(4);
+            var buf: [4096]u8 = undefined;
+            const e = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.expr}, 0) catch "");
+            e.setXalign(1);
+            e.setWrap(1);
+            e.setWrapMode(.word_char);
+            e.as(gtk.Widget).addCssClass("dim-label");
+            const r = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.result}, 0) catch "");
+            r.setXalign(1);
+            r.setWrap(1);
+            r.setWrapMode(.word_char);
+            r.as(gtk.Widget).addCssClass("dkde-calc-history-result");
+            box.append(e.as(gtk.Widget));
+            box.append(r.as(gtk.Widget));
+            self.history_list.append(box.as(gtk.Widget));
+        }
+    }
+
+    fn onHistoryRow(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Calc) callconv(.c) void {
+        const index: usize = @intCast(row.getIndex());
+        if (index >= self.history.items.len) return;
+        const h = self.history.items[self.history.items.len - 1 - index];
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const plain = cleaned(arena.allocator(), h.result) catch return;
+        // A line such as "x = 5" or "km" results: only the number.
+        const value = if (std.mem.lastIndexOf(u8, plain, "= ")) |eq| plain[eq + 2 ..] else plain;
+        const first = std.mem.sliceTo(value, ' ');
+        if (self.fresh or self.entryText().len == 0) {
+            self.fresh = false;
+            self.setEntry(first);
+        } else self.insert(first);
+        _ = self.entry.as(gtk.Widget).grabFocus();
+        self.entry.as(gtk.Editable).setPosition(-1);
+    }
+
+    fn fillVars(self: *Calc) void {
+        self.vars_list.removeAll();
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        var it = self.session.vars.iterator();
+        while (it.next()) |e| {
+            const v = e.value_ptr.load(a) catch continue;
+            const shown = num.format(a, v, self.style) catch continue;
+            self.varRow(e.key_ptr.*, std.fmt.allocPrint(a, "{s} = {s}", .{ e.key_ptr.*, shown }) catch continue);
+        }
+        var fit = self.session.funcs.iterator();
+        while (fit.next()) |e| {
+            const params = std.mem.join(a, ", ", @ptrCast(e.value_ptr.params)) catch continue;
+            self.varRow(e.key_ptr.*, std.fmt.allocPrint(a, "{s}({s}) = {s}", .{ e.key_ptr.*, params, e.value_ptr.body }) catch continue);
+        }
+    }
+
+    fn varRow(self: *Calc, name: []const u8, text: []const u8) void {
+        const box = gtk.Box.new(.horizontal, 6);
+        var buf: [1024]u8 = undefined;
+        const l = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{text}, 0) catch "");
+        l.setXalign(0);
+        l.setEllipsize(.end);
+        l.as(gtk.Widget).setHexpand(1);
+        box.append(l.as(gtk.Widget));
+        const del = gtk.Button.newFromIconName("edit-delete-symbolic");
+        del.setHasFrame(0);
+        del.as(gtk.Widget).setTooltipText(t("Forget it"));
+        del.as(gtk.Widget).setName(std.fmt.bufPrintSentinel(&buf, "{s}", .{name}, 0) catch "");
+        _ = gtk.Button.signals.clicked.connect(del, *Calc, &onForget, self, .{});
+        box.append(del.as(gtk.Widget));
+        box.as(gtk.Widget).setName(std.fmt.bufPrintSentinel(&buf, "{s}", .{name}, 0) catch "");
+        self.vars_list.append(box.as(gtk.Widget));
+    }
+
+    fn onVarRow(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Calc) callconv(.c) void {
+        const child = row.getChild() orelse return;
+        const name = std.mem.span(child.getName());
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const text = if (self.session.funcs.contains(name)) std.fmt.allocPrint(arena.allocator(), "{s}(", .{name}) catch return else name;
+        self.insert(text);
+        _ = self.entry.as(gtk.Widget).grabFocus();
+    }
+
+    fn onForget(button: *gtk.Button, self: *Calc) callconv(.c) void {
+        const name = std.mem.span(button.as(gtk.Widget).getName());
+        var copy: [256]u8 = undefined;
+        const n = @min(name.len, copy.len);
+        @memcpy(copy[0..n], name[0..n]);
+        _ = self.session.remove(copy[0..n]);
+        self.saveState();
+        // Rebuilding the list destroys this button: do it when idle.
+        _ = glib.idleAdd(refillVars, self);
+        self.graph.refresh();
+    }
+
+    fn refillVars(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Calc = @ptrCast(@alignCast(data.?));
+        self.fillVars();
         return 0;
     }
 
-    fn onMenuAction(self: *Calculator, action: []const u8) void {
-        const eql = std.mem.eql;
-        if (eql(u8, action, "close")) return self.window.as(gtk.Window).close();
-        if (eql(u8, action, "clear")) return self.press("C");
-        if (eql(u8, action, "copy")) {
-            self.entry.as(gtk.Widget).getClipboard().setText(self.entry.as(gtk.Editable).getText());
+    // ---- unit conversion -------------------------------------------------------------------
+
+    fn buildUnits(self: *Calc) *gtk.Widget {
+        const box = gtk.Box.new(.vertical, 8);
+        const title = gtk.Label.new(t("Unit Conversion"));
+        title.setXalign(0);
+        title.as(gtk.Widget).addCssClass("heading");
+        box.append(title.as(gtk.Widget));
+
+        var names: [units.categories.len + 1:null]?[*:0]const u8 = @splat(null);
+        inline for (units.categories, 0..) |c, i| names[i] = @ptrCast((c.label ++ "\x00").ptr);
+        self.unit_category = gtk.DropDown.newFromStrings(@ptrCast(&names));
+        _ = gobject.Object.signals.notify.connect(self.unit_category, *Calc, &onUnitCategory, self, .{ .detail = "selected" });
+        box.append(self.unit_category.as(gtk.Widget));
+
+        const from_label = gtk.Label.new(t("From"));
+        from_label.setXalign(0);
+        box.append(from_label.as(gtk.Widget));
+        self.unit_value = gtk.Entry.new();
+        self.unit_value.as(gtk.Editable).setText("1");
+        self.unit_value.as(gtk.Widget).addCssClass("dkde-calc-unit-value");
+        _ = gtk.Editable.signals.changed.connect(self.unit_value.as(gtk.Editable), *Calc, &onUnitChanged, self, .{});
+        box.append(self.unit_value.as(gtk.Widget));
+        self.unit_from = gtk.DropDown.new(null, null);
+        _ = gobject.Object.signals.notify.connect(self.unit_from, *Calc, &onUnitPick, self, .{ .detail = "selected" });
+        box.append(self.unit_from.as(gtk.Widget));
+
+        const swap = gtk.Button.newWithLabel("⇅");
+        swap.as(gtk.Widget).setTooltipText(t("Swap the units"));
+        swap.as(gtk.Widget).setHalign(.center);
+        _ = gtk.Button.signals.clicked.connect(swap, *Calc, &onUnitSwap, self, .{});
+        box.append(swap.as(gtk.Widget));
+
+        const to_label = gtk.Label.new(t("To"));
+        to_label.setXalign(0);
+        box.append(to_label.as(gtk.Widget));
+        self.unit_to = gtk.DropDown.new(null, null);
+        _ = gobject.Object.signals.notify.connect(self.unit_to, *Calc, &onUnitPick, self, .{ .detail = "selected" });
+        box.append(self.unit_to.as(gtk.Widget));
+        self.unit_result = gtk.Label.new("");
+        self.unit_result.setXalign(0);
+        self.unit_result.setSelectable(1);
+        self.unit_result.setWrap(1);
+        self.unit_result.as(gtk.Widget).addCssClass("dkde-calc-unit-result");
+        box.append(self.unit_result.as(gtk.Widget));
+
+        const hint = gtk.Label.new(t("In the calculator, type for example 5 km in mi or 100 °F to °C."));
+        hint.setXalign(0);
+        hint.setWrap(1);
+        hint.as(gtk.Widget).addCssClass("dim-label");
+        hint.as(gtk.Widget).setVexpand(1);
+        hint.as(gtk.Widget).setValign(.end);
+        box.append(hint.as(gtk.Widget));
+        self.fillUnits(0);
+        return box.as(gtk.Widget);
+    }
+
+    fn fillUnits(self: *Calc, category: usize) void {
+        const c = units.categories[category];
+        var names: [32:null]?[*:0]const u8 = @splat(null);
+        var bufs: [32][80]u8 = undefined;
+        for (c.units, 0..) |un, i| {
+            if (i >= 31) break;
+            const label: [:0]const u8 = std.fmt.bufPrintSentinel(&bufs[i], "{s} ({s})", .{ un.label, un.names[0] }, 0) catch "?";
+            names[i] = label.ptr;
+        }
+        const from_model = gtk.StringList.new(@ptrCast(&names));
+        const to_model = gtk.StringList.new(@ptrCast(&names));
+        self.unit_from.setModel(from_model.as(gio.ListModel));
+        self.unit_to.setModel(to_model.as(gio.ListModel));
+        from_model.as(gobject.Object).unref();
+        to_model.as(gobject.Object).unref();
+        self.unit_to.setSelected(@intCast(@min(1, c.units.len - 1)));
+        self.convertUnits();
+    }
+
+    fn onUnitCategory(dd: *gtk.DropDown, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        const i = dd.getSelected();
+        if (i < units.categories.len) self.fillUnits(i);
+    }
+
+    fn onUnitPick(_: *gtk.DropDown, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        self.convertUnits();
+    }
+
+    fn onUnitChanged(_: *gtk.Editable, self: *Calc) callconv(.c) void {
+        self.convertUnits();
+    }
+
+    fn onUnitSwap(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        const f = self.unit_from.getSelected();
+        self.unit_from.setSelected(self.unit_to.getSelected());
+        self.unit_to.setSelected(f);
+    }
+
+    fn convertUnits(self: *Calc) void {
+        const ci = self.unit_category.getSelected();
+        if (ci >= units.categories.len) return;
+        const c = units.categories[ci];
+        const from = self.unit_from.getSelected();
+        const to = self.unit_to.getSelected();
+        if (from >= c.units.len or to >= c.units.len) return;
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const text = cleaned(a, std.mem.span(self.unit_value.as(gtk.Editable).getText())) catch return;
+        var p: eval.Problem = .{};
+        const st = eval.parse(a, text, .{ .angle = self.angle }, &p) catch return self.unit_result.setText("");
+        if (st != .expr) return self.unit_result.setText("");
+        var ev: eval.Eval = .{ .a = a, .session = &self.session, .mode = .{ .angle = self.angle }, .problem = &p };
+        const v = ev.eval(st.expr, null) catch return self.unit_result.setText("");
+        const r = units.convert(ci, from, to, v.toFloat());
+        const shown = num.format(a, num.fromFloat(r) catch return self.unit_result.setText("—"), self.style) catch return;
+        var buf: [256]u8 = undefined;
+        self.unit_result.setText(std.fmt.bufPrintSentinel(&buf, "= {s} {s}", .{ shown, c.units[to].names[0] }, 0) catch "");
+    }
+
+    // ---- date calculation -------------------------------------------------------------------
+
+    fn buildDates(self: *Calc) *gtk.Widget {
+        const box = gtk.Box.new(.vertical, 8);
+        const title = gtk.Label.new(t("Date Calculation"));
+        title.setXalign(0);
+        title.as(gtk.Widget).addCssClass("heading");
+        box.append(title.as(gtk.Widget));
+        var kinds = [_:null]?[*:0]const u8{ "Time between two dates", "Add to or subtract from a date" };
+        self.date_kind = gtk.DropDown.newFromStrings(@ptrCast(&kinds));
+        _ = gobject.Object.signals.notify.connect(self.date_kind, *Calc, &onDateKind, self, .{ .detail = "selected" });
+        box.append(self.date_kind.as(gtk.Widget));
+
+        var today_buf: [16]u8 = undefined;
+        const today = todayText(&today_buf);
+
+        self.date_pages = gtk.Stack.new();
+        // Between two dates.
+        const between = gtk.Box.new(.vertical, 6);
+        self.date_from = self.dateField(between, t("From"), today);
+        self.date_to = self.dateField(between, t("To"), today);
+        _ = self.date_pages.addNamed(between.as(gtk.Widget), "between");
+        // Adding.
+        const adding = gtk.Box.new(.vertical, 6);
+        self.date_start = self.dateField(adding, t("From"), today);
+        var signs = [_:null]?[*:0]const u8{ "Add", "Subtract" };
+        self.date_sign = gtk.DropDown.newFromStrings(@ptrCast(&signs));
+        _ = gobject.Object.signals.notify.connect(self.date_sign, *Calc, &onDateDrop, self, .{ .detail = "selected" });
+        adding.append(self.date_sign.as(gtk.Widget));
+        const amounts = gtk.Grid.new();
+        amounts.setColumnSpacing(6);
+        amounts.setRowSpacing(4);
+        inline for (.{ .{ "Years", "date_years" }, .{ "Months", "date_months" }, .{ "Days", "date_days" } }, 0..) |p, i| {
+            const l = gtk.Label.new(p[0]);
+            l.setXalign(0);
+            const s = gtk.SpinButton.newWithRange(0, 100000, 1);
+            s.as(gtk.Widget).setHexpand(1);
+            _ = gtk.SpinButton.signals.value_changed.connect(s, *Calc, &onDateSpin, self, .{});
+            @field(self, p[1]) = s;
+            amounts.attach(l.as(gtk.Widget), 0, @intCast(i), 1, 1);
+            amounts.attach(s.as(gtk.Widget), 1, @intCast(i), 1, 1);
+        }
+        adding.append(amounts.as(gtk.Widget));
+        _ = self.date_pages.addNamed(adding.as(gtk.Widget), "add");
+        box.append(self.date_pages.as(gtk.Widget));
+
+        self.date_result = gtk.Label.new("");
+        self.date_result.setXalign(0);
+        self.date_result.setWrap(1);
+        self.date_result.setSelectable(1);
+        self.date_result.as(gtk.Widget).addCssClass("dkde-calc-unit-result");
+        box.append(self.date_result.as(gtk.Widget));
+        self.workDates();
+        return box.as(gtk.Widget);
+    }
+
+    fn todayText(buf: []u8) [:0]const u8 {
+        const now = glib.DateTime.newNowLocal() orelse return "2000-01-01";
+        defer now.unref();
+        return std.fmt.bufPrintSentinel(buf, "{d:0>4}-{d:0>2}-{d:0>2}", .{ @as(u32, @intCast(now.getYear())), @as(u32, @intCast(now.getMonth())), @as(u32, @intCast(now.getDayOfMonth())) }, 0) catch "2000-01-01";
+    }
+
+    const DateField = struct { calc: *Calc, entry: *gtk.Entry, popover: *gtk.Popover, calendar: *gtk.Calendar };
+
+    /// A date entry with a calendar to pick from.
+    fn dateField(self: *Calc, box: *gtk.Box, label: [:0]const u8, initial: [:0]const u8) *gtk.Entry {
+        const l = gtk.Label.new(label);
+        l.setXalign(0);
+        box.append(l.as(gtk.Widget));
+        const row = gtk.Box.new(.horizontal, 4);
+        const entry = gtk.Entry.new();
+        entry.as(gtk.Editable).setText(initial);
+        entry.setPlaceholderText("YYYY-MM-DD");
+        entry.as(gtk.Widget).setHexpand(1);
+        _ = gtk.Editable.signals.changed.connect(entry.as(gtk.Editable), *Calc, &onDateChanged, self, .{});
+        row.append(entry.as(gtk.Widget));
+        const button = gtk.MenuButton.new();
+        button.setIconName("x-office-calendar-symbolic");
+        button.as(gtk.Widget).setTooltipText(t("Choose on a calendar"));
+        const popover = gtk.Popover.new();
+        const calendar = gtk.Calendar.new();
+        popover.setChild(calendar.as(gtk.Widget));
+        button.setPopover(popover);
+        const field = self.gpa.create(DateField) catch return entry;
+        field.* = .{ .calc = self, .entry = entry, .popover = popover, .calendar = calendar };
+        _ = gtk.Calendar.signals.day_selected.connect(calendar, *DateField, &onCalendarDay, field, .{});
+        _ = gtk.Widget.signals.destroy.connect(button, *DateField, &onFieldDestroy, field, .{});
+        row.append(button.as(gtk.Widget));
+        box.append(row.as(gtk.Widget));
+        return entry;
+    }
+
+    fn onCalendarDay(cal: *gtk.Calendar, field: *DateField) callconv(.c) void {
+        const d = cal.getDate();
+        defer d.unref();
+        var buf: [16]u8 = undefined;
+        field.entry.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{d:0>4}-{d:0>2}-{d:0>2}", .{ @as(u32, @intCast(d.getYear())), @as(u32, @intCast(d.getMonth())), @as(u32, @intCast(d.getDayOfMonth())) }, 0) catch return);
+        field.popover.popdown();
+    }
+
+    fn onFieldDestroy(_: *gtk.MenuButton, field: *DateField) callconv(.c) void {
+        field.calc.gpa.destroy(field);
+    }
+
+    fn onDateKind(dd: *gtk.DropDown, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        self.date_pages.setVisibleChildName(if (dd.getSelected() == 0) "between" else "add");
+        self.workDates();
+    }
+
+    fn onDateDrop(_: *gtk.DropDown, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        self.workDates();
+    }
+
+    fn onDateChanged(_: *gtk.Editable, self: *Calc) callconv(.c) void {
+        self.workDates();
+    }
+
+    fn onDateSpin(_: *gtk.SpinButton, self: *Calc) callconv(.c) void {
+        self.workDates();
+    }
+
+    fn workDates(self: *Calc) void {
+        var buf: [256]u8 = undefined;
+        const kind = self.date_kind.getSelected();
+        if (kind == 0) {
+            const a = dates.parse(std.mem.span(self.date_from.as(gtk.Editable).getText())) orelse return self.date_result.setText(t("Write dates as 2024-07-19."));
+            const b = dates.parse(std.mem.span(self.date_to.as(gtk.Editable).getText())) orelse return self.date_result.setText(t("Write dates as 2024-07-19."));
+            const s = dates.between(a, b);
+            if (s.total_days == 0) return self.date_result.setText(t("The same day"));
+            var parts: [4][]const u8 = undefined;
+            var n: usize = 0;
+            var pbuf: [4][32]u8 = undefined;
+            inline for (.{ .{ s.years, "year" }, .{ s.months, "month" }, .{ s.weeks, "week" }, .{ s.days, "day" } }) |p| {
+                if (p[0] != 0) {
+                    parts[n] = std.fmt.bufPrint(&pbuf[n], "{d} {s}{s}", .{ p[0], p[1], if (p[0] == 1) "" else "s" }) catch "";
+                    n += 1;
+                }
+            }
+            var joined: [160]u8 = undefined;
+            var w: std.Io.Writer = .fixed(&joined);
+            for (parts[0..n], 0..) |p, i| {
+                if (i > 0) w.writeAll(", ") catch {};
+                w.writeAll(p) catch {};
+            }
+            self.date_result.setText(std.fmt.bufPrintSentinel(&buf, "{s}\n{d} days in all", .{ w.buffered(), s.total_days }, 0) catch "");
+        } else {
+            const start = dates.parse(std.mem.span(self.date_start.as(gtk.Editable).getText())) orelse return self.date_result.setText(t("Write dates as 2024-07-19."));
+            const sign: i64 = if (self.date_sign.getSelected() == 1) -1 else 1;
+            const y: i64 = @intFromFloat(self.date_years.getValue());
+            const m: i64 = @intFromFloat(self.date_months.getValue());
+            const d: i64 = @intFromFloat(self.date_days.getValue());
+            const r = dates.add(start, sign * y, sign * m, sign * d);
+            self.date_result.setText(std.fmt.bufPrintSentinel(&buf, "{s}, {d:0>4}-{d:0>2}-{d:0>2}", .{ dates.weekday(r), @as(u32, @intCast(@max(0, r.year))), r.month, r.day }, 0) catch "");
+        }
+    }
+
+    // ---- formulas ----------------------------------------------------------------------------
+
+    fn buildFormulas(self: *Calc) *gtk.Widget {
+        const box = gtk.Box.new(.vertical, 6);
+        const title = gtk.Label.new(t("Formulas"));
+        title.setXalign(0);
+        title.as(gtk.Widget).addCssClass("heading");
+        box.append(title.as(gtk.Widget));
+        self.formula_search.setPlaceholderText(t("Search formulas (area, speed, interest…)"));
+        _ = gtk.SearchEntry.signals.search_changed.connect(self.formula_search, *Calc, &onFormulaSearch, self, .{});
+        box.append(self.formula_search.as(gtk.Widget));
+        const scroll = gtk.ScrolledWindow.new();
+        scroll.setChild(self.formula_list.as(gtk.Widget));
+        scroll.setPolicy(.never, .automatic);
+        scroll.as(gtk.Widget).setSizeRequest(-1, 200);
+        scroll.as(gtk.Widget).setVexpand(1);
+        self.formula_list.setSelectionMode(.single);
+        self.formula_list.setActivateOnSingleClick(1);
+        self.formula_list.setHeaderFunc(formulaHeader, self, null);
+        self.formula_list.setFilterFunc(formulaFilter, self, null);
+        _ = gtk.ListBox.signals.row_activated.connect(self.formula_list, *Calc, &onFormulaRow, self, .{});
+        box.append(scroll.as(gtk.Widget));
+        self.formula_form.as(gtk.Widget).setMarginTop(6);
+        box.append(self.formula_form.as(gtk.Widget));
+        const save = gtk.Button.newWithLabel(t("Save Entry as Formula"));
+        save.as(gtk.Widget).setTooltipText(t("Keep the equation in the entry (such as P = U·I) among My Formulas"));
+        _ = gtk.Button.signals.clicked.connect(save, *Calc, &onSaveFormula, self, .{});
+        box.append(save.as(gtk.Widget));
+        self.fillFormulaList();
+        self.showFormHint();
+        return box.as(gtk.Widget);
+    }
+
+    fn formulaText(self: *Calc, p: Picked) []const u8 {
+        return switch (p) {
+            .builtin => |i| formulas.all[i].text,
+            .own => |i| if (i < self.own_formulas.items.len) self.own_formulas.items[i] else "",
+        };
+    }
+
+    /// Rows: the built-in formulas, then My Formulas. A row's name is its index
+    /// ("b3", "u0"); the group shows as a header.
+    fn fillFormulaList(self: *Calc) void {
+        self.formula_list.removeAll();
+        var buf: [256]u8 = undefined;
+        var nbuf: [16]u8 = undefined;
+        for (formulas.all, 0..) |f, i| {
+            const name = std.fmt.bufPrintSentinel(&nbuf, "b{d}", .{i}, 0) catch continue;
+            self.formulaRow(std.fmt.bufPrintSentinel(&buf, "{s}\n{s}", .{ f.name, f.text }, 0) catch continue, name, false);
+        }
+        for (self.own_formulas.items, 0..) |f, i| {
+            const name = std.fmt.bufPrintSentinel(&nbuf, "u{d}", .{i}, 0) catch continue;
+            self.formulaRow(std.fmt.bufPrintSentinel(&buf, "{s}", .{f}, 0) catch continue, name, true);
+        }
+    }
+
+    /// A row named before it is added, so the group headers see its name.
+    fn formulaRow(self: *Calc, text: [:0]const u8, name: [:0]const u8, own: bool) void {
+        const row = gtk.ListBoxRow.new();
+        row.as(gtk.Widget).setName(name);
+        const box = gtk.Box.new(.horizontal, 6);
+        const l = gtk.Label.new(text);
+        l.setXalign(0);
+        l.as(gtk.Widget).setHexpand(1);
+        l.as(gtk.Widget).setMarginTop(3);
+        l.as(gtk.Widget).setMarginBottom(3);
+        box.append(l.as(gtk.Widget));
+        if (own) {
+            const del = gtk.Button.newFromIconName("edit-delete-symbolic");
+            del.setHasFrame(0);
+            del.as(gtk.Widget).setTooltipText(t("Remove this formula"));
+            _ = gtk.Button.signals.clicked.connect(del, *Calc, &onRemoveFormula, self, .{});
+            box.append(del.as(gtk.Widget));
+        }
+        row.setChild(box.as(gtk.Widget));
+        self.formula_list.append(row.as(gtk.Widget));
+    }
+
+    fn rowPick(row: *gtk.ListBoxRow) ?Picked {
+        const name = std.mem.span(row.as(gtk.Widget).getName());
+        if (name.len < 2) return null;
+        const i = std.fmt.parseInt(usize, name[1..], 10) catch return null;
+        return if (name[0] == 'b') .{ .builtin = i } else .{ .own = i };
+    }
+
+    fn onFormulaSearch(_: *gtk.SearchEntry, self: *Calc) callconv(.c) void {
+        self.formula_list.invalidateFilter();
+        self.formula_list.invalidateHeaders();
+    }
+
+    /// A formula shows when every word typed is in its name, group or text.
+    fn formulaFilter(row: *gtk.ListBoxRow, data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Calc = @ptrCast(@alignCast(data.?));
+        const query = std.mem.span(self.formula_search.as(gtk.Editable).getText());
+        if (std.mem.trim(u8, query, " ").len == 0) return 1;
+        const p = rowPick(row) orelse return 1;
+        const name, const group, const text = switch (p) {
+            .builtin => |i| .{ formulas.all[i].name, formulas.all[i].group, formulas.all[i].text },
+            .own => |i| .{ "", "My Formulas", if (i < self.own_formulas.items.len) self.own_formulas.items[i] else "" },
+        };
+        var words = std.mem.tokenizeScalar(u8, query, ' ');
+        while (words.next()) |w| {
+            if (std.ascii.findIgnoreCase(name, w) == null and std.ascii.findIgnoreCase(group, w) == null and std.mem.indexOf(u8, text, w) == null) return 0;
+        }
+        return 1;
+    }
+
+    fn formulaHeader(row: *gtk.ListBoxRow, before: ?*gtk.ListBoxRow, data: ?*anyopaque) callconv(.c) void {
+        _ = data;
+        const group = groupOf(row);
+        const prev_group: []const u8 = if (before) |b| groupOf(b) else "";
+        if (std.mem.eql(u8, group, prev_group)) return row.setHeader(null);
+        var buf: [64]u8 = undefined;
+        const l = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{group}, 0) catch "");
+        l.setXalign(0);
+        l.as(gtk.Widget).addCssClass("heading");
+        l.as(gtk.Widget).setMarginTop(8);
+        l.as(gtk.Widget).setMarginStart(4);
+        row.setHeader(l.as(gtk.Widget));
+    }
+
+    fn groupOf(row: *gtk.ListBoxRow) []const u8 {
+        const p = rowPick(row) orelse return "";
+        return switch (p) {
+            .builtin => |i| if (i < formulas.all.len) formulas.all[i].group else "",
+            .own => "My Formulas",
+        };
+    }
+
+    fn onFormulaRow(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Calc) callconv(.c) void {
+        const p = rowPick(row) orelse return;
+        self.pickFormula(p);
+    }
+
+    fn clearFields(self: *Calc) void {
+        for (self.formula_fields.items) |f| self.gpa.free(f.name);
+        self.formula_fields.clearRetainingCapacity();
+        while (self.formula_form.as(gtk.Widget).getFirstChild()) |c| self.formula_form.remove(c);
+    }
+
+    fn showFormHint(self: *Calc) void {
+        const hint = gtk.Label.new(t("Pick a formula: it goes into the entry, and its letters get fields here. Fill in what you know and press Enter: the one left empty is worked out. With several left empty, the formula is simplified as far as it goes."));
+        hint.setXalign(0);
+        hint.setWrap(1);
+        hint.as(gtk.Widget).addCssClass("dim-label");
+        self.formula_form.append(hint.as(gtk.Widget));
+    }
+
+    /// Puts the formula in the entry and makes a field for each of its letters.
+    fn pickFormula(self: *Calc, p: Picked) void {
+        self.clearFields();
+        const text = self.formulaText(p);
+        if (text.len == 0) return;
+        self.formula = p;
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        // Its letters, in the order of the built-in descriptions (or as they appear).
+        var names: std.ArrayList([]const u8) = .empty;
+        var whats: std.ArrayList([]const u8) = .empty;
+        var defaults: std.ArrayList([]const u8) = .empty;
+        switch (p) {
+            .builtin => |i| for (formulas.all[i].vars) |v| {
+                names.append(a, v.name) catch return;
+                whats.append(a, v.what) catch return;
+                defaults.append(a, v.default) catch return;
+            },
+            .own => {
+                var pr: eval.Problem = .{};
+                const st = eval.parse(a, text, .{}, &pr) catch return;
+                switch (st) {
+                    .equation => |eq| {
+                        collectNames(a, eq.l, &names) catch return;
+                        collectNames(a, eq.r, &names) catch return;
+                    },
+                    .expr => |n| collectNames(a, n, &names) catch return,
+                }
+                for (names.items) |_| {
+                    whats.append(a, "") catch return;
+                    defaults.append(a, "") catch return;
+                }
+            },
+        }
+        var buf: [256]u8 = undefined;
+        const heading = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{text}, 0) catch "");
+        heading.setXalign(0);
+        heading.as(gtk.Widget).addCssClass("dkde-calc-formula");
+        self.formula_form.append(heading.as(gtk.Widget));
+        const g = gtk.Grid.new();
+        g.setColumnSpacing(8);
+        g.setRowSpacing(4);
+        for (names.items, whats.items, defaults.items, 0..) |name, what, default, row| {
+            const nl = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{name}, 0) catch "");
+            nl.setXalign(1);
+            nl.as(gtk.Widget).addCssClass("dkde-calc-formula-letter");
+            const entry = gtk.Entry.new();
+            entry.as(gtk.Widget).setHexpand(1);
+            entry.setPlaceholderText(if (what.len > 0) (std.fmt.bufPrintSentinel(&buf, "{s}", .{what}, 0) catch null) else t("value"));
+            if (default.len > 0) entry.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{default}, 0) catch "");
+            entry.as(gtk.Widget).setTooltipText(if (what.len > 0) (std.fmt.bufPrintSentinel(&buf, "{s}: {s}", .{ name, what }, 0) catch null) else null);
+            g.attach(nl.as(gtk.Widget), 0, @intCast(row), 1, 1);
+            g.attach(entry.as(gtk.Widget), 1, @intCast(row), 1, 1);
+            const owned = self.gpa.dupe(u8, name) catch continue;
+            self.formula_fields.append(self.gpa, .{ .calc = self, .name = owned, .entry = entry }) catch {
+                self.gpa.free(owned);
+                continue;
+            };
+            _ = gtk.Editable.signals.changed.connect(entry.as(gtk.Editable), *Calc, &onFieldChanged, self, .{});
+            // Enter in a field works the formula out, as in the entry.
+            _ = gtk.Entry.signals.activate.connect(entry, *Calc, &onFieldActivate, self, .{});
+        }
+        self.formula_form.append(g.as(gtk.Widget));
+        const clear_button = gtk.Button.newWithLabel(t("Clear the Values"));
+        clear_button.as(gtk.Widget).setHalign(.start);
+        _ = gtk.Button.signals.clicked.connect(clear_button, *Calc, &onClearFields, self, .{});
+        self.formula_form.append(clear_button.as(gtk.Widget));
+        self.updateFormulaEntry();
+        if (self.formula_fields.items.len > 0) _ = self.formula_fields.items[0].entry.as(gtk.Widget).grabFocus();
+    }
+
+    fn collectNames(a: std.mem.Allocator, n: *const eval.Node, out: *std.ArrayList([]const u8)) !void {
+        switch (n.*) {
+            .number => {},
+            .name => |nm| {
+                if (eval.isConstant(nm.text)) return;
+                for (out.items) |o| if (std.mem.eql(u8, o, nm.text)) return;
+                try out.append(a, nm.text);
+            },
+            .unary => |u| try collectNames(a, u.arg, out),
+            .binary => |b| {
+                try collectNames(a, b.l, out);
+                try collectNames(a, b.r, out);
+            },
+            .call => |c| for (c.args) |x| try collectNames(a, x, out),
+        }
+    }
+
+    fn onFieldChanged(_: *gtk.Editable, self: *Calc) callconv(.c) void {
+        self.updateFormulaEntry();
+    }
+
+    fn onFieldActivate(_: *gtk.Entry, self: *Calc) callconv(.c) void {
+        self.updateFormulaEntry();
+        self.calculate();
+    }
+
+    fn onClearFields(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        for (self.formula_fields.items) |f| f.entry.as(gtk.Editable).setText("");
+    }
+
+    /// The formula with the values filled in so far, in the entry.
+    fn updateFormulaEntry(self: *Calc) void {
+        const p = self.formula orelse return;
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const text = self.formulaText(p);
+        var pr: eval.Problem = .{};
+        const st = eval.parse(a, text, .{}, &pr) catch return;
+        var ev: eval.Eval = .{ .a = a, .session = &self.session, .mode = self.evalMode(), .problem = &pr };
+        const filled = switch (st) {
+            .equation => |eq| std.fmt.allocPrint(a, "{s} = {s}", .{
+                simplify.print(a, &ev, self.substitute(a, eq.l) catch return) catch return,
+                simplify.print(a, &ev, self.substitute(a, eq.r) catch return) catch return,
+            }) catch return,
+            .expr => |n| simplify.print(a, &ev, self.substitute(a, n) catch return) catch return,
+        };
+        // Setting the entry would otherwise drop the formula (it is not typed by hand).
+        const keep = self.formula;
+        self.fresh = false;
+        self.setEntry(filled);
+        self.formula = keep;
+        self.refreshPreview();
+    }
+
+    /// A copy of `n` with each letter that has a value in its field replaced by it.
+    fn substitute(self: *Calc, a: std.mem.Allocator, n: *const eval.Node) !*eval.Node {
+        const out = try a.create(eval.Node);
+        switch (n.*) {
+            .name => |nm| {
+                for (self.formula_fields.items) |f| {
+                    if (!std.mem.eql(u8, f.name, nm.text)) continue;
+                    const raw = std.mem.trim(u8, std.mem.span(f.entry.as(gtk.Editable).getText()), " ");
+                    if (raw.len == 0) break;
+                    const value = cleaned(a, raw) catch break;
+                    var pr: eval.Problem = .{};
+                    return eval.parseExpr(a, value, .{}, &pr) catch break;
+                }
+                out.* = n.*;
+            },
+            .number => out.* = n.*,
+            .unary => |u| out.* = .{ .unary = .{ .op = u.op, .arg = try self.substitute(a, u.arg) } },
+            .binary => |b| out.* = .{ .binary = .{ .op = b.op, .l = try self.substitute(a, b.l), .r = try self.substitute(a, b.r) } },
+            .call => |c| {
+                var args = try a.alloc(*eval.Node, c.args.len);
+                for (c.args, 0..) |x, i| args[i] = try self.substitute(a, x);
+                out.* = .{ .call = .{ .name = c.name, .args = args, .pos = c.pos } };
+            },
+        }
+        return out;
+    }
+
+    fn onSaveFormula(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        const text = std.mem.trim(u8, self.entryText(), " ");
+        if (text.len == 0 or self.fresh) {
+            self.preview.setText(t("Type a formula such as P = U·I in the entry first"));
             return;
         }
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        var pr: eval.Problem = .{};
+        _ = eval.parse(arena.allocator(), text, .{}, &pr) catch {
+            self.preview.setText(t("The entry is not a formula the calculator understands"));
+            return;
+        };
+        for (self.own_formulas.items) |f| if (std.mem.eql(u8, f, text)) return;
+        const owned = self.gpa.dupe(u8, text) catch return;
+        self.own_formulas.append(self.gpa, owned) catch {
+            self.gpa.free(owned);
+            return;
+        };
+        self.fillFormulaList();
+        self.saveState();
+        self.preview.setText(t("Saved among My Formulas"));
+    }
+
+    fn onRemoveFormula(button: *gtk.Button, self: *Calc) callconv(.c) void {
+        // The button's row says which formula.
+        var w: ?*gtk.Widget = button.as(gtk.Widget);
+        while (w) |x| : (w = x.getParent()) {
+            if (gobject.typeCheckInstanceIsA(@ptrCast(x), gtk.ListBoxRow.getGObjectType()) == 0) continue;
+            const p = rowPick(@ptrCast(@alignCast(x))) orelse return;
+            if (p != .own or p.own >= self.own_formulas.items.len) return;
+            self.gpa.free(self.own_formulas.orderedRemove(p.own));
+            if (self.formula) |f| if (f == .own) {
+                self.formula = null;
+                self.clearFields();
+                self.showFormHint();
+            };
+            self.saveState();
+            _ = glib.idleAdd(refillFormulas, self);
+            return;
+        }
+    }
+
+    fn refillFormulas(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Calc = @ptrCast(@alignCast(data.?));
+        self.fillFormulaList();
+        return 0;
+    }
+
+    // ---- graph ----------------------------------------------------------------------------
+
+    fn plotEntry(self: *Calc) void {
+        const text = if (self.fresh) "" else self.entryText();
+        self.showPane(.graph);
+        if (std.mem.trim(u8, text, " ").len > 0) self.graph.plot(text);
+    }
+
+    // ---- panes and menus --------------------------------------------------------------------
+
+    fn showPane(self: *Calc, pane: Pane) void {
+        self.pane = pane;
+        const w = self.side.as(gtk.Widget);
+        w.setVisible(@intFromBool(pane != .none));
+        if (pane != .none) self.side.setVisibleChildName(@tagName(pane));
+        inline for (.{ "history", "units", "dates", "graph", "formulas" }) |name| {
+            common.menubar.setChecked(self.window, "pane-" ++ name, std.mem.eql(u8, @tagName(pane), name));
+        }
+        self.config.setString("calc", "pane", @tagName(pane)) catch {};
+        // The window shrinks back when the pane closes.
+        self.window.as(gtk.Window).setDefaultSize(-1, -1);
+    }
+
+    fn onMenuAction(self: *Calc, action: []const u8) void {
+        const eql = std.mem.eql;
+        if (eql(u8, action, "close")) return self.window.as(gtk.Window).close();
+        if (eql(u8, action, "copy")) return self.copyResult();
         if (eql(u8, action, "paste")) {
             _ = self.entry.as(gtk.Widget).activateAction("clipboard.paste", null);
             return;
         }
-        if (eql(u8, action, "scientific")) {
-            self.scientific.setRevealChild(@intFromBool(self.scientific.getRevealChild() == 0));
-            self.window.as(gtk.Window).setDefaultSize(-1, -1);
+        if (eql(u8, action, "clear")) return self.clear();
+        if (eql(u8, action, "clear-history")) {
+            for (self.history.items) |h| {
+                self.gpa.free(h.expr);
+                self.gpa.free(h.result);
+            }
+            self.history.clearRetainingCapacity();
+            self.fillHistory();
+            self.saveState();
             return;
         }
-        if (eql(u8, action, "degrees")) self.degrees = !self.degrees;
+        if (eql(u8, action, "clear-vars")) {
+            while (self.session.vars.count() > 0) _ = self.session.remove(self.session.vars.keys()[0]);
+            while (self.session.funcs.count() > 0) _ = self.session.remove(self.session.funcs.keys()[0]);
+            self.fillVars();
+            self.saveState();
+            self.graph.refresh();
+            return;
+        }
+        if (std.mem.startsWith(u8, action, "mode-")) return self.setMode(std.meta.stringToEnum(Mode, action[5..]) orelse .standard);
+        if (std.mem.startsWith(u8, action, "pane-")) {
+            const p = std.meta.stringToEnum(Pane, action[5..]) orelse .none;
+            return self.showPane(if (p == self.pane) .none else p);
+        }
+        if (std.mem.startsWith(u8, action, "angle-")) return self.setAngle(eval.Angle.parse(action[6..]));
+        if (eql(u8, action, "grouping")) {
+            self.style.grouping = !self.style.grouping;
+            self.config.setBool("calc", "grouping", self.style.grouping) catch {};
+            return self.refreshPreview();
+        }
+        if (std.mem.startsWith(u8, action, "notation-")) {
+            const n = std.meta.stringToEnum(num.Notation, action[9..]) orelse .auto;
+            self.style.notation = if (self.style.notation == n) .auto else n;
+            common.menubar.setChecked(self.window, "notation-scientific", self.style.notation == .scientific);
+            common.menubar.setChecked(self.window, "notation-engineering", self.style.notation == .engineering);
+            self.config.setString("calc", "notation", @tagName(self.style.notation)) catch {};
+            return self.refreshPreview();
+        }
+    }
+
+    fn onDecimals(_: *gio.SimpleAction, param: ?*glib.Variant, self: *Calc) callconv(.c) void {
+        const v = param orelse return;
+        const d = std.fmt.parseInt(u8, std.mem.span(v.getString(null)), 10) catch return;
+        self.style.decimals = d;
+        self.config.setInt("calc", "decimals", d) catch {};
+        self.refreshPreview();
+    }
+
+    fn copyResult(self: *Calc) void {
+        const text = if (self.fresh) (self.plain orelse self.entryText()) else self.entryText();
+        var buf: [4096]u8 = undefined;
+        const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{text}, 0) catch return;
+        self.window.as(gtk.Widget).getClipboard().setText(z);
+    }
+
+    /// Enter works anywhere in the window; typing goes to the entry even
+    /// when a key has the focus; Up and Down go through the history.
+    fn onKey(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, state: gdk.ModifierType, self: *Calc) callconv(.c) c_int {
+        const focus = self.window.as(gtk.Window).getFocus();
+        const in_main = focus != null and (focus.? == self.entry.as(gtk.Widget) or focus.?.isAncestor(self.entry.as(gtk.Widget)) != 0);
+        const in_other_field = focus != null and !in_main and gobject.typeCheckInstanceIsA(@ptrCast(focus.?), gtk.Text.getGObjectType()) != 0;
+        if (in_other_field) return 0;
+        const plain_key = !state.control_mask and !state.alt_mask;
+        switch (keyval) {
+            gdk.KEY_Return, gdk.KEY_KP_Enter, gdk.KEY_ISO_Enter => {
+                if (!plain_key) return 0;
+                self.calculate();
+                return 1;
+            },
+            gdk.KEY_Escape => {
+                self.clear();
+                return 1;
+            },
+            gdk.KEY_Up, gdk.KEY_Down => if (in_main and plain_key) {
+                self.recallHistory(keyval == gdk.KEY_Up);
+                return 1;
+            },
+            else => {},
+        }
+        if (!in_main and plain_key) {
+            const ch = gdk.keyvalToUnicode(keyval);
+            if (ch >= 0x20 and ch != 0x7f) {
+                var buf: [4]u8 = undefined;
+                const n = std.unicode.utf8Encode(@intCast(ch), &buf) catch return 0;
+                _ = self.entry.as(gtk.Widget).grabFocus();
+                self.entry.as(gtk.Editable).setPosition(-1);
+                self.insert(buf[0..n]);
+                return 1;
+            }
+            if (keyval == gdk.KEY_BackSpace) {
+                self.backspace();
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    fn recallHistory(self: *Calc, older: bool) void {
+        const n = self.history.items.len;
+        if (n == 0) return;
+        if (self.recall) |r| {
+            if (older) {
+                if (r > 0) self.recall = r - 1;
+            } else if (r + 1 < n) {
+                self.recall = r + 1;
+            } else {
+                self.recall = null;
+                self.fresh = false;
+                return self.setEntry("");
+            }
+        } else if (older) self.recall = n - 1 else return;
+        self.fresh = false;
+        self.setEntry(self.history.items[self.recall.?].expr);
+    }
+
+    // ---- what is kept ----------------------------------------------------------------------
+
+    fn statePath(self: *Calc, name: []const u8) ?[:0]u8 {
+        return common.paths.userStateFile(self.gpa, name) catch null;
+    }
+
+    /// History, variables, functions, the last answer and the memory, in
+    /// $XDG_STATE_HOME/dkde/calc-state: one tab-separated record per line.
+    fn saveState(self: *Calc) void {
+        const path = self.statePath("calc-state") orelse return;
+        defer self.gpa.free(path);
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        var out: std.ArrayList(u8) = .empty;
+        for (self.history.items) |h| out.print(a, "h\t{s}\t{s}\n", .{ oneLine(a, h.expr), oneLine(a, h.result) }) catch return;
+        var it = self.session.vars.iterator();
+        while (it.next()) |e| out.print(a, "v\t{s}\t{s}\n", .{ e.key_ptr.*, e.value_ptr.text(a) catch continue }) catch return;
+        var fit = self.session.funcs.iterator();
+        while (fit.next()) |e| {
+            const params = std.mem.join(a, ",", @ptrCast(e.value_ptr.params)) catch continue;
+            out.print(a, "f\t{s}\t{s}\t{s}\n", .{ e.key_ptr.*, params, oneLine(a, e.value_ptr.body) }) catch return;
+        }
+        if (self.session.ans) |s| out.print(a, "a\t{s}\n", .{s.text(a) catch ""}) catch return;
+        if (self.memory) |m| out.print(a, "m\t{s}\n", .{m.text(a) catch ""}) catch return;
+        for (self.own_formulas.items) |f| out.print(a, "u\t{s}\n", .{oneLine(a, f)}) catch return;
+        if (std.fs.path.dirname(path)) |dir| common.fsio.makePath(dir) catch {};
+        common.fsio.writeFileAtomic(path, out.items) catch {};
+    }
+
+    fn oneLine(a: std.mem.Allocator, s: []const u8) []const u8 {
+        const r1 = std.mem.replaceOwned(u8, a, s, "\t", " ") catch return s;
+        return std.mem.replaceOwned(u8, a, r1, "\n", " ") catch r1;
+    }
+
+    fn loadState(self: *Calc) void {
+        const path = self.statePath("calc-state") orelse return;
+        defer self.gpa.free(path);
+        const text = (common.fsio.readFile(self.gpa, path, 4 << 20) catch null) orelse return;
+        defer self.gpa.free(text);
+        var lines = std.mem.splitScalar(u8, text, '\n');
+        while (lines.next()) |line| {
+            var f = std.mem.splitScalar(u8, line, '\t');
+            const kind = f.next() orelse continue;
+            if (std.mem.eql(u8, kind, "h")) {
+                const e = f.next() orelse continue;
+                const r = f.next() orelse continue;
+                const ed = self.gpa.dupe(u8, e) catch continue;
+                const rd = self.gpa.dupe(u8, r) catch {
+                    self.gpa.free(ed);
+                    continue;
+                };
+                self.history.append(self.gpa, .{ .expr = ed, .result = rd }) catch {
+                    self.gpa.free(ed);
+                    self.gpa.free(rd);
+                };
+            } else if (std.mem.eql(u8, kind, "v")) {
+                const name = f.next() orelse continue;
+                const stored = eval.Stored.fromText(self.gpa, f.next() orelse continue) catch continue;
+                const key = self.gpa.dupe(u8, name) catch {
+                    stored.deinit(self.gpa);
+                    continue;
+                };
+                self.session.vars.put(self.gpa, key, stored) catch {
+                    self.gpa.free(key);
+                    stored.deinit(self.gpa);
+                };
+            } else if (std.mem.eql(u8, kind, "f")) {
+                const name = f.next() orelse continue;
+                const params_text = f.next() orelse continue;
+                const body = f.next() orelse continue;
+                var params: [16][]const u8 = undefined;
+                var n: usize = 0;
+                var pit = std.mem.splitScalar(u8, params_text, ',');
+                while (pit.next()) |p| {
+                    if (n == params.len) break;
+                    params[n] = p;
+                    n += 1;
+                }
+                self.session.define(name, params[0..n], body) catch {};
+            } else if (std.mem.eql(u8, kind, "u")) {
+                const f_text = f.next() orelse continue;
+                const owned = self.gpa.dupe(u8, f_text) catch continue;
+                self.own_formulas.append(self.gpa, owned) catch self.gpa.free(owned);
+            } else if (std.mem.eql(u8, kind, "a") or std.mem.eql(u8, kind, "m")) {
+                const stored = eval.Stored.fromText(self.gpa, f.next() orelse continue) catch continue;
+                if (kind[0] == 'a') {
+                    if (self.session.ans) |s| s.deinit(self.gpa);
+                    self.session.ans = stored;
+                } else {
+                    if (self.memory) |m| m.deinit(self.gpa);
+                    self.memory = stored;
+                }
+            }
+        }
+    }
+
+    // ---- closing -------------------------------------------------------------------------
+
+    fn onCloseRequest(_: *gtk.Window, self: *Calc) callconv(.c) c_int {
+        if (!self.finished) {
+            self.finished = true;
+            const w = self.window.as(gtk.Widget);
+            if (self.window.as(gtk.Window).isMaximized() == 0 and w.getWidth() > 0 and self.pane == .none) {
+                self.config.setInt("calc", "width", w.getWidth()) catch {};
+                self.config.setInt("calc", "height", w.getHeight()) catch {};
+            }
+        }
+        return 0;
+    }
+
+    fn onDestroy(_: *gtk.ApplicationWindow, self: *Calc) callconv(.c) void {
+        for (self.keys.items) |key| self.gpa.destroy(key);
+        self.keys.deinit(self.gpa);
+        for (self.history.items) |h| {
+            self.gpa.free(h.expr);
+            self.gpa.free(h.result);
+        }
+        self.history.deinit(self.gpa);
+        if (self.plain) |p| self.gpa.free(p);
+        if (self.memory) |m| m.deinit(self.gpa);
+        for (self.own_formulas.items) |f| self.gpa.free(f);
+        self.own_formulas.deinit(self.gpa);
+        // The widgets are already gone: only the names are freed.
+        for (self.formula_fields.items) |f| self.gpa.free(f.name);
+        self.formula_fields.deinit(self.gpa);
+        self.graph.destroy();
+        self.session.deinit();
+        self.config.deinit();
+        self.gpa.destroy(self);
     }
 };
 
@@ -278,22 +2132,16 @@ pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = 
 
 pub fn main(init: std.process.Init.Minimal) !void {
     cli.handle(init.args, .{ .name = "dkde-calc", .summary = "Calculator" });
-    common.perf.init();
-    var debug_allocator: common.perf.Gpa = .{};
-    defer debug_allocator.deinit();
-    const allocator = debug_allocator.allocator();
-
-    var app: App = .{ .allocator = allocator };
-    defer if (app.appearance) |a| a.destroy();
-
-    const gtk_app = gtk.Application.new("org.dkde.calc", .{ .non_unique = true });
-    defer gtk_app.as(gobject.Object).unref();
-    common.runapp.quitAfterEnv(gtk_app);
-    _ = gio.Application.signals.activate.connect(gtk_app, *App, &App.activate, &app, .{});
-    const status = gio.Application.run(gtk_app.as(gio.Application), @intCast(init.args.vector.len), @ptrCast(@constCast(init.args.vector.ptr)));
-    if (status != 0) std.process.exit(@intCast(status));
+    try common.runapp.run("org.dkde.calc", Calc, init);
 }
 
 test {
+    _ = @import("num.zig");
     _ = @import("eval.zig");
+    _ = @import("units.zig");
+    _ = @import("dates.zig");
+    _ = @import("simplify.zig");
+    _ = @import("calculus.zig");
+    _ = @import("formulas.zig");
+    _ = @import("letters.zig");
 }

@@ -1,0 +1,24 @@
+# dkde-calc: the calculator. Copy a setting into ~/.config/dkde/calc.toml to
+# change it; the calculator also writes the ones changed from its menus.
+
+[calc]
+# "standard", "scientific" or "programmer".
+mode = "standard"
+# The pane on the right: "none", "history", "units", "dates", "graph" or "formulas".
+pane = "none"
+# "degrees", "radians" or "gradians".
+angle = "degrees"
+# Programmer mode: the base (2, 8, 10 or 16) and the word size in bits (8, 16, 32 or 64).
+base = 10
+word-bits = 64
+# Digits after the point, at most.
+decimals = 10
+# Thousands grouped with a narrow space.
+grouping = true
+# "auto", "scientific" or "engineering".
+notation = "auto"
+# Lines of history kept.
+history-size = 200
+# The window's size, remembered.
+width = 380
+height = 520
