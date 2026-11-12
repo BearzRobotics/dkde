@@ -11,6 +11,8 @@ const gtk = @import("gtk4");
 const common = @import("common");
 
 const perf = @import("perf.zig");
+const gpu = @import("gpu.zig");
+const Sampler = @import("sampler.zig").Sampler;
 
 extern fn sysconf(name: c_int) c_long;
 const SC_NPROCESSORS_ONLN = 84;
@@ -299,6 +301,8 @@ const Detail = struct {
     mem_bar: ?*MemBar = null,
     big: [8]?*gtk.Label = @splat(null),
     info: [14]?*gtk.Label = @splat(null),
+    /// The figures under the graphs, hidden in the compact view.
+    figures: ?*gtk.Widget = null,
 };
 
 // ---- resources -------------------------------------------------------------------
@@ -345,6 +349,11 @@ const Resource = struct {
     hwmon_len: usize = 0,
     has_busy: bool = false,
     has_vram: bool = false,
+    /// The GPU's PCI address, to find its programs' figures.
+    pdev: [32]u8 = @splat(0),
+    nvidia: bool = false,
+    /// Some program's GPU figures were read: the driver writes them.
+    fdinfo_seen: bool = false,
 
     fn id(self: *const Resource) []const u8 {
         return self.name[0..self.name_len];
@@ -376,6 +385,19 @@ pub const Perf = struct {
     prev_us: i64 = 0,
     tick: u32 = 0,
     wifi_guard: ?*common.proc.Guard(Perf) = null,
+    /// The CPU's temperature sensor (k10temp, coretemp, ...), if any.
+    cpu_temp: [96]u8 = undefined,
+    cpu_temp_len: usize = 0,
+    /// NVIDIA's driver reports through nvidia-smi.
+    smi_guard: ?*common.proc.Guard(Perf) = null,
+    smi: [4]gpu.Nvidia = undefined,
+    smi_count: usize = 0,
+    smi_busy: bool = false,
+    side: *gtk.Widget = undefined,
+    compact: bool = false,
+    /// Told when the compact view is turned on or off.
+    on_compact: ?*const fn (*anyopaque, bool) void = null,
+    owner: ?*anyopaque = null,
 
     pub fn create(allocator: std.mem.Allocator) *Perf {
         const self = allocator.create(Perf) catch @panic("OOM");
@@ -401,7 +423,12 @@ pub const Perf = struct {
             .stack = stack,
             .cpu_count = @intCast(@max(1, sysconf(SC_NPROCESSORS_ONLN))),
         };
+        self.side = side.as(gtk.Widget);
         self.discover();
+        // Double-clicking a graph shows the graphs alone (Windows' summary view).
+        const click = gtk.GestureClick.new();
+        _ = gtk.GestureClick.signals.pressed.connect(click, *Perf, &onPressed, self, .{});
+        stack.as(gtk.Widget).addController(click.as(gtk.EventController));
         _ = gtk.ListBox.signals.row_selected.connect(list, *Perf, &onRowSelected, self, .{});
         if (list.getRowAtIndex(0)) |row| list.selectRow(row);
         if (self.wifi_guard != null) self.askSsid();
@@ -410,6 +437,7 @@ pub const Perf = struct {
 
     pub fn destroy(self: *Perf) void {
         if (self.wifi_guard) |g| g.kill();
+        if (self.smi_guard) |g| g.kill();
         for (self.resources.items) |r| self.allocator.destroy(r);
         for (self.graphs.items) |g| self.allocator.destroy(g);
         for (self.details.items) |d| self.allocator.destroy(d);
@@ -419,6 +447,20 @@ pub const Perf = struct {
         self.details.deinit(self.allocator);
         self.mem_bars.deinit(self.allocator);
         self.allocator.destroy(self);
+    }
+
+    fn onPressed(gesture: *gtk.GestureClick, n_press: c_int, _: f64, _: f64, self: *Perf) callconv(.c) void {
+        if (n_press != 2) return;
+        _ = gesture;
+        self.setCompact(!self.compact);
+    }
+
+    /// The compact view: graphs only, without the list and figures.
+    pub fn setCompact(self: *Perf, on: bool) void {
+        self.compact = on;
+        self.side.setVisible(@intFromBool(!on));
+        for (self.details.items) |d| if (d.figures) |f| f.setVisible(@intFromBool(!on));
+        if (self.on_compact) |f| f(self.owner.?, on);
     }
 
     fn onRowSelected(_: *gtk.ListBox, row: ?*gtk.ListBoxRow, self: *Perf) callconv(.c) void {
@@ -578,6 +620,7 @@ pub const Perf = struct {
         }
         figures.append(info_grid.as(gtk.Widget));
         root.append(figures.as(gtk.Widget));
+        d.figures = figures.as(gtk.Widget);
         return d;
     }
 
@@ -693,10 +736,16 @@ pub const Perf = struct {
             self.cpu_model_len = n;
             self.cpuinfo.model = "";
         }
-        if (readInt("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", .{})) |khz| {
+        // Intel tells the base (nominal) speed; AMD only the most a core
+        // reaches, which is named so.
+        var base_known = false;
+        if (readInt("/sys/devices/system/cpu/cpu0/cpufreq/base_frequency", .{})) |khz| {
+            self.base_mhz = @as(f64, @floatFromInt(khz)) / 1000.0;
+            base_known = true;
+        } else if (readInt("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", .{})) |khz| {
             self.base_mhz = @as(f64, @floatFromInt(khz)) / 1000.0;
         } else self.base_mhz = self.cpuinfo.mhz;
-        if (readInt("/sys/devices/system/cpu/cpu0/cpufreq/base_frequency", .{})) |khz| self.base_mhz = @as(f64, @floatFromInt(khz)) / 1000.0;
+        self.findCpuSensor();
 
         // Cache totals: size times the number of instances (logical / sharing).
         var l1: u64 = 0;
@@ -728,11 +777,20 @@ pub const Perf = struct {
             self.cache_len[i] = perf.fmtKb(&self.cache_text[i], t).len;
         }
 
-        const d = self.buildDetail(.{
+        const big = &.{ "Utilization", "Speed", "Processes", "Threads", "Up time", "Temperature" };
+        const d = if (base_known) self.buildDetail(.{
             .title = "CPU",
             .caption_a = "% Utilization over 60 seconds",
-            .big = &.{ "Utilization", "Speed", "Processes", "Threads", "Up time" },
+            .big = big,
             .info = &.{ "Base speed:", "Sockets:", "Cores:", "Logical processors:", "Virtualization:", "Virtual machine:", "L1 cache:", "L2 cache:", "L3 cache:" },
+            .color = colors.cpu,
+            .unit_a = .percent,
+            .cores_toggle = true,
+        }) else self.buildDetail(.{
+            .title = "CPU",
+            .caption_a = "% Utilization over 60 seconds",
+            .big = big,
+            .info = &.{ "Maximum speed:", "Sockets:", "Cores:", "Logical processors:", "Virtualization:", "Virtual machine:", "L1 cache:", "L2 cache:", "L3 cache:" },
             .color = colors.cpu,
             .unit_a = .percent,
             .cores_toggle = true,
@@ -761,6 +819,28 @@ pub const Perf = struct {
         }
         const r = self.addResource(.cpu, "cpu", "CPU", d);
         _ = r;
+    }
+
+    /// The CPU package's temperature sensor: k10temp's Tctl (AMD), coretemp's
+    /// package (Intel), or what an ARM board calls its CPU.
+    fn findCpuSensor(self: *Perf) void {
+        const dir = gio.File.newForPath("/sys/class/hwmon");
+        defer dir.as(gobject.Object).unref();
+        const children = dir.enumerateChildren("standard::name", .{}, null, null) orelse return;
+        defer children.as(gobject.Object).unref();
+        while (children.nextFile(null, null)) |info| {
+            defer info.as(gobject.Object).unref();
+            const entry = std.mem.span(info.getName());
+            var nb: [32]u8 = undefined;
+            var pb: [96]u8 = undefined;
+            const name = readSmall(std.fmt.bufPrint(&pb, "/sys/class/hwmon/{s}/name", .{entry}) catch continue, &nb) orelse continue;
+            const known = [_][]const u8{ "k10temp", "coretemp", "zenpower", "cpu_thermal", "cpu-thermal", "soc_thermal" };
+            for (known) |k| if (std.mem.eql(u8, name, k)) {
+                const path = std.fmt.bufPrint(&self.cpu_temp, "/sys/class/hwmon/{s}/temp1_input", .{entry}) catch return;
+                self.cpu_temp_len = path.len;
+                return;
+            };
+        }
     }
 
     fn discoverMemory(self: *Perf) void {
@@ -1014,7 +1094,7 @@ pub const Perf = struct {
                 .color = colors.gpu,
                 .unit_a = .percent,
             });
-            if (!busy) d.caption_a.setText(if (has_freq) common.tr("Clock speed (% of maximum)") else common.tr("Utilization (not reported by this driver)"));
+            _ = has_freq;
             var tbuf: [32]u8 = undefined;
             const title = std.fmt.bufPrintSentinel(&tbuf, "GPU {d}", .{self.count(.gpus)}, 0) catch "GPU";
             setSlice(d.title, title);
@@ -1040,7 +1120,12 @@ pub const Perf = struct {
             var drv: [48]u8 = undefined;
             var loc: [48]u8 = undefined;
             setSlice(d.info[2].?, linkBase("/sys/class/drm/card{d}/device/driver", .{index}, &drv) orelse "—");
-            setSlice(d.info[3].?, linkBase("/sys/class/drm/card{d}/device", .{index}, &loc) orelse "—");
+            const location = linkBase("/sys/class/drm/card{d}/device", .{index}, &loc);
+            setSlice(d.info[3].?, location orelse "—");
+            if (location) |l| @memcpy(r.pdev[0..@min(l.len, r.pdev.len - 1)], l[0..@min(l.len, r.pdev.len - 1)]);
+            r.nvidia = vendor == 0x10de and !busy;
+            if (r.nvidia and self.smi_guard == null and common.proc.hasProgram("nvidia-smi")) self.smi_guard = common.proc.Guard(Perf).create(self);
+            if (!busy) d.caption_a.setText(common.tr("Utilization"));
             setSlice(d.info[4].?, if (vendor_name.len > 0) vendor_name else vtext);
             setText(d.info[5].?, "{x:0>4}:{x:0>4}", .{ vendor, device });
             r.row_sub.setText("");
@@ -1059,8 +1144,10 @@ pub const Perf = struct {
         }
     }
 
-    /// Called on every refresh of the Task Manager.
-    pub fn update(self: *Perf, process_count: usize, thread_count: usize) void {
+    /// Called on every refresh of the Task Manager, after the sampler's.
+    pub fn update(self: *Perf, sampler: *const Sampler) void {
+        const process_count = sampler.processes.count();
+        const thread_count = sampler.threads_total;
         const now_us = glib.getMonotonicTime();
         const dt: f64 = if (self.prev_us == 0) 0 else @as(f64, @floatFromInt(now_us - self.prev_us)) / 1e6;
         self.prev_us = now_us;
@@ -1072,7 +1159,11 @@ pub const Perf = struct {
             .memory => self.updateMemory(r),
             .disk => self.updateDisk(r, dt),
             .ethernet, .wifi => self.updateNet(r, dt),
-            .gpu => self.updateGpu(r),
+            .gpu => self.updateGpu(r, sampler),
+        };
+        if (self.smi_guard) |g| if (!self.smi_busy) {
+            self.smi_busy = true;
+            common.proc.run(Perf, g, &.{ "nvidia-smi", "--query-gpu=pci.bus_id,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,clocks.gr", "--format=csv,noheader,nounits" }, onSmi);
         };
         if (self.wifi_guard != null and self.tick % 20 == 0) self.askSsid();
     }
@@ -1097,8 +1188,20 @@ pub const Perf = struct {
         }
         d.graph_a.push(fraction * 100, 0);
 
+        // The average over all logical processors, not just the first one's.
         var mhz: f64 = self.cpuinfo.mhz;
-        if (readInt("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", .{})) |khz| mhz = @as(f64, @floatFromInt(khz)) / 1000.0;
+        var sum_khz: u64 = 0;
+        var cores_read: u64 = 0;
+        for (0..self.cpu_count) |i| {
+            if (readInt("/sys/devices/system/cpu/cpu{d}/cpufreq/scaling_cur_freq", .{i})) |khz| {
+                sum_khz += khz;
+                cores_read += 1;
+            }
+        }
+        if (cores_read > 0) mhz = @as(f64, @floatFromInt(sum_khz)) / @as(f64, @floatFromInt(cores_read)) / 1000.0;
+        if (self.cpu_temp_len > 0) {
+            if (readInt("{s}", .{self.cpu_temp[0..self.cpu_temp_len]})) |milli| setText(d.big[5].?, "{d} °C", .{milli / 1000});
+        }
         setText(d.big[0].?, "{d:.0}%", .{fraction * 100});
         if (mhz > 0) setText(d.big[1].?, "{d:.2} GHz", .{mhz / 1000.0});
         setText(d.big[2].?, "{d}", .{processes});
@@ -1234,22 +1337,38 @@ pub const Perf = struct {
         }
     }
 
-    fn updateGpu(self: *Perf, r: *Resource) void {
-        _ = self;
+    /// The GPU's utilization comes from, in order: the driver's own busy
+    /// figure (amdgpu), the sum of its programs' busy time (fdinfo: i915, xe,
+    /// amdgpu, nouveau, msm, panfrost, v3d, ...), or nvidia-smi. A driver
+    /// that tells none of these shows a dash: no line is made up.
+    fn updateGpu(self: *Perf, r: *Resource, sampler: *const Sampler) void {
         const d = r.detail;
         const idx = std.fmt.parseInt(u32, r.id()["card".len..], 10) catch return;
+        const pdev = std.mem.sliceTo(&r.pdev, 0);
+        const smi: ?*const gpu.Nvidia = if (r.nvidia) for (self.smi[0..self.smi_count]) |*n| {
+            if (std.ascii.eqlIgnoreCase(std.mem.sliceTo(&n.bus, 0), pdev)) break n;
+        } else null else null;
         var utilization: ?f64 = null;
         if (r.has_busy) {
             if (readInt("/sys/class/drm/card{d}/device/gpu_busy_percent", .{idx})) |v| utilization = @floatFromInt(v);
+        } else if (smi != null and smi.?.utilization != null) {
+            utilization = smi.?.utilization;
+        } else if (sampler.load_elapsed_ns > 0) {
+            if (sampler.gpuLoad(pdev)) |load| {
+                r.fdinfo_seen = true;
+                utilization = load * 100;
+            } else if (r.fdinfo_seen) utilization = 0; // no program used it
         }
-        const cur_mhz = readInt("/sys/class/drm/card{d}/gt_cur_freq_mhz", .{idx});
-        const max_mhz = readInt("/sys/class/drm/card{d}/gt_max_freq_mhz", .{idx});
-        if (utilization == null) {
-            if (cur_mhz != null and max_mhz != null and max_mhz.? > 0)
-                utilization = @as(f64, @floatFromInt(cur_mhz.?)) * 100 / @as(f64, @floatFromInt(max_mhz.?));
+        if (utilization) |u| {
+            d.graph_a.push(u, 0);
+            setText(d.big[0].?, "{d:.0}%", .{u});
+            setText(r.row_sub, "{d:.0}%", .{u});
+            d.caption_a.setText(common.tr("Utilization"));
+        } else {
+            d.big[0].?.setText("—");
+            r.row_sub.setText("");
+            if (sampler.load_elapsed_ns > 0 and self.tick > 3) d.caption_a.setText(common.tr("Utilization is not reported by this driver"));
         }
-        d.graph_a.push(utilization orelse 0, 0);
-        if (r.has_busy) setText(d.big[0].?, "{d:.0}%", .{utilization orelse 0}) else d.big[0].?.setText("—");
 
         var b: [3][32]u8 = undefined;
         if (r.has_vram) {
@@ -1258,7 +1377,12 @@ pub const Perf = struct {
             if (d.graph_b) |g| g.push(@as(f64, @floatFromInt(used)) * 100 / @as(f64, @floatFromInt(@max(1, total))), 0);
             setText(d.big[1].?, "{s}/{s}", .{ perf.fmtKb(&b[0], used / 1024), perf.fmtKb(&b[1], total / 1024) });
             setSlice(d.info[0].?, perf.fmtKb(&b[2], total / 1024));
-        }
+        } else if (smi) |n| if (n.memory_used_mb != null and n.memory_total_mb != null) {
+            const used: u64 = @intFromFloat(n.memory_used_mb.? * 1024);
+            const total: u64 = @intFromFloat(n.memory_total_mb.? * 1024);
+            setText(d.big[1].?, "{s}/{s}", .{ perf.fmtKb(&b[0], used), perf.fmtKb(&b[1], total) });
+            setSlice(d.info[0].?, perf.fmtKb(&b[2], total));
+        };
         if (readInt("/sys/class/drm/card{d}/device/mem_info_gtt_total", .{idx})) |gtt| setSlice(d.info[1].?, perf.fmtKb(&b[2], gtt / 1024));
 
         if (r.hwmon_len > 0) {
@@ -1268,9 +1392,25 @@ pub const Perf = struct {
             if (power) |uw| setText(d.big[3].?, "{d:.0} W", .{@as(f64, @floatFromInt(uw)) / 1e6});
             if (readInt("{s}/freq1_input", .{hw})) |hz| setText(d.big[4].?, "{d} MHz", .{hz / 1000000});
         }
-        if (cur_mhz) |m| setText(d.big[4].?, "{d} MHz", .{m});
+        if (smi) |n| {
+            if (n.temperature) |v| setText(d.big[2].?, "{d:.0} °C", .{v});
+            if (n.power_w) |v| setText(d.big[3].?, "{d:.0} W", .{v});
+            if (n.clock_mhz) |v| setText(d.big[4].?, "{d:.0} MHz", .{v});
+        }
+        if (readInt("/sys/class/drm/card{d}/gt_cur_freq_mhz", .{idx})) |m| setText(d.big[4].?, "{d} MHz", .{m});
+    }
 
-        if (r.has_busy) setText(r.row_sub, "{d:.0}%", .{utilization orelse 0}) else if (utilization) |u| setText(r.row_sub, "{d:.0}% of max clock", .{u}) else r.row_sub.setText("");
+    fn onSmi(self: *Perf, ok: bool, out: []const u8) void {
+        self.smi_busy = false;
+        self.smi_count = 0;
+        if (!ok) return;
+        var lines = std.mem.splitScalar(u8, out, '\n');
+        while (lines.next()) |line| {
+            if (self.smi_count == self.smi.len) break;
+            const n = gpu.parseNvidiaSmi(line) orelse continue;
+            self.smi[self.smi_count] = n;
+            self.smi_count += 1;
+        }
     }
 
     // ---- Wi-Fi network name --------------------------------------------------------

@@ -56,6 +56,12 @@ logoff-command = "labwc --exit"
 lock-command = ""
 sleep-command = ""
 
+[session]
+# Start the startup apps (the freedesktop autostart entries in
+# ~/.config/autostart and /etc/xdg/autostart) when you sign in. The Task
+# Manager's Startup apps page turns each one on or off, and adds your own.
+startup-apps = true
+
 [power]
 # Minutes of no keyboard or mouse use before each action; 0 never.
 lock-after = 0

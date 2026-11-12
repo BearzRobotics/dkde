@@ -108,6 +108,9 @@ const App = struct {
         };
         // Pinned apps show even before the first window event.
         self.syncTaskbars();
+        // Startup apps, once per session whatever the init system (the
+        // panel is restarted if it exits; runOnce knows it was done).
+        if (self.config.getBool("session", "startup-apps", true) and glib.getenv("DKDE_NO_AUTOSTART") == null) common.autostart.runOnce(self.allocator);
     }
 
     /// Handles one IPC command and returns the reply line.

@@ -887,6 +887,38 @@ notebook > header.top > tabs > tab:checked {
 .dkde-perf-big { font-size: 18pt; font-weight: 300; }
 .dkde-perf-value { font-size: 100%; }
 
+/* ---- Task Manager: the page rail and command bars (Windows 11) ---- */
+
+window.dkde-tasks .dkde-rail {
+  padding: 4px 4px 6px 4px;
+  border-right: 1px solid alpha(currentColor, 0.12);
+}
+window.dkde-tasks .dkde-rail list { background: transparent; }
+window.dkde-tasks .dkde-rail row {
+  border-radius: 6px;
+  margin: 1px 0;
+  padding: 7px 10px;
+}
+window.dkde-tasks .dkde-rail row:selected {
+  background-color: alpha(@dkde_accent, 0.16);
+  color: inherit;
+  box-shadow: inset 3px 0 0 @dkde_accent;
+}
+window.dkde-tasks .dkde-rail-toggle { margin: 2px 2px 6px 2px; }
+.dkde-command-bar {
+  padding: 8px 12px;
+  border-bottom: 1px solid alpha(currentColor, 0.10);
+}
+.dkde-page-title { font-size: 14pt; font-weight: 600; }
+columnview.dkde-process-table label.dkde-group-header { font-weight: 700; }
+columnview.dkde-process-table button.dkde-expander {
+  min-width: 16px;
+  min-height: 16px;
+  padding: 0;
+}
+/* Column titles carry the totals on two lines. */
+columnview.dkde-process-table > header > button > box > label { font-size: 92%; }
+
 /* ---- Screenshot editor ---- */
 
 .dkde-snip-bar {

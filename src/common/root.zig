@@ -8,6 +8,7 @@ const core = @import("core");
 pub const appdirs = core.appdirs;
 pub const appimage = core.appimage;
 pub const appinfo = core.appinfo;
+pub const autostart = core.autostart;
 pub const apps = core.apps;
 pub const audio = core.audio;
 pub const civil = core.civil;

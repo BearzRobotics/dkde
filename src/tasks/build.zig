@@ -4,6 +4,7 @@ const std = @import("std");
 const Ctx = @import("../../build.zig").Ctx;
 
 pub const menu_entry = true;
+pub const data: []const []const u8 = &.{"tasks.toml"};
 
 pub fn configure(ctx: *const Ctx, mod: *std.Build.Module) void {
     ctx.gtk(mod);

@@ -1,0 +1,17 @@
+# dkde-tasks: the Task Manager. Copy a setting into ~/.config/dkde/tasks.toml
+# to change it; the Task Manager also writes the ones changed on its
+# Settings page.
+
+[tasks]
+# How often the figures are read again: "high" (twice a second),
+# "normal" (every second), "low" (every four seconds) or "paused".
+update-speed = "normal"
+# The page it opens on: "processes", "performance", "startup", "users",
+# "details" or "services".
+start-page = "processes"
+# The page rail shows icons only.
+rail-collapsed = false
+# The window's size, remembered.
+width = 980
+height = 680
+maximized = false

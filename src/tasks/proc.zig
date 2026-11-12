@@ -15,6 +15,9 @@ pub const Stat = struct {
     rss_pages: u64,
     /// Nice value, -20 (greediest) to 19.
     nice: i32,
+    ppid: u32 = 0,
+    /// When the process started, in clock ticks after boot.
+    start_ticks: u64 = 0,
 };
 
 /// Parses `/proc/<pid>/stat`. The command name may contain spaces and
@@ -33,10 +36,15 @@ pub fn parseStat(content: []const u8) ?Stat {
     var threads: u32 = 0;
     var rss: u64 = 0;
     var nice: i32 = 0;
-    // After "(comm)": state is field 3, utime 14, stime 15, threads 20, rss 24.
+    var ppid: u32 = 0;
+    var start: u64 = 0;
+    // After "(comm)": state is field 3, ppid 4, utime 14, stime 15, threads 20,
+    // starttime 22, rss 24.
     while (fields.next()) |field| : (index += 1) {
         switch (index) {
             0 => state = field[0],
+            1 => ppid = std.fmt.parseInt(u32, field, 10) catch 0,
+            19 => start = std.fmt.parseInt(u64, field, 10) catch 0,
             11 => utime = std.fmt.parseInt(u64, field, 10) catch return null,
             12 => stime = std.fmt.parseInt(u64, field, 10) catch return null,
             16 => nice = std.fmt.parseInt(i32, field, 10) catch 0,
@@ -57,7 +65,60 @@ pub fn parseStat(content: []const u8) ?Stat {
         .threads = threads,
         .rss_pages = rss,
         .nice = nice,
+        .ppid = ppid,
+        .start_ticks = start,
     };
+}
+
+/// What `/proc/<pid>/status` adds: the effective user, and memory split
+/// into the process's own (anonymous and shared memory it made) and swap.
+pub const Status = struct {
+    uid: u32 = 0,
+    euid: u32 = 0,
+    /// Memory only this process uses (RssAnon + RssShmem), in kB: what the
+    /// Windows Task Manager calls the private working set.
+    private_kb: u64 = 0,
+    swap_kb: u64 = 0,
+    has_memory: bool = false,
+};
+
+pub fn parseStatus(content: []const u8) Status {
+    var st: Status = .{};
+    var lines = std.mem.splitScalar(u8, content, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, line, "Uid:")) {
+            var it = std.mem.tokenizeAny(u8, line[4..], " \t");
+            st.uid = std.fmt.parseInt(u32, it.next() orelse "0", 10) catch 0;
+            st.euid = std.fmt.parseInt(u32, it.next() orelse "0", 10) catch st.uid;
+        } else if (kbField(line, "RssAnon:")) |anon| {
+            st.private_kb += anon;
+            st.has_memory = true;
+        } else if (kbField(line, "RssShmem:")) |shmem| {
+            st.private_kb += shmem;
+        } else if (kbField(line, "VmSwap:")) |swap| {
+            st.swap_kb = swap;
+        }
+    }
+    return st;
+}
+
+fn kbField(line: []const u8, key: []const u8) ?u64 {
+    if (!std.mem.startsWith(u8, line, key)) return null;
+    var it = std.mem.tokenizeAny(u8, line[key.len..], " \t");
+    return std.fmt.parseInt(u64, it.next() orelse return null, 10) catch null;
+}
+
+/// The systemd unit a process runs in, from `/proc/<pid>/cgroup`
+/// ("0::/system.slice/sshd.service" gives "sshd.service"; a user's
+/// "…/app.slice/app-firefox-1234.scope" gives that scope).
+pub fn cgroupUnit(content: []const u8) ?[]const u8 {
+    const line = std.mem.sliceTo(content, '\n');
+    const path = line[(std.mem.lastIndexOfScalar(u8, line, ':') orelse return null) + 1 ..];
+    var it = std.mem.splitBackwardsScalar(u8, path, '/');
+    while (it.next()) |part| {
+        if (std.mem.endsWith(u8, part, ".service") or std.mem.endsWith(u8, part, ".scope")) return part;
+    }
+    return null;
 }
 
 pub const CpuTimes = struct { total: u64, idle: u64 };
@@ -248,4 +309,25 @@ test "uid and user name" {
 test "cpu percent scales by core count" {
     try std.testing.expectApproxEqAbs(@as(f64, 100), cpuPercent(25, 100, 4), 1e-9);
     try std.testing.expectEqual(@as(f64, 0), cpuPercent(5, 0, 4));
+}
+
+test "stat gives the parent and the start" {
+    const st = parseStat("4242 (bash) S 4000 4242 4242 34816 4242 4194304 1 0 0 0 7 3 0 0 20 0 1 0 98765 1000 300 0").?;
+    try std.testing.expectEqual(@as(u32, 4000), st.ppid);
+    try std.testing.expectEqual(@as(u64, 98765), st.start_ticks);
+    try std.testing.expectEqual(@as(u64, 10), st.cpu_ticks);
+}
+
+test "status gives users, own memory and swap" {
+    const st = parseStatus("Name:\tx\nUid:\t1000\t0\t0\t0\nRssAnon:\t  2048 kB\nRssFile:\t 9000 kB\nRssShmem:\t 100 kB\nVmSwap:\t  512 kB\n");
+    try std.testing.expectEqual(@as(u32, 1000), st.uid);
+    try std.testing.expectEqual(@as(u32, 0), st.euid);
+    try std.testing.expectEqual(@as(u64, 2148), st.private_kb);
+    try std.testing.expectEqual(@as(u64, 512), st.swap_kb);
+}
+
+test "the systemd unit of a process" {
+    try std.testing.expectEqualStrings("sshd.service", cgroupUnit("0::/system.slice/sshd.service\n").?);
+    try std.testing.expectEqualStrings("app-firefox-1234.scope", cgroupUnit("0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-firefox-1234.scope\n").?);
+    try std.testing.expect(cgroupUnit("0::/\n") == null);
 }

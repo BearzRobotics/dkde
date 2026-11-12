@@ -38,11 +38,16 @@ const Job = struct {
     /// Read end of the child's stderr and its pid while it runs.
     stderr_fd: c_int = -1,
     pid: glib.Pid = 0,
+    /// runCapture: the command's output goes to this temporary file (a
+    /// file, not a pipe, so a long output cannot stall the command).
+    capture: bool = false,
+    out_fd: c_int = -1,
 };
 
 extern fn write(fd: c_int, buf: [*]const u8, count: usize) isize;
 extern fn read(fd: c_int, buf: [*]u8, count: usize) isize;
 extern fn close(fd: c_int) c_int;
+extern fn lseek(fd: c_int, offset: i64, whence: c_int) i64;
 
 /// Asks for the password and runs `argv` as root. `callback(data, outcome,
 /// message)` runs once: `message` is sudo's or the command's error text when
@@ -52,6 +57,32 @@ pub fn run(
     reason: []const u8,
     argv: []const []const u8,
     stdin_data: []const u8,
+    comptime Data: type,
+    callback: *const fn (*Data, Outcome, []const u8) void,
+    data: *Data,
+) void {
+    start(parent, reason, argv, stdin_data, false, Data, callback, data);
+}
+
+/// Like `run`, for a command whose output is wanted (a list, a log): on
+/// `.ok`, `message` is what it printed (at most a megabyte).
+pub fn runCapture(
+    parent: ?*gtk.Window,
+    reason: []const u8,
+    argv: []const []const u8,
+    comptime Data: type,
+    callback: *const fn (*Data, Outcome, []const u8) void,
+    data: *Data,
+) void {
+    start(parent, reason, argv, "", true, Data, callback, data);
+}
+
+fn start(
+    parent: ?*gtk.Window,
+    reason: []const u8,
+    argv: []const []const u8,
+    stdin_data: []const u8,
+    capture: bool,
     comptime Data: type,
     callback: *const fn (*Data, Outcome, []const u8) void,
     data: *Data,
@@ -75,6 +106,7 @@ pub fn run(
         .callback = Thunk.call,
         .target = @ptrCast(callback),
         .data = data,
+        .capture = capture,
     };
     prompt(job, null);
 }
@@ -85,6 +117,7 @@ fn finish(job: *Job, outcome: Outcome, message: []const u8) void {
     const target = job.target;
     const data = job.data;
     if (job.window) |w| w.destroy();
+    if (job.out_fd >= 0) _ = close(job.out_fd);
     @memset(job.stdin_data, 0); // it may hold a new account's password
     a.free(job.stdin_data);
     for (job.argv) |arg| a.free(arg);
@@ -209,7 +242,35 @@ fn attempt(job: *Job, password: []const u8) void {
     var stdout_fd: c_int = -1;
     var stderr_fd: c_int = -1;
     var err: ?*glib.Error = null;
-    if (glib.spawnAsyncWithPipes(
+    if (job.capture and job.out_fd < 0) {
+        var name: [*:0]u8 = undefined;
+        job.out_fd = glib.fileOpenTmp("dkde-elevate-XXXXXX", &name, null);
+        if (job.out_fd >= 0) {
+            // Only the descriptor is needed; nobody else can open the file.
+            _ = glib.unlink(name);
+            glib.free(name);
+        }
+    }
+    if (job.capture and job.out_fd >= 0) _ = lseek(job.out_fd, 0, 0);
+    const spawned = if (job.capture and job.out_fd >= 0) glib.spawnAsyncWithPipesAndFds(
+        null,
+        @ptrCast(argv.ptr),
+        @ptrCast(envp),
+        .{ .search_path = true, .do_not_reap_child = true },
+        null,
+        null,
+        -1,
+        job.out_fd,
+        -1,
+        null,
+        null,
+        0,
+        &job.pid,
+        &stdin_fd,
+        null,
+        &stderr_fd,
+        &err,
+    ) else glib.spawnAsyncWithPipes(
         null,
         @ptrCast(argv.ptr),
         envp,
@@ -221,13 +282,14 @@ fn attempt(job: *Job, password: []const u8) void {
         &stdout_fd,
         &stderr_fd,
         &err,
-    ) == 0) {
+    );
+    if (spawned == 0) {
         const message = if (err) |e| e.f_message orelse "cannot start sudo" else "cannot start sudo";
         const text = std.heap.c_allocator.dupe(u8, std.mem.span(message)) catch "cannot start sudo";
         if (err) |e| e.free();
         return finish(job, .failed, text);
     }
-    _ = close(stdout_fd);
+    if (stdout_fd >= 0) _ = close(stdout_fd);
     job.stderr_fd = stderr_fd;
 
     // Password line first, then whatever the command should read.
@@ -264,7 +326,24 @@ fn onChildExit(pid: glib.Pid, status: c_int, data: ?*anyopaque) callconv(.c) voi
     _ = close(job.stderr_fd);
     const stderr_text = std.mem.trim(u8, buf[0..len], " \t\r\n");
 
-    if (status == 0) return finish(job, .ok, "");
+    if (status == 0) {
+        if (job.capture and job.out_fd >= 0) {
+            const a = std.heap.c_allocator;
+            const size = lseek(job.out_fd, 0, 2);
+            const n: usize = @intCast(std.math.clamp(size, 0, 1024 * 1024));
+            const out = a.alloc(u8, n) catch return finish(job, .ok, "");
+            defer a.free(out);
+            _ = lseek(job.out_fd, size - @as(i64, @intCast(n)), 0);
+            var got: usize = 0;
+            while (got < n) {
+                const r = read(job.out_fd, out[got..].ptr, n - got);
+                if (r <= 0) break;
+                got += @intCast(r);
+            }
+            return finish(job, .ok, out[0..got]);
+        }
+        return finish(job, .ok, "");
+    }
 
     const wrong = std.ascii.findIgnoreCase(stderr_text, "incorrect password") != null or
         std.ascii.findIgnoreCase(stderr_text, "sorry, try again") != null or

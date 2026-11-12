@@ -8,6 +8,7 @@
 pub const appdirs = @import("appdirs.zig");
 pub const appimage = @import("appimage.zig");
 pub const appinfo = @import("appinfo.zig");
+pub const autostart = @import("autostart.zig");
 pub const apps = @import("apps.zig");
 pub const audio = @import("audio.zig");
 pub const civil = @import("civil.zig");
