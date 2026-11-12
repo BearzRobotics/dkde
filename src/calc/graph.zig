@@ -38,6 +38,10 @@ const Curve = struct {
     entry: *gtk.Entry,
     swatch: *gtk.DrawingArea,
     error_label: *gtk.Label,
+    /// Why the row cannot be drawn ("not understood"), found while drawing
+    /// and shown only once typing pauses (changing the row's widgets while
+    /// drawing made the entry jump).
+    problem: [96]u8 = @splat(0),
     index: usize,
     graph: *Graph,
 };
@@ -64,6 +68,8 @@ pub const Graph = struct {
     // The Scale panel.
     range: [4]*gtk.Entry = undefined,
     same_scale: *gtk.CheckButton = undefined,
+    /// Shows the rows' problems a moment after typing stops.
+    check_timer: c_uint = 0,
     /// A curve to fit the view to once the graph has its size.
     pending_fit: ?usize = null,
     drag_cx: f64 = 0,
@@ -282,6 +288,7 @@ pub const Graph = struct {
     }
 
     pub fn destroy(self: *Graph) void {
+        if (self.check_timer != 0) _ = glib.Source.remove(self.check_timer);
         for (self.curves.items) |c| self.gpa.destroy(c);
         self.curves.deinit(self.gpa);
         self.marks.deinit(self.gpa);
@@ -421,7 +428,6 @@ pub const Graph = struct {
         c.row.append(c.swatch.as(gtk.Widget));
         c.row.append(prefix.as(gtk.Widget));
         c.row.append(c.entry.as(gtk.Widget));
-        c.row.append(c.error_label.as(gtk.Widget));
         self.list.append(c.row.as(gtk.Widget));
         self.refresh();
     }
@@ -435,7 +441,47 @@ pub const Graph = struct {
     }
 
     fn onCurveChanged(_: *gtk.Editable, c: *Curve) callconv(.c) void {
-        c.graph.refresh();
+        const self = c.graph;
+        // A warning from before is out of date as soon as the text changes.
+        markProblem(c, null);
+        self.refresh();
+        if (self.check_timer != 0) _ = glib.Source.remove(self.check_timer);
+        self.check_timer = glib.timeoutAdd(600, onCheck, self);
+    }
+
+    fn onCheck(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Graph = @ptrCast(@alignCast(data.?));
+        self.check_timer = 0;
+        self.showProblems();
+        return 0;
+    }
+
+    /// Each row's problem (if any) beside it.
+    fn showProblems(self: *Graph) void {
+        _ = self.arena.reset(.retain_capacity);
+        const a = self.arena.allocator();
+        var problem: eval.Problem = .{};
+        var ev: eval.Eval = .{ .a = a, .session = self.session, .mode = .{ .angle = .radians }, .problem = &problem };
+        _ = self.parseCurves(a, &ev) catch return;
+        for (self.curves.items) |c| {
+            const text = std.mem.sliceTo(&c.problem, 0);
+            markProblem(c, if (text.len == 0) null else text);
+        }
+    }
+
+    /// A warning sign inside the entry (with the reason as its tooltip): it
+    /// does not change the entry's size, so nothing moves while typing.
+    fn markProblem(c: *Curve, text: ?[]const u8) void {
+        const e = c.entry;
+        if (text) |msg| {
+            var buf: [100]u8 = undefined;
+            e.setIconFromIconName(.secondary, "dialog-warning-symbolic");
+            e.setIconTooltipText(.secondary, std.fmt.bufPrintSentinel(&buf, "{s}", .{msg}, 0) catch null);
+            e.as(gtk.Widget).addCssClass("warning");
+        } else {
+            e.setIconFromIconName(.secondary, null);
+            e.as(gtk.Widget).removeCssClass("warning");
+        }
     }
 
     fn onAdd(_: *gtk.Button, self: *Graph) callconv(.c) void {
@@ -537,7 +583,7 @@ pub const Graph = struct {
         for (self.curves.items, 0..) |c, i| {
             var text = std.mem.trim(u8, std.mem.span(c.entry.as(gtk.Editable).getText()), " ");
             if (std.mem.indexOfScalar(u8, text, '=')) |eq| text = std.mem.trim(u8, text[eq + 1 ..], " ");
-            c.error_label.as(gtk.Widget).setVisible(0);
+            c.problem = @splat(0);
             if (text.len == 0) {
                 try out.append(a, .{ .node = null, .index = i });
                 continue;
@@ -550,8 +596,7 @@ pub const Graph = struct {
             // diff(f, x) plots the derivative.
             const n = if (parsed_node) |pn| (if (calculus.hasDiff(pn)) calculus.expand(a, ev, pn) catch null else pn) else null;
             _ = n orelse {
-                c.error_label.setText(t("not understood"));
-                c.error_label.as(gtk.Widget).setVisible(1);
+                setProblem(c, "not understood");
                 try out.append(a, .{ .node = null, .index = i });
                 continue;
             };
@@ -559,14 +604,19 @@ pub const Graph = struct {
             // Names other than x must have values.
             if (self.unknownName(node)) |name| {
                 var buf: [96]u8 = undefined;
-                c.error_label.setText(std.fmt.bufPrintSentinel(&buf, "unknown: {s}", .{name}, 0) catch "unknown name");
-                c.error_label.as(gtk.Widget).setVisible(1);
+                setProblem(c, std.fmt.bufPrint(&buf, "unknown: {s}", .{name}) catch "unknown name");
                 try out.append(a, .{ .node = null, .index = i });
                 continue;
             }
             try out.append(a, .{ .node = node, .index = i });
         }
         return out.toOwnedSlice(a);
+    }
+
+    fn setProblem(c: *Curve, text: []const u8) void {
+        c.problem = @splat(0);
+        const n = @min(text.len, c.problem.len - 1);
+        @memcpy(c.problem[0..n], text[0..n]);
     }
 
     fn unknownName(self: *Graph, n: *const eval.Node) ?[]const u8 {
