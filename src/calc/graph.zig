@@ -33,6 +33,8 @@ const colours = [max_curves][3]f64{
 
 const Curve = struct {
     row: *gtk.Box,
+    /// "y =", or the formula's letter ("A =").
+    prefix: *gtk.Label,
     entry: *gtk.Entry,
     swatch: *gtk.DrawingArea,
     error_label: *gtk.Label,
@@ -53,7 +55,17 @@ pub const Graph = struct {
     /// The x and y shown, in the middle and per pixel.
     cx: f64 = 0,
     cy: f64 = 0,
-    scale: f64 = 1.0 / 40.0,
+    /// Units per pixel, across and up (they differ once a curve is fitted).
+    sx: f64 = 1.0 / 40.0,
+    sy: f64 = 1.0 / 40.0,
+    /// What the axes stand for, when a formula is drawn ("r", "A").
+    x_title: [24]u8 = @splat(0),
+    y_title: [24]u8 = @splat(0),
+    // The Scale panel.
+    range: [4]*gtk.Entry = undefined,
+    same_scale: *gtk.CheckButton = undefined,
+    /// A curve to fit the view to once the graph has its size.
+    pending_fit: ?usize = null,
     drag_cx: f64 = 0,
     drag_cy: f64 = 0,
     pinch_scale: f64 = 1,
@@ -102,7 +114,9 @@ pub const Graph = struct {
 
         self.status.setXalign(0);
         self.status.as(gtk.Widget).addCssClass("dim-label");
-        self.status.setText(t("Angles in radians. Drag to move, scroll to zoom."));
+        self.status.setWrap(1);
+        self.status.setMaxWidthChars(40);
+        self.status.setText(t("Type a function of x below, press Plot on the scientific keypad, or Graph in a formula. Angles are in radians; drag to move, scroll to zoom."));
         self.root.append(self.status.as(gtk.Widget));
 
         self.root.append(self.list.as(gtk.Widget));
@@ -115,12 +129,156 @@ pub const Graph = struct {
         const save = gtk.Button.newWithLabel(t("Save as Picture…"));
         _ = gtk.Button.signals.clicked.connect(save, *Graph, &onSave, self, .{});
         buttons.append(add.as(gtk.Widget));
+        buttons.append(self.buildScale());
         buttons.append(reset.as(gtk.Widget));
         buttons.append(save.as(gtk.Widget));
         self.root.append(buttons.as(gtk.Widget));
 
-        self.addCurve("sin(x)");
+        self.addCurve("");
         return self;
+    }
+
+    /// The Scale… button: the ranges shown, typed in; fitting; one scale for both axes.
+    fn buildScale(self: *Graph) *gtk.Widget {
+        const button = gtk.MenuButton.new();
+        button.setLabel(t("Scale…"));
+        button.as(gtk.Widget).setTooltipText(t("Set the ranges shown on the axes"));
+        const popover = gtk.Popover.new();
+        const g = gtk.Grid.new();
+        g.setColumnSpacing(6);
+        g.setRowSpacing(6);
+        inline for (.{ "setMarginStart", "setMarginEnd", "setMarginTop", "setMarginBottom" }) |m| @field(gtk.Widget, m)(g.as(gtk.Widget), 8);
+        const labels = [_][:0]const u8{ "x from", "to", "y from", "to" };
+        for (labels, 0..) |l, i| {
+            const lab = gtk.Label.new(l);
+            lab.setXalign(1);
+            const e = gtk.Entry.new();
+            e.as(gtk.Editable).setWidthChars(9);
+            e.setActivatesDefault(1);
+            _ = gtk.Entry.signals.activate.connect(e, *Graph, &onRangeEnter, self, .{});
+            self.range[i] = e;
+            const row: c_int = @intCast(i / 2);
+            const col: c_int = @intCast((i % 2) * 2);
+            g.attach(lab.as(gtk.Widget), col, row, 1, 1);
+            g.attach(e.as(gtk.Widget), col + 1, row, 1, 1);
+        }
+        self.same_scale = gtk.CheckButton.newWithLabel(t("Same scale on both axes"));
+        _ = gtk.CheckButton.signals.toggled.connect(self.same_scale, *Graph, &onSameScale, self, .{});
+        g.attach(self.same_scale.as(gtk.Widget), 0, 2, 4, 1);
+        const actions = gtk.Box.new(.horizontal, 6);
+        const fit_button = gtk.Button.newWithLabel(t("Fit to Curves"));
+        _ = gtk.Button.signals.clicked.connect(fit_button, *Graph, &onFitAll, self, .{});
+        const apply = gtk.Button.newWithLabel(t("Apply"));
+        apply.as(gtk.Widget).addCssClass("suggested-action");
+        _ = gtk.Button.signals.clicked.connect(apply, *Graph, &onApplyRange, self, .{});
+        actions.append(fit_button.as(gtk.Widget));
+        actions.append(apply.as(gtk.Widget));
+        actions.as(gtk.Widget).setHalign(.end);
+        g.attach(actions.as(gtk.Widget), 0, 3, 4, 1);
+        popover.setChild(g.as(gtk.Widget));
+        _ = gtk.Widget.signals.show.connect(popover, *Graph, &onScaleShown, self, .{});
+        button.setPopover(popover);
+        return button.as(gtk.Widget);
+    }
+
+    /// The panel opens with the ranges shown now.
+    fn onScaleShown(_: *gtk.Popover, self: *Graph) callconv(.c) void {
+        const sz = self.size();
+        const values = [4]f64{ self.toX(0), self.toX(sz[0]), self.toY(sz[1]), self.toY(0) };
+        for (values, 0..) |v, i| {
+            var buf: [32]u8 = undefined;
+            self.range[i].as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{d:.6}", .{v}, 0) catch "");
+            trimZeros(self.range[i]);
+        }
+    }
+
+    fn trimZeros(e: *gtk.Entry) void {
+        const text = std.mem.span(e.as(gtk.Editable).getText());
+        if (std.mem.indexOfScalar(u8, text, '.') == null) return;
+        var end = text.len;
+        while (end > 0 and text[end - 1] == '0') end -= 1;
+        if (end > 0 and text[end - 1] == '.') end -= 1;
+        var buf: [32]u8 = undefined;
+        e.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{text[0..end]}, 0) catch return);
+    }
+
+    /// A range field's value; expressions such as 2π work.
+    fn rangeValue(self: *Graph, i: usize) ?f64 {
+        _ = self.arena.reset(.retain_capacity);
+        const a = self.arena.allocator();
+        var p: eval.Problem = .{};
+        const n = eval.parseExpr(a, std.mem.span(self.range[i].as(gtk.Editable).getText()), .{ .angle = .radians }, &p) catch return null;
+        var ev: eval.Eval = .{ .a = a, .session = self.session, .mode = .{ .angle = .radians }, .problem = &p };
+        const v = (ev.eval(n, null) catch return null).toFloat();
+        return if (std.math.isFinite(v)) v else null;
+    }
+
+    fn onRangeEnter(_: *gtk.Entry, self: *Graph) callconv(.c) void {
+        self.applyRange();
+    }
+
+    fn onApplyRange(_: *gtk.Button, self: *Graph) callconv(.c) void {
+        self.applyRange();
+    }
+
+    fn applyRange(self: *Graph) void {
+        const x0 = self.rangeValue(0) orelse return;
+        const x1 = self.rangeValue(1) orelse return;
+        const y0 = self.rangeValue(2) orelse return;
+        const y1 = self.rangeValue(3) orelse return;
+        if (x1 <= x0 or y1 <= y0) return self.note("The end of a range must be past its start");
+        const sz = self.size();
+        self.sx = (x1 - x0) / sz[0];
+        self.cx = (x0 + x1) / 2;
+        self.sy = (y1 - y0) / sz[1];
+        self.cy = (y0 + y1) / 2;
+        if (self.same_scale.getActive() != 0) self.sy = self.sx;
+        self.refresh();
+    }
+
+    fn onSameScale(cb: *gtk.CheckButton, self: *Graph) callconv(.c) void {
+        if (cb.getActive() == 0) return;
+        // Circles look round: the vertical scale follows the horizontal.
+        self.sy = self.sx;
+        self.refresh();
+        self.onScaleShownRefresh();
+    }
+
+    fn onScaleShownRefresh(self: *Graph) void {
+        onScaleShown(undefined, self);
+    }
+
+    /// Fits the vertical range to every curve over the x range shown.
+    fn onFitAll(_: *gtk.Button, self: *Graph) callconv(.c) void {
+        _ = self.arena.reset(.retain_capacity);
+        const a = self.arena.allocator();
+        var problem: eval.Problem = .{};
+        var ev: eval.Eval = .{ .a = a, .session = self.session, .mode = .{ .angle = .radians }, .problem = &problem };
+        const parsed = self.parseCurves(a, &ev) catch return;
+        const sz = self.size();
+        var ymin = std.math.inf(f64);
+        var ymax = -std.math.inf(f64);
+        for (parsed) |pc| {
+            const n = pc.node orelse continue;
+            var px: f64 = 0;
+            while (px <= sz[0]) : (px += 2) {
+                const y = ev.float(n, "x", self.toX(px));
+                if (!std.math.isFinite(y)) continue;
+                ymin = @min(ymin, y);
+                ymax = @max(ymax, y);
+            }
+        }
+        if (!std.math.isFinite(ymin)) return;
+        if (ymax - ymin < 1e-9) {
+            ymin -= 1;
+            ymax += 1;
+        }
+        const margin = (ymax - ymin) * 0.08;
+        self.sy = (ymax - ymin + 2 * margin) / sz[1];
+        self.cy = (ymin + ymax) / 2;
+        self.same_scale.setActive(0);
+        self.refresh();
+        self.onScaleShownRefresh();
     }
 
     pub fn destroy(self: *Graph) void {
@@ -135,17 +293,97 @@ pub const Graph = struct {
         return self.root.as(gtk.Widget);
     }
 
-    /// Plots `text` (from the calculator's "Graph It"), in a new row or the first empty one.
-    pub fn plot(self: *Graph, text: []const u8) void {
+    /// Plots `text` (from Plot or a formula's Graph button) in the first empty
+    /// row (or a new one), named `y` along `x` when a formula gives letters,
+    /// and fits the view to it.
+    pub fn plot(self: *Graph, text: []const u8, letters: ?struct { y: []const u8, x: []const u8 }) void {
         var buf: [512]u8 = undefined;
         const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{text}, 0) catch return;
-        for (self.curves.items) |c| {
-            if (std.mem.span(c.entry.as(gtk.Editable).getText()).len == 0) {
-                c.entry.as(gtk.Editable).setText(z);
-                return;
+        const curve = for (self.curves.items) |c| {
+            if (std.mem.span(c.entry.as(gtk.Editable).getText()).len == 0) break c;
+        } else blk: {
+            if (self.curves.items.len < max_curves) self.addCurve("");
+            break :blk self.curves.items[self.curves.items.len - 1];
+        };
+        var pb: [40]u8 = undefined;
+        curve.prefix.setText(if (letters) |l| (std.fmt.bufPrintSentinel(&pb, "{s} =", .{l.y}, 0) catch "y =") else "y =");
+        setTitle(&self.x_title, if (letters) |l| l.x else "");
+        setTitle(&self.y_title, if (letters) |l| l.y else "");
+        curve.entry.as(gtk.Editable).setText(z);
+        self.fit(curve);
+    }
+
+    fn setTitle(dst: *[24]u8, text: []const u8) void {
+        dst.* = @splat(0);
+        const n = @min(text.len, dst.len - 1);
+        @memcpy(dst[0..n], text[0..n]);
+    }
+
+    /// Fits the view to a curve: x from −10 to 10 (or 0 to 10 when the curve
+    /// only exists for positive x), y to what the curve does there.
+    fn fit(self: *Graph, curve: *Curve) void {
+        // Not shown yet (the pane has just opened): when it is drawn.
+        if (self.area.as(gtk.Widget).getWidth() < 10) {
+            self.pending_fit = curve.index;
+            return self.refresh();
+        }
+        self.pending_fit = null;
+        _ = self.arena.reset(.retain_capacity);
+        const a = self.arena.allocator();
+        var problem: eval.Problem = .{};
+        var ev: eval.Eval = .{ .a = a, .session = self.session, .mode = .{ .angle = .radians }, .problem = &problem };
+        const parsed = self.parseCurves(a, &ev) catch return;
+        const n = parsed[curve.index].node orelse return;
+        var lo: f64 = -10;
+        const hi: f64 = 10;
+        var negative_ok = false;
+        var ymin = std.math.inf(f64);
+        var ymax = -std.math.inf(f64);
+        var i: usize = 0;
+        while (i <= 400) : (i += 1) {
+            const x = -10 + 20 * @as(f64, @floatFromInt(i)) / 400;
+            const y = ev.float(n, "x", x);
+            if (!std.math.isFinite(y)) continue;
+            if (x < 0) negative_ok = true;
+            ymin = @min(ymin, y);
+            ymax = @max(ymax, y);
+        }
+        if (!std.math.isFinite(ymin)) return self.refresh();
+        // Lengths, areas, money...: when only x ≥ 0 makes sense, show that.
+        if (!negative_ok or self.x_title[0] != 0) lo = 0;
+        if (self.x_title[0] != 0) {
+            // Recompute y over the shown x only.
+            ymin = std.math.inf(f64);
+            ymax = -std.math.inf(f64);
+            i = 0;
+            while (i <= 400) : (i += 1) {
+                const x = lo + (hi - lo) * @as(f64, @floatFromInt(i)) / 400;
+                const y = ev.float(n, "x", x);
+                if (!std.math.isFinite(y)) continue;
+                ymin = @min(ymin, y);
+                ymax = @max(ymax, y);
             }
         }
-        if (self.curves.items.len < max_curves) self.addCurve(z) else self.curves.items[max_curves - 1].entry.as(gtk.Editable).setText(z);
+        // Keep the x axis in view when the curve is near it.
+        if (ymin > 0 and ymin < (ymax - ymin)) ymin = 0;
+        if (ymax < 0 and -ymax < (ymax - ymin)) ymax = 0;
+        if (ymax - ymin < 1e-9) {
+            ymin -= 1;
+            ymax += 1;
+        }
+        const sz = self.size();
+        const margin = (ymax - ymin) * 0.08;
+        self.sx = (hi - lo) * 1.1 / sz[0];
+        self.cx = (lo + hi) / 2;
+        self.sy = (ymax - ymin + 2 * margin) / sz[1];
+        self.cy = (ymin + ymax) / 2;
+        self.refresh();
+    }
+
+    /// A line under the graph (what the axes are).
+    pub fn note(self: *Graph, text: []const u8) void {
+        var buf: [256]u8 = undefined;
+        self.status.setText(std.fmt.bufPrintSentinel(&buf, "{s}. Drag to move, scroll to zoom.", .{text}, 0) catch "");
     }
 
     /// The calculator's functions or variables changed: draw again.
@@ -157,6 +395,7 @@ pub const Graph = struct {
         if (self.curves.items.len >= max_curves) return;
         const c = self.gpa.create(Curve) catch return;
         c.* = .{
+            .prefix = undefined,
             .row = gtk.Box.new(.horizontal, 6),
             .entry = gtk.Entry.new(),
             .swatch = gtk.DrawingArea.new(),
@@ -172,6 +411,7 @@ pub const Graph = struct {
         c.swatch.as(gtk.Widget).setValign(.center);
         c.swatch.setDrawFunc(onSwatch, c, null);
         const prefix = gtk.Label.new("y =");
+        c.prefix = prefix;
         c.entry.as(gtk.Widget).setHexpand(1);
         c.entry.setPlaceholderText(t("a function of x, e.g. x² − 2"));
         c.entry.as(gtk.Editable).setText(text);
@@ -206,7 +446,8 @@ pub const Graph = struct {
     fn onReset(_: *gtk.Button, self: *Graph) callconv(.c) void {
         self.cx = 0;
         self.cy = 0;
-        self.scale = 1.0 / 40.0;
+        self.sx = 1.0 / 40.0;
+        self.sy = 1.0 / 40.0;
         self.refresh();
     }
 
@@ -218,28 +459,29 @@ pub const Graph = struct {
     }
 
     fn toX(self: *Graph, px: f64) f64 {
-        return self.cx + (px - self.size()[0] / 2) * self.scale;
+        return self.cx + (px - self.size()[0] / 2) * self.sx;
     }
 
     fn toY(self: *Graph, py: f64) f64 {
-        return self.cy - (py - self.size()[1] / 2) * self.scale;
+        return self.cy - (py - self.size()[1] / 2) * self.sy;
     }
 
     fn toPx(self: *Graph, x: f64) f64 {
-        return (x - self.cx) / self.scale + self.size()[0] / 2;
+        return (x - self.cx) / self.sx + self.size()[0] / 2;
     }
 
     fn toPy(self: *Graph, y: f64) f64 {
-        return -(y - self.cy) / self.scale + self.size()[1] / 2;
+        return -(y - self.cy) / self.sy + self.size()[1] / 2;
     }
 
     fn zoomAt(self: *Graph, factor: f64, px: f64, py: f64) void {
         const x = self.toX(px);
         const y = self.toY(py);
-        self.scale = std.math.clamp(self.scale * factor, 1e-9, 1e9);
+        self.sx = std.math.clamp(self.sx * factor, 1e-12, 1e12);
+        self.sy = std.math.clamp(self.sy * factor, 1e-12, 1e12);
         // Keep (x, y) under the pointer.
-        self.cx = x - (px - self.size()[0] / 2) * self.scale;
-        self.cy = y + (py - self.size()[1] / 2) * self.scale;
+        self.cx = x - (px - self.size()[0] / 2) * self.sx;
+        self.cy = y + (py - self.size()[1] / 2) * self.sy;
         self.refresh();
     }
 
@@ -249,8 +491,8 @@ pub const Graph = struct {
     }
 
     fn onDragUpdate(_: *gtk.GestureDrag, dx: f64, dy: f64, self: *Graph) callconv(.c) void {
-        self.cx = self.drag_cx - dx * self.scale;
-        self.cy = self.drag_cy + dy * self.scale;
+        self.cx = self.drag_cx - dx * self.sx;
+        self.cy = self.drag_cy + dy * self.sy;
         self.refresh();
     }
 
@@ -262,7 +504,7 @@ pub const Graph = struct {
     }
 
     fn onPinchBegin(_: *gtk.Gesture, _: ?*gdk.EventSequence, self: *Graph) callconv(.c) void {
-        self.pinch_scale = self.scale;
+        self.pinch_scale = self.sx;
     }
 
     fn onPinch(g: *gtk.GestureZoom, s: f64, self: *Graph) callconv(.c) void {
@@ -271,7 +513,7 @@ pub const Graph = struct {
         var py: f64 = 0;
         _ = g.as(gtk.Gesture).getBoundingBoxCenter(&px, &py);
         const want = self.pinch_scale / s;
-        self.zoomAt(want / self.scale, px, py);
+        self.zoomAt(want / self.sx, px, py);
     }
 
     fn onMotion(_: *gtk.EventControllerMotion, x: f64, y: f64, self: *Graph) callconv(.c) void {
@@ -346,6 +588,7 @@ pub const Graph = struct {
 
     fn onDraw(_: *gtk.DrawingArea, cr: *cairo.Context, w: c_int, h: c_int, data: ?*anyopaque) callconv(.c) void {
         const self: *Graph = @ptrCast(@alignCast(data.?));
+        if (self.pending_fit) |i| if (i < self.curves.items.len and w >= 10) self.fit(self.curves.items[i]);
         self.draw(cr, @floatFromInt(w), @floatFromInt(h), true);
     }
 
@@ -420,7 +663,8 @@ pub const Graph = struct {
     }
 
     fn drawGrid(self: *Graph, cr: *cairo.Context, w: f64, h: f64) void {
-        const step = niceStep(80 * self.scale);
+        const xstep = niceStep(80 * self.sx);
+        const ystep = niceStep(60 * self.sy);
         const layout = pangocairo.createLayout(cr);
         defer layout.as(gobject.Object).unref();
         const font = pango.FontDescription.fromString("Sans 8");
@@ -428,16 +672,16 @@ pub const Graph = struct {
         layout.setFontDescription(font);
 
         cr.setLineWidth(1);
-        var x = @floor(self.toX(0) / step) * step;
-        while (x <= self.toX(w)) : (x += step) {
+        var x = @floor(self.toX(0) / xstep) * xstep;
+        while (x <= self.toX(w)) : (x += xstep) {
             const px = @round(self.toPx(x)) + 0.5;
             cr.setSourceRgb(0.9, 0.9, 0.9);
             cr.moveTo(px, 0);
             cr.lineTo(px, h);
             cr.stroke();
         }
-        var y = @floor(self.toY(h) / step) * step;
-        while (y <= self.toY(0)) : (y += step) {
+        var y = @floor(self.toY(h) / ystep) * ystep;
+        while (y <= self.toY(0)) : (y += ystep) {
             const py = @round(self.toPy(y)) + 0.5;
             cr.setSourceRgb(0.9, 0.9, 0.9);
             cr.moveTo(0, py);
@@ -454,15 +698,31 @@ pub const Graph = struct {
         cr.lineTo(w, ay);
         cr.stroke();
         cr.setSourceRgb(0.3, 0.3, 0.3);
-        x = @floor(self.toX(0) / step) * step;
-        while (x <= self.toX(w)) : (x += step) {
-            if (@abs(x) < step / 2) continue;
-            self.label(cr, layout, self.toPx(x) + 2, @min(ay + 2, h - 14), x, step);
+        x = @floor(self.toX(0) / xstep) * xstep;
+        while (x <= self.toX(w)) : (x += xstep) {
+            if (@abs(x) < xstep / 2) continue;
+            self.label(cr, layout, self.toPx(x) + 2, @min(ay + 2, h - 14), x, xstep);
         }
-        y = @floor(self.toY(h) / step) * step;
-        while (y <= self.toY(0)) : (y += step) {
-            if (@abs(y) < step / 2) continue;
-            self.label(cr, layout, @min(ax + 3, w - 40), self.toPy(y) - 14, y, step);
+        y = @floor(self.toY(h) / ystep) * ystep;
+        while (y <= self.toY(0)) : (y += ystep) {
+            if (@abs(y) < ystep / 2) continue;
+            self.label(cr, layout, @min(ax + 3, w - 60), self.toPy(y) - 14, y, ystep);
+        }
+        // What the axes are, for a formula: its letters at their ends.
+        const bold = pango.FontDescription.fromString("Sans Bold 10");
+        defer bold.free();
+        layout.setFontDescription(bold);
+        const xt = std.mem.sliceTo(&self.x_title, 0);
+        const yt = std.mem.sliceTo(&self.y_title, 0);
+        if (xt.len > 0) {
+            layout.setText(@ptrCast(xt.ptr), @intCast(xt.len));
+            cr.moveTo(w - 8 - 10 * @as(f64, @floatFromInt(xt.len)), @min(ay - 18, h - 18));
+            pangocairo.showLayout(cr, layout);
+        }
+        if (yt.len > 0) {
+            layout.setText(@ptrCast(yt.ptr), @intCast(yt.len));
+            cr.moveTo(@min(ax + 6, w - 20), 4);
+            pangocairo.showLayout(cr, layout);
         }
     }
 

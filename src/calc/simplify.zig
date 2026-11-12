@@ -430,6 +430,78 @@ pub const Ctx = struct {
     }
 };
 
+/// The coefficients of `n` (constant first) when it is a polynomial in `x`
+/// with numbers for coefficients (π and e count as numbers), else null.
+pub fn polynomial(a: std.mem.Allocator, ev: *eval.Eval, n: *const Node, x: []const u8) eval.Error!?[]f64 {
+    var ctx: Ctx = .{ .a = a, .ev = ev };
+    const terms = try ctx.toSum(n);
+    var coefs: std.ArrayList(f64) = .empty;
+    for (terms) |term| {
+        var c = term.coef.toFloat();
+        var power: usize = 0;
+        for (term.factors) |f| {
+            if (f.base.* != .name) return null;
+            const name = f.base.name.text;
+            if (eval.isConstant(name)) {
+                // π, e, τ, φ are numbers here.
+                const v = ev.eval(f.base, null) catch return null;
+                c *= std.math.pow(f64, v.toFloat(), f.exp.toFloat());
+                continue;
+            }
+            if (!std.mem.eql(u8, name, x)) return null;
+            if (!f.exp.isExact() or !f.exp.isInteger() or f.exp.isNegative()) return null;
+            const e = num.intValue(f.exp) orelse return null;
+            if (e > 64) return null;
+            power += @intCast(e);
+        }
+        while (coefs.items.len <= power) try coefs.append(a, 0);
+        coefs.items[power] += c;
+    }
+    // The highest power must be there.
+    while (coefs.items.len > 1 and coefs.items[coefs.items.len - 1] == 0) _ = coefs.pop();
+    if (coefs.items.len < 2) return null;
+    return coefs.items;
+}
+
+/// Every root, real and complex, of the polynomial with these coefficients
+/// (constant first), by the Durand–Kerner method.
+pub fn complexRoots(a: std.mem.Allocator, coefs: []const f64) ![]std.math.Complex(f64) {
+    const C = std.math.Complex(f64);
+    const n = coefs.len - 1;
+    const lead = coefs[n];
+    var z = try a.alloc(C, n);
+    // Starting points spread on a circle (not on the real line).
+    const start = C.init(0.4, 0.9);
+    var p = C.init(1, 0);
+    for (z) |*zi| {
+        zi.* = p;
+        p = p.mul(start);
+    }
+    var iter: usize = 0;
+    while (iter < 500) : (iter += 1) {
+        var moved: f64 = 0;
+        for (z, 0..) |zi, i| {
+            // The polynomial at zi, divided by the leading coefficient.
+            var v = C.init(0, 0);
+            var k = n + 1;
+            while (k > 0) {
+                k -= 1;
+                v = v.mul(zi).add(C.init(coefs[k] / lead, 0));
+            }
+            var d = C.init(1, 0);
+            for (z, 0..) |zj, j| if (j != i) {
+                d = d.mul(zi.sub(zj));
+            };
+            if (d.magnitude() == 0) continue;
+            const step = v.div(d);
+            z[i] = zi.sub(step);
+            moved = @max(moved, step.magnitude());
+        }
+        if (moved < 1e-14) break;
+    }
+    return z;
+}
+
 /// The expression tidied, as text.
 pub fn simplify(a: std.mem.Allocator, ev: *eval.Eval, n: *const Node) eval.Error![]u8 {
     var ctx: Ctx = .{ .a = a, .ev = ev };
@@ -484,4 +556,26 @@ test "tidying" {
     try session.setVar("g", try num.fromInt(a, 10));
     const n = try eval.parseExpr(a, "m·g·h", .{}, &p);
     try std.testing.expectEqualStrings("10h·m", try simplify(a, &ev, n));
+}
+
+test "polynomials and their complex roots" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var session: eval.Session = .{ .gpa = std.testing.allocator };
+    defer session.deinit();
+    var p: eval.Problem = .{};
+    var ev: eval.Eval = .{ .a = a, .session = &session, .mode = .{}, .problem = &p };
+    // 9² = a² + 6²×8, as a − b = 0: 81 − a² − 288.
+    const n = try eval.parseExpr(a, "9² − (a² + 6²×8)", .{}, &p);
+    const c = (try polynomial(a, &ev, n, "a")).?;
+    try std.testing.expectEqual(@as(usize, 3), c.len);
+    try std.testing.expectApproxEqAbs(@as(f64, -207), c[0], 1e-9);
+    try std.testing.expectApproxEqAbs(@as(f64, -1), c[2], 1e-9);
+    const roots = try complexRoots(a, c);
+    for (roots) |r| {
+        try std.testing.expectApproxEqAbs(@as(f64, 0), r.re, 1e-9);
+        try std.testing.expectApproxEqAbs(@as(f64, @sqrt(207.0)), @abs(r.im), 1e-9);
+    }
+    try std.testing.expect((try polynomial(a, &ev, try eval.parseExpr(a, "sin(x) + 1", .{}, &p), "x")) == null);
 }

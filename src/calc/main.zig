@@ -27,6 +27,7 @@ const dates = @import("dates.zig");
 const graph_mod = @import("graph.zig");
 const simplify = @import("simplify.zig");
 const formulas = @import("formulas.zig");
+const calculus = @import("calculus.zig");
 
 const t = common.tr;
 /// Thousands are grouped with a narrow no-break space, which can never be
@@ -127,6 +128,9 @@ const Calc = struct {
     /// The user's own formulas ("Save Entry as Formula").
     own_formulas: std.ArrayList([]u8) = .empty,
     formula_fields: std.ArrayList(Field) = .empty,
+    /// The Formulas pane's Graph button, and what it would draw.
+    formula_graph: ?*gtk.Button = null,
+    graph_plan: ?struct { expr: []u8, y: []u8, x: []u8 } = null,
 
     mode: Mode = .standard,
     pane: Pane = .none,
@@ -761,6 +765,18 @@ const Calc = struct {
                 }
             },
             .truth => |yes| self.finishResult(expr_copy, if (yes) t("true") else t("false"), null, a),
+            .complex => |cx| {
+                var parts: std.ArrayList(u8) = .empty;
+                for (cx.re, cx.im, 0..) |re, im, i| {
+                    if (i > 0) parts.appendSlice(a, ";  ") catch return;
+                    const z = complexText(a, re, im, self.style) catch return;
+                    parts.print(a, "{s} = {s}", .{ cx.name, z }) catch return;
+                }
+                self.finishResult(expr_copy, parts.items, null, a);
+                if (self.plain) |pl| self.gpa.free(pl);
+                self.plain = null;
+                self.preview.setText(t("No real solution: these are the complex ones (i = √−1)"));
+            },
             .simplified => |x| {
                 self.finishResult(expr_copy, x, null, a);
                 if (self.plain) |pl| self.gpa.free(pl);
@@ -769,6 +785,15 @@ const Calc = struct {
                 self.preview.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{t("Simplified: give the other letters values to work it out")}, 0) catch "");
             },
         }
+    }
+
+    /// "3 + 2i", "−14.3874945699i".
+    fn complexText(a: std.mem.Allocator, re: f64, im: f64, style: num.Style) ![]u8 {
+        const im_text = try num.format(a, .{ .approx = @abs(im) }, style);
+        const im_part = if (std.mem.eql(u8, im_text, "1")) "" else im_text;
+        if (re == 0) return std.fmt.allocPrint(a, "{s}{s}i", .{ if (im < 0) "−" else "", im_part });
+        const re_text = try num.format(a, .{ .approx = re }, style);
+        return std.fmt.allocPrint(a, "{s} {s} {s}i", .{ re_text, if (im < 0) "−" else "+", im_part });
     }
 
     fn looksNumeric(text: []const u8) bool {
@@ -900,7 +925,9 @@ const Calc = struct {
         const st = eval.parse(a, text, self.evalMode(), &p) catch return self.preview.setText("");
         switch (st) {
             .equation => |eq| {
-                const hint: [:0]const u8 = if (eq.l.* == .name) t("Enter sets the variable or solves the equation") else if (eq.l.* == .call) t("Enter defines the function or solves the equation") else t("Enter solves the equation");
+                const hint: [:0]const u8 = if (self.formula != null)
+                    t("Enter works out the letter left empty (or simplifies the formula)")
+                else if (eq.l.* == .name) t("Enter sets the variable or solves the equation") else if (eq.l.* == .call) t("Enter defines the function or solves the equation") else t("Enter solves the equation");
                 self.preview.setText(hint);
             },
             .expr => |n| {
@@ -1094,6 +1121,7 @@ const Calc = struct {
         const vhint = gtk.Label.new(t("Set one with x = 5 or f(x) = x² + 1."));
         vhint.setXalign(0);
         vhint.setWrap(1);
+        vhint.setMaxWidthChars(40);
         vhint.as(gtk.Widget).addCssClass("dim-label");
         box.append(vhint.as(gtk.Widget));
         return box.as(gtk.Widget);
@@ -1133,11 +1161,13 @@ const Calc = struct {
             const e = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.expr}, 0) catch "");
             e.setXalign(1);
             e.setWrap(1);
+            e.setMaxWidthChars(40);
             e.setWrapMode(.word_char);
             e.as(gtk.Widget).addCssClass("dim-label");
             const r = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.result}, 0) catch "");
             r.setXalign(1);
             r.setWrap(1);
+            r.setMaxWidthChars(40);
             r.setWrapMode(.word_char);
             r.as(gtk.Widget).addCssClass("dkde-calc-history-result");
             box.append(e.as(gtk.Widget));
@@ -1271,12 +1301,14 @@ const Calc = struct {
         self.unit_result.setXalign(0);
         self.unit_result.setSelectable(1);
         self.unit_result.setWrap(1);
+        self.unit_result.setMaxWidthChars(40);
         self.unit_result.as(gtk.Widget).addCssClass("dkde-calc-unit-result");
         box.append(self.unit_result.as(gtk.Widget));
 
         const hint = gtk.Label.new(t("In the calculator, type for example 5 km in mi or 100 °F to °C."));
         hint.setXalign(0);
         hint.setWrap(1);
+        hint.setMaxWidthChars(40);
         hint.as(gtk.Widget).addCssClass("dim-label");
         hint.as(gtk.Widget).setVexpand(1);
         hint.as(gtk.Widget).setValign(.end);
@@ -1405,6 +1437,7 @@ const Calc = struct {
         self.date_result = gtk.Label.new("");
         self.date_result.setXalign(0);
         self.date_result.setWrap(1);
+        self.date_result.setMaxWidthChars(40);
         self.date_result.setSelectable(1);
         self.date_result.as(gtk.Widget).addCssClass("dkde-calc-unit-result");
         box.append(self.date_result.as(gtk.Widget));
@@ -1448,6 +1481,7 @@ const Calc = struct {
         const about = gtk.Label.new("");
         about.setXalign(0);
         about.setWrap(1);
+        about.setMaxWidthChars(40);
         about.as(gtk.Widget).addCssClass("dim-label");
         box.append(about.as(gtk.Widget));
         const field = self.gpa.create(DateField) catch return entry;
@@ -1696,7 +1730,67 @@ const Calc = struct {
         self.pickFormula(p);
     }
 
+    fn dropGraphPlan(self: *Calc) void {
+        if (self.graph_plan) |gp| {
+            self.gpa.free(gp.expr);
+            self.gpa.free(gp.y);
+            self.gpa.free(gp.x);
+        }
+        self.graph_plan = null;
+    }
+
+    /// A formula can be drawn when one side is a single letter left empty and
+    /// exactly one other letter is empty: that one goes along the x axis.
+    fn planGraph(self: *Calc, a: std.mem.Allocator, ev: *eval.Eval, l: *eval.Node, r: *eval.Node) void {
+        self.dropGraphPlan();
+        var empty: std.ArrayList([]const u8) = .empty;
+        for (self.formula_fields.items) |f| {
+            if (std.mem.trim(u8, std.mem.span(f.entry.as(gtk.Editable).getText()), " ").len == 0) empty.append(a, f.name) catch return;
+        }
+        const button = self.formula_graph orelse return;
+        defer {
+            button.as(gtk.Widget).setSensitive(@intFromBool(self.graph_plan != null));
+            button.as(gtk.Widget).setTooltipText(if (self.graph_plan != null)
+                t("Draw the formula: the first empty letter up, the other along")
+            else
+                t("To draw a formula, leave empty the letter on its own on one side and one other letter"));
+        }
+        if (empty.items.len != 2) return;
+        for ([_][2]*eval.Node{ .{ l, r }, .{ r, l } }) |sides| {
+            if (sides[0].* != .name) continue;
+            const y = sides[0].name.text;
+            const x = for (empty.items) |e| {
+                if (!std.mem.eql(u8, e, y)) break e;
+            } else continue;
+            const is_empty = for (empty.items) |e| {
+                if (std.mem.eql(u8, e, y)) break true;
+            } else false;
+            if (!is_empty or !calculus.uses(sides[1], x)) continue;
+            const x_node = a.create(eval.Node) catch return;
+            x_node.* = .{ .name = .{ .text = "x", .pos = 0 } };
+            const along = calculus.substitute(a, sides[1], x, x_node) catch return;
+            const text = simplify.print(a, ev, along) catch return;
+            self.graph_plan = .{
+                .expr = self.gpa.dupe(u8, text) catch return,
+                .y = self.gpa.dupe(u8, y) catch return,
+                .x = self.gpa.dupe(u8, x) catch return,
+            };
+            return;
+        }
+    }
+
+    fn onFormulaGraph(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        const gp = self.graph_plan orelse return;
+        var buf: [256]u8 = undefined;
+        const note = std.fmt.bufPrint(&buf, "{s} up, {s} along (x)", .{ gp.y, gp.x }) catch "";
+        // The graph pane replaces this one; the formula stays in the entry.
+        self.showPane(.graph);
+        self.graph.plot(gp.expr, .{ .y = gp.y, .x = gp.x });
+        self.graph.note(note);
+    }
+
     fn clearFields(self: *Calc) void {
+        self.dropGraphPlan();
         for (self.formula_fields.items) |f| self.gpa.free(f.name);
         self.formula_fields.clearRetainingCapacity();
         while (self.formula_form.as(gtk.Widget).getFirstChild()) |c| self.formula_form.remove(c);
@@ -1706,6 +1800,7 @@ const Calc = struct {
         const hint = gtk.Label.new(t("Pick a formula: it goes into the entry, and its letters get fields here. Fill in what you know and press Enter: the one left empty is worked out. With several left empty, the formula is simplified as far as it goes."));
         hint.setXalign(0);
         hint.setWrap(1);
+        hint.setMaxWidthChars(40);
         hint.as(gtk.Widget).addCssClass("dim-label");
         self.formula_form.append(hint.as(gtk.Widget));
     }
@@ -1774,10 +1869,15 @@ const Calc = struct {
             _ = gtk.Entry.signals.activate.connect(entry, *Calc, &onFieldActivate, self, .{});
         }
         self.formula_form.append(g.as(gtk.Widget));
+        const buttons = gtk.Box.new(.horizontal, 6);
         const clear_button = gtk.Button.newWithLabel(t("Clear the Values"));
-        clear_button.as(gtk.Widget).setHalign(.start);
         _ = gtk.Button.signals.clicked.connect(clear_button, *Calc, &onClearFields, self, .{});
-        self.formula_form.append(clear_button.as(gtk.Widget));
+        buttons.append(clear_button.as(gtk.Widget));
+        const graph_button = gtk.Button.newWithLabel(t("Graph"));
+        _ = gtk.Button.signals.clicked.connect(graph_button, *Calc, &onFormulaGraph, self, .{});
+        buttons.append(graph_button.as(gtk.Widget));
+        self.formula_graph = graph_button;
+        self.formula_form.append(buttons.as(gtk.Widget));
         self.updateFormulaEntry();
         if (self.formula_fields.items.len > 0) _ = self.formula_fields.items[0].entry.as(gtk.Widget).grabFocus();
     }
@@ -1822,6 +1922,11 @@ const Calc = struct {
         var pr: eval.Problem = .{};
         const st = eval.parse(a, text, .{}, &pr) catch return;
         var ev: eval.Eval = .{ .a = a, .session = &self.session, .mode = self.evalMode(), .problem = &pr };
+        if (st == .equation) {
+            const l = self.substitute(a, st.equation.l) catch return;
+            const r = self.substitute(a, st.equation.r) catch return;
+            self.planGraph(a, &ev, l, r);
+        }
         const filled = switch (st) {
             .equation => |eq| std.fmt.allocPrint(a, "{s} = {s}", .{
                 simplify.print(a, &ev, self.substitute(a, eq.l) catch return) catch return,
@@ -1918,7 +2023,7 @@ const Calc = struct {
     fn plotEntry(self: *Calc) void {
         const text = if (self.fresh) "" else self.entryText();
         self.showPane(.graph);
-        if (std.mem.trim(u8, text, " ").len > 0) self.graph.plot(text);
+        if (std.mem.trim(u8, text, " ").len > 0) self.graph.plot(text, null);
     }
 
     // ---- panes and menus --------------------------------------------------------------------
@@ -2184,6 +2289,7 @@ const Calc = struct {
         if (self.memory) |m| m.deinit(self.gpa);
         for (self.own_formulas.items) |f| self.gpa.free(f);
         self.own_formulas.deinit(self.gpa);
+        self.dropGraphPlan();
         // The widgets are already gone: only the names are freed.
         for (self.formula_fields.items) |f| self.gpa.free(f.name);
         self.formula_fields.deinit(self.gpa);

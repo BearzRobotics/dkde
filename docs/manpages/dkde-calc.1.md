@@ -53,10 +53,10 @@ Date Calculation (**Ctrl+E**)
 : The time between two dates (in years, months and days, and in days and weeks), or a date plus or minus a number of years, months and days. It works in every calendar dkde-calendar(1) shows: Julian, Gregorian, the International Fixed calendar, the Rosquin calendar in its three layouts, Chinese, Hebrew, Coptic and Ethiopian. Dates are typed year-month-day in the chosen calendar's own numbering (or picked on a Gregorian calendar and converted), each is described under its field with its Gregorian date, and changing the calendar keeps the same days. Years and months are counted in the chosen calendar: a Hebrew year from Kislev 1 is Kislev 1 the next year.
 
 Graph (**Ctrl+G**)
-: Draws up to six functions of x, each in its own colour. Drag to move, scroll or pinch to zoom. Where a curve crosses zero, and where two curves cross, a point is marked; point at it for its coordinates. Point near a curve to read its value. **Save as Picture** writes a PNG. Graphs are drawn in radians.
+: Draws up to six functions of x, each in its own colour. Drag to move, scroll or pinch to zoom. Where a curve crosses zero, and where two curves cross, a point is marked; point at it for its coordinates. Point near a curve to read its value. **Scale…** sets the ranges shown on the axes (numbers or expressions such as 2π), fits the vertical range to the curves, or gives both axes the same scale. **Save as Picture** writes a PNG. Graphs are drawn in radians. **Plot** on the scientific keypad, and **Graph** in the Formulas pane, draw what is in the entry and fit the view to it.
 
 Formulas (**Ctrl+Shift+F**)
-: About 140 formulas in geometry, trigonometry, algebra, physics, electricity, chemistry, statistics, money, health and everyday life, with a search box. Picking one puts it in the entry and gives each of its letters a field. Fill in what you know: the values are put into the entry as you type. **Enter** works out the one letter left empty; with several left empty, the formula is simplified as far as it goes. **Save Entry as Formula** keeps the equation in the entry among **My Formulas**.
+: About 140 formulas in geometry, trigonometry, algebra, physics, electricity, chemistry, statistics, money, health and everyday life, with a search box. Picking one puts it in the entry and gives each of its letters a field. Fill in what you know: the values are put into the entry as you type. **Enter** works out the one letter left empty; with several left empty, the formula is simplified as far as it goes. **Graph** draws the formula when the letter on its own on one side is left empty and exactly one other letter is too: the first goes up, the second along, and the axes are labelled with them (**A = π·r²** draws A against r). **Save Entry as Formula** keeps the equation in the entry among **My Formulas**.
 
 # KEYS
 **Enter**, keypad **Enter**
@@ -154,6 +154,9 @@ All keys are in the **[calc]** group.
 **x² − 5x + 6 = 0**
 : x = 2;  x = 3.
 
+**9² = a² + 6²×8**
+: No real solution (a² would be −207); the complex ones are given: a = 14.3874945699i;  a = −14.3874945699i.
+
 **E = m·v²/2** with **m = 4**
 : E = 2v² (simplified: v has no value).
 
@@ -191,7 +194,7 @@ Programmer mode works with whole numbers
 : A fraction in programmer mode.
 
 # LIMITATIONS
-Equations are solved numerically for one unknown; systems of equations and complex roots are not. Simplification combines numbers, like terms and powers; it does not expand products of sums or factor. There is no symbolic integration: **integral** gives a number. Unit conversions use fixed factors (no currencies). Graphs are drawn in radians.
+Equations are solved numerically for one unknown; systems of equations are not. Complex solutions are given only for polynomial equations without real ones. Simplification combines numbers, like terms and powers; it does not expand products of sums or factor. There is no symbolic integration: **integral** gives a number. Unit conversions use fixed factors (no currencies). Graphs are drawn in radians.
 
 # SEE ALSO
 dkde-calc-guide(7), dkde-calendar(1), dkde-help(1)

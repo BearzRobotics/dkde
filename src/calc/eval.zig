@@ -1149,6 +1149,8 @@ pub const Outcome = union(enum) {
     solved: struct { name: []const u8, roots: []Number, form: ?[]const u8 = null },
     /// Unknowns left: the entry tidied as far as it goes ("E = 2v²").
     simplified: []const u8,
+    /// No real solution, but a polynomial equation has complex ones.
+    complex: struct { name: []const u8, re: []f64, im: []f64 },
     /// Both sides known: whether they are equal.
     truth: bool,
 };
@@ -1284,7 +1286,20 @@ fn solve(a: std.mem.Allocator, ev: *Eval, l: *Node, r: *Node) Error!Outcome {
     const diff = try a.create(Node);
     diff.* = .{ .binary = .{ .op = .sub, .l = l, .r = r } };
     const roots = try findRoots(a, ev, diff, x_name);
-    if (roots.len == 0) return error.NoSolution;
+    if (roots.len == 0) {
+        // A polynomial with no real roots still has complex ones.
+        if (try simplify.polynomial(a, ev, diff, x_name)) |coefs| {
+            const all = try simplify.complexRoots(a, coefs);
+            var re: std.ArrayList(f64) = .empty;
+            var im: std.ArrayList(f64) = .empty;
+            for (all) |z| {
+                try re.append(a, if (@abs(z.re) < 1e-12 * @max(1, z.magnitude())) 0 else z.re);
+                try im.append(a, z.im);
+            }
+            if (re.items.len > 0) return .{ .complex = .{ .name = x_name, .re = re.items, .im = im.items } };
+        }
+        return error.NoSolution;
+    }
     var out = try a.alloc(Number, roots.len);
     for (roots, 0..) |root, i| out[i] = try exactRoot(a, ev, diff, x_name, root);
     return .{ .solved = .{ .name = x_name, .roots = out } };
@@ -1449,6 +1464,7 @@ const Tester = struct {
             .defined => |d| d,
             .truth => |t| if (t) "true" else "false",
             .simplified => |x| x,
+            .complex => |cx| try std.fmt.allocPrint(a, "{d} complex", .{cx.re.len}),
             .solved => |s| blk: {
                 var parts: std.ArrayList(u8) = .empty;
                 for (s.roots, 0..) |r, i| {
@@ -1564,7 +1580,9 @@ test "equations" {
     try t.expect("0.333333", "3v = 1");
     try t.expect("true", "2 + 2 = 4");
     try t.expect("false", "2 + 2 = 5");
-    try std.testing.expectError(error.NoSolution, t.out("s² = -1", .{}));
+    try t.expect("2 complex", "s² = -1");
+    try t.expect("2 complex", "9² = p² + 6²×8");
+    try std.testing.expectError(error.NoSolution, t.out("sin(s) = 2", .{}));
     try t.expect("a + b = 1", "a + b = 1");
     try t.expect("E = 2v²", "E = 4·v²/2");
     try t.expect("5n", "2n + 3n");

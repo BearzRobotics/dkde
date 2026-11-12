@@ -132,7 +132,9 @@ An entry with **=** whose left side is not a plain name to store is an equation,
 **2 + 2 = 4**
 : true
 
-Solutions are found numerically, then checked: a solution that is a simple fraction is given exactly (**3x = 1** gives x = 1/3, shown as 0.3333333333 with **(= 1/3)**). An equation without real solutions (**x² = −1**) says so.
+Solutions are found numerically, then checked: a solution that is a simple fraction is given exactly (**3x = 1** gives x = 1/3, shown as 0.3333333333 with **(= 1/3)**).
+
+An equation without real solutions says so. When it is a polynomial in the unknown, its complex solutions are given instead (i is √−1): **x² = −1** gives x = i; x = −i, and **9² = a² + 6²×8** (where a² would be −207) gives a = ±14.3874945699i.
 
 When an equation has more than one unknown, it is simplified as far as it goes instead: **E = 4·v²/2** gives **E = 2v²**.
 
@@ -205,6 +207,8 @@ In hexadecimal, **A**–**F** are digits: **FF + 1** is 100. Results that do not
 
 # THE GRAPH
 Each row of the Graph pane is a function of x: **x²/4 − 1**, **sin(x)**, **f** (a function of your own), **diff(x³, x)** (a derivative). Up to six are drawn together. Points where a curve crosses zero, and where two curves cross, are marked; point at one to read it. Graphs use radians.
+
+**Plot** (scientific keypad) draws the entry; a formula's **Graph** button draws it with the formula's letters on the axes. Either fits the view to the curve. **Scale…** sets the ranges by hand (x from, to; y from, to), fits the vertical range to all the curves, or puts both axes on the same scale so that circles look round.
 
 # SEE ALSO
 dkde-calc(1), dkde-help(1)
