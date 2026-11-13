@@ -2142,6 +2142,8 @@ pub const SettingsWindow = struct {
         .{ .label = "Web browser", .mime = &.{ "x-scheme-handler/http", "x-scheme-handler/https", "text/html" }, .category = "WebBrowser" },
         .{ .label = "File manager", .mime = &.{"inode/directory"}, .category = "FileManager" },
         .{ .label = "Text editor", .mime = &.{"text/plain"}, .category = "TextEditor" },
+        .{ .label = "Image viewer", .mime = &.{ "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/svg+xml" }, .category = "Viewer" },
+        .{ .label = "PDF viewer", .mime = &.{"application/pdf"}, .category = "Viewer" },
         .{ .label = "Terminal", .mime = &.{}, .category = "TerminalEmulator" },
     };
 
@@ -2154,6 +2156,18 @@ pub const SettingsWindow = struct {
                 if (gio.AppInfo.getDefaultForType(role.mime[0], 0)) |current| {
                     defer current.as(gobject.Object).unref();
                     self.selectApp(picker, role.category, current);
+                }
+            } else {
+                // The terminal is dkde's own setting; empty means dkde-term.
+                const id = self.shared.getString(self.allocator, "default-apps", "terminal", "") catch null;
+                defer if (id) |text| self.allocator.free(text);
+                const wanted = if (id) |text| (if (text.len > 0) text else "dkde-term.desktop") else "dkde-term.desktop";
+                var index: u32 = 0;
+                while (self.appAt(role.category, index)) |candidate| : (index += 1) {
+                    if (std.mem.eql(u8, std.mem.span(candidate.getId() orelse ""), wanted)) {
+                        picker.setSelected(index);
+                        break;
+                    }
                 }
             }
             const ctx = self.allocator.create(RoleCtx) catch @panic("OOM");

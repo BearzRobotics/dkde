@@ -42,6 +42,9 @@ Without NetworkManager the page uses wpa_cli for Wi-Fi, and has a Fixed address 
 # ONLINE ACCOUNTS: GNOME ONLINE ACCOUNTS
 The Accounts section at the top of the Online accounts page lists the accounts of GNOME Online Accounts (GOA), asked over D-Bus. The list is only read; the GOA service is never started just to show it, and with none running the page says so. Add or manage accounts… opens GOA's own window (gnome-online-accounts-gtk, or gnome-control-center online-accounts). For a Google account that signs in with OAuth2, the page asks Google which calendars the account has and the person ticks the ones to show; each is a read-only calendar like a link. dkde stores no password or token: at an update GOA hands out a short-lived access token and dkde-calendar reads the events with GET requests only. Sync all updates every chosen calendar. Contacts, mail and files from GOA, and calendars of other providers, are not offered.
 
+# DEFAULT APPS
+The Default apps page (--page defaults) chooses the web browser, file manager, text editor, image viewer, PDF viewer and terminal. A choice is written to ~/.config/mimeapps.list (the terminal to [default-apps] in dkde.toml). Until something is chosen, the DKDE session uses the programs of DKDE (dkde-files, dkde-edit, dkde-view, dkde-pdf, dkde-term) through the file dkde-mimeapps.list in the applications directory of the data directories, which GLib reads for XDG_CURRENT_DESKTOP=dkde. There is no DKDE web browser, so none is preset.
+
 # FILES
 ~/.cache/dkde/feeds/ID.ics
 : The last downloaded copy of each online calendar; private to the user and safe to delete.

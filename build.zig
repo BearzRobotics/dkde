@@ -304,6 +304,8 @@ pub fn build(b: *std.Build) void {
         }
         // The Wayland session entry for greetd and other login managers.
         b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path("data/dkde.desktop"), .prefix, "share/wayland-sessions/dkde.desktop").step);
+        // Which DKDE program opens what, until the person chooses otherwise.
+        b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path("data/dkde-mimeapps.list"), .prefix, "share/applications/dkde-mimeapps.list").step);
         // The Fluent icon theme goes where every toolkit looks for icon themes.
         b.installDirectory(.{ .source_dir = b.path("icons/Fluent"), .install_dir = .prefix, .install_subdir = "share/icons/Fluent" });
         // Microsoft's Fluent UI System Icons for dkde's own controls; it inherits Fluent.

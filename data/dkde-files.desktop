@@ -6,5 +6,6 @@ Comment=Browse the file system
 Exec=dkde-files %U
 Icon=system-file-manager
 Categories=Utility;FileManager;
+MimeType=inode/directory;
 Keywords=folder;explorer;
 StartupWMClass=org.dkde.files

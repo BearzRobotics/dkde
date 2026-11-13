@@ -290,7 +290,8 @@ pub const GrepPanel = struct {
 
     pub fn destroy(self: *GrepPanel) void {
         self.stop();
-        self.clear();
+        // The list widget is already gone when the window is destroyed: only free the results.
+        for (self.results.items) |h| self.editor.allocator.free(h.path);
         self.results.deinit(self.editor.allocator);
         if (self.folder) |f| self.editor.allocator.free(f);
         self.editor.allocator.destroy(self);

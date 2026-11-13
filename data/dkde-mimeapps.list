@@ -1,0 +1,35 @@
+# Default applications for the DKDE session (XDG_CURRENT_DESKTOP=dkde). A
+# person's own choices in ~/.config/mimeapps.list (written by Settings,
+# Default apps) win over this file. There is no DKDE web browser, so none is
+# named here.
+[Default Applications]
+inode/directory=dkde-files.desktop
+text/plain=dkde-edit.desktop
+text/markdown=dkde-edit.desktop
+text/x-log=dkde-edit.desktop
+application/pdf=dkde-pdf.desktop
+image/png=dkde-view.desktop
+image/jpeg=dkde-view.desktop
+image/gif=dkde-view.desktop
+image/bmp=dkde-view.desktop
+image/webp=dkde-view.desktop
+image/svg+xml=dkde-view.desktop
+image/svg+xml-compressed=dkde-view.desktop
+image/tiff=dkde-view.desktop
+image/x-icon=dkde-view.desktop
+image/vnd.microsoft.icon=dkde-view.desktop
+image/avif=dkde-view.desktop
+image/heic=dkde-view.desktop
+image/heif=dkde-view.desktop
+image/jxl=dkde-view.desktop
+image/x-tga=dkde-view.desktop
+image/qoi=dkde-view.desktop
+image/x-qoi=dkde-view.desktop
+image/vnd.zbrush.pcx=dkde-view.desktop
+image/x-portable-anymap=dkde-view.desktop
+image/x-portable-bitmap=dkde-view.desktop
+image/x-portable-graymap=dkde-view.desktop
+image/x-portable-pixmap=dkde-view.desktop
+image/x-xpixmap=dkde-view.desktop
+image/x-xbitmap=dkde-view.desktop
+image/apng=dkde-view.desktop

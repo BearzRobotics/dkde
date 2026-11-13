@@ -142,7 +142,7 @@ pub const Doc = struct {
         doc.stopWatching();
         if (doc.check_source != 0) _ = glib.Source.remove(doc.check_source);
         if (doc.scroll_source != 0) _ = glib.Source.remove(doc.scroll_source);
-        doc.clearCursors();
+        // The widgets are already gone when the window is destroyed: only free the marks.
         doc.extra.deinit(gpa);
         if (doc.path) |p| gpa.free(p);
         if (doc.draft) |d| gpa.free(d);
