@@ -1,11 +1,10 @@
 //! Archives in the file manager (SPEC.md 5.4): which files are archives, and
-//! the shell commands that unpack or pack them. The commands take their
-//! arguments as positional parameters, never as script text, so odd file names
-//! are safe. Pure, so it is unit tested.
+//! names for the results. The unpacking and packing itself is arc.zig
+//! (libarchive). Pure, so it is unit tested.
 
 const std = @import("std");
 
-pub const Kind = enum { zip, tar, tar_gz, tar_xz, tar_bz2, tar_zst, sevenz, rar };
+pub const Kind = enum { zip, tar, tar_gz, tar_xz, tar_bz2, tar_zst, sevenz, rar, iso, cpio, deb, rpm };
 
 const Suffix = struct { text: []const u8, kind: Kind };
 const suffixes = [_]Suffix{
@@ -20,6 +19,10 @@ const suffixes = [_]Suffix{
     .{ .text = ".zip", .kind = .zip },
     .{ .text = ".7z", .kind = .sevenz },
     .{ .text = ".rar", .kind = .rar },
+    .{ .text = ".iso", .kind = .iso },
+    .{ .text = ".cpio", .kind = .cpio },
+    .{ .text = ".deb", .kind = .deb },
+    .{ .text = ".rpm", .kind = .rpm },
 };
 
 pub fn kindOf(name: []const u8) ?Kind {
@@ -31,51 +34,6 @@ pub fn kindOf(name: []const u8) ?Kind {
 pub fn stem(name: []const u8) []const u8 {
     for (suffixes) |s| if (std.ascii.endsWithIgnoreCase(name, s.text)) return name[0 .. name.len - s.text.len];
     return name;
-}
-
-/// The program an archive of this kind needs, for telling the user when it is missing.
-pub fn extractTool(kind: Kind) [:0]const u8 {
-    return switch (kind) {
-        .zip => "unzip",
-        .tar, .tar_gz, .tar_xz, .tar_bz2, .tar_zst => "tar",
-        .sevenz => "7z",
-        .rar => "unrar",
-    };
-}
-
-/// A `sh -c` script: $1 is the archive and $2 the folder to extract into.
-pub fn extractScript(kind: Kind) []const u8 {
-    return switch (kind) {
-        .zip => "mkdir -p \"$2\" && unzip -o -q \"$1\" -d \"$2\"",
-        .tar, .tar_gz, .tar_xz, .tar_bz2, .tar_zst => "mkdir -p \"$2\" && tar -xf \"$1\" -C \"$2\"",
-        .sevenz => "mkdir -p \"$2\" && 7z x -y -o\"$2\" \"$1\" >/dev/null",
-        .rar => "mkdir -p \"$2\" && unrar x -o+ -inul \"$1\" \"$2/\"",
-    };
-}
-
-pub const Pack = enum { zip, tar_gz };
-
-pub fn packTool(p: Pack) [:0]const u8 {
-    return switch (p) {
-        .zip => "zip",
-        .tar_gz => "tar",
-    };
-}
-
-pub fn packExtension(p: Pack) []const u8 {
-    return switch (p) {
-        .zip => ".zip",
-        .tar_gz => ".tar.gz",
-    };
-}
-
-/// A `sh -c` script: $1 is the folder holding the items, $2 the archive name
-/// to create there, and the rest are the item names inside that folder.
-pub fn packScript(p: Pack) []const u8 {
-    return switch (p) {
-        .zip => "cd \"$1\" || exit 1; out=$2; shift 2; zip -r -q \"$out\" -- \"$@\"",
-        .tar_gz => "cd \"$1\" || exit 1; out=$2; shift 2; tar -czf \"$out\" -- \"$@\"",
-    };
 }
 
 /// `base` if it is free, else "base (2)", "base (3)", ... `exists` says what is taken.
@@ -119,8 +77,8 @@ test "unique names" {
     try std.testing.expectEqualStrings("new.zip", uniqueName(&buf, "new", ".zip", @as([]const []const u8, &taken), Ctx.exists));
 }
 
-test "scripts take names as parameters" {
-    // Nothing in the scripts is built from file names.
-    try std.testing.expect(std.mem.indexOf(u8, packScript(.zip), "$@") != null);
-    try std.testing.expect(std.mem.indexOf(u8, extractScript(.tar_gz), "\"$1\"") != null);
+test "more kinds libarchive reads" {
+    try std.testing.expectEqual(Kind.iso, kindOf("disc.ISO").?);
+    try std.testing.expectEqual(Kind.deb, kindOf("pkg_1.0_amd64.deb").?);
+    try std.testing.expect(kindOf("report.docx") == null);
 }

@@ -8,6 +8,7 @@ const gtk = @import("gtk4");
 const common = @import("common");
 
 const FilesWindow = @import("window.zig").FilesWindow;
+const arc = @import("arc.zig");
 
 const App = struct {
     allocator: std.mem.Allocator,
@@ -31,7 +32,39 @@ const App = struct {
 
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
+/// The helper modes: `--archive-extract ARCHIVE DEST` and
+/// `--archive-pack FORMAT OUT DIR NAME...`. They print a sentence on failure and
+/// exit 1. The file manager runs itself this way so libarchive works in its own
+/// process (see arc.zig).
+fn archiveHelper(init: std.process.Init.Minimal) ?u8 {
+    const args = init.args.vector;
+    if (args.len < 2) return null;
+    const mode = std.mem.span(args[1]);
+    const gpa = std.heap.c_allocator;
+    var out: [1024]u8 = undefined;
+    if (std.mem.eql(u8, mode, "--archive-extract") and args.len == 4) {
+        arc.extractAll(gpa, std.mem.span(args[2]), std.mem.span(args[3])) catch |err| return fail(&out, err);
+        return 0;
+    }
+    if (std.mem.eql(u8, mode, "--archive-pack") and args.len >= 6) {
+        const format = arc.formatOf(std.mem.span(args[2])) orelse return fail(&out, error.Unsupported);
+        var names = gpa.alloc([]const u8, args.len - 5) catch return 1;
+        defer gpa.free(names);
+        for (args[5..], 0..) |a, i| names[i] = std.mem.span(a);
+        arc.packAll(gpa, format, std.mem.span(args[3]), std.mem.span(args[4]), names) catch |err| return fail(&out, err);
+        return 0;
+    }
+    return null;
+}
+
+fn fail(_: []u8, err: anyerror) u8 {
+    const text = arc.describe(err);
+    _ = std.c.write(1, text.ptr, text.len);
+    return 1;
+}
+
 pub fn main(init: std.process.Init.Minimal) !void {
+    if (archiveHelper(init)) |status| std.process.exit(status);
     cli.handle(init.args, .{ .name = "dkde-files", .summary = "File manager", .usage = "[DIRECTORY]" });
     common.perf.init();
     var debug_allocator: common.perf.Gpa = .{};
@@ -66,4 +99,5 @@ test {
     _ = @import("props.zig");
     _ = @import("ops.zig");
     _ = @import("folder.zig");
+    _ = @import("arc.zig");
 }

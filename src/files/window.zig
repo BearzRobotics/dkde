@@ -10,6 +10,7 @@ const common = @import("common");
 const termembed = @import("termembed");
 
 const archive = @import("archive.zig");
+const arc = @import("arc.zig");
 const context = @import("context.zig");
 const clipboard = @import("clipboard.zig");
 const ops = @import("ops.zig");
@@ -140,6 +141,8 @@ pub const FilesWindow = struct {
     status: *gtk.Label,
     /// For archive commands that finish after the user may have closed the window.
     proc_guard: *common.proc.Guard(FilesWindow) = undefined,
+    /// An archive being unpacked for browsing (one at a time): where it will show up.
+    opening: ?struct { dest: [:0]u8, mode: OpenMode } = null,
     /// Copies and moves in progress, shown in the header.
     operations: *progress.Indicator = undefined,
     back_button: *gtk.Button,
@@ -171,7 +174,19 @@ pub const FilesWindow = struct {
         const self = try allocator.create(FilesWindow);
         errdefer allocator.destroy(self);
 
-        const start_file = if (start) |p| gio.File.newForCommandlineArg(p) else gio.File.newForPath(glib.getHomeDir());
+        var start_file = if (start) |p| gio.File.newForCommandlineArg(p) else gio.File.newForPath(glib.getHomeDir());
+        // An archive as the argument: show the folder it is in, then open it.
+        var archive_to_open: ?*gio.File = null;
+        if (start_file.getBasename()) |n| {
+            defer glib.free(n);
+            if (archive.kindOf(std.mem.span(n)) != null and start_file.queryFileType(.{}, null) != .directory) {
+                if (start_file.getParent()) |parent| {
+                    archive_to_open = start_file;
+                    start_file = parent;
+                }
+            }
+        }
+        defer if (archive_to_open) |a| a.as(gobject.Object).unref();
 
         self.* = .{
             .allocator = allocator,
@@ -213,20 +228,33 @@ pub const FilesWindow = struct {
         self.registerTab();
         self.installShortcuts();
         self.rebuildSidebar();
+        self.pruneArchiveCache();
         const monitor = gio.VolumeMonitor.get();
         inline for (.{ "volume-added", "volume-removed", "mount-added", "mount-removed" }) |name| {
             self.monitor_handlers.append(self.allocator, gobject.signalConnectData(monitor.as(gobject.Object), name, @ptrCast(&onDevicesChanged), self, null, .{})) catch {};
         }
         self.go(self.current, false);
+        if (archive_to_open) |a| self.openArchive(a, .here);
         _ = gtk.Widget.signals.destroy.connect(self.window, *FilesWindow, &onWindowDestroy, self, .{});
         return self;
     }
+
+    /// Unpacked archives older than three days are removed (they are copies; opening
+    /// the archive again makes a new one).
+    fn pruneArchiveCache(self: *FilesWindow) void {
+        const cache = self.archiveCache() orelse return;
+        defer self.allocator.free(cache);
+        common.proc.run(FilesWindow, self.proc_guard, &.{ "find", cache, "-mindepth", "1", "-maxdepth", "1", "-mtime", "+3", "-exec", "rm", "-rf", "--", "{}", "+" }, onPruned);
+    }
+
+    fn onPruned(_: *FilesWindow, _: bool, _: []const u8) void {}
 
     fn onDevicesChanged(_: *gio.VolumeMonitor, _: *gobject.Object, self: *FilesWindow) callconv(.c) void {
         self.rebuildSidebar();
     }
 
     fn onWindowDestroy(_: *gtk.ApplicationWindow, self: *FilesWindow) callconv(.c) void {
+        if (self.opening) |o| self.allocator.free(o.dest);
         for (self.monitor_handlers.items) |id| gobject.signalHandlerDisconnect(gio.VolumeMonitor.get().as(gobject.Object), id);
         self.monitor_handlers.deinit(self.allocator);
         self.proc_guard.kill();
@@ -742,6 +770,22 @@ pub const FilesWindow = struct {
     }
 
     fn goUp(self: *FilesWindow) void {
+        // The top of an archive view goes to the folder the archive is in.
+        if (self.current.getPath()) |p| {
+            defer glib.free(p);
+            if (archiveRoot(self.allocator, std.mem.span(p))) |ar| {
+                defer ar.free(self.allocator);
+                if (std.mem.eql(u8, ar.root, std.mem.span(p))) {
+                    if (std.fs.path.dirname(ar.source)) |dir| {
+                        const dz = self.allocator.dupeSentinel(u8, dir, 0) catch return;
+                        defer self.allocator.free(dz);
+                        const f = gio.File.newForPath(dz);
+                        defer f.as(gobject.Object).unref();
+                        return self.go(f, true);
+                    }
+                }
+            }
+        }
         const parent = self.current.getParent() orelse return;
         defer parent.as(gobject.Object).unref();
         self.go(parent, true);
@@ -758,6 +802,7 @@ pub const FilesWindow = struct {
         const file = gio.File.newForCommandlineArg(pathz);
         defer file.as(gobject.Object).unref();
         if (isRemote(path)) return self.mountThenGo(file);
+        if (self.archiveName(file) != null and file.queryFileType(.{}, null) == .regular) return self.openArchive(file, .here);
         self.go(file, true);
     }
 
@@ -972,6 +1017,27 @@ pub const FilesWindow = struct {
         const path = std.mem.span(path_c);
         self.path_entry.as(gtk.Editable).setText(path_c);
 
+        if (archiveRoot(self.allocator, path)) |ar| {
+            defer ar.free(self.allocator);
+            // Inside an archive: the archive's name is the first crumb, then its folders.
+            const name = std.fs.path.basename(ar.source);
+            const at_top = path.len == ar.root.len;
+            const first = self.appendCrumb(name, ar.root, "package-x-generic-symbolic", at_top, true) orelse return;
+            if (self.allocator.dupeSentinel(u8, ar.source, 0)) |tip| {
+                defer self.allocator.free(tip);
+                first.as(gtk.Widget).setTooltipText(tip);
+            } else |_| {}
+            var built: std.ArrayList(u8) = .empty;
+            defer built.deinit(self.allocator);
+            built.appendSlice(self.allocator, ar.root) catch return;
+            var parts = std.mem.tokenizeScalar(u8, path[ar.root.len..], '/');
+            while (parts.next()) |part| {
+                built.append(self.allocator, '/') catch return;
+                built.appendSlice(self.allocator, part) catch return;
+                _ = self.appendCrumb(part, built.items, null, built.items.len == path.len, false);
+            }
+            return;
+        }
         const list = pure.breadcrumbsHome(self.allocator, path, std.mem.span(glib.getHomeDir())) catch return;
         defer self.allocator.free(list);
         for (list, 0..) |crumb, i| {
@@ -1505,6 +1571,15 @@ pub const FilesWindow = struct {
             std.fmt.bufPrintSentinel(&buf, "{d} of {d} selected", .{ selected, total }, 0) catch ""
         else
             std.fmt.bufPrintSentinel(&buf, "{d} {s}", .{ total, if (total == 1) "item" else "items" }, 0) catch "";
+        if (self.current.getPath()) |p| {
+            defer glib.free(p);
+            if (archiveRoot(self.allocator, std.mem.span(p))) |ar| {
+                ar.free(self.allocator);
+                var abuf: [192]u8 = undefined;
+                self.status.setText(std.fmt.bufPrintSentinel(&abuf, "{s}  \u{2014}  {s}", .{ text, common.tr("Archive (a copy): changes are not saved. Extract to keep files.") }, 0) catch text);
+                return;
+            }
+        }
         self.status.setText(text);
     }
 
@@ -1561,6 +1636,7 @@ pub const FilesWindow = struct {
     }
 
     fn openFile(self: *FilesWindow, file: *gio.File) void {
+        if (self.archiveName(file) != null) return self.openArchive(file, .here);
         const uri = file.getUri();
         defer glib.free(uri);
         var err: ?*glib.Error = null;
@@ -2141,8 +2217,8 @@ pub const FilesWindow = struct {
         const t = common.tr;
         if (eql(u8, id, "open")) return if (item) .{ .label = t("Open") } else null;
         if (eql(u8, id, "open-with-choose")) return if (item and !sel.in_trash and !sel.is_dir) .{ .label = t("Open With\u{2026}") } else null;
-        if (eql(u8, id, "open-tab")) return if (item and sel.is_dir) .{ .label = t("Open in New Tab") } else null;
-        if (eql(u8, id, "open-window")) return if (!item or sel.is_dir) .{ .label = t("Open in New Window") } else null;
+        if (eql(u8, id, "open-tab")) return if (item and (sel.is_dir or sel.archive != null)) .{ .label = t("Open in New Tab") } else null;
+        if (eql(u8, id, "open-window")) return if (!item or sel.is_dir or sel.archive != null) .{ .label = t("Open in New Window") } else null;
         if (eql(u8, id, "run")) return if (item and sel.is_regular and sel.is_exec and !sel.in_trash) .{ .label = t("Run") } else null;
         if (eql(u8, id, "run-admin")) return if (item and sel.is_regular and sel.is_exec and !sel.in_trash) .{ .label = t("Run as Administrator") } else null;
         if (eql(u8, id, "exec")) {
@@ -2154,12 +2230,15 @@ pub const FilesWindow = struct {
             return .{ .label = if (sel.appimage_in_menu) t("Remove from Applications Menu") else t("Add to Applications Menu") };
         }
         if (eql(u8, id, "extract")) {
-            const kind = sel.archive orelse return null;
-            if (!item or sel.in_trash) return null;
-            return .{ .label = t("Extract Here"), .enabled = common.proc.hasProgram(archive.extractTool(kind)) };
+            if (sel.archive == null or !item or sel.in_trash) return null;
+            return .{ .label = t("Extract Here") };
         }
-        if (eql(u8, id, "compress-zip")) return if (item and !sel.in_trash) .{ .label = t("Compress to .zip"), .enabled = common.proc.hasProgram("zip") } else null;
-        if (eql(u8, id, "compress-targz")) return if (item and !sel.in_trash) .{ .label = t("Compress to .tar.gz"), .enabled = common.proc.hasProgram("tar") } else null;
+        if (eql(u8, id, "extract-to")) return if (sel.archive != null and item and !sel.in_trash) .{ .label = t("Extract To\u{2026}") } else null;
+        if (eql(u8, id, "compress-zip")) return if (item and !sel.in_trash) .{ .label = t("Compress to .zip") } else null;
+        if (eql(u8, id, "compress-targz")) return if (item and !sel.in_trash) .{ .label = t("Compress to .tar.gz") } else null;
+        if (eql(u8, id, "compress-tarxz")) return if (item and !sel.in_trash) .{ .label = t("Compress to .tar.xz") } else null;
+        if (eql(u8, id, "compress-tarzst")) return if (item and !sel.in_trash) .{ .label = t("Compress to .tar.zst") } else null;
+        if (eql(u8, id, "compress-7z")) return if (item and !sel.in_trash) .{ .label = t("Compress to .7z") } else null;
         if (eql(u8, id, "restore")) return if (item and sel.in_trash) .{ .label = t("Restore") } else null;
         if (eql(u8, id, "delete-permanent")) return if (item and sel.in_trash) .{ .label = t("Delete Permanently") } else null;
         if (eql(u8, id, "empty-trash")) return if (!item and sel.in_trash) .{ .label = t("Empty Trash") } else null;
@@ -2342,18 +2421,143 @@ pub const FilesWindow = struct {
         return child.queryExists(null) != 0;
     }
 
-    /// Unpacks the selected archive into a new folder next to it, named after it.
-    fn extractSelected(self: *FilesWindow) void {
+    const OpenMode = enum { here, tab, window };
+
+    /// The name when `file` is an archive dkde can unpack (by its suffix), else null.
+    fn archiveName(_: *FilesWindow, file: *gio.File) ?archive.Kind {
+        const n = file.getBasename() orelse return null;
+        defer glib.free(n);
+        return archive.kindOf(std.mem.span(n));
+    }
+
+    /// This program, run again as the archive helper (see arc.zig and main.zig).
+    fn selfExe(self: *FilesWindow) ?[:0]u8 {
+        const target = glib.fileReadLink("/proc/self/exe", null) orelse return null;
+        defer glib.free(target);
+        return self.allocator.dupeSentinel(u8, std.mem.span(target), 0) catch null;
+    }
+
+    /// Where unpacked archives are kept for browsing.
+    fn archiveCache(self: *FilesWindow) ?[]u8 {
+        return std.fmt.allocPrint(self.allocator, "{s}/dkde/archives", .{std.mem.span(glib.getUserCacheDir())}) catch null;
+    }
+
+    /// The cache folder an archive view lives in: `<cache>/archives/<id>/contents`,
+    /// with the archive's own path in `<id>/source`. `root` is the contents folder.
+    const ArchiveRoot = struct {
+        root: []u8,
+        source: []u8,
+        fn free(self: ArchiveRoot, a: std.mem.Allocator) void {
+            a.free(self.root);
+            a.free(self.source);
+        }
+    };
+
+    fn archiveRoot(a: std.mem.Allocator, path: []const u8) ?ArchiveRoot {
+        const marker = "/dkde/archives/";
+        const at = std.mem.indexOf(u8, path, marker) orelse return null;
+        const after = at + marker.len;
+        const slash = std.mem.indexOfScalarPos(u8, path, after, '/') orelse return null;
+        const rest = path[slash..];
+        const contents = "/contents";
+        if (!std.mem.startsWith(u8, rest, contents)) return null;
+        if (rest.len > contents.len and rest[contents.len] != '/') return null;
+        const root = a.dupe(u8, path[0 .. slash + contents.len]) catch return null;
+        const source_file = std.fmt.allocPrintSentinel(a, "{s}/source", .{path[0..slash]}, 0) catch {
+            a.free(root);
+            return null;
+        };
+        defer a.free(source_file);
+        var contents_ptr: [*]u8 = undefined;
+        var len: usize = 0;
+        if (glib.fileGetContents(source_file, &contents_ptr, &len, null) == 0) {
+            a.free(root);
+            return null;
+        }
+        defer glib.free(contents_ptr);
+        const source = a.dupe(u8, contents_ptr[0..len]) catch {
+            a.free(root);
+            return null;
+        };
+        return .{ .root = root, .source = source };
+    }
+
+    /// Unpacks an archive into the cache (once; later opens reuse it) and shows it
+    /// here, in a new tab or in a new window.
+    fn openArchive(self: *FilesWindow, file: *gio.File, mode: OpenMode) void {
+        if (self.opening != null) return self.status.setText(common.tr("Still opening an archive\u{2026}"));
+        const path_c = file.getPath() orelse {
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot open this archive"), common.tr("Copy it to this computer first."));
+        };
+        defer glib.free(path_c);
+        const path = std.mem.span(path_c);
+        const info = file.queryInfo("standard::size,time::modified", .{}, null, null) orelse return;
+        defer info.as(gobject.Object).unref();
+        var hash = std.hash.Wyhash.init(0);
+        hash.update(path);
+        hash.update(std.mem.asBytes(&info.getSize()));
+        hash.update(std.mem.asBytes(&info.getModificationDateTime().?.toUnix()));
+        const cache = self.archiveCache() orelse return;
+        defer self.allocator.free(cache);
+        const dir = std.fmt.allocPrint(self.allocator, "{s}/{x}", .{ cache, hash.final() }) catch return;
+        defer self.allocator.free(dir);
+        const contents = std.fmt.allocPrintSentinel(self.allocator, "{s}/contents", .{dir}, 0) catch return;
+        errdefer self.allocator.free(contents);
+
+        if (glib.fileTest(contents, .{ .is_dir = true }) != 0) return self.showArchive(contents, mode);
+
+        const dir_z = self.allocator.dupeSentinel(u8, dir, 0) catch return;
+        defer self.allocator.free(dir_z);
+        _ = glib.mkdirWithParents(dir_z, 0o700);
+        const source_z = std.fmt.allocPrintSentinel(self.allocator, "{s}/source", .{dir}, 0) catch return;
+        defer self.allocator.free(source_z);
+        _ = glib.fileSetContents(source_z, path.ptr, @intCast(path.len), null);
+        const exe = self.selfExe() orelse return;
+        defer self.allocator.free(exe);
+        self.opening = .{ .dest = contents, .mode = mode };
+        self.status.setText(common.tr("Opening the archive\u{2026}"));
+        common.proc.run(FilesWindow, self.proc_guard, &.{ exe, "--archive-extract", path, contents }, onArchiveOpened);
+    }
+
+    fn onArchiveOpened(self: *FilesWindow, ok: bool, out: []const u8) void {
+        const pending = self.opening orelse return;
+        self.opening = null;
+        defer self.allocator.free(pending.dest);
+        if (!ok) {
+            self.updateStatus();
+            const text = self.allocator.dupeSentinel(u8, if (out.len > 0) out else "The archive could not be opened.", 0) catch return;
+            defer self.allocator.free(text);
+            return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot open this archive"), text);
+        }
+        self.showArchive(pending.dest, pending.mode);
+    }
+
+    fn showArchive(self: *FilesWindow, contents: [:0]const u8, mode: OpenMode) void {
+        const f = gio.File.newForPath(contents);
+        defer f.as(gobject.Object).unref();
+        switch (mode) {
+            .here => self.go(f, true),
+            .tab => self.addTab(f),
+            .window => common.appinfo.spawnIn(self.allocator, &.{ "dkde-files", std.mem.span(contents.ptr) }, std.mem.span(contents.ptr)),
+        }
+    }
+
+    /// Unpacks the selected archive into a new folder named after it: next to it,
+    /// or inside `into` when given.
+    fn extractSelected(self: *FilesWindow, into: ?*gio.File) void {
         var files = self.selectedFiles() catch return;
         defer freeFiles(self.allocator, &files);
         if (files.items.len != 1) return;
-        const file = files.items[0];
+        self.extractFile(files.items[0], into);
+    }
+
+    fn extractFile(self: *FilesWindow, file: *gio.File, into: ?*gio.File) void {
         const name_c = file.getBasename() orelse return;
         defer glib.free(name_c);
         const name = std.mem.span(name_c);
-        const kind = archive.kindOf(name) orelse return;
-        const parent = file.getParent() orelse return;
-        defer parent.as(gobject.Object).unref();
+        if (archive.kindOf(name) == null) return;
+        const parent = if (into) |d| d else (file.getParent() orelse return);
+        defer if (into == null) parent.as(gobject.Object).unref();
         var buf: [512]u8 = undefined;
         const dest_name = archive.uniqueName(&buf, archive.stem(name), "", parent, nameTaken);
         const path = file.getPath() orelse return;
@@ -2362,12 +2566,30 @@ pub const FilesWindow = struct {
         defer glib.free(parent_path);
         const dest = std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ std.mem.span(parent_path), dest_name }) catch return;
         defer self.allocator.free(dest);
+        const exe = self.selfExe() orelse return;
+        defer self.allocator.free(exe);
         self.status.setText(common.tr("Extracting\u{2026}"));
-        common.proc.run(FilesWindow, self.proc_guard, &.{ "sh", "-c", archive.extractScript(kind), "sh", std.mem.span(path), dest }, onArchiveDone);
+        common.proc.run(FilesWindow, self.proc_guard, &.{ exe, "--archive-extract", std.mem.span(path), dest }, onArchiveDone);
+    }
+
+    /// Extract To...: asks for the folder to put the unpacked folder in.
+    fn extractTo(self: *FilesWindow) void {
+        const dialog = gtk.FileDialog.new();
+        defer dialog.as(gobject.Object).unref();
+        dialog.setTitle(common.tr("Extract to"));
+        dialog.selectFolder(self.window.as(gtk.Window), null, onExtractFolder, self);
+    }
+
+    fn onExtractFolder(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *FilesWindow = @ptrCast(@alignCast(data.?));
+        const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
+        const folder = dialog.selectFolderFinish(result, null) orelse return;
+        defer folder.as(gobject.Object).unref();
+        self.extractSelected(folder);
     }
 
     /// Packs the selection into one archive in the folder being shown.
-    fn compressSelected(self: *FilesWindow, kind: archive.Pack) void {
+    fn compressSelected(self: *FilesWindow, kind: arc.Format) void {
         var files = self.selectedFiles() catch return;
         defer freeFiles(self.allocator, &files);
         if (files.items.len == 0) return;
@@ -2387,8 +2609,19 @@ pub const FilesWindow = struct {
             break :blk "Archive";
         };
         var out_buf: [512]u8 = undefined;
-        const out = archive.uniqueName(&out_buf, base, archive.packExtension(kind), self.current, nameTaken);
+        const out_name = archive.uniqueName(&out_buf, base, arc.extension(kind), self.current, nameTaken);
+        const out = std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ std.mem.span(dir_path), out_name }) catch return;
+        defer self.allocator.free(out);
+        const exe = self.selfExe() orelse return;
+        defer self.allocator.free(exe);
 
+        const format_name: []const u8 = switch (kind) {
+            .zip => "zip",
+            .tar_gz => "tar.gz",
+            .tar_xz => "tar.xz",
+            .tar_zst => "tar.zst",
+            .sevenz => "7z",
+        };
         var argv: std.ArrayList([]const u8) = .empty;
         defer argv.deinit(self.allocator);
         var owned: std.ArrayList([*:0]u8) = .empty;
@@ -2396,7 +2629,7 @@ pub const FilesWindow = struct {
             for (owned.items) |o| glib.free(o);
             owned.deinit(self.allocator);
         }
-        argv.appendSlice(self.allocator, &.{ "sh", "-c", archive.packScript(kind), "sh", std.mem.span(dir_path), out }) catch return;
+        argv.appendSlice(self.allocator, &.{ exe, "--archive-pack", format_name, out, std.mem.span(dir_path) }) catch return;
         for (files.items) |f| {
             const n = f.getBasename() orelse continue;
             owned.append(self.allocator, n) catch continue;
@@ -2406,8 +2639,12 @@ pub const FilesWindow = struct {
         common.proc.run(FilesWindow, self.proc_guard, argv.items, onArchiveDone);
     }
 
-    fn onArchiveDone(self: *FilesWindow, ok: bool, _: []const u8) void {
-        self.status.setText(if (ok) common.tr("Done.") else common.tr("The archive command failed."));
+    fn onArchiveDone(self: *FilesWindow, ok: bool, out: []const u8) void {
+        if (ok) return self.status.setText(common.tr("Done."));
+        self.updateStatus();
+        const text = self.allocator.dupeSentinel(u8, if (out.len > 0) out else "The archive command failed.", 0) catch return;
+        defer self.allocator.free(text);
+        common.dialogs.showError(self.window.as(gtk.Window), common.tr("Archive"), text);
     }
 
     fn perform(self: *FilesWindow, action: []const u8, app: ?*gio.AppInfo) void {
@@ -2430,7 +2667,9 @@ pub const FilesWindow = struct {
         if (eql(u8, action, "open-tab")) {
             var files = self.selectedFiles() catch return;
             defer freeFiles(self.allocator, &files);
-            for (files.items) |f| if (self.isDirectory(f)) self.addTab(f);
+            for (files.items) |f| {
+                if (self.isDirectory(f)) self.addTab(f) else if (self.archiveName(f) != null) self.openArchive(f, .tab);
+            }
             return;
         }
         if (eql(u8, action, "focus-path")) {
@@ -2452,9 +2691,13 @@ pub const FilesWindow = struct {
             defer glib.free(path);
             return common.appinfo.spawnIn(self.allocator, &.{"dkde-term"}, std.mem.span(path));
         }
-        if (eql(u8, action, "extract")) return self.extractSelected();
+        if (eql(u8, action, "extract")) return self.extractSelected(null);
+        if (eql(u8, action, "extract-to")) return self.extractTo();
         if (eql(u8, action, "compress-zip")) return self.compressSelected(.zip);
         if (eql(u8, action, "compress-targz")) return self.compressSelected(.tar_gz);
+        if (eql(u8, action, "compress-tarxz")) return self.compressSelected(.tar_xz);
+        if (eql(u8, action, "compress-tarzst")) return self.compressSelected(.tar_zst);
+        if (eql(u8, action, "compress-7z")) return self.compressSelected(.sevenz);
         if (eql(u8, action, "cut")) return self.copySelection(true);
         if (eql(u8, action, "copy")) return self.copySelection(false);
         if (eql(u8, action, "paste")) return self.paste();
@@ -2808,6 +3051,7 @@ pub const FilesWindow = struct {
     fn openInNewWindow(self: *FilesWindow) void {
         const target = self.singleSelected();
         defer if (target) |t| t.as(gobject.Object).unref();
+        if (target != null and self.archiveName(target.?) != null) return self.openArchive(target.?, .window);
         const file = if (target != null and self.isDirectory(target.?)) target.? else self.current;
         const path = file.getPath() orelse return;
         defer glib.free(path);

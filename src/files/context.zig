@@ -5,7 +5,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 pub const default_quick = "cut;copy;paste;rename;trash";
-pub const default_item = "open;open-tab;open-window;open-with-choose;run;run-admin;exec;appimage-menu;--;extract;compress-zip;compress-targz;restore;delete-permanent;--;properties";
+pub const default_item = "open;open-tab;open-window;open-with-choose;run;run-admin;exec;appimage-menu;--;extract;extract-to;compress-zip;compress-targz;compress-7z;restore;delete-permanent;--;properties";
 pub const default_folder = "new-folder;open-window;terminal-here;open-admin;toggle-hidden;bookmark;empty-trash;--;properties";
 
 pub const separator = "--";
@@ -73,6 +73,10 @@ pub fn emoji(id: []const u8) []const u8 {
         .{ "bookmark", "\u{2B50}" },
         .{ "toggle-hidden", "\u{1F441}\u{FE0F}" },
         .{ "extract", "\u{1F4E4}" },
+        .{ "extract-to", "\u{1F4E4}" },
+        .{ "compress-7z", "\u{1F5DC}\u{FE0F}" },
+        .{ "compress-tarxz", "\u{1F4E6}" },
+        .{ "compress-tarzst", "\u{1F4E6}" },
         .{ "compress-zip", "\u{1F5DC}\u{FE0F}" },
         .{ "compress-targz", "\u{1F4E6}" },
     };

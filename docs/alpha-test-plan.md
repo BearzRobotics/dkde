@@ -42,6 +42,10 @@ are confirmed.
 10. `ldd` on the binaries inside the image: no missing libraries (musl: see
     PACKAGING.md section 8).
 
+## Archives in Files (libarchive)
+
+Checked: all five pack formats round trip with folders and symbolic links; `../`, absolute paths and a symlink escape are refused; a damaged, missing or password-protected archive fails with a sentence and leaves no partial folder; opening an archive in a window, browsing a subfolder and going Up works. Not clicked: the item context menu (Open in New Tab, Extract Here, Extract To…, Compress), rar and 7z archives made by other tools, large archives.
+
 ## Known gaps (not bugs)
 
 - Network: no VPN profiles, hidden Wi-Fi networks, IPv6 on the dhcpcd path.

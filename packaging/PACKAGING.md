@@ -28,6 +28,7 @@ Make one yourself from a clean checkout with `scripts/make-source-tarball.sh`.
 | Zig | **0.17.1 exactly** | `zig version` | (not in apt; from ziglang.org or `zvm`) |
 | GTK 4 and its chain (GLib, GIO, Pango, Cairo, HarfBuzz, gdk-pixbuf, Graphene) | 4.12 or newer *(unverified lower bound)* | `gtk4` | `libgtk-4-dev` |
 | gtk4-layer-shell | any | `gtk4-layer-shell-0` | `libgtk4-layer-shell-dev` |
+| libarchive (archives in the file manager) | 3.x | `libarchive` | `libarchive-dev` (run time: `libarchive13t64`) |
 | Wayland client library | any | `wayland-client` | `libwayland-dev` |
 | wayland-protocols | any | | `wayland-protocols` |
 | pkg-config | any | | `pkg-config` |
@@ -95,7 +96,7 @@ on first use; `dkde-setup --once` runs from `dkde-session` on first login.
 `README.md`, "Recommended software". The commands it looks for are `wpa_cli`
 (wpa_supplicant), `ip`, `bluetoothctl`, `rfkill`, `brightnessctl`, `wpctl` or `pactl`,
 `wlr-randr`, `swaylock` (or `gtklock`, `waylock`), `lpadmin`/`lpstat` (CUPS),
-`zip`/`unzip`/`tar`/`7z`, `parted` and the filesystem tools, `git`/`curl`.
+`parted` and the filesystem tools, `git`/`curl`.
 
 **The partition tool (`dkde-parted`)** drives command-line programs and links no
 partitioning library (deliberately: libparted would mean vendoring it and its

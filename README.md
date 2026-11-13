@@ -62,7 +62,7 @@ Ubuntu 26.04 package names:
 
 ```
 sudo apt install libgtk-4-dev libgtk4-layer-shell-dev libwayland-dev \
-    wayland-protocols pkg-config git curl
+    libarchive-dev wayland-protocols pkg-config git curl
 ```
 
 | Library | Used for |
@@ -70,6 +70,7 @@ sudo apt install libgtk-4-dev libgtk4-layer-shell-dev libwayland-dev \
 | GTK 4 (and its chain: GLib, GIO, Pango, Cairo, HarfBuzz, gdk-pixbuf, Graphene) | Every app |
 | gtk4-layer-shell | Panel, start menu, wallpaper surfaces |
 | wayland-client, wayland-protocols | Taskbar, screenshots |
+| libarchive (3.x) | Archives in the file manager: browsing, extracting and creating zip, tar, 7z, rar, iso and more. At run time it needs the library (`libarchive13`) and, for each format, its compression libraries, which a normal libarchive package already depends on |
 
 ### Run-time programs and data
 
@@ -101,7 +102,6 @@ below for the full list and one install command.
 
 | Feature | What you need |
 |---|---|
-| File manager archives | `zip`, `unzip`, `tar`, `7zip` |
 | Partition tool `dkde-parted` | `util-linux` (`lsblk`, `mount`), `parted` and `sudo`; for formatting, the tools of each filesystem you want: `e2fsprogs`, `xfsprogs`, `btrfs-progs`, `dosfstools` (+ `fatresize`), `exfatprogs`, `ntfs-3g`, `f2fs-tools`, `jfsutils`, `reiserfsprogs`, `nilfs-tools`, `udftools`, `hfsprogs`. A filesystem is offered only when its tools are installed |
 | Run as administrator (file manager, Settings) | `sudo` |
 
@@ -141,7 +141,7 @@ sudo apt install \
     pipewire pipewire-pulse pipewire-bin wireplumber pulseaudio-utils \
     wpasupplicant dhcpcd iproute2 bluez rfkill brightnessctl wlr-randr \
     cups cups-client cups-filters \
-    gvfs gvfs-backends gvfs-fuse libmtp-common udisks2 zip unzip 7zip chrony sudo passwd \
+    gvfs gvfs-backends gvfs-fuse libmtp-common udisks2 libarchive13t64 chrony sudo passwd \
     ca-certificates openssh-client ocrmypdf util-linux qt6ct gnome-online-accounts-gtk \
     git curl tar parted e2fsprogs dosfstools exfatprogs xfsprogs btrfs-progs ntfs-3g \
     f2fs-tools jfsutils reiserfsprogs nilfs-tools udftools hfsprogs fatresize \
@@ -163,7 +163,6 @@ sudo apt install \
 | Idle screen off | `wlr-randr` | screen-off timeout does nothing |
 | Display settings | `wlr-randr` 0.4 or newer | Display page says what to install |
 | Printers | `cups`, `cups-client`, `cups-filters` | Printers page says what to install |
-| Archives in Files | `zip`, `unzip`, `tar`, `7zip` (7z), `unrar` (as many as you use) | the menu items are greyed out |
 | Phones and cameras in Files (Android MTP, PTP, iOS) | `gvfs-backends`, `libmtp-common` (udev rules), `gvfs-fuse` for other programs | The Phones and cameras sidebar section is hidden. The phone must be unlocked and set to File transfer |
 | Servers in Files (sftp, ftp, smb) | `gvfs`, `gvfs-backends` (sftp, ftp), `gvfs-smb` or `smbclient` as your distribution splits them | File > Connect to Server says what to install; the Network sidebar section is hidden |
 | Removable drives | `gvfs`, `udisks2` | no automatic drive list |

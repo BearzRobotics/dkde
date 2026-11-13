@@ -50,7 +50,7 @@ check() {
     [ "$v" = "0.17.1" ] || die "Zig $v found, but dkde needs exactly 0.17.1."
     command -v pkg-config >/dev/null 2>&1 || die "pkg-config is required."
     missing=""
-    for m in gtk4 gtk4-layer-shell-0 wayland-client; do
+    for m in gtk4 gtk4-layer-shell-0 wayland-client libarchive; do
         pkg-config --exists "$m" 2>/dev/null || missing="$missing $m"
     done
     [ -z "$missing" ] || die "missing development files for:$missing (see packaging/PACKAGING.md)"
