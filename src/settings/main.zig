@@ -62,6 +62,7 @@ test {
     _ = @import("sysinfo.zig");
     _ = @import("hardware.zig");
     _ = @import("hwpages.zig");
+    _ = @import("netparse.zig");
 }
 
 test {

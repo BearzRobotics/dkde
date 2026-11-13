@@ -24,3 +24,8 @@ Nothing from this session is committed. Working tree: modified `src/common/core.
 - `zig build test` prints a "failed command" line even when tests pass; check the exit code.
 - Builds are slow while the machine is busy; use `nice` and the background.
 - The disk quota on `/tmp/claude-1000` was hit once; clean scratchpad screenshots there if it recurs.
+
+## Update (later, same day)
+- Committed and pushed: GOA list, Google calendars through GOA (`gcal.zig`, REST API, GET only; one calendar-list probe done by hand with the owner's OK, event fetching through the app is for the owner to try), calc SVG export, tasks fixes. See docs/decisions/0003.
+- Network page: with NetworkManager running (`netpage.available()` asks `nmcli general`), `src/settings/netpage.zig` shows devices, Wi-Fi radio and networks (connect, password, disconnect) and saved connections (connect, disconnect, forget, **Edit** form: autoconnect, IPv4/IPv6 automatic / fixed / off, address, gateway, DNS). Without NM, the old wpa_cli page gets a **Fixed address (IPv4)** section that writes a marked block into /etc/dhcpcd.conf through the elevation dialog. Parsers and checks are in `netparse.zig` (unit tested). Verified: page renders against the real NM with clean stderr; the exact `nmcli connection modify` arguments were run on a throw-away dummy profile (deleted); the dhcpcd rewrite script was run on a scratch file. **Not exercised:** clicking Edit/Save, Connect with a password, Forget, and Apply of the fixed address with the real elevation dialog.
+- Not done: VPN profiles, hidden Wi-Fi networks, IPv6 on the dhcpcd path, wired profile creation (NM makes "Wired connection 1" itself).

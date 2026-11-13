@@ -13,6 +13,8 @@ const gtk = @import("gtk4");
 const common = @import("common");
 
 const hw = @import("hardware.zig");
+const np = @import("netparse.zig");
+const netpage = @import("netpage.zig");
 const win = @import("window.zig");
 const SettingsWindow = win.SettingsWindow;
 
@@ -20,11 +22,11 @@ const gpa = std.heap.c_allocator;
 
 // ---- shared widgets --------------------------------------------------------------------
 
-fn clear(box: *gtk.Box) void {
+pub fn clear(box: *gtk.Box) void {
     while (box.as(gtk.Widget).getFirstChild()) |child| box.remove(child);
 }
 
-fn note(box: *gtk.Box, text: [:0]const u8) *gtk.Label {
+pub fn note(box: *gtk.Box, text: [:0]const u8) *gtk.Label {
     const label = gtk.Label.new(text);
     label.setXalign(0);
     label.setWrap(1);
@@ -48,7 +50,7 @@ fn Action(comptime Page: type) type {
 }
 
 /// A button that calls `callback(page, a, b)` with copies of two strings.
-fn button(
+pub fn button(
     comptime Page: type,
     page: *Page,
     label: [:0]const u8,
@@ -75,19 +77,19 @@ fn button(
     return b_widget;
 }
 
-fn buttonRow(items: []const *gtk.Button) *gtk.Box {
+pub fn buttonRow(items: []const *gtk.Button) *gtk.Box {
     const box = gtk.Box.new(.horizontal, 6);
     for (items) |b| box.append(b.as(gtk.Widget));
     return box;
 }
 
-fn showError(parent: *gtk.Window, heading: [:0]const u8, detail: []const u8) void {
+pub fn showError(parent: *gtk.Window, heading: [:0]const u8, detail: []const u8) void {
     var buf: [512]u8 = undefined;
     const text = std.fmt.bufPrintSentinel(&buf, "{s}", .{detail}, 0) catch "";
     common.dialogs.showError(parent, heading, text);
 }
 
-const Field = struct { label: [:0]const u8, secret: bool = false };
+pub const Field = struct { label: [:0]const u8, secret: bool = false };
 
 /// A small modal form with up to three text fields.
 fn Form(comptime Page: type) type {
@@ -116,7 +118,7 @@ fn Form(comptime Page: type) type {
     };
 }
 
-fn openForm(
+pub fn openForm(
     comptime Page: type,
     parent: *gtk.Window,
     page: *Page,
@@ -172,7 +174,7 @@ fn openForm(
     dialog.present();
 }
 
-fn dropdownOf(items: []const []const u8) *gtk.DropDown {
+pub fn dropdownOf(items: []const []const u8) *gtk.DropDown {
     const strings = gtk.StringList.new(null);
     for (items) |item| {
         const z = gpa.dupeSentinel(u8, item, 0) catch continue;
@@ -484,8 +486,20 @@ pub const NetworkPage = struct {
     /// The network a password was asked for.
     pending_ssid: ?[]u8 = null,
     pending_secured: bool = false,
+    /// The fixed-address form (dhcpcd.conf): one interface at a time.
+    iface_model: *gtk.StringList,
+    iface_dd: *gtk.DropDown,
+    method_dd: *gtk.DropDown,
+    addr: *gtk.Entry,
+    gateway: *gtk.Entry,
+    dns: *gtk.Entry,
+    static_msg: *gtk.Label,
+    ifaces: std.ArrayList([]u8) = .empty,
 
     pub fn build(window: *SettingsWindow) *gtk.Box {
+        // NetworkManager, when it is running, is the better backend; the rest of this page is
+        // the one for wpa_supplicant and dhcpcd.
+        if (netpage.available()) return netpage.NmPage.build(window);
         const page = win.SettingsWindow.newPage(common.tr("Network"));
         if (!hw.hasProgram("wpa_cli") or !hw.hasProgram("ip")) {
             _ = note(page, common.tr("Network settings need wpa_supplicant (provides wpa_cli) and iproute2 (provides ip). Start the wpa_supplicant and dhcpcd services."));
@@ -498,7 +512,15 @@ pub const NetworkPage = struct {
             .status = gtk.Label.new(""),
             .wifi_switch = gtk.Switch.new(),
             .arena = std.heap.ArenaAllocator.init(gpa),
+            .iface_model = gtk.StringList.new(null),
+            .iface_dd = undefined,
+            .method_dd = dropdownOf(&.{ "Automatic (DHCP)", "Fixed address" }),
+            .addr = gtk.Entry.new(),
+            .gateway = gtk.Entry.new(),
+            .dns = gtk.Entry.new(),
+            .static_msg = gtk.Label.new(""),
         };
+        self.iface_dd = gtk.DropDown.new(self.iface_model.as(gio.ListModel), null);
         self.guard = hw.Guard(NetworkPage).create(self);
         self.status.setXalign(0);
         self.status.setWrap(1);
@@ -510,15 +532,133 @@ pub const NetworkPage = struct {
         rescan.as(gtk.Widget).setHalign(.start);
         page.append(rescan.as(gtk.Widget));
         page.append(self.content.as(gtk.Widget));
+        self.buildStatic(page);
         _ = gtk.Widget.signals.destroy.connect(page, *NetworkPage, &onDestroy, self, .{});
         _ = gtk.Widget.signals.map.connect(page, *NetworkPage, &onMap, self, .{});
         return page;
+    }
+
+    // ---- a fixed address (dhcpcd.conf) ---------------------------------------------------------
+
+    fn buildStatic(self: *NetworkPage, page: *gtk.Box) void {
+        const h = gtk.Label.new(common.tr("Fixed address (IPv4)"));
+        h.setXalign(0);
+        h.as(gtk.Widget).addCssClass("title-4");
+        h.as(gtk.Widget).setMarginTop(14);
+        page.append(h.as(gtk.Widget));
+        _ = note(page, common.tr("By default the network gives your computer its address (DHCP). To use a fixed one, choose the interface, write the address with its prefix length and apply. This is saved in /etc/dhcpcd.conf and needs your password. For Wi-Fi, connect to the network first."));
+        win.SettingsWindow.addRow(page, common.tr("Interface"), self.iface_dd.as(gtk.Widget));
+        win.SettingsWindow.addRow(page, common.tr("Address"), self.method_dd.as(gtk.Widget));
+        self.addr.setPlaceholderText("192.168.1.20/24");
+        self.gateway.setPlaceholderText(common.tr("Gateway, for example 192.168.1.1"));
+        self.dns.setPlaceholderText(common.tr("DNS servers, for example 1.1.1.1 9.9.9.9"));
+        page.append(self.addr.as(gtk.Widget));
+        page.append(self.gateway.as(gtk.Widget));
+        page.append(self.dns.as(gtk.Widget));
+        const apply = button(NetworkPage, self, common.tr("Apply"), onApplyStatic, "", "");
+        apply.as(gtk.Widget).setHalign(.start);
+        apply.as(gtk.Widget).addCssClass("suggested-action");
+        page.append(apply.as(gtk.Widget));
+        self.static_msg.setXalign(0);
+        self.static_msg.setWrap(1);
+        self.static_msg.as(gtk.Widget).addCssClass("dim-label");
+        page.append(self.static_msg.as(gtk.Widget));
+        _ = gobject.Object.signals.notify.connect(self.iface_dd, *NetworkPage, &onIfaceChosen, self, .{ .detail = "selected" });
+    }
+
+    fn addIface(self: *NetworkPage, name: []const u8) void {
+        if (!np.validIface(name)) return;
+        const copy = gpa.dupe(u8, name) catch return;
+        self.ifaces.append(gpa, copy) catch {
+            gpa.free(copy);
+            return;
+        };
+        const z = gpa.dupeSentinel(u8, name, 0) catch return;
+        defer gpa.free(z);
+        self.iface_model.append(z);
+    }
+
+    fn selectedIface(self: *NetworkPage) ?[]const u8 {
+        const i = self.iface_dd.getSelected();
+        if (i >= self.ifaces.items.len) return null;
+        return self.ifaces.items[i];
+    }
+
+    fn onIfaceChosen(_: *gtk.DropDown, _: *gobject.ParamSpec, self: *NetworkPage) callconv(.c) void {
+        self.loadStatic();
+    }
+
+    /// Fills the form from the block in dhcpcd.conf for the chosen interface, if there is one.
+    fn loadStatic(self: *NetworkPage) void {
+        const iface = self.selectedIface() orelse return;
+        var ip: np.Ip = .{ .method = "auto" };
+        var contents: [*]u8 = undefined;
+        var len: usize = 0;
+        var err: ?*glib.Error = null;
+        if (glib.fileGetContents("/etc/dhcpcd.conf", &contents, &len, &err) != 0) {
+            defer glib.free(contents);
+            if (np.parseDhcpcdBlock(contents[0..len], iface)) |found| ip = found;
+        } else if (err) |e| e.free();
+        var buf: [200]u8 = undefined;
+        self.method_dd.setSelected(if (std.mem.eql(u8, ip.method, "manual")) 1 else 0);
+        self.addr.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{ip.address}, 0) catch "");
+        self.gateway.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{ip.gateway}, 0) catch "");
+        self.dns.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{ip.dns}, 0) catch "");
+    }
+
+    /// Replaces dkde's block for the interface in dhcpcd.conf with the one on stdin (nothing on
+    /// stdin removes it: back to DHCP), then asks dhcpcd to rebind.
+    const static_script =
+        \\iface=$1; f=/etc/dhcpcd.conf; tmp=$(mktemp) || exit 1
+        \\if [ -f "$f" ]; then
+        \\  awk -v b="# dkde-static begin $iface" -v e="# dkde-static end $iface" '$0==b{s=1;next} $0==e{s=0;next} !s' "$f" > "$tmp" || { rm -f "$tmp"; exit 1; }
+        \\fi
+        \\cat >> "$tmp" || { rm -f "$tmp"; exit 1; }
+        \\cat "$tmp" > "$f" || { rm -f "$tmp"; exit 1; }
+        \\rm -f "$tmp"
+        \\dhcpcd -n "$iface" >/dev/null 2>&1 || true
+    ;
+
+    fn onApplyStatic(self: *NetworkPage, _: []const u8, _: []const u8) void {
+        const iface = self.selectedIface() orelse return self.static_msg.setText(common.tr("There is no interface to configure."));
+        if (!np.validIface(iface)) return;
+        const manual = self.method_dd.getSelected() == 1;
+        const ip: np.Ip = .{
+            .method = if (manual) "manual" else "auto",
+            .address = std.mem.trim(u8, std.mem.span(self.addr.as(gtk.Editable).getText()), " "),
+            .gateway = std.mem.trim(u8, std.mem.span(self.gateway.as(gtk.Editable).getText()), " "),
+            .dns = std.mem.trim(u8, std.mem.span(self.dns.as(gtk.Editable).getText()), " "),
+        };
+        np.checkIp(ip, false) catch |e| {
+            var buf: [200]u8 = undefined;
+            return self.static_msg.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{np.describeCheck(e)}, 0) catch "");
+        };
+        const block = if (manual) np.dhcpcdBlock(gpa, iface, ip) catch return else gpa.dupe(u8, "") catch return;
+        defer gpa.free(block);
+        self.static_msg.setText(common.tr("Waiting for your password\u{2026}"));
+        common.elevate.run(self.window.window.as(gtk.Window), common.tr("Change the network address."), &.{ "sh", "-c", static_script, "sh", iface }, block, NetworkPage, onStaticDone, self);
+    }
+
+    fn onStaticDone(self: *NetworkPage, outcome: common.elevate.Outcome, message: []const u8) void {
+        switch (outcome) {
+            .ok => {
+                self.static_msg.setText(common.tr("Saved in /etc/dhcpcd.conf. If the address does not change, restart the dhcpcd service."));
+                self.refresh();
+            },
+            .cancelled => self.static_msg.setText(""),
+            .failed => {
+                var buf: [400]u8 = undefined;
+                self.static_msg.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{if (message.len > 0) message else "The address could not be saved."}, 0) catch "");
+            },
+        }
     }
 
     fn onDestroy(_: *gtk.Box, self: *NetworkPage) callconv(.c) void {
         self.guard.kill();
         self.arena.deinit();
         if (self.pending_ssid) |s| gpa.free(s);
+        for (self.ifaces.items) |n| gpa.free(n);
+        self.ifaces.deinit(gpa);
         gpa.destroy(self);
     }
 
@@ -547,11 +687,18 @@ pub const NetworkPage = struct {
         }
         var text: std.ArrayList(u8) = .empty;
         defer text.deinit(gpa);
+        const old_selected = self.selectedIface();
+        const keep: ?[]u8 = if (old_selected) |o| gpa.dupe(u8, o) catch null else null;
+        defer if (keep) |k| gpa.free(k);
+        for (self.ifaces.items) |n| gpa.free(n);
+        self.ifaces.clearRetainingCapacity();
+        self.iface_model.splice(0, self.iface_model.as(gio.ListModel).getNItems(), null);
         var lines = std.mem.splitScalar(u8, out, '\n');
         while (lines.next()) |line| {
             var tok = std.mem.tokenizeAny(u8, line, " \t\r");
             const name = tok.next() orelse continue;
             if (std.mem.eql(u8, name, "lo")) continue;
+            self.addIface(name);
             const state = tok.next() orelse "";
             const addr = tok.next() orelse "";
             const entry = std.fmt.allocPrint(gpa, "{s}: {s}{s}{s}\n", .{ name, state, if (addr.len > 0) " \u{2014} " else "", addr }) catch return;
@@ -561,6 +708,11 @@ pub const NetworkPage = struct {
         const z = gpa.dupeSentinel(u8, std.mem.trim(u8, text.items, "\n"), 0) catch return;
         defer gpa.free(z);
         self.status.setText(z);
+        // Keep the chosen interface across a refresh.
+        if (keep) |k| for (self.ifaces.items, 0..) |n, i| if (std.mem.eql(u8, n, k)) {
+            self.iface_dd.setSelected(@intCast(i));
+        };
+        if (old_selected == null) self.loadStatic();
     }
 
     fn onRadio(self: *NetworkPage, ok: bool, out: []const u8) void {
