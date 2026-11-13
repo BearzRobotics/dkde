@@ -49,6 +49,7 @@ are confirmed.
   other providers are not read. GOA is optional and absent from a minimal image.
 - Unverified on dkrescue: musl, dinit services, GTK 4 and gtk4-layer-shell
   there (PACKAGING.md).
+- Phones and cameras in Files (MTP): code only; gvfs-mtp is not installed on the development machine, so it needs a real phone on the ISO (plug in, click the entry, copy a file, right-click to disconnect).
 - Click paths not exercised by hand: network connection Edit/Save/Forget, the
   fixed-address Apply, the graph Save… dialog (PNG, SVG, CSV), tasks sort in
   both directions, right-click menu scroll bars.

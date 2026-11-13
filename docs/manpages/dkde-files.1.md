@@ -30,6 +30,9 @@ Operands are file names or URIs and are never interpreted as shell text.
 # EXIT STATUS
 0 on a normal exit. 2 when an option is not recognised (the message goes to standard error). Other nonzero values mean the program could not start; the reason is written to standard error.
 
+# PHONES AND CAMERAS
+When gvfs has the MTP, gphoto2 or afc backend (Debian and Ubuntu: **gvfs-backends**, with **libmtp-common** or **mtp-tools** for the udev rules), the sidebar has a Phones and cameras section. It lists a plugged-in device even before it is mounted; click it to mount it and show its folders. An Android phone must be unlocked and set to File transfer (MTP) in its USB notification, or the mount fails with a message saying so. Right-click a mounted device in the sidebar to disconnect it. The section follows plugging and unplugging while the window is open. The files are read and written by gvfs, and programs that open a file by path need **gvfs-fuse** (the device is then under /run/user/UID/gvfs). Nothing is shown when the backend is not installed.
+
 # FILES
 ~/.config/dkde/files.toml
 : File manager settings.

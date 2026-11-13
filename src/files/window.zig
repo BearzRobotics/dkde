@@ -126,6 +126,8 @@ pub const FilesWindow = struct {
     /// Navigation target of each sidebar row, null for headings.
     sidebar_paths: std.ArrayList(?[:0]u8) = .empty,
     sidebar_bookmark: std.ArrayList(bool) = .empty,
+    /// Handlers on the volume monitor (devices plugged in or out), removed with the window.
+    monitor_handlers: std.ArrayList(c_ulong) = .empty,
 
     path_stack: *gtk.Stack,
     crumbs: *gtk.Box,
@@ -211,12 +213,22 @@ pub const FilesWindow = struct {
         self.registerTab();
         self.installShortcuts();
         self.rebuildSidebar();
+        const monitor = gio.VolumeMonitor.get();
+        inline for (.{ "volume-added", "volume-removed", "mount-added", "mount-removed" }) |name| {
+            self.monitor_handlers.append(self.allocator, gobject.signalConnectData(monitor.as(gobject.Object), name, @ptrCast(&onDevicesChanged), self, null, .{})) catch {};
+        }
         self.go(self.current, false);
         _ = gtk.Widget.signals.destroy.connect(self.window, *FilesWindow, &onWindowDestroy, self, .{});
         return self;
     }
 
+    fn onDevicesChanged(_: *gio.VolumeMonitor, _: *gobject.Object, self: *FilesWindow) callconv(.c) void {
+        self.rebuildSidebar();
+    }
+
     fn onWindowDestroy(_: *gtk.ApplicationWindow, self: *FilesWindow) callconv(.c) void {
+        for (self.monitor_handlers.items) |id| gobject.signalHandlerDisconnect(gio.VolumeMonitor.get().as(gobject.Object), id);
+        self.monitor_handlers.deinit(self.allocator);
         self.proc_guard.kill();
         self.operations.destroy();
         for (self.crumb_ctxs.items) |ctx| {
@@ -785,6 +797,15 @@ pub const FilesWindow = struct {
         return false;
     }
 
+    /// Schemes gvfs uses for phones and cameras: MTP (Android), PTP (gphoto2), iOS (afc).
+    fn isDeviceScheme(scheme: []const u8) bool {
+        return std.mem.eql(u8, scheme, "mtp") or std.mem.eql(u8, scheme, "gphoto2") or std.mem.eql(u8, scheme, "afc");
+    }
+
+    fn deviceSupported() bool {
+        return schemeSupported("mtp") or schemeSupported("gphoto2") or schemeSupported("afc");
+    }
+
     /// Whether gvfs offers the sftp, ftp or smb backends. Optional: without it
     /// the file manager still works on local folders.
     fn remoteSupported() bool {
@@ -799,7 +820,7 @@ pub const FilesWindow = struct {
     /// Mounts the server behind `file` (asking for a password when needed),
     /// then shows it. A location that is already mounted is shown at once.
     fn mountThenGo(self: *FilesWindow, file: *gio.File) void {
-        if (!remoteSupported()) {
+        if (!remoteSupported() and !deviceSupported()) {
             common.dialogs.showError(
                 self.window.as(gtk.Window),
                 common.tr("Remote locations need gvfs"),
@@ -830,11 +851,14 @@ pub const FilesWindow = struct {
             if (e.f_domain != gio.ioErrorQuark() or e.f_code != @intFromEnum(gio.IOErrorEnum.already_mounted)) {
                 ctx.window.updateStatus();
                 if (e.f_code != @intFromEnum(gio.IOErrorEnum.failed_handled)) {
-                    var buf: [512]u8 = undefined;
+                    var buf: [768]u8 = undefined;
+                    const scheme = file.getUriScheme();
+                    defer if (scheme) |sch| glib.free(sch);
+                    const hint: []const u8 = if (scheme != null and isDeviceScheme(std.mem.span(scheme.?))) " " ++ "Unlock the phone and choose File transfer (MTP) in its USB notification, then try again." else "";
                     common.dialogs.showError(
                         ctx.window.window.as(gtk.Window),
                         common.tr("Could not connect"),
-                        std.fmt.bufPrintSentinel(&buf, "{s}", .{std.mem.span(e.f_message orelse "")}, 0) catch null,
+                        std.fmt.bufPrintSentinel(&buf, "{s}{s}", .{ std.mem.span(e.f_message orelse ""), hint }, 0) catch null,
                     );
                 }
                 return;
@@ -1090,11 +1114,18 @@ pub const FilesWindow = struct {
             }
         }
 
-        // Servers connected through gvfs, and a way to connect to more.
-        if (remoteSupported()) {
-            self.addSidebarHeading(common.tr("Network"));
-            self.addSidebarRow(common.tr("Connect to Server\u{2026}"), "network-server-symbolic", connect_row, false);
-            const mounts = gio.VolumeMonitor.get().getMounts();
+        // Servers connected through gvfs (and a way to connect to more), then phones and
+        // cameras: mounted ones, and plugged-in ones that are not mounted yet.
+        const remote_ok = remoteSupported();
+        const device_ok = deviceSupported();
+        if (remote_ok or device_ok) {
+            const monitor = gio.VolumeMonitor.get();
+            var heading_shown = false; // "Phones and cameras"
+            if (remote_ok) {
+                self.addSidebarHeading(common.tr("Network"));
+                self.addSidebarRow(common.tr("Connect to Server\u{2026}"), "network-server-symbolic", connect_row, false);
+            }
+            const mounts = monitor.getMounts();
             defer mounts.free();
             var node: ?*glib.List = mounts;
             while (node) |n| : (node = n.f_next) {
@@ -1107,7 +1138,55 @@ pub const FilesWindow = struct {
                 defer glib.free(uri);
                 const name = mount.getName();
                 defer glib.free(name);
+                const is_device = isDeviceScheme(pure.schemeOf(std.mem.span(uri)));
+                if (is_device) continue; // listed below, after the servers
+                if (!remote_ok) continue;
                 self.addSidebarRow(std.mem.span(name), "folder-remote-symbolic", std.mem.span(uri), false);
+            }
+            // Phones and cameras that are mounted.
+            const dev_mounts = monitor.getMounts();
+            defer dev_mounts.free();
+            var dnode: ?*glib.List = dev_mounts;
+            while (dnode) |n| : (dnode = n.f_next) {
+                const mount: *gio.Mount = @ptrCast(@alignCast(n.f_data orelse continue));
+                defer mount.as(gobject.Object).unref();
+                const root = mount.getRoot();
+                defer root.as(gobject.Object).unref();
+                const uri = root.getUri();
+                defer glib.free(uri);
+                if (!isDeviceScheme(pure.schemeOf(std.mem.span(uri)))) continue;
+                const name = mount.getName();
+                defer glib.free(name);
+                if (!heading_shown) {
+                    self.addSidebarHeading(common.tr("Phones and cameras"));
+                    heading_shown = true;
+                }
+                self.addSidebarRow(std.mem.span(name), "phone-symbolic", std.mem.span(uri), false);
+            }
+            // Plugged in, not mounted: a click mounts it (the phone must be unlocked and set to file transfer).
+            const volumes = monitor.getVolumes();
+            defer volumes.free();
+            var vnode: ?*glib.List = volumes;
+            while (vnode) |n| : (vnode = n.f_next) {
+                const volume: *gio.Volume = @ptrCast(@alignCast(n.f_data orelse continue));
+                defer volume.as(gobject.Object).unref();
+                const root = volume.getActivationRoot() orelse continue;
+                defer root.as(gobject.Object).unref();
+                if (root.isNative() != 0) continue;
+                const uri = root.getUri();
+                defer glib.free(uri);
+                if (!isDeviceScheme(pure.schemeOf(std.mem.span(uri)))) continue;
+                if (volume.getMount()) |m| {
+                    m.as(gobject.Object).unref();
+                    continue;
+                }
+                const name = volume.getName();
+                defer glib.free(name);
+                if (!heading_shown) {
+                    self.addSidebarHeading(common.tr("Phones and cameras"));
+                    heading_shown = true;
+                }
+                self.addSidebarRow(std.mem.span(name), "phone-symbolic", std.mem.span(uri), false);
             }
         }
 
@@ -3150,13 +3229,41 @@ pub const FilesWindow = struct {
         }
     }
 
+    fn ejectDevice(self: *FilesWindow, uri: []const u8) void {
+        const uriz = self.allocator.dupeSentinel(u8, uri, 0) catch return;
+        defer self.allocator.free(uriz);
+        const file = gio.File.newForUri(uriz);
+        defer file.as(gobject.Object).unref();
+        const mount = file.findEnclosingMount(null, null) orelse return;
+        defer mount.as(gobject.Object).unref();
+        const operation = gtk.MountOperation.new(self.window.as(gtk.Window));
+        defer operation.as(gobject.Object).unref();
+        mount.unmountWithOperation(.{}, operation.as(gio.MountOperation), null, onEjected, self);
+        self.status.setText(common.tr("Disconnecting\u{2026}"));
+    }
+
+    fn onEjected(source: ?*gobject.Object, result: *gio.AsyncResult, raw: ?*anyopaque) callconv(.c) void {
+        const self: *FilesWindow = @ptrCast(@alignCast(raw.?));
+        const mount: *gio.Mount = @ptrCast(@alignCast(source.?));
+        var err: ?*glib.Error = null;
+        _ = mount.unmountWithOperationFinish(result, &err);
+        if (err) |e| {
+            defer e.free();
+            common.dialogs.showError(self.window.as(gtk.Window), common.tr("Could not disconnect"), if (e.f_message) |m| std.mem.span(m) else null);
+        }
+        self.updateStatus();
+    }
+
     fn onSidebarRightClick(gesture: *gtk.GestureClick, _: c_int, x: f64, y: f64, self: *FilesWindow) callconv(.c) void {
         _ = gesture;
         _ = x;
         const row = self.sidebar.getRowAtY(@intFromFloat(y)) orelse return;
         const index: usize = @intCast(row.getIndex());
-        if (index >= self.sidebar_bookmark.items.len or !self.sidebar_bookmark.items[index]) return;
-        if (self.sidebar_paths.items[index]) |path| self.removeBookmark(path);
+        if (index >= self.sidebar_bookmark.items.len) return;
+        const path = self.sidebar_paths.items[index] orelse return;
+        if (self.sidebar_bookmark.items[index]) return self.removeBookmark(path);
+        // A mounted phone or camera: right-click disconnects it.
+        if (isRemote(path) and isDeviceScheme(pure.schemeOf(path))) self.ejectDevice(path);
     }
 };
 
