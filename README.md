@@ -153,7 +153,8 @@ sudo apt install \
 | Login screen | `greetd` (then see `data/greetd/`, `data/pam/` and "Init systems" below) | log in on a tty and run `dkde-session` |
 | Notifications, system tray | `dbus` (provides `dbus-run-session`, which `dkde-session` uses) | both are off; the panel logs it |
 | Sound: volume, devices, test tone | `pipewire`, `pipewire-pulse`, `wireplumber` (`wpctl`), `pipewire-bin` (`pw-play`), or `pulseaudio-utils` (`pactl`, `paplay`) | the Sound page and quick-settings volume say what to install |
-| Network | `wpasupplicant` (`wpa_cli`), `dhcpcd`, `iproute2` (`ip`), `rfkill` | Network page and Wi-Fi tile hidden. Needs `data/wpa_supplicant.conf` (wheel group control socket) |
+| Network | `network-manager` (`nmcli`): full page with Wi-Fi, saved connections and a connection editor. Otherwise `wpasupplicant` (`wpa_cli`), `dhcpcd`, `iproute2` (`ip`), `rfkill` (Wi-Fi, plus a fixed IPv4 address written to `/etc/dhcpcd.conf`) | Network page and Wi-Fi tile hidden. The wpa_cli path needs `data/wpa_supplicant.conf` (wheel group control socket) |
+| Online accounts (optional) | `gnome-online-accounts` (the GOA service) and `gnome-online-accounts-gtk` or `gnome-control-center` to add accounts | Settings lists the accounts and offers Google calendars for dkde-calendar; without them only `.ics` links are available. Nothing runs until you add an account |
 | Bluetooth | `bluez` (`bluetoothctl`) | Bluetooth page and tile hidden |
 | Airplane mode | `rfkill` | tile hidden |
 | Brightness | `brightnessctl` (otherwise dkde writes the backlight in sysfs, which needs permission) | slider hidden on machines with no backlight |
@@ -191,7 +192,7 @@ Which services you need:
   login. Without them, run `dkde-session` from a tty.
 - **dbus system bus**: BlueZ needs it. dkde's own session
   bus comes from `dbus-run-session`, which `dkde-session` uses when present.
-- **wpa_supplicant, dhcpcd, bluetoothd, cupsd**: only for the Network, Bluetooth and
+- **NetworkManager (or wpa_supplicant and dhcpcd), bluetoothd, cupsd**: only for the Network, Bluetooth and
   Printers pages and quick settings.
 
 `dkde-setup` recognises logind and elogind (it looks for `/run/systemd/seats`)

@@ -132,7 +132,7 @@ pub const Graph = struct {
         _ = gtk.Button.signals.clicked.connect(add, *Graph, &onAdd, self, .{});
         const reset = gtk.Button.newWithLabel(t("Reset View"));
         _ = gtk.Button.signals.clicked.connect(reset, *Graph, &onReset, self, .{});
-        const save = gtk.Button.newWithLabel(t("Save as Picture…"));
+        const save = gtk.Button.newWithLabel(t("Save…"));
         _ = gtk.Button.signals.clicked.connect(save, *Graph, &onSave, self, .{});
         buttons.append(add.as(gtk.Widget));
         buttons.append(self.buildScale());
@@ -847,10 +847,10 @@ pub const Graph = struct {
         const dialog = gtk.FileDialog.new();
         defer dialog.as(gobject.Object).unref();
         dialog.setInitialName("graph.png");
-        // The file name decides the format: .svg is a scalable drawing, anything else a PNG.
+        // The file name decides the format: .svg is a scalable drawing, .csv the points, anything else a PNG.
         const filters = gio.ListStore.new(gtk.FileFilter.getGObjectType());
         defer filters.as(gobject.Object).unref();
-        inline for (.{ .{ "PNG picture", "*.png" }, .{ "SVG drawing (scalable)", "*.svg" } }) |f| {
+        inline for (.{ .{ "PNG picture", "*.png" }, .{ "SVG drawing (scalable)", "*.svg" }, .{ "CSV table of points", "*.csv" } }) |f| {
             const filter = gtk.FileFilter.new();
             filter.setName(t(f[0]));
             filter.addPattern(f[1]);
@@ -862,6 +862,52 @@ pub const Graph = struct {
         dialog.save(@ptrCast(@alignCast(root)), null, onSaveChosen, self);
     }
 
+    /// The curves as a table: x, then one column per function, a row for each of
+    /// `csv_rows` points across the x range on screen. Undefined values are left empty.
+    const csv_rows = 401;
+
+    fn saveCsv(self: *Graph, path: [*:0]const u8) bool {
+        _ = self.arena.reset(.retain_capacity);
+        const a = self.arena.allocator();
+        var problem: eval.Problem = .{};
+        var ev: eval.Eval = .{ .a = a, .session = self.session, .mode = .{ .angle = .radians }, .problem = &problem };
+        const parsed = self.parseCurves(a, &ev) catch return false;
+        var out: std.ArrayList(u8) = .empty;
+        out.appendSlice(a, "x") catch return false;
+        var any = false;
+        for (parsed) |p| {
+            if (p.node == null) continue;
+            any = true;
+            const c = self.curves.items[p.index];
+            const text = std.mem.trim(u8, std.mem.span(c.entry.as(gtk.Editable).getText()), " ");
+            out.append(a, ',') catch return false;
+            out.append(a, '"') catch return false;
+            for (text) |ch| {
+                if (ch == '"') out.append(a, '"') catch return false;
+                out.append(a, ch) catch return false;
+            }
+            out.append(a, '"') catch return false;
+        }
+        if (!any) return false;
+        out.append(a, '\n') catch return false;
+        const w = self.size()[0];
+        const lo = self.toX(0);
+        const step = (self.toX(w) - lo) / @as(f64, csv_rows - 1);
+        var i: usize = 0;
+        while (i < csv_rows) : (i += 1) {
+            const x = lo + step * @as(f64, @floatFromInt(i));
+            out.print(a, "{d}", .{x}) catch return false;
+            for (parsed) |p| {
+                const n = p.node orelse continue;
+                const y = ev.float(n, "x", x);
+                if (std.math.isFinite(y)) out.print(a, ",{d}", .{y}) catch return false else out.append(a, ',') catch return false;
+            }
+            out.append(a, '\n') catch return false;
+        }
+        common.fsio.writeFileAtomic(std.mem.span(path), out.items) catch return false;
+        return true;
+    }
+
     fn onSaveChosen(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
         const self: *Graph = @ptrCast(@alignCast(data.?));
         const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
@@ -869,6 +915,10 @@ pub const Graph = struct {
         defer file.as(gobject.Object).unref();
         const path = file.getPath() orelse return;
         defer glib.free(path);
+        if (std.ascii.endsWithIgnoreCase(std.mem.span(path), ".csv")) {
+            self.status.setText(if (self.saveCsv(path)) t("Saved.") else t("The points could not be saved."));
+            return;
+        }
         if (std.ascii.endsWithIgnoreCase(std.mem.span(path), ".svg")) {
             const sz = self.size();
             const svg = cairo_svg_surface_create(path, sz[0], sz[1]) orelse return self.status.setText(t("The picture could not be saved."));

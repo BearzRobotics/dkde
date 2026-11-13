@@ -220,12 +220,12 @@ pub const NmPage = struct {
         hp.openForm(NmPage, self.window.window.as(gtk.Window), self, common.tr("Wi-Fi password"), common.tr("Connect"), &.{.{ .label = common.tr("Password"), .secret = true }}, onPassword);
     }
 
-    /// nmcli takes the password as an argument, so other local users could see it in the process
-    /// list for the moment the command runs; NetworkManager then stores it itself.
+    /// The password goes to nmcli on its standard input (--ask), never on the command line where
+    /// other local users could read it; NetworkManager then stores it itself.
     fn onPassword(self: *NmPage, values: []const []const u8) void {
         const ssid = self.pending_ssid orelse return;
         self.say(common.tr("Connecting\u{2026}"));
-        hw.run(NmPage, self.guard, &.{ "nmcli", "device", "wifi", "connect", ssid, "password", values[0] }, onPasswordTried);
+        hw.runInput(NmPage, self.guard, &.{ "nmcli", "--ask", "device", "wifi", "connect", ssid }, values[0], onPasswordTried);
     }
 
     fn onPasswordTried(self: *NmPage, ok: bool, _: []const u8) void {

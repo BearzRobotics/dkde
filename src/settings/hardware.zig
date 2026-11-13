@@ -18,6 +18,7 @@ const proc = @import("common").proc;
 pub const hasProgram = proc.hasProgram;
 pub const Guard = proc.Guard;
 pub const run = proc.run;
+pub const runInput = proc.runInput;
 
 // ---- sound devices ------------------------------------------------------------
 

@@ -24,6 +24,12 @@ const Greeter = struct {
     button: *gtk.Button,
     connection: ?greetd.Connection = null,
 
+    fn destroy(self: *Greeter) void {
+        for (self.names.items) |n| self.allocator.free(n);
+        self.names.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+
     fn activate(app: *gtk.Application, self: *App) callconv(.c) void {
         common.style.load(self.allocator) catch {};
         self.greeter = Greeter.create(self.allocator, app) catch |err| {
@@ -166,6 +172,10 @@ const Greeter = struct {
                     self.window.as(gtk.Window).close();
                     return;
                 }
+                // The conversation is over but greetd still holds the session: release it.
+                try connection.send(greetd.cancel_session);
+                const ack = connection.receive(a) catch null;
+                if (ack) |m| a.free(m);
                 return self.fail(common.tr("The session could not be started."));
             }
             if (std.mem.eql(u8, kind, "auth_message")) {
@@ -212,6 +222,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     defer gtk_app.as(gobject.Object).unref();
     _ = gio.Application.signals.activate.connect(gtk_app, *App, &Greeter.activate, &app, .{});
     const status = gio.Application.run(gtk_app.as(gio.Application), @intCast(init.args.vector.len), @ptrCast(@constCast(init.args.vector.ptr)));
+    if (app.greeter) |g| g.destroy();
     if (status != 0) std.process.exit(@intCast(status));
 }
 

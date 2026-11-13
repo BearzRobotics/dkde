@@ -1,6 +1,6 @@
 # Handoff — 2026-11-12, branch `build-and-apps`
 
-Nothing from this session is committed. Working tree: modified `src/common/core.zig`, `src/common/root.zig`, `src/common/contextmenu.zig`, `src/settings/onlinepage.zig`, `src/calc/graph.zig`, `src/tasks/columns.zig`, `src/tasks/table.zig`, `src/tasks/simplelist.zig`; new `src/common/goa.zig`.
+(Historical: this list was written before the commit; everything is committed now.) Files then modified: `src/common/core.zig`, `src/common/root.zig`, `src/common/contextmenu.zig`, `src/settings/onlinepage.zig`, `src/calc/graph.zig`, `src/tasks/columns.zig`, `src/tasks/table.zig`, `src/tasks/simplelist.zig`; new `src/common/goa.zig`.
 
 ## Direction from the owner
 - One place for online accounts: **dkde-settings → Accounts → Online accounts**, built on **GNOME Online Accounts (GOA)**. All integrations optional, never intrusive. Calendar-specific settings may live in the calendar.
@@ -29,3 +29,10 @@ Nothing from this session is committed. Working tree: modified `src/common/core.
 - Committed and pushed: GOA list, Google calendars through GOA (`gcal.zig`, REST API, GET only; one calendar-list probe done by hand with the owner's OK, event fetching through the app is for the owner to try), calc SVG export, tasks fixes. See docs/decisions/0003.
 - Network page: with NetworkManager running (`netpage.available()` asks `nmcli general`), `src/settings/netpage.zig` shows devices, Wi-Fi radio and networks (connect, password, disconnect) and saved connections (connect, disconnect, forget, **Edit** form: autoconnect, IPv4/IPv6 automatic / fixed / off, address, gateway, DNS). Without NM, the old wpa_cli page gets a **Fixed address (IPv4)** section that writes a marked block into /etc/dhcpcd.conf through the elevation dialog. Parsers and checks are in `netparse.zig` (unit tested). Verified: page renders against the real NM with clean stderr; the exact `nmcli connection modify` arguments were run on a throw-away dummy profile (deleted); the dhcpcd rewrite script was run on a scratch file. **Not exercised:** clicking Edit/Save, Connect with a password, Forget, and Apply of the fixed address with the real elevation dialog.
 - Not done: VPN profiles, hidden Wi-Fi networks, IPv6 on the dhcpcd path, wired profile creation (NM makes "Wired connection 1" itself).
+
+## Update (2026-11-13)
+- Docs brought up to date: dkde-settings(1) (NETWORK, GNOME Online Accounts), dkde-calendar(1) (Google calendars), dkde-calc(1) (Save…), README and desktop-setup-checklist (NetworkManager, GOA packages).
+- Calc graph: **Save…** now offers PNG, SVG and **CSV** (header row, 401 rows over the visible x range, undefined values empty). Compiles; the dialog and the file contents are not click-tested.
+- Wi-Fi password now goes to `nmcli --ask` on stdin (`proc.runInput`), not on the command line.
+- Google calendar events: fetched live for the owner's account through GOA (`GetAccessToken` → `gcal.fetchIcs`, calendar "primary"): 147 events converted. A temporary test did this and was removed.
+- Greeter: first live test. A fake greetd (Python, on a unix socket) and the greeter in a private headless labwc, typing with `wtype`: a wrong password gives "Incorrect user name or password." and `cancel_session`; a right one gives `start_session ["dkde-session"]`. Fixed: a failed `start_session` now cancels the session; the greeter no longer leaks its state at exit (trace was printed on every login). **Never tested with the real greetd, PAM, a tty, or the real kiosk session**, nor with multiple accounts, a locked account, or a PAM conversation with more than one prompt.

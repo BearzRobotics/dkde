@@ -23,7 +23,8 @@ or by the page that needs them.
 |---|---|
 | Compositor, session, login | `labwc`, `greetd`, `seatd`, `dbus` |
 | Display page, screen off | `wlr-randr` |
-| Network, Bluetooth, printers | `wpasupplicant`, `dhcpcd`, `iproute2`, `bluez`, `cups` |
+| Network, Bluetooth, printers | `network-manager` (or `wpasupplicant`, `dhcpcd`, `iproute2`), `bluez`, `cups` |
+| Online accounts (optional: calendars) | `gnome-online-accounts`, `gnome-online-accounts-gtk` |
 | Sound | `pipewire`, `wireplumber` (`wpctl`), `pipewire-pulse` |
 | Brightness | `brightnessctl` (or sysfs access) |
 | Icons and fonts | `papirus-icon-theme`, `fonts-dejavu` or `fonts-noto` |

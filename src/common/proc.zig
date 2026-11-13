@@ -56,6 +56,18 @@ pub fn run(
     argv: []const []const u8,
     callback: *const fn (*Page, bool, []const u8) void,
 ) void {
+    runInput(Page, guard, argv, null, callback);
+}
+
+/// Like `run`, with `input` written to the program's standard input (for a
+/// secret that must not appear in the process list).
+pub fn runInput(
+    comptime Page: type,
+    guard: *Guard(Page),
+    argv: []const []const u8,
+    input: ?[]const u8,
+    callback: *const fn (*Page, bool, []const u8) void,
+) void {
     const a = std.heap.c_allocator;
     const G = Guard(Page);
     const Thunk = struct {
@@ -85,7 +97,7 @@ pub fn run(
     z[argv.len] = null;
 
     var err: ?*glib.Error = null;
-    const proc = gio.Subprocess.newv(@ptrCast(z.ptr), .{ .stdout_pipe = true, .stderr_silence = true }, &err) orelse {
+    const proc = gio.Subprocess.newv(@ptrCast(z.ptr), .{ .stdout_pipe = true, .stderr_silence = true, .stdin_pipe = input != null }, &err) orelse {
         if (err) |e| e.free();
         callback(guard.page, false, "");
         return;
@@ -93,7 +105,21 @@ pub fn run(
     const job = a.create(Run) catch return;
     job.* = .{ .callback = Thunk.call, .target = @ptrCast(callback), .data = guard, .alive = Thunk.dead(guard), .release = Thunk.release };
     guard.pending += 1;
-    proc.communicateUtf8Async(null, null, &onDone, job);
+    var stdin_z: ?[]u8 = null;
+    if (input) |text| {
+        const buf = a.alloc(u8, text.len + 1) catch null;
+        if (buf) |b| {
+            @memcpy(b[0..text.len], text);
+            b[text.len] = 0;
+            stdin_z = b;
+        }
+    }
+    // GIO copies nothing it keeps beyond the call; the buffer is wiped and freed after queuing.
+    proc.communicateUtf8Async(if (stdin_z) |zz| @as([*:0]const u8, @ptrCast(zz.ptr)) else null, null, &onDone, job);
+    if (stdin_z) |zz| {
+        std.crypto.secureZero(u8, zz);
+        a.free(zz);
+    }
 }
 
 fn onDone(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
