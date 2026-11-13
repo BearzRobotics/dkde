@@ -36,6 +36,9 @@ Operands are file names or URIs and are never interpreted as shell text.
 # EXIT STATUS
 0 on a normal exit. 2 when an option is not recognised (the message goes to standard error). Other nonzero values mean the program could not start; the reason is written to standard error.
 
+# OCR
+Scanned pages (pages with almost no text of their own) can be made searchable with OCR. It is done by the program **ocrmypdf** (which runs Tesseract), found in the search path; without it dkde-pdf says to install the package ocrmypdf, plus Tesseract language data for the languages wanted. Nothing else in dkde-pdf needs it.
+
 # FILES
 $XDG_DATA_DIRS/dkde/style.css
 : The stylesheet shared by every DKDE program. Anything in it can be overridden in ~/.config/dkde/style.css. When a program is run from a build or install tree, `<program directory>/../share/dkde` is searched first.

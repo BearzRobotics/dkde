@@ -141,7 +141,8 @@ sudo apt install \
     pipewire pipewire-pulse pipewire-bin wireplumber pulseaudio-utils \
     wpasupplicant dhcpcd iproute2 bluez rfkill brightnessctl wlr-randr \
     cups cups-client cups-filters \
-    gvfs udisks2 zip unzip 7zip chrony sudo passwd \
+    gvfs gvfs-backends gvfs-fuse libmtp-common udisks2 zip unzip 7zip chrony sudo passwd \
+    ca-certificates openssh-client ocrmypdf util-linux qt6ct gnome-online-accounts-gtk \
     git curl tar parted e2fsprogs dosfstools exfatprogs xfsprogs btrfs-progs ntfs-3g \
     f2fs-tools jfsutils reiserfsprogs nilfs-tools udftools hfsprogs fatresize \
     tmux vim htop
@@ -169,6 +170,13 @@ sudo apt install \
 | Date and time | `chrony` (clock sync; use `ntpd`, `chronyd` or `systemd-timesyncd`, whichever your system has) | the clock is only as right as you set it |
 | Images, icons, fonts | `webp-pixbuf-loader`, `librsvg2-common`, `papirus-icon-theme`, `fonts-noto-*` | missing formats and glyphs |
 | Elevated actions, user and group management | `sudo`, `passwd` (provides `useradd`, `usermod`, `userdel`, `chpasswd`, `groupadd`, `groupdel`, `gpasswd`; installed by default on Ubuntu) | the admin-password dialog and the User page cannot work |
+| Online calendars (https), Google calendars | `ca-certificates` (the system root certificates; without them every https request fails) | the update fails with a certificate message |
+| sftp:// in Files | `openssh-client` (with gvfs-backends) | Connect to Server says what to install |
+| OCR in the PDF viewer | `ocrmypdf` (and the Tesseract language data it needs) | the OCR item says what to install |
+| Suspend (Power page, Start menu) | `loginctl` (logind or elogind), else `systemctl`, else `zzz` | no sleep timeout or Sleep item |
+| Task Manager: Services, Startup | systemd (`systemctl`, `journalctl`) or dinit (`dinitctl`) | those pages are empty or say what is missing |
+| Process disk priority (Task Manager) | `util-linux` (`ionice`; also `lsblk`, `losetup`, `mount`, `umount`, `mkswap`) | the item fails with a message |
+| Qt programs matching the theme | `qt6ct` (and `qt5ct`; `kvantum` adds a style); dkde writes their configuration whenever the appearance changes | Qt programs use their own look |
 | Try the terminal | `tmux`, `vim`, `htop` | none |
 
 ## Init systems and other distributions

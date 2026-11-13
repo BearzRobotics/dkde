@@ -24,6 +24,9 @@ or by the page that needs them.
 | Compositor, session, login | `labwc`, `greetd`, `seatd`, `dbus` |
 | Display page, screen off | `wlr-randr` |
 | Network, Bluetooth, printers | `network-manager` (or `wpasupplicant`, `dhcpcd`, `iproute2`), `bluez`, `cups` |
+| Online calendars (https) | `ca-certificates` |
+| Files: sftp, MTP phones | `openssh-client`, `gvfs-backends`, `libmtp-common`, `gvfs-fuse` |
+| PDF OCR | `ocrmypdf` |
 | Online accounts (optional: calendars) | `gnome-online-accounts`, `gnome-online-accounts-gtk` |
 | Sound | `pipewire`, `wireplumber` (`wpctl`), `pipewire-pulse` |
 | Brightness | `brightnessctl` (or sysfs access) |
