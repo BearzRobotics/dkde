@@ -1431,6 +1431,8 @@ pub const DateTimePage = struct {
             const zone = cols.next() orelse continue;
             list.append(gpa, gpa.dupe(u8, zone) catch continue) catch continue;
         }
+        // zone1970.tab has no plain UTC, which is what a fresh install is set to.
+        list.append(gpa, gpa.dupe(u8, "UTC") catch return) catch {};
         std.mem.sort([]u8, list.items, {}, struct {
             fn less(_: void, a: []u8, b: []u8) bool {
                 return std.mem.lessThan(u8, a, b);
@@ -1440,6 +1442,15 @@ pub const DateTimePage = struct {
     }
 
     fn currentZone() ?[]u8 {
+        // /etc/timezone is a Debian habit; elsewhere /etc/localtime is a link into the zone database.
+        if (glib.fileReadLink("/etc/localtime", null)) |target| {
+            defer glib.free(target);
+            const path = std.mem.span(target);
+            if (std.mem.indexOf(u8, path, "zoneinfo/")) |at| {
+                const zone = path[at + "zoneinfo/".len ..];
+                if (zone.len > 0) return gpa.dupe(u8, zone) catch null;
+            }
+        }
         var contents: [*]u8 = undefined;
         var len: usize = 0;
         if (glib.fileGetContents("/etc/timezone", &contents, &len, null) == 0) return null;
