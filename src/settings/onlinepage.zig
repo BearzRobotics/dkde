@@ -34,6 +34,12 @@ pub const OnlinePage = struct {
     url_entry: *gtk.Entry,
     interval: *gtk.DropDown,
     refresh_button: *gtk.Button,
+    /// GNOME Online Accounts: one row per account, or a line saying why there are none.
+    goa_list: *gtk.ListBox,
+    goa_note: *gtk.Label,
+    goa_pending: bool = true,
+    /// A calendar list is being fetched from an account (a worker thread will call back).
+    discovering: bool = false,
     busy: bool = false,
     /// An account was added while an update was running: update again when it ends.
     pending: bool = false,
@@ -56,15 +62,25 @@ pub const OnlinePage = struct {
             .cfg = cfg,
             .accounts = .{ .arena = std.heap.ArenaAllocator.init(gpa), .items = &.{} },
             .list = gtk.ListBox.new(),
+            .goa_list = gtk.ListBox.new(),
+            .goa_note = gtk.Label.new(""),
             .status = gtk.Label.new(""),
             .name_entry = gtk.Entry.new(),
             .url_entry = gtk.Entry.new(),
             .interval = gtk.DropDown.newFromStrings(@ptrCast(&interval_names)),
-            .refresh_button = gtk.Button.newWithLabel(common.tr("Update now")),
+            .refresh_button = gtk.Button.newWithLabel(common.tr("Sync all")),
         };
         _ = gtk.Widget.signals.destroy.connect(page, *OnlinePage, &onDestroy, self, .{});
 
-        const intro = gtk.Label.new(common.tr("Optional. Add a calendar from the internet to see its events in the calendar and in reminders. Nothing is contacted until you add one, and nothing is ever sent to the server: the events are only read. The apps do not ask you to sign in."));
+        self.buildGoa(page);
+
+        const links = gtk.Label.new(common.tr("Calendars"));
+        links.setXalign(0);
+        links.as(gtk.Widget).addCssClass("title-4");
+        links.as(gtk.Widget).setMarginTop(18);
+        page.append(links.as(gtk.Widget));
+
+        const intro = gtk.Label.new(common.tr("Optional. Calendars you choose above, or add by link below, show in the calendar and in reminders. Nothing is contacted until you choose or add one, and nothing is ever sent to the server: the events are only read. Sync all updates every calendar here."));
         intro.setXalign(0);
         intro.setWrap(1);
         intro.as(gtk.Widget).addCssClass("dim-label");
@@ -119,12 +135,292 @@ pub const OnlinePage = struct {
         return page;
     }
 
+    // ---- GNOME Online Accounts ---------------------------------------------------------------
+
+    fn buildGoa(self: *OnlinePage, page: *gtk.Box) void {
+        const heading = gtk.Label.new(common.tr("Accounts"));
+        heading.setXalign(0);
+        heading.as(gtk.Widget).addCssClass("title-4");
+        page.append(heading.as(gtk.Widget));
+
+        const intro = gtk.Label.new(common.tr("Optional. If you use GNOME Online Accounts, the accounts you set up there (Google, Microsoft, Nextcloud, Fastmail, mail servers and more) are listed here, and dkde apps can use them. Sign in and out in its own window; dkde never asks for a password and never changes an account."));
+        intro.setXalign(0);
+        intro.setWrap(1);
+        intro.as(gtk.Widget).addCssClass("dim-label");
+        page.append(intro.as(gtk.Widget));
+
+        self.goa_list.as(gtk.Widget).addCssClass("boxed-list");
+        self.goa_list.setSelectionMode(.none);
+        self.goa_list.as(gtk.Widget).setVisible(0);
+        page.append(self.goa_list.as(gtk.Widget));
+
+        self.goa_note.setXalign(0);
+        self.goa_note.setWrap(1);
+        self.goa_note.as(gtk.Widget).addCssClass("dim-label");
+        page.append(self.goa_note.as(gtk.Widget));
+
+        if (common.goa.managerCommand() != null) {
+            const manage = gtk.Button.newWithLabel(common.tr("Add or manage accounts…"));
+            manage.as(gtk.Widget).setHalign(.start);
+            _ = gtk.Button.signals.clicked.connect(manage, *OnlinePage, &onManageGoa, self, .{});
+            page.append(manage.as(gtk.Widget));
+        }
+        common.goa.fetch(gpa, &onGoa, self);
+    }
+
+    fn onManageGoa(_: *gtk.Button, self: *OnlinePage) callconv(.c) void {
+        const argv = common.goa.managerCommand() orelse return;
+        var buf: [4]?[*:0]const u8 = .{ null, null, null, null };
+        for (argv, 0..) |a, i| buf[i] = a.ptr;
+        var err: ?*glib.Error = null;
+        if (glib.spawnAsync(null, @ptrCast(&buf), null, .{ .search_path = true }, null, null, null, &err) == 0) {
+            if (err) |e| e.free();
+            self.say("Could not open the accounts window.");
+        }
+    }
+
+    /// The accounts GOA has arrived (or it is not running). Runs on the main loop; the page
+    /// may be gone, which a destroyed list tells us.
+    fn onGoa(result: common.goa.Result, user: ?*anyopaque) void {
+        const self: *OnlinePage = @ptrCast(@alignCast(user.?));
+        self.goa_pending = false;
+        if (self.dead) {
+            var r = result;
+            if (r == .ok) r.ok.deinit();
+            self.freeIfIdle();
+            return;
+        }
+        switch (result) {
+            .unavailable => self.goa_note.setText(common.tr("GNOME Online Accounts is not running, so there are no accounts to show. It is optional: everything else works without it.")),
+            .failed => self.goa_note.setText(common.tr("The accounts could not be read from GNOME Online Accounts.")),
+            .ok => |found| {
+                var accounts = found;
+                defer accounts.deinit();
+                if (accounts.items.len == 0) {
+                    self.goa_note.setText(common.tr("No accounts yet."));
+                    return;
+                }
+                self.goa_note.as(gtk.Widget).setVisible(0);
+                self.goa_list.as(gtk.Widget).setVisible(1);
+                for (accounts.items) |acct| self.goa_list.append(self.goaRow(acct).as(gtk.Widget));
+            },
+        }
+    }
+
+    /// What a row of the accounts list needs when its button is pressed.
+    const GoaCtx = struct { page: *OnlinePage, id: [:0]u8, box: *gtk.Box, button: *gtk.Button };
+
+    const CalCtx = struct { page: *OnlinePage, goa_id: [:0]u8, calendar: [:0]u8, name: [:0]u8 };
+
+    /// Calendars can be chosen for a Google account that signs in with OAuth2.
+    fn canChooseCalendars(acct: common.goa.Account) bool {
+        return acct.offers(.calendar) and acct.oauth2 and std.mem.eql(u8, acct.provider_type, "google");
+    }
+
+    fn goaRow(self: *OnlinePage, acct: common.goa.Account) *gtk.Box {
+        const row = gtk.Box.new(.vertical, 2);
+        row.as(gtk.Widget).setMarginTop(8);
+        row.as(gtk.Widget).setMarginBottom(8);
+        row.as(gtk.Widget).setMarginStart(12);
+        row.as(gtk.Widget).setMarginEnd(12);
+        var title_buf: [300]u8 = undefined;
+        const title = gtk.Label.new(std.fmt.bufPrintSentinel(&title_buf, "{s}", .{acct.title}, 0) catch "");
+        title.setXalign(0);
+        title.setEllipsize(.end);
+        row.append(title.as(gtk.Widget));
+
+        var line: [400]u8 = undefined;
+        var w: std.Io.Writer = .fixed(&line);
+        w.print("{s}", .{acct.provider_name}) catch {};
+        const Svc = common.goa.Service;
+        inline for (.{ .{ Svc.calendar, "Calendar" }, .{ Svc.contacts, "Contacts" }, .{ Svc.mail, "Mail" }, .{ Svc.files, "Files" } }) |s| {
+            if (acct.offers(s[0])) w.print("  ·  {s}", .{common.tr(s[1])}) catch {};
+        }
+        if (acct.attention_needed) w.print("  ·  {s}", .{common.tr("Sign in again in the accounts window")}) catch {};
+        const sub = gtk.Label.new(std.fmt.bufPrintSentinel(&title_buf, "{s}", .{w.buffered()}, 0) catch "");
+        sub.setXalign(0);
+        sub.setEllipsize(.end);
+        sub.as(gtk.Widget).addCssClass("dkde-setting-desc");
+        row.append(sub.as(gtk.Widget));
+
+        if (canChooseCalendars(acct)) {
+            const button = gtk.Button.newWithLabel(common.tr("Choose calendars…"));
+            button.as(gtk.Widget).setHalign(.start);
+            button.as(gtk.Widget).setMarginTop(4);
+            const choices = gtk.Box.new(.vertical, 2);
+            const ctx = gpa.create(GoaCtx) catch @panic("OOM");
+            ctx.* = .{ .page = self, .id = gpa.dupeSentinel(u8, common.goa.idOf(acct.path), 0) catch @panic("OOM"), .box = choices, .button = button };
+            _ = gtk.Widget.signals.destroy.connect(row, *GoaCtx, &onGoaRowDestroy, ctx, .{});
+            _ = gtk.Button.signals.clicked.connect(button, *GoaCtx, &onChoose, ctx, .{});
+            row.append(button.as(gtk.Widget));
+            row.append(choices.as(gtk.Widget));
+        }
+        return row;
+    }
+
+    fn onGoaRowDestroy(_: *gtk.Box, ctx: *GoaCtx) callconv(.c) void {
+        gpa.free(ctx.id);
+        gpa.destroy(ctx);
+    }
+
+    // ---- choosing the calendars of an account -----------------------------------------------
+
+    const Discovery = struct {
+        page: *OnlinePage,
+        ctx: *GoaCtx,
+        id: [:0]u8,
+        names: []const []const u8 = &.{},
+        ids: []const []const u8 = &.{},
+        arena: std.heap.ArenaAllocator,
+        err: ?anyerror = null,
+    };
+
+    fn onChoose(_: *gtk.Button, ctx: *GoaCtx) callconv(.c) void {
+        const self = ctx.page;
+        if (self.discovering) return;
+        const d = gpa.create(Discovery) catch return;
+        d.* = .{ .page = self, .ctx = ctx, .id = gpa.dupeSentinel(u8, ctx.id, 0) catch {
+            gpa.destroy(d);
+            return;
+        }, .arena = std.heap.ArenaAllocator.init(gpa) };
+        const thread = std.Thread.spawn(.{}, discoverRun, .{d}) catch {
+            d.arena.deinit();
+            gpa.free(d.id);
+            gpa.destroy(d);
+            return;
+        };
+        thread.detach();
+        self.discovering = true;
+        ctx.button.as(gtk.Widget).setSensitive(0);
+        self.say("Asking Google which calendars this account has…");
+    }
+
+    fn discoverRun(d: *Discovery) void {
+        defer _ = glib.idleAdd(discoverDone, d);
+        const token = common.goa.accessToken(gpa, d.id) catch |e| {
+            d.err = if (e == error.OutOfMemory) e else error.SignInNeeded;
+            return;
+        };
+        defer {
+            std.crypto.secureZero(u8, token);
+            gpa.free(token);
+        }
+        var list = common.gcal.listCalendars(gpa, token) catch |e| {
+            d.err = e;
+            return;
+        };
+        defer list.deinit();
+        const a = d.arena.allocator();
+        const names = a.alloc([]const u8, list.items.len) catch {
+            d.err = error.OutOfMemory;
+            return;
+        };
+        const ids = a.alloc([]const u8, list.items.len) catch {
+            d.err = error.OutOfMemory;
+            return;
+        };
+        for (list.items, names, ids) |c, *n, *i| {
+            n.* = a.dupe(u8, c.name) catch {
+                d.err = error.OutOfMemory;
+                return;
+            };
+            i.* = a.dupe(u8, c.id) catch {
+                d.err = error.OutOfMemory;
+                return;
+            };
+        }
+        d.names = names;
+        d.ids = ids;
+    }
+
+    /// The id under which a calendar of a GOA account is kept in dkde.toml.
+    fn calendarKey(buf: []u8, goa_id: []const u8, calendar: []const u8) []const u8 {
+        var h = std.hash.Wyhash.init(0);
+        h.update(goa_id);
+        h.update("/");
+        h.update(calendar);
+        return std.fmt.bufPrint(buf, "g{x}", .{h.final()}) catch "g0";
+    }
+
+    fn discoverDone(data: ?*anyopaque) callconv(.c) c_int {
+        const d: *Discovery = @ptrCast(@alignCast(data.?));
+        const self = d.page;
+        defer {
+            d.arena.deinit();
+            gpa.free(d.id);
+            gpa.destroy(d);
+        }
+        self.discovering = false;
+        if (self.dead) {
+            self.freeIfIdle();
+            return 0;
+        }
+        d.ctx.button.as(gtk.Widget).setSensitive(1);
+        if (d.err) |e| {
+            self.say(if (e == error.SignInNeeded) common.feeds.describe(e) else "Google did not return the calendar list.");
+            return 0;
+        }
+        while (d.ctx.box.as(gtk.Widget).getFirstChild()) |child| d.ctx.box.remove(child);
+        self.cfg.reload() catch {};
+        var current = feeds.loadAccounts(gpa, &self.cfg) catch return 0;
+        defer current.deinit();
+        for (d.names, d.ids) |name, cal_id| {
+            var kb: [24]u8 = undefined;
+            const key = calendarKey(&kb, d.id, cal_id);
+            var chosen = false;
+            for (current.items) |acct| if (std.mem.eql(u8, acct.id, key)) {
+                chosen = true;
+            };
+            const name_z = gpa.dupeSentinel(u8, name, 0) catch continue;
+            const check = gtk.CheckButton.newWithLabel(name_z);
+            check.setActive(@intFromBool(chosen));
+            const cc = gpa.create(CalCtx) catch continue;
+            cc.* = .{ .page = self, .goa_id = gpa.dupeSentinel(u8, d.id, 0) catch continue, .calendar = gpa.dupeSentinel(u8, cal_id, 0) catch continue, .name = name_z };
+            _ = gtk.Widget.signals.destroy.connect(check, *CalCtx, &onCalDestroy, cc, .{});
+            _ = gtk.CheckButton.signals.toggled.connect(check, *CalCtx, &onCalToggled, cc, .{});
+            d.ctx.box.append(check.as(gtk.Widget));
+        }
+        self.say(if (d.names.len == 0) "This account has no calendars." else "Tick the calendars to show; Sync all updates them.");
+        return 0;
+    }
+
+    fn onCalDestroy(_: *gtk.CheckButton, cc: *CalCtx) callconv(.c) void {
+        gpa.free(cc.goa_id);
+        gpa.free(cc.calendar);
+        gpa.free(cc.name);
+        gpa.destroy(cc);
+    }
+
+    fn onCalToggled(check: *gtk.CheckButton, cc: *CalCtx) callconv(.c) void {
+        const self = cc.page;
+        if (self.busy) { // an update is running: see `refreshNow`; undo rather than race it
+            self.say("Wait for the update to finish.");
+            check.setActive(@intFromBool(check.getActive() == 0));
+            return;
+        }
+        var kb: [24]u8 = undefined;
+        const key = calendarKey(&kb, cc.goa_id, cc.calendar);
+        if (check.getActive() != 0) {
+            feeds.saveAccount(gpa, &self.cfg, .{ .id = key, .name = cc.name, .url = "", .goa = cc.goa_id, .calendar = cc.calendar }) catch |e| return self.say(@errorName(e));
+            self.reload();
+            self.refreshNow(); // asked for just now, so fetch it now
+        } else {
+            feeds.removeAccount(gpa, &self.cfg, key) catch |e| return self.say(@errorName(e));
+            self.reload();
+        }
+    }
+
     fn onDestroy(_: *gtk.Box, self: *OnlinePage) callconv(.c) void {
-        if (self.busy) {
+        if (self.busy or self.goa_pending or self.discovering) {
             self.dead = true; // a worker thread is about to call back: let it free this
             return;
         }
         self.free();
+    }
+
+    /// The page is gone: free it once no worker thread or D-Bus call will call back.
+    fn freeIfIdle(self: *OnlinePage) void {
+        if (!self.busy and !self.goa_pending and !self.discovering) self.free();
     }
 
     fn free(self: *OnlinePage) void {
@@ -176,7 +472,8 @@ pub const OnlinePage = struct {
                 }
             }
         }
-        return std.fmt.bufPrintSentinel(buf, "{s}  ·  {s}", .{ feeds.hostOf(acct.url), when }, 0) catch "";
+        const where = if (acct.isGoa()) common.tr("Google account") else feeds.hostOf(acct.url);
+        return std.fmt.bufPrintSentinel(buf, "{s}  ·  {s}", .{ where, when }, 0) catch "";
     }
 
     fn rowFor(self: *OnlinePage, acct: feeds.Account) *gtk.Box {
@@ -328,7 +625,7 @@ pub const OnlinePage = struct {
     fn refreshed(job: *const feeds.Job, user: ?*anyopaque) void {
         const self: *OnlinePage = @ptrCast(@alignCast(user.?));
         self.busy = false;
-        if (self.dead) return self.free();
+        if (self.dead) return self.freeIfIdle();
         var out: std.ArrayList(u8) = .empty;
         defer out.deinit(gpa);
         for (job.accounts, job.results) |acct, res| {

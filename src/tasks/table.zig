@@ -841,6 +841,7 @@ pub const Table = struct {
         }
         const popover = gtk.PopoverMenu.newFromModel(self.menu.as(gio.MenuModel));
         popover.as(gtk.Widget).setParent(self.view.as(gtk.Widget));
+        common.contextmenu.noScrollBars(popover);
         popover.as(gtk.Popover).setHasArrow(0);
         const rect: gdk.Rectangle = .{ .f_x = @intFromFloat(x), .f_y = @intFromFloat(y), .f_width = 1, .f_height = 1 };
         popover.as(gtk.Popover).setPointingTo(&rect);

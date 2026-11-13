@@ -170,7 +170,13 @@ pub fn applyHeat(widget: *gtk.Widget, level: u8) void {
 /// Whether `a` comes before `b` sorted by `c` (`reverse` flips it).
 pub fn less(s: *const Sampler, a: *const Process, b: *const Process, c: Column, reverse: bool) bool {
     _ = s;
-    const forward = switch (c) {
+    // Reversed means the arguments swapped, never "not forward": with ties the latter says
+    // both a<b and b<a, which is not an ordering and aborts std's sort.
+    return if (reverse) before(b, a, c) else before(a, b, c);
+}
+
+fn before(a: *const Process, b: *const Process, c: Column) bool {
+    return switch (c) {
         .cpu => if (a.cpu != b.cpu) a.cpu > b.cpu else a.private_kb > b.private_kb,
         .memory => a.private_kb > b.private_kb,
         .disk => if (a.disk_rate != b.disk_rate) a.disk_rate > b.disk_rate else a.private_kb > b.private_kb,
@@ -191,6 +197,4 @@ pub fn less(s: *const Sampler, a: *const Process, b: *const Process, c: Column, 
         .priority => a.nice < b.nice,
         .pid => a.pid < b.pid,
     };
-    if (!reverse) return forward;
-    return !forward and a.pid != b.pid;
 }

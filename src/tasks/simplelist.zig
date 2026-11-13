@@ -287,6 +287,7 @@ pub fn hashKey(text: []const u8) u64 {
 pub fn popupMenu(parent: *gtk.Widget, menu: *gio.MenuModel, x: f64, y: f64) void {
     const popover = gtk.PopoverMenu.newFromModel(menu);
     popover.as(gtk.Widget).setParent(parent);
+    common.contextmenu.noScrollBars(popover);
     popover.as(gtk.Popover).setHasArrow(0);
     popover.as(gtk.Widget).setHalign(.start);
     const rect: gdk.Rectangle = .{ .f_x = @intFromFloat(x), .f_y = @intFromFloat(y), .f_width = 1, .f_height = 1 };

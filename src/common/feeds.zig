@@ -29,6 +29,8 @@ const config_mod = @import("config.zig");
 const events = @import("events.zig");
 const ics = @import("ics.zig");
 const civil = @import("civil.zig");
+const goa = @import("goa.zig");
+const gcal = @import("gcal.zig");
 
 pub const group_prefix = "account.";
 
@@ -49,6 +51,15 @@ pub const Account = struct {
     /// Refresh on start when the copy is older than this many minutes; 0 means only on request.
     refresh_minutes: i32 = 0,
     color: events.Color = .default,
+    /// For a calendar of a GNOME Online Accounts account (Google): the id of that account
+    /// (goa.idOf) and the provider's id of the calendar. Then `url` is empty and nothing
+    /// is stored that could read the calendar: the token comes from GOA at each sync.
+    goa: []const u8 = "",
+    calendar: []const u8 = "",
+
+    pub fn isGoa(self: Account) bool {
+        return self.goa.len > 0;
+    }
 };
 
 pub const Accounts = struct {
@@ -82,7 +93,9 @@ pub fn loadAccounts(allocator: std.mem.Allocator, cfg: *const config_mod.Config)
         const group = try std.fmt.allocPrintSentinel(allocator, "{s}{s}", .{ group_prefix, id }, 0);
         defer allocator.free(group);
         const url = try cfg.getString(a, group, "url", "");
-        if (url.len == 0) continue;
+        const goa_id = try cfg.getString(a, group, "goa", "");
+        const calendar = try cfg.getString(a, group, "calendar", "");
+        if (url.len == 0 and (goa_id.len == 0 or calendar.len == 0)) continue;
         const color_text = try cfg.getString(allocator, group, "color", "default");
         defer allocator.free(color_text);
         const name = try cfg.getString(a, group, "name", "");
@@ -93,6 +106,8 @@ pub fn loadAccounts(allocator: std.mem.Allocator, cfg: *const config_mod.Config)
             .enabled = cfg.getBool(group, "enabled", true),
             .refresh_minutes = @max(0, cfg.getInt(group, "refresh-minutes", 0)),
             .color = events.Color.parse(color_text),
+            .goa = goa_id,
+            .calendar = calendar,
         });
     }
     return .{ .arena = arena, .items = try items.toOwnedSlice(a) };
@@ -110,6 +125,14 @@ pub fn saveAccount(allocator: std.mem.Allocator, cfg: *config_mod.Config, acct: 
     defer allocator.free(url);
     try cfg.setString(group, "name", name);
     try cfg.setString(group, "url", url);
+    if (acct.isGoa()) {
+        const g = try allocator.dupeSentinel(u8, acct.goa, 0);
+        defer allocator.free(g);
+        const c = try allocator.dupeSentinel(u8, acct.calendar, 0);
+        defer allocator.free(c);
+        try cfg.setString(group, "goa", g);
+        try cfg.setString(group, "calendar", c);
+    }
     try cfg.setBool(group, "enabled", acct.enabled);
     try cfg.setInt(group, "refresh-minutes", acct.refresh_minutes);
     const color = try allocator.dupeSentinel(u8, acct.color.name(), 0);
@@ -174,7 +197,7 @@ pub fn hostOf(url: []const u8) []const u8 {
 
 // ---- fetching ---------------------------------------------------------------------------------
 
-pub const FetchError = error{ HttpStatus, TooLarge, UnsupportedEncoding, NotACalendar, InsecureRedirect, TooManyRedirects } || std.mem.Allocator.Error;
+pub const FetchError = error{ SignInNeeded, HttpStatus, TooLarge, UnsupportedEncoding, NotACalendar, InsecureRedirect, TooManyRedirects } || std.mem.Allocator.Error;
 
 /// At most this many redirects are followed.
 const max_redirects = 3;
@@ -195,10 +218,23 @@ fn redirectTarget(allocator: std.mem.Allocator, current: []const u8, location: [
 /// `max_feed_bytes`. Blocks until done: call it from a worker thread. It makes
 /// its own `Io`, so it shares nothing with the program's main thread.
 pub fn fetchText(allocator: std.mem.Allocator, url: []const u8) ![]u8 {
+    return fetchWith(allocator, url, null, "text/calendar, text/plain;q=0.5");
+}
+
+/// `fetchText` with an `Accept` type and, when `bearer` is given, an OAuth2 access token
+/// (from GOA) sent as `Authorization: Bearer`. A request that carries a token follows no
+/// redirect at all: the token must go only where it was meant to.
+pub fn fetchWith(allocator: std.mem.Allocator, url: []const u8, bearer: ?[]const u8, accept: []const u8) ![]u8 {
     var threaded: std.Io.Threaded = .init(allocator, .{});
     defer threaded.deinit();
     var client: std.http.Client = .{ .allocator = allocator, .io = threaded.io() };
     defer client.deinit();
+
+    const auth: ?[]u8 = if (bearer) |t| try std.fmt.allocPrint(allocator, "Bearer {s}", .{t}) else null;
+    defer if (auth) |v| {
+        std.crypto.secureZero(u8, v);
+        allocator.free(v);
+    };
 
     // Redirects are followed here, not by the client, so each one can be checked.
     var current = try allocator.dupe(u8, url);
@@ -212,13 +248,15 @@ pub fn fetchText(allocator: std.mem.Allocator, url: []const u8) ![]u8 {
             .headers = .{
                 .accept_encoding = .{ .override = "identity" },
                 .user_agent = .{ .override = "dkde-calendar" },
+                .authorization = if (auth) |v| .{ .override = v } else .default,
             },
-            .extra_headers = &.{.{ .name = "Accept", .value = "text/calendar, text/plain;q=0.5" }},
+            .extra_headers = &.{.{ .name = "Accept", .value = accept }},
         });
         defer req.deinit();
         try req.sendBodiless();
         var response = try req.receiveHead(&.{});
         if (response.head.status.class() == .redirect) {
+            if (bearer != null) return error.HttpStatus;
             if (hops >= max_redirects) return error.TooManyRedirects;
             const next = try redirectTarget(allocator, current, response.head.location orelse return error.HttpStatus);
             allocator.free(current);
@@ -244,6 +282,7 @@ pub fn describe(err: anyerror) []const u8 {
     return switch (err) {
         error.BadUrl, error.UriMissingHost, error.UriHostTooLong, error.InvalidFormat, error.InvalidPort => "The link is not a valid address.",
         error.NotHttps => "Only https links are used; a plain http link would show the secret to the network.",
+        error.SignInNeeded => "GNOME Online Accounts could not give access: sign in to the account again in its window.",
         error.HttpStatus => "The server did not return the calendar (wrong link, or access removed).",
         error.TooLarge => "The calendar is larger than 8 MB.",
         error.InsecureRedirect => "The server tried to send the request to a plain http address, which is refused.",
@@ -318,6 +357,7 @@ pub fn sameAccounts(a: []const Account, b: []const Account) bool {
     if (a.len != b.len) return false;
     for (a, b) |x, y| {
         if (!std.mem.eql(u8, x.id, y.id) or !std.mem.eql(u8, x.url, y.url)) return false;
+        if (!std.mem.eql(u8, x.goa, y.goa) or !std.mem.eql(u8, x.calendar, y.calendar)) return false;
         if (x.enabled != y.enabled or x.color != y.color or x.refresh_minutes != y.refresh_minutes) return false;
     }
     return true;
@@ -348,13 +388,28 @@ fn looksLikeCalendar(text: []const u8) bool {
     return std.ascii.startsWithIgnoreCase(t, "BEGIN:VCALENDAR");
 }
 
+/// The events of a calendar of a GOA account, as iCalendar text.
+fn fetchGoa(allocator: std.mem.Allocator, acct: Account) ![]u8 {
+    const token = goa.accessToken(allocator, acct.goa) catch |e| return switch (e) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.SignInNeeded,
+    };
+    defer {
+        std.crypto.secureZero(u8, token);
+        allocator.free(token);
+    }
+    return gcal.fetchIcs(allocator, token, acct.calendar, @divFloor(glib.getRealTime(), std.time.us_per_day));
+}
+
 /// Downloads the feed of `acct` and replaces its copy when what came back is a
 /// calendar. Returns how many events it holds. Blocks: call from a worker thread.
 pub fn refresh(allocator: std.mem.Allocator, acct: Account) !usize {
     if (!validId(acct.id)) return error.BadId;
-    const url = try normalizeUrl(allocator, acct.url);
-    defer allocator.free(url);
-    const body = try fetchText(allocator, url);
+    const body = if (acct.isGoa()) try fetchGoa(allocator, acct) else blk: {
+        const url = try normalizeUrl(allocator, acct.url);
+        defer allocator.free(url);
+        break :blk try fetchText(allocator, url);
+    };
     defer allocator.free(body);
     if (!looksLikeCalendar(body)) return error.NotACalendar;
     const count = try countEvents(allocator, body);
@@ -539,6 +594,8 @@ pub const Job = struct {
             .id = try a.dupe(u8, src.id),
             .name = try a.dupe(u8, src.name),
             .url = try a.dupe(u8, src.url),
+            .goa = try a.dupe(u8, src.goa),
+            .calendar = try a.dupe(u8, src.calendar),
             .enabled = src.enabled,
             .refresh_minutes = src.refresh_minutes,
             .color = src.color,
@@ -617,6 +674,7 @@ test "every public function compiles (Zig skips what nothing uses)" {
     _ = &saveAccount;
     _ = &removeAccount;
     _ = &fetchText;
+    _ = &fetchWith;
     _ = &refresh;
     _ = &refreshAll;
     _ = &loadAll;

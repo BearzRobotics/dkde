@@ -840,10 +840,24 @@ pub const Graph = struct {
 
     // ---- saving ------------------------------------------------------------------------
 
+    /// cairo's SVG backend is not in the bindings; the library is linked already.
+    extern fn cairo_svg_surface_create(filename: [*:0]const u8, width: f64, height: f64) ?*cairo.Surface;
+
     fn onSave(button: *gtk.Button, self: *Graph) callconv(.c) void {
         const dialog = gtk.FileDialog.new();
         defer dialog.as(gobject.Object).unref();
         dialog.setInitialName("graph.png");
+        // The file name decides the format: .svg is a scalable drawing, anything else a PNG.
+        const filters = gio.ListStore.new(gtk.FileFilter.getGObjectType());
+        defer filters.as(gobject.Object).unref();
+        inline for (.{ .{ "PNG picture", "*.png" }, .{ "SVG drawing (scalable)", "*.svg" } }) |f| {
+            const filter = gtk.FileFilter.new();
+            filter.setName(t(f[0]));
+            filter.addPattern(f[1]);
+            filters.append(filter.as(gobject.Object));
+            filter.as(gobject.Object).unref();
+        }
+        dialog.setFilters(filters.as(gio.ListModel));
         const root = button.as(gtk.Widget).getRoot() orelse return;
         dialog.save(@ptrCast(@alignCast(root)), null, onSaveChosen, self);
     }
@@ -855,6 +869,18 @@ pub const Graph = struct {
         defer file.as(gobject.Object).unref();
         const path = file.getPath() orelse return;
         defer glib.free(path);
+        if (std.ascii.endsWithIgnoreCase(std.mem.span(path), ".svg")) {
+            const sz = self.size();
+            const svg = cairo_svg_surface_create(path, sz[0], sz[1]) orelse return self.status.setText(t("The picture could not be saved."));
+            const cr = cairo.Context.create(svg);
+            self.draw(cr, sz[0], sz[1], false);
+            cr.destroy();
+            svg.finish(); // writes the file
+            const failed = svg.status() != .success;
+            svg.destroy();
+            self.status.setText(if (failed) t("The picture could not be saved.") else t("Saved."));
+            return;
+        }
         const sz = self.size();
         // Twice the size on screen, for a sharp picture.
         const surface = cairo.Surface.imageCreate(.argb32, @intFromFloat(sz[0] * 2), @intFromFloat(sz[1] * 2));

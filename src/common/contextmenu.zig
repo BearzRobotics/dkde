@@ -79,3 +79,21 @@ fn unparentIdle(data: ?*anyopaque) callconv(.c) c_int {
     popover.as(gtk.Widget).unparent();
     return 0;
 }
+
+/// GTK's menu popovers wrap their items in scrolled windows, and a tall menu in a
+/// short parent then shows scroll bars (more than one, nested). Context menus here
+/// are short lists that should simply be as tall as they are, so switch them off.
+pub fn noScrollBars(popover: *gtk.PopoverMenu) void {
+    noScrollIn(popover.as(gtk.Widget));
+}
+
+fn noScrollIn(widget: *gtk.Widget) void {
+    if (gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(widget)), gtk.ScrolledWindow.getGObjectType()) != 0) {
+        const sw: *gtk.ScrolledWindow = @ptrCast(@alignCast(widget));
+        sw.setPolicy(.never, .never);
+        sw.setPropagateNaturalHeight(1);
+        sw.setPropagateNaturalWidth(1);
+    }
+    var child = widget.getFirstChild();
+    while (child) |c| : (child = c.getNextSibling()) noScrollIn(c);
+}
