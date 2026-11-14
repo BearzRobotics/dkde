@@ -270,6 +270,25 @@ fn sortedVars(a: std.mem.Allocator, p: Poly) Error!Poly {
     return .{ .vars = vars, .terms = terms };
 }
 
+/// A letter as a polynomial.
+pub fn variable(a: std.mem.Allocator, name: []const u8) Error!Poly {
+    const vars = try a.alloc([]const u8, 1);
+    vars[0] = name;
+    const e = try a.alloc(u16, 1);
+    e[0] = 1;
+    const t = try a.alloc(PTerm, 1);
+    t[0] = .{ .c = try num.fromInt(a, 1), .exps = e };
+    return .{ .vars = vars, .terms = t };
+}
+
+/// The terms in the order they are written (highest degree first), with the letters sorted.
+pub fn orderedTerms(a: std.mem.Allocator, poly: Poly) Error!Poly {
+    const p = try sortedVars(a, poly);
+    const sorted = try a.dupe(PTerm, p.terms);
+    std.mem.sort(PTerm, sorted, p.vars, termOrder);
+    return .{ .vars = p.vars, .terms = sorted };
+}
+
 /// "x² + 2xy + y²", "3x/2 − 1", "x⁴ − 1". Highest degree first.
 pub fn text(a: std.mem.Allocator, poly: Poly) Error![]u8 {
     if (poly.terms.len == 0) return a.dupe(u8, "0");

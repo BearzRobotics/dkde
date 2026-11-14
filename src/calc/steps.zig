@@ -88,6 +88,8 @@ const N = union(enum) {
     fact: *N,
     pct: *N,
     call: struct { name: []const u8, arg: *N },
+    /// An expanded polynomial, written in full.
+    poly: algebra.Poly,
 };
 
 fn mk(a: std.mem.Allocator, n: N) Error!*N {
@@ -165,6 +167,7 @@ fn precOf(n: *const N) u8 {
         },
         .fact, .pct => 5,
         .call => 6,
+        .poly => |p| if (p.terms.len > 1) 1 else 7,
     };
 }
 
@@ -186,6 +189,7 @@ fn writePrec(a: std.mem.Allocator, n: *const N, outer: u8, right: bool) Error![]
             return wrap(a, t, need);
         },
         .raw => |r| return wrap(a, r.text, r.prec < outer),
+        .poly => |p| return wrap(a, try algebra.text(a, p), precOf(n) < outer),
         .neg => |x| {
             const inner = try writePrec(a, x, 3, false);
             return wrap(a, try std.fmt.allocPrint(a, "−{s}", .{inner}), outer > 3 or (outer > 0 and right));
@@ -201,6 +205,10 @@ fn writePrec(a: std.mem.Allocator, n: *const N, outer: u8, right: bool) Error![]
                 '*', '%' => {
                     const l = try writePrec(a, b.l, p, false);
                     const r = try writePrec(a, b.r, p + 1, true);
+                    // (x + 1)(x + 2): two brackets side by side.
+                    if (b.op == '*' and precOf(b.l) < p and precOf(b.r) < p and b.l.* != .raw and b.r.* != .raw) {
+                        return wrap(a, try std.fmt.allocPrint(a, "{s}{s}", .{ l, r }), outer > p);
+                    }
                     // 2x, 3(x + 1): a number in front of a letter or a bracket is written without a sign.
                     if (b.op == '*' and b.l.* == .num and !isFraction(b.l.num) and !b.l.num.isNegative() and
                         (startsWithLetter(b.r) or (b.r.* == .bin and precOf(b.r) < p)))
@@ -899,6 +907,199 @@ fn equation(ctx: Ctx, l: *const eval.Node, r: *const eval.Node) Error!?[]Step {
     return null;
 }
 
+// ---- expanding ----------------------------------------------------------------------------------------------------------------
+
+fn polyOfN(ctx: Ctx, n: *const N) Error!?algebra.Poly {
+    const a = ctx.a;
+    switch (n.*) {
+        .num => |v| return try algebra.constant(a, v),
+        .raw => |r| {
+            if (r.prec == 7 and r.text.len > 0 and std.ascii.isAlphabetic(r.text[0])) return try algebra.variable(a, r.text);
+            return null;
+        },
+        .poly => |p| return p,
+        .neg => |x| {
+            const p = (try polyOfN(ctx, x)) orelse return null;
+            return try algebra.scale(a, p, try num.fromInt(a, -1));
+        },
+        .bin => |b| {
+            const l = (try polyOfN(ctx, b.l)) orelse return null;
+            const r = (try polyOfN(ctx, b.r)) orelse return null;
+            switch (b.op) {
+                '+' => return try algebra.add(a, l, r),
+                '-' => return try algebra.sub(a, l, r),
+                '*' => return try algebra.mul(a, l, r),
+                '^' => {
+                    if (b.r.* != .num or !b.r.num.isInteger() or b.r.num.isNegative()) return null;
+                    const k = num.intValue(b.r.num) orelse return null;
+                    return try algebra.powInt(a, l, @intCast(k));
+                },
+                else => return null,
+            }
+        },
+        else => return null,
+    }
+}
+
+fn termCount(p: algebra.Poly) usize {
+    return p.terms.len;
+}
+
+/// A node that is a product with a sum in it, or a power of a sum.
+fn expandable(ctx: Ctx, n: *const N) Error!bool {
+    if (n.* != .bin) return false;
+    const b = n.bin;
+    if (b.op == '*') {
+        const l = (try polyOfN(ctx, b.l)) orelse return false;
+        const r = (try polyOfN(ctx, b.r)) orelse return false;
+        return termCount(l) > 1 or termCount(r) > 1;
+    }
+    if (b.op == '^' and b.r.* == .num and b.r.num.isInteger() and !b.r.num.isNegative()) {
+        const k = num.intValue(b.r.num) orelse return false;
+        const base = (try polyOfN(ctx, b.l)) orelse return false;
+        return k >= 2 and termCount(base) > 1;
+    }
+    return false;
+}
+
+/// The innermost expandable node, leftmost first.
+fn findExpandable(ctx: Ctx, n: *const N) Error!?*const N {
+    switch (n.*) {
+        .bin => |b| {
+            if (try findExpandable(ctx, b.l)) |t| return t;
+            if (try findExpandable(ctx, b.r)) |t| return t;
+        },
+        .neg => |x| if (try findExpandable(ctx, x)) |t| return t,
+        else => {},
+    }
+    if (try expandable(ctx, n)) return n;
+    return null;
+}
+
+fn singleTerm(a: std.mem.Allocator, vars: []const []const u8, t: algebra.PTerm) Error!algebra.Poly {
+    const items = try a.alloc(algebra.PTerm, 1);
+    items[0] = t;
+    return .{ .vars = vars, .terms = items };
+}
+
+/// 2x or −3: one term of a polynomial as text.
+fn oneTermText(a: std.mem.Allocator, vars: []const []const u8, t: algebra.PTerm) Error![]const u8 {
+    return algebra.text(a, try singleTerm(a, vars, t));
+}
+
+/// Every term of the first times every term of the second, as written on paper.
+fn distributionRows(ctx: Ctx, steps: *std.ArrayList(Step), x: algebra.Poly, y: algebra.Poly, context: ?struct { tree: *const N, target: *const N }) Error!algebra.Poly {
+    const a = ctx.a;
+    const xo = try algebra.orderedTerms(a, x);
+    const yo = try algebra.orderedTerms(a, y);
+    var dist: std.ArrayList(u8) = .empty;
+    var unmerged: std.ArrayList(u8) = .empty;
+    var first = true;
+    for (xo.terms) |s| for (yo.terms) |t| {
+        const sw = try oneTermText(a, xo.vars, s);
+        const tw = try oneTermText(a, yo.vars, t);
+        const sb = if (s.c.isNegative()) try std.fmt.allocPrint(a, "({s})", .{sw}) else sw;
+        const tb = if (t.c.isNegative()) try std.fmt.allocPrint(a, "({s})", .{tw}) else tw;
+        if (!first) try dist.appendSlice(a, " + ");
+        try dist.print(a, "{s} × {s}", .{ sb, tb });
+        // The product of the two single terms.
+        const prod = try algebra.mul(a, try singleTerm(a, xo.vars, s), try singleTerm(a, yo.vars, t));
+        const pt = try algebra.text(a, prod);
+        if (first) {
+            try unmerged.appendSlice(a, pt);
+        } else if (std.mem.startsWith(u8, pt, "−")) {
+            try unmerged.print(a, " − {s}", .{pt[3..]});
+        } else try unmerged.print(a, " + {s}", .{pt});
+        first = false;
+    };
+    const merged = try algebra.mul(a, x, y);
+    const merged_text = try algebra.text(a, merged);
+    const rows = [_]struct { note: []const u8, text: []const u8 }{
+        .{ .note = "Multiply every term of the first bracket by every term of the second", .text = dist.items },
+        .{ .note = "Work out each product", .text = unmerged.items },
+    };
+    for (rows) |r| {
+        const shown = if (context) |c| blk: {
+            const raw = try mk(a, .{ .raw = .{ .text = r.text, .prec = 1 } });
+            break :blk try write(a, try replace(a, c.tree, c.target, raw));
+        } else r.text;
+        try push(a, steps, r.note, shown);
+    }
+    if (!std.mem.eql(u8, merged_text, unmerged.items)) {
+        const shown = if (context) |c| try write(a, try replace(a, c.tree, c.target, try mk(a, .{ .poly = merged }))) else merged_text;
+        try push(a, steps, "Combine like terms", shown);
+    }
+    return merged;
+}
+
+/// Expands one product or power inside the expression and returns the expression with the
+/// result put in its place.
+fn expandOne(ctx: Ctx, steps: *std.ArrayList(Step), tree: *N, target: *const N) Error!*N {
+    const a = ctx.a;
+    const b = target.bin;
+    if (b.op == '*') {
+        const l = (try polyOfN(ctx, b.l)).?;
+        const r = (try polyOfN(ctx, b.r)).?;
+        const result = try distributionRows(ctx, steps, l, r, .{ .tree = tree, .target = target });
+        return replace(a, tree, target, try mk(a, .{ .poly = result }));
+    }
+    // A power: write it out as a product, then multiply from the left.
+    const base = (try polyOfN(ctx, b.l)).?;
+    const k: usize = @intCast(num.intValue(b.r.num).?);
+    const base_text = try algebra.text(a, base);
+    var product: std.ArrayList(u8) = .empty;
+    var i: usize = 0;
+    while (i < k) : (i += 1) try product.print(a, "({s})", .{base_text});
+    const raw = try mk(a, .{ .raw = .{ .text = product.items, .prec = 2 } });
+    try push(a, steps, "Write the power as a product of brackets", try write(a, try replace(a, tree, target, raw)));
+    var acc = base;
+    i = 1;
+    while (i < k) : (i += 1) {
+        const last = i + 1 == k;
+        acc = try distributionRows(ctx, steps, acc, base, null);
+        _ = last;
+    }
+    const final = try mk(a, .{ .poly = acc });
+    const replaced = try replace(a, tree, target, final);
+    if (!std.mem.eql(u8, try write(a, replaced), steps.items[steps.items.len - 1].math)) try push(a, steps, "Put the result back", try write(a, replaced));
+    return replaced;
+}
+
+fn hasLetters(n: *const N) bool {
+    return switch (n.*) {
+        .raw => |r| r.prec == 7 and r.text.len > 0 and std.ascii.isAlphabetic(r.text[0]),
+        .bin => |b| hasLetters(b.l) or hasLetters(b.r),
+        .neg => |x| hasLetters(x),
+        .fact, .pct => |x| hasLetters(x),
+        .call => |c| hasLetters(c.arg),
+        else => false,
+    };
+}
+
+/// Steps for an expression with letters: expand each product and power, then combine like terms.
+fn expansion(ctx: Ctx, node: *const eval.Node) Error!?[]Step {
+    const a = ctx.a;
+    allow_letters = true;
+    defer allow_letters = false;
+    var tree = (try fromNode(a, node)) orelse return null;
+    if (!hasLetters(tree)) return null;
+    var steps: std.ArrayList(Step) = .empty;
+    try push(a, &steps, "Start", try write(a, tree));
+    var guard: usize = 0;
+    while (guard < 12) : (guard += 1) {
+        const target = (try findExpandable(ctx, tree)) orelse break;
+        tree = try expandOne(ctx, &steps, tree, target);
+    }
+    // Whatever is left: combine like terms.
+    const total = (try polyOfN(ctx, tree)) orelse return null;
+    const final_text = try algebra.text(a, total);
+    if (!std.mem.eql(u8, final_text, steps.items[steps.items.len - 1].math)) {
+        try push(a, &steps, "Combine like terms", final_text);
+    }
+    if (steps.items.len <= 1) return null;
+    return steps.items;
+}
+
 // ---- the entry point -------------------------------------------------------------------------------------------------------
 
 /// The steps for an entry, or null when there are none (a number already, no steps worth showing, or a
@@ -906,10 +1107,15 @@ fn equation(ctx: Ctx, l: *const eval.Node, r: *const eval.Node) Error!?[]Step {
 pub fn explain(ctx: Ctx, text: []const u8) Error!?[]Step {
     const a = ctx.a;
     prefer_decimals = std.mem.indexOfScalar(u8, text, '.') != null;
+    // expand(…) and simplify(…): the steps of what is inside.
+    inline for (.{ "expand", "simplify" }) |word| {
+        if (eval.unwrapCall(text, word)) |inner| return explain(ctx, inner);
+    }
     var problem: eval.Problem = .{};
     const st = eval.parse(a, text, ctx.mode, &problem) catch return null;
     switch (st) {
         .expr => |n| {
+            if (try expansion(ctx, n)) |letters| return letters;
             const steps = (try arithmetic(ctx, n)) orelse return null;
             if (steps.len <= 1) return null;
             return steps;
@@ -996,6 +1202,23 @@ test "a quadratic equation, factored" {
     }, "x^2 - 5x + 6 = 0");
 }
 
+test "expanding" {
+    try lines(&.{
+        "(x + 2)(x + 3)",
+        "x × x + x × 3 + 2 × x + 2 × 3",
+        "x² + 3x + 2x + 6",
+        "x² + 5x + 6",
+    }, "(x+2)(x+3)");
+    try lines(&.{
+        "(x + y)²",
+        "(x + y)(x + y)",
+        "x × x + x × y + y × x + y × y",
+        "x² + xy + xy + y²",
+        "x² + 2xy + y²",
+    }, "(x+y)^2");
+    try lines(&.{ "3x + 2x − 5 + 1", "5x − 4" }, "3x + 2x - 5 + 1");
+}
+
 test "zz print" {
     if (std.c.getenv("STEPS_PRINT") == null) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -1003,7 +1226,7 @@ test "zz print" {
     const a = arena.allocator();
     var session: eval.Session = .{ .gpa = std.testing.allocator };
     defer session.deinit();
-    const list = [_][]const u8{ "6x^2 - 7x - 3 = 0", "x^2 = 2", "x^2 = 72", "x^2 - x - 1 = 0", "x^2 + x + 1 = 0", "2x^2 - 2x - 12 = 0", "x^2 + 4x = 0", "x^2 = -9", "x^2 - 6x + 9 = 0", "(x+1)^2 = 4", "x/2 + 1/3 = 5/6", "2x + 3 = 2x + 5", "3x - 1 = 3x - 1" };
+    const list = [_][]const u8{ "(x+2)(x+3)", "(x+1)^3", "(2x-1)(x+4)", "2(x+3) + 4", "(x+y)^2", "(x-1)(x+1)", "3x + 2x - 5 + 1", "(x+1)(x+2)(x+3)", "6x^2 - 7x - 3 = 0", "x^2 = 2", "x^2 = 72", "x^2 - x - 1 = 0", "x^2 + x + 1 = 0", "2x^2 - 2x - 12 = 0", "x^2 + 4x = 0", "x^2 = -9", "x^2 - 6x + 9 = 0", "(x+1)^2 = 4", "x/2 + 1/3 = 5/6", "2x + 3 = 2x + 5", "3x - 1 = 3x - 1" };
     for (list) |src| {
         std.debug.print("\n=== {s}\n", .{src});
         const steps = (try explain(.{ .a = a, .session = &session, .mode = .{} }, src)) orelse {

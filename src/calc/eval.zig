@@ -1608,7 +1608,7 @@ pub const Outcome = union(enum) {
 
 /// Works out one entry. Everything returned lives in `a`.
 /// The text inside `name(…)` when the whole entry is that one call.
-fn unwrapCall(text: []const u8, name: []const u8) ?[]const u8 {
+pub fn unwrapCall(text: []const u8, name: []const u8) ?[]const u8 {
     const t = std.mem.trim(u8, text, " ");
     if (t.len <= name.len + 1 or !std.ascii.startsWithIgnoreCase(t, name) or t[name.len] != '(' or t[t.len - 1] != ')') return null;
     var depth: usize = 0;
