@@ -24,6 +24,7 @@ const num = @import("num.zig");
 const eval = @import("eval.zig");
 const units = @import("units.zig");
 const convert = @import("convert.zig");
+const rich = @import("rich.zig");
 const dates = @import("dates.zig");
 const graph_mod = @import("graph.zig");
 const simplify = @import("simplify.zig");
@@ -780,6 +781,11 @@ const Calc = struct {
                 }
             },
             .truth => |yes| self.finishResult(expr_copy, if (yes) t("true") else t("false"), null, a),
+            .rich => |v| self.finishRich(expr_copy, v, null, a),
+            .rich_assigned => |s| {
+                self.finishRich(expr_copy, s.value, s.name, a);
+                self.fillVars();
+            },
             .complex => |cx| {
                 var parts: std.ArrayList(u8) = .empty;
                 for (cx.re, cx.im, 0..) |re, im, i| {
@@ -837,11 +843,24 @@ const Calc = struct {
         return num.format(a, v, style);
     }
 
+    /// A complex number or matrix (typed back in as it is shown).
+    fn finishRich(self: *Calc, expr: []const u8, v: rich.Value, name: ?[]const u8, a: std.mem.Allocator) void {
+        const text = rich.format(a, v, self.style) catch return;
+        const shown = if (name) |nm| std.fmt.allocPrint(a, "{s} = {s}", .{ nm, text }) catch return else text;
+        self.finishResultMarked(expr, shown, null, a, std.mem.indexOfScalar(u8, expr, '=') == null, !rich.isExact(v));
+        if (self.plain) |pl| self.gpa.free(pl);
+        self.plain = self.gpa.dupe(u8, text) catch null;
+    }
+
     fn finishResult(self: *Calc, expr: []const u8, shown: []const u8, value: ?num.Number, a: std.mem.Allocator) void {
         self.finishResultAs(expr, shown, value, a, std.mem.indexOfScalar(u8, expr, '=') == null);
     }
 
     fn finishResultAs(self: *Calc, expr: []const u8, shown: []const u8, value: ?num.Number, a: std.mem.Allocator, equals: bool) void {
+        self.finishResultMarked(expr, shown, value, a, equals, false);
+    }
+
+    fn finishResultMarked(self: *Calc, expr: []const u8, shown: []const u8, value: ?num.Number, a: std.mem.Allocator, equals: bool, rounded: bool) void {
         var line_buf: [4096]u8 = undefined;
         // The expression above, with "≈" when the result is rounded and the fraction when there is one.
         var tail: []const u8 = "";
@@ -850,7 +869,7 @@ const Calc = struct {
                 if (self.mode != .programmer) tail = std.fmt.allocPrint(a, "   (= {s})", .{f}) catch "";
             }
         }
-        const approx = if (value) |v| !v.isExact() else false;
+        const approx = rounded or (if (value) |v| !v.isExact() else false);
         const mark: []const u8 = if (!equals) "" else if (approx) " ≈" else " =";
         self.expr_label.setText(std.fmt.bufPrintSentinel(&line_buf, "{s}{s}{s}", .{ expr, mark, tail }, 0) catch "");
         self.preview.setText("");
@@ -957,7 +976,22 @@ const Calc = struct {
             },
             .expr => |n| {
                 var ev: eval.Eval = .{ .a = a, .session = &self.session, .mode = self.evalMode(), .problem = &p };
+                if (self.mode != .programmer and rich.needs(n, &self.session)) {
+                    var rr = rich.Rich.init(&ev);
+                    const rv = rr.value(n, null) catch return self.preview.setText("");
+                    const text2 = rich.format(a, rv, self.style) catch return;
+                    var buf: [2048]u8 = undefined;
+                    return self.preview.setText(std.fmt.bufPrintSentinel(&buf, "{s} {s}", .{ if (rich.isExact(rv)) "=" else "≈", text2 }, 0) catch "");
+                }
                 const v = ev.eval(n, null) catch |e| {
+                    if (e == error.Domain and self.mode != .programmer) {
+                        var rr = rich.Rich.init(&ev);
+                        if (rr.value(n, null)) |rv| {
+                            const text2 = rich.format(a, rv, self.style) catch return;
+                            var buf: [2048]u8 = undefined;
+                            return self.preview.setText(std.fmt.bufPrintSentinel(&buf, "{s} {s}", .{ if (rich.isExact(rv)) "=" else "≈", text2 }, 0) catch "");
+                        } else |_| {}
+                    }
                     if (e == error.UnknownName and self.mode != .programmer) {
                         const tidy = simplify.simplify(a, &ev, n) catch return self.preview.setText("");
                         var buf: [1024]u8 = undefined;
@@ -1228,6 +1262,13 @@ const Calc = struct {
         while (it.next()) |e| {
             const v = e.value_ptr.load(a) catch continue;
             const shown = num.format(a, v, self.style) catch continue;
+            self.varRow(e.key_ptr.*, std.fmt.allocPrint(a, "{s} = {s}", .{ e.key_ptr.*, shown }) catch continue);
+        }
+        var rit = self.session.rich.iterator();
+        while (rit.next()) |e| {
+            if (std.mem.eql(u8, e.key_ptr.*, "ans")) continue;
+            const v = e.value_ptr.load(a) catch continue;
+            const shown = rich.format(a, v, self.style) catch continue;
             self.varRow(e.key_ptr.*, std.fmt.allocPrint(a, "{s} = {s}", .{ e.key_ptr.*, shown }) catch continue);
         }
         var fit = self.session.funcs.iterator();
@@ -2345,4 +2386,5 @@ test {
     _ = @import("qalc_reference_test.zig");
     _ = @import("functions.zig");
     _ = @import("convert.zig");
+    _ = @import("rich.zig");
 }

@@ -30,6 +30,7 @@ const simplify = @import("simplify.zig");
 const calculus = @import("calculus.zig");
 const functions = @import("functions.zig");
 const letters = @import("letters.zig");
+const rich = @import("rich.zig");
 const Number = num.Number;
 
 pub const Angle = enum {
@@ -227,7 +228,7 @@ const Parser = struct {
         if (self.pos >= self.text.len) return false;
         const r = self.rest();
         const c = r[0];
-        if (c == '(') return true;
+        if (c == '(' or c == '[') return true;
         if (std.mem.startsWith(u8, r, "√") or std.mem.startsWith(u8, r, "∛")) return true;
         if (isNameStart(r)) {
             // Not a word operator.
@@ -278,6 +279,7 @@ const Parser = struct {
             if (!self.eat(")")) return self.fail(error.Syntax);
             return v;
         }
+        if (r[0] == '[') return self.matrixLiteral();
         if (r[0] == '|' and self.mode.programmer == false) {
             self.pos += 1;
             const v = try self.expr();
@@ -289,6 +291,37 @@ const Parser = struct {
         if (try self.number()) |n| return n;
         if (isNameStart(r)) return self.name();
         return self.fail(error.Syntax);
+    }
+
+    /// [1, 2; 3, 4]: rows end with ";", entries with ",". Read as
+    /// matrix(rows, cols, entries…).
+    fn matrixLiteral(self: *Parser) Error!*Node {
+        const start = self.pos;
+        self.pos += 1;
+        var items: std.ArrayList(*Node) = .empty;
+        var rows: usize = 0;
+        var cols: usize = 0;
+        var cur: usize = 0;
+        self.depth += 1;
+        defer self.depth -= 1;
+        if (self.depth > 200) return self.fail(error.Syntax);
+        while (true) {
+            try items.append(self.a, try self.expr());
+            cur += 1;
+            const end = !self.eat(",");
+            if (!end) continue;
+            const row_end = self.eat(";");
+            if (!row_end and !self.eat("]")) return self.fail(error.Syntax);
+            if (rows == 0) cols = cur else if (cur != cols) return self.fail(error.Syntax);
+            rows += 1;
+            cur = 0;
+            if (!row_end) break;
+        }
+        const args = try self.a.alloc(*Node, items.items.len + 2);
+        args[0] = try self.node(.{ .number = try num.fromInt(self.a, @as(i64, @intCast(rows))) });
+        args[1] = try self.node(.{ .number = try num.fromInt(self.a, @as(i64, @intCast(cols))) });
+        @memcpy(args[2..], items.items);
+        return self.node(.{ .call = .{ .name = "matrix", .args = args, .pos = start } });
     }
 
     fn call1(self: *Parser, name_: []const u8, arg: *Node) Error!*Node {
@@ -519,6 +552,8 @@ pub const Session = struct {
     gpa: std.mem.Allocator,
     vars: std.StringArrayHashMapUnmanaged(Stored) = .empty,
     funcs: std.StringArrayHashMapUnmanaged(Function) = .empty,
+    /// Complex numbers and matrices (not saved between runs).
+    rich: std.StringArrayHashMapUnmanaged(rich.Stored) = .empty,
     ans: ?Stored = null,
     rng: std.Random.DefaultPrng = .init(0x5eed),
 
@@ -535,10 +570,20 @@ pub const Session = struct {
             e.value_ptr.deinit(self.gpa);
         }
         self.funcs.deinit(self.gpa);
+        var rit = self.rich.iterator();
+        while (rit.next()) |e| {
+            self.gpa.free(e.key_ptr.*);
+            e.value_ptr.deinit(self.gpa);
+        }
+        self.rich.deinit(self.gpa);
         if (self.ans) |s| s.deinit(self.gpa);
     }
 
     pub fn setVar(self: *Session, name: []const u8, value: Number) error{OutOfMemory}!void {
+        if (self.rich.fetchOrderedRemove(name)) |kv| {
+            self.gpa.free(kv.key);
+            kv.value.deinit(self.gpa);
+        }
         const stored = try Stored.of(self.gpa, value);
         errdefer stored.deinit(self.gpa);
         if (self.vars.getPtr(name)) |old| {
@@ -551,7 +596,24 @@ pub const Session = struct {
         try self.vars.put(self.gpa, key, stored);
     }
 
+    pub fn setRich(self: *Session, name: []const u8, value: rich.Value) error{OutOfMemory}!void {
+        const stored = try rich.Stored.of(self.gpa, value);
+        errdefer stored.deinit(self.gpa);
+        if (self.rich.getPtr(name)) |old| {
+            old.deinit(self.gpa);
+            old.* = stored;
+            return;
+        }
+        const key = try self.gpa.dupe(u8, name);
+        errdefer self.gpa.free(key);
+        try self.rich.put(self.gpa, key, stored);
+    }
+
     pub fn setAns(self: *Session, value: Number) error{OutOfMemory}!void {
+        if (self.rich.fetchOrderedRemove("ans")) |kv| {
+            self.gpa.free(kv.key);
+            kv.value.deinit(self.gpa);
+        }
         const stored = try Stored.of(self.gpa, value);
         if (self.ans) |old| old.deinit(self.gpa);
         self.ans = stored;
@@ -578,6 +640,11 @@ pub const Session = struct {
     }
 
     pub fn remove(self: *Session, name: []const u8) bool {
+        if (self.rich.fetchOrderedRemove(name)) |kv| {
+            self.gpa.free(kv.key);
+            kv.value.deinit(self.gpa);
+            return true;
+        }
         if (self.vars.fetchOrderedRemove(name)) |kv| {
             self.gpa.free(kv.key);
             kv.value.deinit(self.gpa);
@@ -608,7 +675,7 @@ pub fn isBuiltin(name: []const u8) bool {
     const lower = std.ascii.lowerString(&buf, name);
     const canon = functions.canonical(lower);
     for (builtin_functions) |f| if (std.mem.eql(u8, f, canon)) return true;
-    return functions.isKnown(lower);
+    return functions.isKnown(lower) or rich.isRichFunction(lower);
 }
 
 const constants = [_][]const u8{ "pi", "π", "e", "tau", "τ", "phi", "φ", "ans" };
@@ -629,6 +696,14 @@ pub const Eval = struct {
     depth: usize = 0,
     /// Functions' bodies, parsed once per calculation (a graph works one out thousands of times).
     bodies: std.StringHashMapUnmanaged(*Node) = .empty,
+
+    pub fn lookupBinding(b: ?*const Binding, name: []const u8) ?Number {
+        return lookup(b, name);
+    }
+
+    pub fn callPlain(self: *Eval, name: []const u8, arg_nodes: []const *Node, pos: usize, b: ?*const Binding) Error!Number {
+        return self.call(name, arg_nodes, pos, b);
+    }
 
     fn lookup(b: ?*const Binding, name: []const u8) ?Number {
         var it = b;
@@ -689,7 +764,8 @@ pub const Eval = struct {
                         break :blk num.fromI128(a, @divTrunc(try self.int(x), d));
                     } else num.div(a, x, y),
                     .mod => num.mod(a, x, y),
-                    .pow => num.pow(a, x, y),
+                    // (-8)^(1/3) is the principal complex root (cbrt(-8) is −2): leave it to rich.zig.
+                    .pow => if (x.isNegative() and !y.isInteger() and !self.mode.programmer) error.Domain else num.pow(a, x, y),
                     .add_pct => num.add(a, x, try num.div(a, try num.mul(a, x, y), try num.fromInt(a, 100))),
                     .sub_pct => num.sub(a, x, try num.div(a, try num.mul(a, x, y), try num.fromInt(a, 100))),
                     .band => num.fromI128(a, (try self.int(x)) & (try self.int(y))),
@@ -1166,6 +1242,10 @@ pub const Outcome = union(enum) {
     complex: struct { name: []const u8, re: []f64, im: []f64 },
     /// Both sides known: whether they are equal.
     truth: bool,
+    /// A complex number or a matrix.
+    rich: rich.Value,
+    /// M = [1, 2; 3, 4]: a stored matrix or complex number.
+    rich_assigned: struct { name: []const u8, value: rich.Value },
 };
 
 /// Works out one entry. Everything returned lives in `a`.
@@ -1174,9 +1254,14 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
     var ev: Eval = .{ .a = a, .session = session, .mode = mode, .problem = problem };
     switch (st) {
         .expr => |n0| {
+            if (!mode.programmer and rich.needs(n0, session)) return richOutcome(a, &ev, session, n0);
             // diff(f, x) on its own is a formula: tidy it.
             const n = if (calculus.hasDiff(n0)) try calculus.expand(a, &ev, n0) else n0;
             if (ev.eval(n, null)) |v| return .{ .value = v } else |e| {
+                // sqrt(-4), ln(-1): an answer among the complex numbers.
+                if (e == error.Domain and !mode.programmer) {
+                    if (richOutcome(a, &ev, session, n)) |o| return o else |_| {}
+                }
                 // Letters without values: tidy it instead.
                 if (e != error.UnknownName) return e;
                 var names: std.ArrayList([]const u8) = .empty;
@@ -1187,6 +1272,17 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
         },
         .equation => |eq| {
             if (mode.solve_only) return solve(a, &ev, eq.l, eq.r);
+            // M = [1, 2; 3, 4], z = 3 + 4i.
+            if (!mode.programmer and eq.l.* == .name and !isConstant(eq.l.name.text) and rich.needs(eq.r, session)) {
+                var rr = rich.Rich.init(&ev);
+                const v = try rr.value(eq.r, null);
+                if (v == .scalar and v.scalar.isReal()) {
+                    try session.setVar(eq.l.name.text, v.scalar.re);
+                    return .{ .assigned = .{ .name = eq.l.name.text, .value = v.scalar.re } };
+                }
+                try session.setRich(eq.l.name.text, v);
+                return .{ .rich_assigned = .{ .name = eq.l.name.text, .value = v } };
+            }
             // x = 5: a variable. When the right side uses x, it is an equation,
             // unless x is already a variable (x = x + 1 counts up).
             var rhs_unknowns: std.ArrayList([]const u8) = .empty;
@@ -1217,6 +1313,16 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
             return solve(a, &ev, eq.l, eq.r);
         },
     }
+}
+
+/// An entry worked out as a complex number or matrix; a plain real answer stays a plain value.
+fn richOutcome(a: std.mem.Allocator, ev: *Eval, session: *Session, n: *const Node) Error!Outcome {
+    var rr = rich.Rich.init(ev);
+    const v = try rr.value(n, null);
+    if (v == .scalar and v.scalar.isReal()) return .{ .value = v.scalar.re };
+    _ = a;
+    session.setRich("ans", v) catch return error.OutOfMemory;
+    return .{ .rich = v };
 }
 
 fn uses(n: *const Node, name: []const u8) bool {
@@ -1477,6 +1583,8 @@ const Tester = struct {
             .defined => |d| d,
             .truth => |t| if (t) "true" else "false",
             .simplified => |x| x,
+            .rich => |v| try rich.format(a, v, .{}),
+            .rich_assigned => |s| try rich.format(a, s.value, .{}),
             .complex => |cx| try std.fmt.allocPrint(a, "{d} complex", .{cx.re.len}),
             .solved => |s| blk: {
                 var parts: std.ArrayList(u8) = .empty;
@@ -1633,7 +1741,7 @@ test "errors say where" {
     try std.testing.expectError(error.Syntax, run(a, &t.session, "2 + * 3", .{}, &p));
     try std.testing.expectEqual(@as(usize, 4), p.pos);
     try std.testing.expectError(error.DivisionByZero, run(a, &t.session, "1/0", .{}, &p));
-    try std.testing.expectError(error.Domain, run(a, &t.session, "sqrt(-1)", .{}, &p));
+    try std.testing.expectError(error.Domain, run(a, &t.session, "ln(0)", .{}, &p));
     p = .{};
     try std.testing.expectError(error.UnknownName, run(a, &t.session, "2 + foo(3)", .{}, &p));
     try std.testing.expectEqualStrings("foo", p.name);

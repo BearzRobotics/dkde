@@ -6,6 +6,7 @@
 const std = @import("std");
 const num = @import("num.zig");
 const eval = @import("eval.zig");
+const rich = @import("rich.zig");
 
 fn show(a: std.mem.Allocator, o: eval.Outcome) ![]const u8 {
     return switch (o) {
@@ -14,6 +15,8 @@ fn show(a: std.mem.Allocator, o: eval.Outcome) ![]const u8 {
         .defined => |d| d,
         .truth => |t| if (t) "true" else "false",
         .simplified => |x| x,
+        .rich => |v| try rich.format(a, v, .{ .decimals = 12 }),
+        .rich_assigned => |s| try rich.format(a, s.value, .{ .decimals = 12 }),
         .complex => |cx| try std.fmt.allocPrint(a, "{d} complex", .{cx.re.len}),
         .solved => |s| blk: {
             var parts: std.ArrayList(u8) = .empty;
