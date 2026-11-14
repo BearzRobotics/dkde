@@ -193,6 +193,8 @@ A formula in the entry is always solved; it never stores a variable. **Save Entr
 **limit(f, x, a)**
 : The limit as x goes to a, from both sides: **limit(sin(x)/x, x, 0)** is 1. **a** may be **inf** (or **∞**) or **−inf**: **limit((1 + 1/n)^n, n, inf)** is e.
 
+**integral(f, x)** (or **integrate(f)**) gives an antiderivative plus **C**: **integral(x², x)** is **x³/3 + C**, **integral(x·sin(x), x)** is **−x·cos(x) + sin(x) + C**. It knows powers, sums and constant multiples, **exp**, **sin**, **cos**, **tan**, **ln**, **sqrt**, **atan**, **asin**, **acos** of a linear argument, integration by parts for a polynomial times one of those, and rational functions with distinct rational roots (partial fractions) or of the form 1/(x² + c) and x/(x² + c). Every answer is checked by differentiating it; when no closed form is found the entry is refused. Show Work (**Ctrl+L**) writes the steps.
+
 **sum(f, k, m, n)**, **prod(f, k, m, n)**
 : f added up, or multiplied together, for k = m, m + 1, … n, exactly: **sum(k², k, 1, 10)** is 385; **prod(k, k, 1, 5)** is 120.
 

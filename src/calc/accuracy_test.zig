@@ -250,3 +250,12 @@ test "regressions and tests from the entry" {
     try runShows(&s, "[2, 2, 0.367879441171]", "chisqtest([20,30,50],[25,25,50])");
     try runShows(&s, "[27, 2, 6, 0.001]", "anova([4,5,6],[7,8,9],[10,11,12])");
 }
+
+test "indefinite integrals from the entry" {
+    var s: eval.Session = .{ .gpa = std.testing.allocator };
+    defer s.deinit();
+    try runShows(&s, "x³/3 + C", "integral(x^2, x)");
+    try runShows(&s, "x³ + x² + x + C", "integrate(3x^2 + 2x + 1)");
+    try runShows(&s, "−cos(2x)/2 + C", "integral(sin(2x), x)");
+    try runShows(&s, "9", "integral(x^2, x, 0, 3)");
+}

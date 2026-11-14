@@ -3894,4 +3894,5 @@ test {
     _ = @import("uncertain.zig");
     _ = @import("linalg.zig");
     _ = @import("stats.zig");
+    _ = @import("integral.zig");
 }

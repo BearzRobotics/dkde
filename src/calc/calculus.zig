@@ -17,27 +17,27 @@ const eval = @import("eval.zig");
 const Node = eval.Node;
 const Error = eval.Error;
 
-fn mk(a: std.mem.Allocator, n: Node) Error!*Node {
+pub fn mk(a: std.mem.Allocator, n: Node) Error!*Node {
     const p = try a.create(Node);
     p.* = n;
     return p;
 }
 
-fn int(a: std.mem.Allocator, v: i64) Error!*Node {
+pub fn int(a: std.mem.Allocator, v: i64) Error!*Node {
     return mk(a, .{ .number = try num.fromInt(a, v) });
 }
 
-fn bin(a: std.mem.Allocator, op: eval.Op, l: *Node, r: *Node) Error!*Node {
+pub fn bin(a: std.mem.Allocator, op: eval.Op, l: *Node, r: *Node) Error!*Node {
     return mk(a, .{ .binary = .{ .op = op, .l = l, .r = r } });
 }
 
-fn call1(a: std.mem.Allocator, name: []const u8, arg: *Node) Error!*Node {
+pub fn call1(a: std.mem.Allocator, name: []const u8, arg: *Node) Error!*Node {
     const args = try a.alloc(*Node, 1);
     args[0] = arg;
     return mk(a, .{ .call = .{ .name = name, .args = args, .pos = 0 } });
 }
 
-fn neg(a: std.mem.Allocator, n: *Node) Error!*Node {
+pub fn neg(a: std.mem.Allocator, n: *Node) Error!*Node {
     return mk(a, .{ .unary = .{ .op = .neg, .arg = n } });
 }
 

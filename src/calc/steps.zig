@@ -16,6 +16,7 @@ const symbolic = @import("symbolic.zig");
 const algebra = @import("algebra.zig");
 const calculus = @import("calculus.zig");
 const simplify = @import("simplify.zig");
+const integral = @import("integral.zig");
 const Number = num.Number;
 const Big = std.math.big.int.Managed;
 
@@ -1459,6 +1460,96 @@ fn derivativeSteps(ctx_in: Ctx, expr: []const u8, x: []const u8) Error!?[]Step {
     return steps.items;
 }
 
+// ---- integrals -----------------------------------------------------------------------------------------------------------------
+
+/// Is this term a polynomial in x with a letter only to the power (c·xⁿ)?
+fn isPowerTerm(ctx: Ctx, n: *const eval.Node, x: []const u8) bool {
+    _ = x;
+    const a = ctx.a;
+    const actx: algebra.Ctx = .{ .a = a, .session = ctx.session };
+    const p = (algebra.fromNode(actx, n) catch return false) orelse return false;
+    return p.terms.len == 1;
+}
+
+fn integralSteps(ctx_in: Ctx, expr: []const u8, x: []const u8) Error!?[]Step {
+    var ctx = ctx_in;
+    ctx.mode.angle = .radians;
+    const a = ctx.a;
+    var problem: eval.Problem = .{};
+    const node = eval.parseExpr(a, expr, ctx.mode, &problem) catch return null;
+    var ev: eval.Eval = .{ .a = a, .session = ctx.session, .mode = ctx.mode, .problem = &problem };
+    const whole = (try integral.antiderivative(&ev, node, x)) orelse return null;
+    const shown = try nodeText(ctx, &ev, node);
+    var steps: std.ArrayList(Step) = .empty;
+    try push(a, &steps, "Start (angles in radians)", try std.fmt.allocPrint(a, "∫ {s} d{s}", .{ shown, x }));
+    var terms: std.ArrayList(Term) = .empty;
+    try collectTerms(a, node, false, &terms);
+    if (terms.items.len > 1) {
+        var line: std.ArrayList(u8) = .empty;
+        for (terms.items, 0..) |t, i| {
+            if (i == 0) {
+                if (t.negative) try line.appendSlice(a, "−");
+            } else try line.appendSlice(a, if (t.negative) " − " else " + ");
+            try line.print(a, "∫ {s} d{s}", .{ try nodeText(ctx, &ev, t.node), x });
+        }
+        try push(a, &steps, "Sum rule: integrate each term on its own", line.items);
+    }
+    var simple: std.ArrayList(u8) = .empty;
+    for (terms.items) |t| {
+        const tt = try nodeText(ctx, &ev, t.node);
+        const found = (try integral.antiderivative(&ev, t.node, x)) orelse continue;
+        const result = try simplify.simplify(a, &ev, found);
+        if (!calculus.uses(t.node, x)) {
+            if (simple.items.len > 0) try simple.appendSlice(a, ",   ");
+            try simple.print(a, "∫ {s} d{s} = {s}", .{ tt, x, result });
+            continue;
+        }
+        if (isPowerTerm(ctx, t.node, x)) {
+            if (simple.items.len > 0) try simple.appendSlice(a, ",   ");
+            try simple.print(a, "∫ {s} d{s} = {s}", .{ tt, x, result });
+            continue;
+        }
+        // A product with a polynomial: integration by parts.
+        if (t.node.* == .binary and t.node.binary.op == .mul and calculus.uses(t.node.binary.l, x) and calculus.uses(t.node.binary.r, x)) {
+            const b = t.node.binary;
+            const l_poly = isPowerTerm(ctx, b.l, x) or (algebra.fromNode(.{ .a = a, .session = ctx.session }, b.l) catch null) != null;
+            const u_node = if (l_poly) b.l else b.r;
+            const dv_node = if (l_poly) b.r else b.l;
+            const u_text = try nodeText(ctx, &ev, u_node);
+            const dv_text = try nodeText(ctx, &ev, dv_node);
+            const du = try derivText(ctx, &ev, u_node, x);
+            const vv = (try integral.antiderivative(&ev, dv_node, x)) orelse continue;
+            const v_text = try simplify.simplify(a, &ev, vv);
+            try push(a, &steps, "Integration by parts: ∫ u dv = u·v − ∫ v du", try std.fmt.allocPrint(a, "u = {s},   dv = {s} d{s}\ndu = {s} d{s},   v = {s}", .{ u_text, dv_text, x, du, x, v_text }));
+            try push(a, &steps, "Put them in", try std.fmt.allocPrint(a, "∫ {s} d{s} = ({s})({s}) − ∫ ({s})({s}) d{s}", .{ tt, x, u_text, v_text, v_text, du, x }));
+            try push(a, &steps, "Work out what is left, and simplify", try std.fmt.allocPrint(a, "∫ {s} d{s} = {s}", .{ tt, x, result }));
+            continue;
+        }
+        // A function of ax + b: substitute.
+        if (t.node.* == .call) {
+            const c = t.node.call;
+            if (c.args.len == 1 and c.args[0].* != .name) {
+                try push(a, &steps, "Substitute u = (inside); the inside is linear, so dx = du divided by its slope", try std.fmt.allocPrint(a, "u = {s}", .{try nodeText(ctx, &ev, c.args[0])}));
+                try push(a, &steps, "Integrate the outside function, then divide by the slope", try std.fmt.allocPrint(a, "∫ {s} d{s} = {s}", .{ tt, x, result }));
+                continue;
+            }
+        }
+        if (simple.items.len > 0) try simple.appendSlice(a, ",   ");
+        try simple.print(a, "∫ {s} d{s} = {s}", .{ tt, x, result });
+    }
+    if (simple.items.len > 0) {
+        try steps.insert(a, if (terms.items.len > 1) 2 else 1, .{
+            .note = "Power rule: ∫xⁿ dx = xⁿ⁺¹/(n+1); a constant factor stays; ∫ c dx = c·x; and the known integrals (sin, cos, eˣ, 1/x …)",
+            .math = simple.items,
+        });
+    }
+    const total = try simplify.simplify(a, &ev, whole);
+    const answer = try std.fmt.allocPrint(a, "∫ {s} d{s} = {s} + C", .{ shown, x, total });
+    if (!std.mem.endsWith(u8, steps.items[steps.items.len - 1].math, total)) try push(a, &steps, "Put the terms together and add the constant of integration C", answer);
+    if (steps.items.len <= 1) return null;
+    return steps.items;
+}
+
 // ---- two equations in two unknowns ---------------------------------------------------------------------------------------------------
 
 /// "2x − 3y", with the zero terms left out.
@@ -1612,6 +1703,15 @@ pub fn explain(ctx: Ctx, text: []const u8) Error!?[]Step {
         if (eval.unwrapCall(text, word)) |inner| return explain(ctx, inner);
     }
     if (eval.unwrapCall(text, "factor")) |inner| return try factorSteps(ctx, inner);
+    inline for (.{ "integral", "integrate" }) |word| {
+        if (eval.unwrapCall(text, word)) |inner| {
+            const parts = try eval.splitTop(a, inner, ',');
+            if (parts.len == 1 or parts.len == 2) {
+                const x = if (parts.len == 2) std.mem.trim(u8, parts[1], " ") else "x";
+                return try integralSteps(ctx, std.mem.trim(u8, parts[0], " "), x);
+            }
+        }
+    }
     if (eval.unwrapCall(text, "diff")) |inner| {
         const parts = try eval.splitTop(a, inner, ',');
         if (parts.len >= 1 and parts.len <= 2) {
@@ -1786,7 +1886,7 @@ test "zz print" {
     const a = arena.allocator();
     var session: eval.Session = .{ .gpa = std.testing.allocator };
     defer session.deinit();
-    const list = [_][]const u8{ "A = 2(2·5 + 2·25 + 5·25)", "V = 3*4*5", "x + y = 5; x - y = 1", "2x + 3y = 12; x - y = 1", "x + 2y = 5; 3x - 2y = 3", "diff(3x^2 + 2x + 1, x)", "diff(x*sin(x), x)", "diff(sin(2x), x)", "diff((x+1)/(x-1), x)", "diff(x^3 - 4x, x)", "diff(sqrt(x), x)", "factor(x^3-5x^2+3x+9)", "factor(x^2-9)", "factor(4x^2-25)", "factor(x^2+6x+9)", "factor(2x^2+4x)", "factor(6x^2-7x-3)", "factor(x^3-x)", "factor(x^2+1)", "factor(x^3-6x^2+11x-6)", "(x+2)(x+3)", "(x+1)^3", "(2x-1)(x+4)", "2(x+3) + 4", "(x+y)^2", "(x-1)(x+1)", "3x + 2x - 5 + 1", "(x+1)(x+2)(x+3)", "6x^2 - 7x - 3 = 0", "x^2 = 2", "x^2 = 72", "x^2 - x - 1 = 0", "x^2 + x + 1 = 0", "2x^2 - 2x - 12 = 0", "x^2 + 4x = 0", "x^2 = -9", "x^2 - 6x + 9 = 0", "(x+1)^2 = 4", "x/2 + 1/3 = 5/6", "2x + 3 = 2x + 5", "3x - 1 = 3x - 1" };
+    const list = [_][]const u8{ "integral(3x^2 + 2x + 1, x)", "integral(x*exp(x), x)", "integral(sin(2x), x)", "A = 2(2·5 + 2·25 + 5·25)", "V = 3*4*5", "x + y = 5; x - y = 1", "2x + 3y = 12; x - y = 1", "x + 2y = 5; 3x - 2y = 3", "diff(3x^2 + 2x + 1, x)", "diff(x*sin(x), x)", "diff(sin(2x), x)", "diff((x+1)/(x-1), x)", "diff(x^3 - 4x, x)", "diff(sqrt(x), x)", "factor(x^3-5x^2+3x+9)", "factor(x^2-9)", "factor(4x^2-25)", "factor(x^2+6x+9)", "factor(2x^2+4x)", "factor(6x^2-7x-3)", "factor(x^3-x)", "factor(x^2+1)", "factor(x^3-6x^2+11x-6)", "(x+2)(x+3)", "(x+1)^3", "(2x-1)(x+4)", "2(x+3) + 4", "(x+y)^2", "(x-1)(x+1)", "3x + 2x - 5 + 1", "(x+1)(x+2)(x+3)", "6x^2 - 7x - 3 = 0", "x^2 = 2", "x^2 = 72", "x^2 - x - 1 = 0", "x^2 + x + 1 = 0", "2x^2 - 2x - 12 = 0", "x^2 + 4x = 0", "x^2 = -9", "x^2 - 6x + 9 = 0", "(x+1)^2 = 4", "x/2 + 1/3 = 5/6", "2x + 3 = 2x + 5", "3x - 1 = 3x - 1" };
     for (list) |src| {
         std.debug.print("\n=== {s}\n", .{src});
         const steps = (try explain(.{ .a = a, .session = &session, .mode = .{} }, src)) orelse {

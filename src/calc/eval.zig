@@ -36,6 +36,7 @@ const symbolic = @import("symbolic.zig");
 const algebra = @import("algebra.zig");
 const library = @import("library.zig");
 const uncertain = @import("uncertain.zig");
+const integral = @import("integral.zig");
 const Number = num.Number;
 
 pub const Angle = enum {
@@ -1832,6 +1833,21 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
             if (args.len < 1 or args.len > 2) return error.WrongArguments;
             const eq = if (std.mem.indexOfScalar(u8, args[0], '=') == null) try std.fmt.allocPrint(a, "{s} = 0", .{args[0]}) else args[0];
             return run(a, session, eq, .{ .angle = mode.angle, .solve_only = true }, problem);
+        }
+        // integral(x², x): the antiderivative (the definite form with limits is worked out as a number).
+        inline for (.{ "integral", "integrate" }) |word| {
+            if (unwrapCall(text, word)) |inner| {
+                const args = try splitTop(a, inner, ',');
+                if (args.len == 1 or args.len == 2) {
+                    const letter = if (args.len == 2) std.mem.trim(u8, args[1], " ") else "x";
+                    const n = try parseExpr(a, std.mem.trim(u8, args[0], " "), mode, problem);
+                    var radians = mode;
+                    radians.angle = .radians;
+                    var ev: Eval = .{ .a = a, .session = session, .mode = radians, .problem = problem };
+                    if (try integral.integralText(&ev, n, letter)) |found| return .{ .simplified = found };
+                    return error.Domain;
+                }
+            }
         }
         inline for (.{ "expand", "factor", "simplify" }) |word| {
             if (unwrapCall(text, word)) |inner| {
