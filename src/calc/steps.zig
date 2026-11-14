@@ -694,6 +694,78 @@ fn gcdInt(x: i64, y: i64) i64 {
     return @intCast(std.math.gcd(@as(u64, @intCast(@abs(x))), @as(u64, @intCast(@abs(y)))));
 }
 
+/// "Find two numbers that multiply to c and add to b" (and the grouping method when a is not 1):
+/// the steps up to the point where the brackets are known. False if no whole numbers work.
+fn factorByNumbers(ctx: Ctx, steps: *std.ArrayList(Step), c: []const Number, name: []const u8, equals_zero: bool) Error!bool {
+    const tail: []const u8 = if (equals_zero) " = 0" else "";
+    const a = ctx.a;
+    const qa = num.intValue(c[2]) orelse return false;
+    const qb = num.intValue(c[1]) orelse return false;
+    const qc = num.intValue(c[0]) orelse return false;
+    const A = try numText(a, c[2]);
+    const B = try numText(a, c[1]);
+    const C = try numText(a, c[0]);
+    // Find the two numbers.
+    const ac = qa * qc;
+    var m: i64 = 0;
+    var n: i64 = 0;
+    const divs = (try algebra.divisors(a, try num.fromInt(a, ac))) orelse return false;
+    var found = false;
+    outer: for (divs) |d| {
+        var sign: i64 = 1;
+        while (sign >= -1) : (sign -= 2) {
+            const mm = sign * @as(i64, @intCast(d));
+            if (@rem(ac, mm) != 0) continue;
+            const nn = @divExact(ac, mm);
+            if (mm + nn == qb) {
+                if (mm <= nn) {
+                    m = mm;
+                    n = nn;
+                } else {
+                    m = nn;
+                    n = mm;
+                }
+                found = true;
+                break :outer;
+            }
+        }
+    }
+    if (!found) return false;
+    if (qa == 1) {
+        try push(a, steps, try std.fmt.allocPrint(a, "Find two numbers that multiply to {s} and add to {s}: {s} and {s}", .{ C, B, try iText(a, m), try iText(a, n) }), try std.fmt.allocPrint(a, "{s} × {s} = {s},   {s} + {s} = {s}", .{ try iWrap(a, m), try iWrap(a, n), try iText(a, qc), try iWrap(a, m), try iWrap(a, n), try iText(a, qb) }));
+    } else {
+        try push(a, steps, try std.fmt.allocPrint(a, "Multiply {s} and {s}: {s}. Find two numbers that multiply to {s} and add to {s}: {s} and {s}", .{ A, C, try iText(a, ac), try iText(a, ac), B, try iText(a, m), try iText(a, n) }), try std.fmt.allocPrint(a, "{s} × {s} = {s},   {s} + {s} = {s}", .{ try iWrap(a, m), try iWrap(a, n), try iText(a, ac), try iWrap(a, m), try iWrap(a, n), try iText(a, qb) }));
+        // Split the middle term, group in pairs, take out what each pair shares.
+        var pair = [2]i64{ m, n };
+        var attempt: usize = 0;
+        while (attempt < 2) : (attempt += 1) {
+            const first = pair[0];
+            const second = pair[1];
+            const g1 = gcdInt(qa, first);
+            const in1a = @divExact(qa, g1);
+            const in1b = @divExact(first, g1);
+            // The second pair, n x + c, must be g2 times the same bracket.
+            if (in1a == 0 or @rem(second, in1a) != 0 or @divExact(second, in1a) * in1b != qc) {
+                pair = .{ n, m };
+                continue;
+            }
+            const g2 = @divExact(second, in1a);
+            const sq_term = try termStr(a, qa, 2, name, true);
+            try push(a, steps, "Split the middle term", try std.fmt.allocPrint(a, "{s}{s}{s}{s}{s}", .{ sq_term, try termStr(a, first, 1, name, false), try termStr(a, second, 1, name, false), try termStr(a, qc, 0, name, false), tail }));
+            try push(a, steps, "Group the terms in pairs", try std.fmt.allocPrint(a, "({s}{s}) + ({s}{s}){s}", .{ sq_term, try termStr(a, first, 1, name, false), try termStr(a, second, 1, name, true), try termStr(a, qc, 0, name, false), tail }));
+            const bracket = try polyOf(a, &[_]Number{ try num.fromInt(a, in1b), try num.fromInt(a, in1a) }, name);
+            const g1x = try polyOf(a, &[_]Number{ try num.fromInt(a, 0), try num.fromInt(a, g1) }, name);
+            const g2_mag: i64 = @intCast(@abs(g2));
+            try push(a, steps, "Take out what each pair shares", try std.fmt.allocPrint(a, "{s}({s}) {s} {d}({s}){s}", .{ g1x, bracket, if (g2 < 0) "−" else "+", g2_mag, bracket, tail }));
+            const outer_factor = try polyOf(a, &[_]Number{ try num.fromInt(a, g2), try num.fromInt(a, g1) }, name);
+            try push(a, steps, try std.fmt.allocPrint(a, "Take out the common bracket ({s})", .{bracket}), try std.fmt.allocPrint(a, "({s})({s}){s}", .{ outer_factor, bracket, tail }));
+            break;
+        }
+    }
+
+    return true;
+}
+
 fn quadraticEquation(ctx: Ctx, start: []const u8, diff: []const Number, name: []const u8) Error![]Step {
     const a = ctx.a;
     var steps: std.ArrayList(Step) = .empty;
@@ -761,63 +833,7 @@ fn quadraticEquation(ctx: Ctx, start: []const u8, diff: []const Number, name: []
         total_mult += f.mult * @as(u32, @intCast(algebra.degree(f.coefs)));
     }
     if (linear_factors == fac.factors.len and total_mult == 2) {
-        // Find the two numbers.
-        const ac = qa * qc;
-        var m: i64 = 0;
-        var n: i64 = 0;
-        const divs = (try algebra.divisors(a, try num.fromInt(a, ac))) orelse return steps.items;
-        var found = false;
-        outer: for (divs) |d| {
-            var sign: i64 = 1;
-            while (sign >= -1) : (sign -= 2) {
-                const mm = sign * @as(i64, @intCast(d));
-                if (@rem(ac, mm) != 0) continue;
-                const nn = @divExact(ac, mm);
-                if (mm + nn == qb) {
-                    if (mm <= nn) {
-                        m = mm;
-                        n = nn;
-                    } else {
-                        m = nn;
-                        n = mm;
-                    }
-                    found = true;
-                    break :outer;
-                }
-            }
-        }
-        if (!found) return steps.items;
-        if (qa == 1) {
-            try push(a, &steps, try std.fmt.allocPrint(a, "Find two numbers that multiply to {s} and add to {s}: {s} and {s}", .{ C, B, try iText(a, m), try iText(a, n) }), try std.fmt.allocPrint(a, "{s} × {s} = {s},   {s} + {s} = {s}", .{ try iWrap(a, m), try iWrap(a, n), try iText(a, qc), try iWrap(a, m), try iWrap(a, n), try iText(a, qb) }));
-        } else {
-            try push(a, &steps, try std.fmt.allocPrint(a, "Multiply {s} and {s}: {s}. Find two numbers that multiply to {s} and add to {s}: {s} and {s}", .{ A, C, try iText(a, ac), try iText(a, ac), B, try iText(a, m), try iText(a, n) }), try std.fmt.allocPrint(a, "{s} × {s} = {s},   {s} + {s} = {s}", .{ try iWrap(a, m), try iWrap(a, n), try iText(a, ac), try iWrap(a, m), try iWrap(a, n), try iText(a, qb) }));
-            // Split the middle term, group in pairs, take out what each pair shares.
-            var pair = [2]i64{ m, n };
-            var attempt: usize = 0;
-            while (attempt < 2) : (attempt += 1) {
-                const first = pair[0];
-                const second = pair[1];
-                const g1 = gcdInt(qa, first);
-                const in1a = @divExact(qa, g1);
-                const in1b = @divExact(first, g1);
-                // The second pair, n x + c, must be g2 times the same bracket.
-                if (in1a == 0 or @rem(second, in1a) != 0 or @divExact(second, in1a) * in1b != qc) {
-                    pair = .{ n, m };
-                    continue;
-                }
-                const g2 = @divExact(second, in1a);
-                const sq_term = try termStr(a, qa, 2, name, true);
-                try push(a, &steps, "Split the middle term", try std.fmt.allocPrint(a, "{s}{s}{s}{s} = 0", .{ sq_term, try termStr(a, first, 1, name, false), try termStr(a, second, 1, name, false), try termStr(a, qc, 0, name, false) }));
-                try push(a, &steps, "Group the terms in pairs", try std.fmt.allocPrint(a, "({s}{s}) + ({s}{s}) = 0", .{ sq_term, try termStr(a, first, 1, name, false), try termStr(a, second, 1, name, true), try termStr(a, qc, 0, name, false) }));
-                const bracket = try polyOf(a, &[_]Number{ try num.fromInt(a, in1b), try num.fromInt(a, in1a) }, name);
-                const g1x = try polyOf(a, &[_]Number{ try num.fromInt(a, 0), try num.fromInt(a, g1) }, name);
-                const g2_mag: i64 = @intCast(@abs(g2));
-                try push(a, &steps, "Take out what each pair shares", try std.fmt.allocPrint(a, "{s}({s}) {s} {d}({s}) = 0", .{ g1x, bracket, if (g2 < 0) "−" else "+", g2_mag, bracket }));
-                const outer_factor = try polyOf(a, &[_]Number{ try num.fromInt(a, g2), try num.fromInt(a, g1) }, name);
-                try push(a, &steps, try std.fmt.allocPrint(a, "Take out the common bracket ({s})", .{bracket}), try std.fmt.allocPrint(a, "({s})({s}) = 0", .{ outer_factor, bracket }));
-                break;
-            }
-        }
+        if (!try factorByNumbers(ctx, &steps, c, name, true)) return steps.items;
         // The factored form, then each factor to zero.
         var product: std.ArrayList(u8) = .empty;
         var zeros: std.ArrayList(u8) = .empty;
@@ -1100,6 +1116,132 @@ fn expansion(ctx: Ctx, node: *const eval.Node) Error!?[]Step {
     return steps.items;
 }
 
+// ---- factoring ------------------------------------------------------------------------------------------------------------------
+
+fn intSqrt(v: i64) ?i64 {
+    if (v < 0) return null;
+    const r: i64 = @intFromFloat(@floor(@sqrt(@as(f64, @floatFromInt(v)))));
+    var k = if (r > 0) r - 1 else 0;
+    while (k <= r + 1) : (k += 1) if (k * k == v) return k;
+    return null;
+}
+
+/// x² for a plain letter, (2x)² otherwise.
+fn squareOf(a: std.mem.Allocator, text: []const u8, plain: bool) Error![]const u8 {
+    return if (plain) std.fmt.allocPrint(a, "{s}²", .{text}) else std.fmt.allocPrint(a, "({s})²", .{text});
+}
+
+/// The steps that turn a polynomial into factors.
+fn factorSteps(ctx: Ctx, inner: []const u8) Error!?[]Step {
+    const a = ctx.a;
+    var problem: eval.Problem = .{};
+    const node = eval.parseExpr(a, inner, ctx.mode, &problem) catch return null;
+    const actx: algebra.Ctx = .{ .a = a, .session = ctx.session };
+    const poly = (try algebra.fromNode(actx, node)) orelse return null;
+    const name = algebra.onlyVar(poly) orelse return null;
+    const coefs = (try algebra.dense(a, poly, name)) orelse return null;
+    var steps: std.ArrayList(Step) = .empty;
+    allow_letters = true;
+    const written = if (try fromNode(a, node)) |t| try write(a, t) else inner;
+    allow_letters = false;
+    try push(a, &steps, "Start", written);
+    const standard = try polyOf(a, coefs, name);
+    if (!std.mem.eql(u8, standard, written)) try push(a, &steps, "Write it in standard form", standard);
+    const d0 = algebra.degree(coefs);
+    if (d0 == 0) return null;
+    // The common factor: the number and the lowest power of the letter.
+    var low: usize = 0;
+    while (low < coefs.len and coefs[low].isZero()) low += 1;
+    const pr = try algebra.primitive(a, coefs);
+    var rest: []const Number = pr.prim;
+    var taken: std.ArrayList(u8) = .empty;
+    if (!num.isOneNumber(pr.content)) {
+        if (pr.content.isNegative() and num.isOneNumber(try num.neg(a, pr.content))) {
+            try taken.appendSlice(a, "−");
+        } else try taken.appendSlice(a, try numText(a, pr.content));
+    }
+    if (low > 0) {
+        try taken.appendSlice(a, name);
+        if (low > 1) try taken.appendSlice(a, sup_digits[low]);
+        rest = rest[low..];
+    }
+    if (taken.items.len > 0) {
+        const inside = try polyOf(a, rest, name);
+        const wrapped = if (rest.len > 1) try std.fmt.allocPrint(a, "({s})", .{inside}) else inside;
+        try push(a, &steps, try std.fmt.allocPrint(a, "Take out the common factor {s}", .{taken.items}), try std.fmt.allocPrint(a, "{s}{s}", .{ taken.items, wrapped }));
+    }
+    var current = try a.dupe(Number, algebra.trimmed(rest));
+    // Higher degrees: rational roots, one at a time.
+    var found_roots: std.ArrayList(Number) = .empty;
+    while (algebra.degree(current) >= 3) {
+        const pr2 = try algebra.primitive(a, current);
+        const p_divs = (try algebra.divisors(a, pr2.prim[0])) orelse break;
+        const q_divs = (try algebra.divisors(a, pr2.prim[pr2.prim.len - 1])) orelse break;
+        var tried: std.ArrayList(u8) = .empty;
+        var root: ?Number = null;
+        search: for (q_divs) |q| for (p_divs) |pd| {
+            if (std.math.gcd(pd, q) != 1) continue;
+            var sign: i64 = 1;
+            while (sign >= -1) : (sign -= 2) {
+                const r = try num.div(a, try num.fromInt(a, sign * @as(i64, @intCast(pd))), try num.fromInt(a, @as(i64, @intCast(q))));
+                const v = try algebra.evalAt(a, current, r);
+                if (tried.items.len > 0) try tried.appendSlice(a, ",   ");
+                try tried.print(a, "p({s}) = {s}", .{ try numText(a, r), try numText(a, v) });
+                if (v.isZero()) {
+                    root = r;
+                    break :search;
+                }
+                if (tried.items.len > 200) break :search;
+            }
+        };
+        const r = root orelse break;
+        try push(a, &steps, "Try the possible roots: whole-number factors of the constant over factors of the leading coefficient", tried.items);
+        const lin = try a.alloc(Number, 2);
+        lin[0] = try num.neg(a, r);
+        lin[1] = try num.fromInt(a, 1);
+        const lp = try algebra.primitive(a, lin);
+        const quotient = try algebra.divmod(a, current, lp.prim);
+        const q_text = try polyOf(a, quotient.q, name);
+        try push(a, &steps, try std.fmt.allocPrint(a, "p({s}) = 0, so ({s}) is a factor. Divide p by it", .{ try numText(a, r), try polyOf(a, lp.prim, name) }), try std.fmt.allocPrint(a, "{s} = ({s})({s})", .{ try polyOf(a, current, name), try polyOf(a, lp.prim, name), q_text }));
+        try found_roots.append(a, r);
+        current = try a.dupe(Number, algebra.trimmed(quotient.q));
+    }
+    // A quadratic is left: a pattern, or two numbers.
+    if (algebra.degree(current) == 2) {
+        const pr3 = try algebra.primitive(a, current);
+        const c = pr3.prim;
+        const qa = num.intValue(c[2]) orelse 0;
+        const qb = num.intValue(c[1]) orelse 0;
+        const qc = num.intValue(c[0]) orelse 0;
+        if (qb == 0 and qc < 0 and intSqrt(qa) != null and intSqrt(-qc) != null) {
+            const sa = intSqrt(qa).?;
+            const sc = intSqrt(-qc).?;
+            const first = try polyOf(a, &[_]Number{ try num.fromInt(a, 0), try num.fromInt(a, sa) }, name);
+            try push(a, &steps, "Difference of two squares: a² − b² = (a − b)(a + b)", try std.fmt.allocPrint(a, "{s} − {d}²", .{ try squareOf(a, first, sa == 1), sc }));
+            try push(a, &steps, "Write it as (a − b)(a + b)", try std.fmt.allocPrint(a, "({s} − {d})({s} + {d})", .{ first, sc, first, sc }));
+        } else if (qa > 0 and qc > 0 and intSqrt(qa) != null and intSqrt(qc) != null and qb * qb == 4 * qa * qc) {
+            const sa = intSqrt(qa).?;
+            const sc = intSqrt(qc).?;
+            const first = try polyOf(a, &[_]Number{ try num.fromInt(a, 0), try num.fromInt(a, sa) }, name);
+            const sign: []const u8 = if (qb < 0) "−" else "+";
+            try push(a, &steps, "Perfect square: a² ± 2ab + b² = (a ± b)²", try std.fmt.allocPrint(a, "{s} {s} 2({s})({d}) + {d}²", .{ try squareOf(a, first, sa == 1), sign, first, sc, sc }));
+            try push(a, &steps, "Write it as a square", try std.fmt.allocPrint(a, "({s} {s} {d})²", .{ first, sign, sc }));
+        } else if (qb != 0 and qc != 0) {
+            if (!try factorByNumbers(ctx, &steps, c, name, false)) {
+                try push(a, &steps, "No whole numbers work: this quadratic does not factor over the whole numbers", try polyOf(a, c, name));
+            }
+        }
+    }
+    // The answer.
+    const answer = (try algebra.factor(actx, node)) orelse return null;
+    if (steps.items.len == 1 or (steps.items.len == 2 and std.mem.eql(u8, steps.items[1].note, "Write it in standard form"))) {
+        try push(a, &steps, "No whole-number factors: it does not factor any further", answer);
+        return steps.items;
+    }
+    if (!std.mem.eql(u8, steps.items[steps.items.len - 1].math, answer)) try push(a, &steps, "Factored form", answer);
+    return steps.items;
+}
+
 // ---- the entry point -------------------------------------------------------------------------------------------------------
 
 /// The steps for an entry, or null when there are none (a number already, no steps worth showing, or a
@@ -1111,6 +1253,7 @@ pub fn explain(ctx: Ctx, text: []const u8) Error!?[]Step {
     inline for (.{ "expand", "simplify" }) |word| {
         if (eval.unwrapCall(text, word)) |inner| return explain(ctx, inner);
     }
+    if (eval.unwrapCall(text, "factor")) |inner| return try factorSteps(ctx, inner);
     var problem: eval.Problem = .{};
     const st = eval.parse(a, text, ctx.mode, &problem) catch return null;
     switch (st) {
@@ -1219,6 +1362,24 @@ test "expanding" {
     try lines(&.{ "3x + 2x − 5 + 1", "5x − 4" }, "3x + 2x - 5 + 1");
 }
 
+test "factoring" {
+    try lines(&.{
+        "x² − 9",
+        "x² − 3²",
+        "(x − 3)(x + 3)",
+    }, "factor(x^2-9)");
+    try lines(&.{
+        "x³ − 5x² + 3x + 9",
+        "p(1) = 8,   p(−1) = 0",
+        "x³ − 5x² + 3x + 9 = (x + 1)(x² − 6x + 9)",
+        "x² − 2(x)(3) + 3²",
+        "(x − 3)²",
+        "(x + 1)(x − 3)²",
+    }, "factor(x^3-5x^2+3x+9)");
+    try lines(&.{ "2x² + 4x", "2x(x + 2)" }, "factor(2x^2+4x)");
+    try lines(&.{ "x² + 1", "x² + 1" }, "factor(x^2+1)");
+}
+
 test "zz print" {
     if (std.c.getenv("STEPS_PRINT") == null) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -1226,7 +1387,7 @@ test "zz print" {
     const a = arena.allocator();
     var session: eval.Session = .{ .gpa = std.testing.allocator };
     defer session.deinit();
-    const list = [_][]const u8{ "(x+2)(x+3)", "(x+1)^3", "(2x-1)(x+4)", "2(x+3) + 4", "(x+y)^2", "(x-1)(x+1)", "3x + 2x - 5 + 1", "(x+1)(x+2)(x+3)", "6x^2 - 7x - 3 = 0", "x^2 = 2", "x^2 = 72", "x^2 - x - 1 = 0", "x^2 + x + 1 = 0", "2x^2 - 2x - 12 = 0", "x^2 + 4x = 0", "x^2 = -9", "x^2 - 6x + 9 = 0", "(x+1)^2 = 4", "x/2 + 1/3 = 5/6", "2x + 3 = 2x + 5", "3x - 1 = 3x - 1" };
+    const list = [_][]const u8{ "factor(x^3-5x^2+3x+9)", "factor(x^2-9)", "factor(4x^2-25)", "factor(x^2+6x+9)", "factor(2x^2+4x)", "factor(6x^2-7x-3)", "factor(x^3-x)", "factor(x^2+1)", "factor(x^3-6x^2+11x-6)", "(x+2)(x+3)", "(x+1)^3", "(2x-1)(x+4)", "2(x+3) + 4", "(x+y)^2", "(x-1)(x+1)", "3x + 2x - 5 + 1", "(x+1)(x+2)(x+3)", "6x^2 - 7x - 3 = 0", "x^2 = 2", "x^2 = 72", "x^2 - x - 1 = 0", "x^2 + x + 1 = 0", "2x^2 - 2x - 12 = 0", "x^2 + 4x = 0", "x^2 = -9", "x^2 - 6x + 9 = 0", "(x+1)^2 = 4", "x/2 + 1/3 = 5/6", "2x + 3 = 2x + 5", "3x - 1 = 3x - 1" };
     for (list) |src| {
         std.debug.print("\n=== {s}\n", .{src});
         const steps = (try explain(.{ .a = a, .session = &session, .mode = .{} }, src)) orelse {
