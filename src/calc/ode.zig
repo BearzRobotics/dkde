@@ -321,6 +321,86 @@ pub fn solve(a: std.mem.Allocator, session: *eval.Session, inner: []const u8) Er
     return try secondOrder(a, p, first, second);
 }
 
+pub const Line = struct { note: []const u8, math: []const u8 };
+
+fn push(a: std.mem.Allocator, list: *std.ArrayList(Line), note: []const u8, math: []const u8) Error!void {
+    try list.append(a, .{ .note = note, .math = math });
+}
+
+/// The steps to dsolve(…): the method for the order, then the conditions.
+pub fn steps(a: std.mem.Allocator, session: *eval.Session, inner: []const u8) Error!?[]Line {
+    const args = try eval.splitTop(a, inner, ',');
+    if (args.len == 0) return null;
+    const p = (try parts(a, session, args[0])) orelse return null;
+    var first: ?[2]Number = null;
+    var second: ?Number = null;
+    for (args[1..]) |c| {
+        const cond = (try condition(a, session, c)) orelse return null;
+        if (cond.derivative) second = cond.value else first = .{ cond.at, cond.value };
+    }
+    var out: std.ArrayList(Line) = .empty;
+    try push(a, &out, "Given", std.mem.trim(u8, args[0], " "));
+    var conds: []const u8 = "";
+    if (first) |f1| {
+        conds = try std.fmt.allocPrint(a, "y({s}) = {s}", .{ try numText(a, f1[0]), try numText(a, f1[1]) });
+        if (second) |s2| conds = try std.fmt.allocPrint(a, "{s},   y′({s}) = {s}", .{ conds, try numText(a, f1[0]), try numText(a, s2) });
+    }
+    if (p.order == 1) {
+        const k = try num.div(a, try num.neg(a, p.c0), p.c1);
+        const f = try a.alloc(Number, p.rest.len);
+        for (p.rest, 0..) |c, i| f[i] = try num.div(a, c, p.c1);
+        const ftext = try polyOf(a, f);
+        const f_zero = std.mem.eql(u8, ftext, "0");
+        const ky: ?[]const u8 = blk: {
+            if (k.isZero()) break :blk null;
+            const kt = try numText(a, k);
+            if (std.mem.eql(u8, kt, "1")) break :blk "y";
+            if (std.mem.eql(u8, kt, "−1")) break :blk "−y";
+            if (std.mem.indexOfScalar(u8, kt, '/') != null) break :blk try std.fmt.allocPrint(a, "({s})y", .{kt});
+            break :blk try std.fmt.allocPrint(a, "{s}y", .{kt});
+        };
+        const solved = try joinTerms(a, &.{ ky, if (f_zero) null else ftext });
+        try push(a, &out, "Solve for y′", try std.fmt.allocPrint(a, "y′ = {s}", .{solved}));
+        if (k.isZero()) {
+            try push(a, &out, "Integrate both sides", try std.fmt.allocPrint(a, "y = ∫ ({s}) dx", .{ftext}));
+        } else {
+            const ex = try expOfNumber(a, k);
+            try push(a, &out, "Without the x-part, y′ = ky has the solutions", try std.fmt.allocPrint(a, "y = C·{s}", .{ex}));
+            if (!f_zero) try push(a, &out, "Add a polynomial of the same degree as the x-part; matching coefficients gives a particular solution", try std.fmt.allocPrint(a, "y = C·{s} + (particular)", .{ex}));
+        }
+        try push(a, &out, "General solution", try firstOrder(a, p, null));
+        if (first != null) {
+            try push(a, &out, "Put in the condition to find C", conds);
+            try push(a, &out, "Solution", try firstOrder(a, p, first));
+        }
+        return out.items;
+    }
+    const coefs = try a.alloc(Number, 3);
+    coefs[0] = p.c0;
+    coefs[1] = p.c1;
+    coefs[2] = p.c2;
+    const chars = try algebra.fromDense(a, coefs, "r");
+    try push(a, &out, "Try y = e^(rx): it gives the characteristic equation", try std.fmt.allocPrint(a, "{s} = 0", .{try algebra.text(a, chars)}));
+    const sol = (try algebra.solveDense(a, coefs)) orelse return null;
+    var roots: std.ArrayList(u8) = .empty;
+    for (sol.real) |r| {
+        if (roots.items.len > 0) try roots.appendSlice(a, ",   ");
+        try roots.print(a, "r = {s}", .{try algebra.rootText(a, r)});
+    }
+    for (sol.complex) |r| {
+        if (roots.items.len > 0) try roots.appendSlice(a, ",   ");
+        try roots.print(a, "r = {s}", .{try algebra.rootText(a, r)});
+    }
+    try push(a, &out, "Solve for r", roots.items);
+    const form: []const u8 = if (sol.complex.len == 2) "Complex roots α ± βi give e^(αx)(C1·cos βx + C2·sin βx)" else if (sol.real.len == 1) "A double root r gives (C1 + C2·x)·e^(rx)" else "Two roots r1, r2 give C1·e^(r1·x) + C2·e^(r2·x)";
+    try push(a, &out, form, try secondOrder(a, p, null, null));
+    if (first != null) {
+        try push(a, &out, "Put in the conditions to find C1 and C2", conds);
+        try push(a, &out, "Solution", try secondOrder(a, p, first, second));
+    }
+    return out.items;
+}
+
 // ---- tests ---------------------------------------------------------------------------------------
 
 fn gives(want: []const u8, source: []const u8) !void {

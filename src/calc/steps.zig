@@ -17,6 +17,9 @@ const algebra = @import("algebra.zig");
 const calculus = @import("calculus.zig");
 const simplify = @import("simplify.zig");
 const integral = @import("integral.zig");
+const ode = @import("ode.zig");
+const series = @import("series.zig");
+const laplace = @import("laplace.zig");
 const Number = num.Number;
 const Big = std.math.big.int.Managed;
 
@@ -1695,6 +1698,107 @@ fn systemSteps(ctx: Ctx, text: []const u8) Error!?[]Step {
 
 /// The steps for an entry, or null when there are none (a number already, no steps worth showing, or a
 /// kind of entry this does not cover).
+fn dsolveSteps(ctx: Ctx, inner: []const u8) Error!?[]Step {
+    const a = ctx.a;
+    const found = (try ode.steps(a, ctx.session, inner)) orelse return null;
+    const out = try a.alloc(Step, found.len);
+    for (found, 0..) |l, i| out[i] = .{ .note = l.note, .math = l.math };
+    return out;
+}
+
+fn sup(a: std.mem.Allocator, n: u32) Error![]const u8 {
+    const digits = [_][]const u8{ "⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹" };
+    var buf: [12]u8 = undefined;
+    const t = std.fmt.bufPrint(&buf, "{d}", .{n}) catch unreachable;
+    var out: std.ArrayList(u8) = .empty;
+    for (t) |d| try out.appendSlice(a, digits[d - '0']);
+    return out.items;
+}
+
+fn taylorSteps(ctx_in: Ctx, inner: []const u8) Error!?[]Step {
+    var ctx = ctx_in;
+    ctx.mode.angle = .radians;
+    const a = ctx.a;
+    const args = try eval.splitTop(a, inner, ',');
+    if (args.len < 2 or args.len > 4) return null;
+    var problem: eval.Problem = .{};
+    var ev: eval.Eval = .{ .a = a, .session = ctx.session, .mode = ctx.mode, .problem = &problem };
+    const node = eval.parseExpr(a, std.mem.trim(u8, args[0], " "), ctx.mode, &problem) catch return null;
+    const x = std.mem.trim(u8, args[1], " ");
+    const point = if (args.len >= 3) ev.eval(try eval.parseExpr(a, args[2], ctx.mode, &problem), null) catch return null else try num.fromInt(a, 0);
+    const order: usize = if (args.len == 4) @intCast(num.intValue(ev.eval(try eval.parseExpr(a, args[3], ctx.mode, &problem), null) catch return null) orelse return null) else 5;
+    if (order > 12) return null;
+    const final = (try series.taylorText(&ev, node, x, point, order)) orelse return null;
+    var steps: std.ArrayList(Step) = .empty;
+    const at_text = try numText(a, point);
+    try push(a, &steps, "Start (angles in radians)", try std.fmt.allocPrint(a, "Taylor series of {s} about {s} = {s}, up to the power {d}", .{ try nodeText(ctx, &ev, node), x, at_text, order }));
+    try push(a, &steps, "Taylor's formula", try std.fmt.allocPrint(a, "f(x) = Σ f⁽ᵏ⁾({s})/k! · ({s} − {s})ᵏ", .{ at_text, x, at_text }));
+    if (series.of(&ev, node, x, point, order + 1)) |sr| {
+        var line: std.ArrayList(u8) = .empty;
+        var fact = try num.fromInt(a, 1);
+        var p = sr.lo;
+        for (sr.c, 0..) |c, i| {
+            defer p += 1;
+            if (p < 0 or p > @as(i32, @intCast(order))) continue;
+            if (p > 0) fact = try num.mul(a, fact, try num.fromInt(a, @as(i64, p)));
+            _ = i;
+            if (line.items.len > 0) try line.appendSlice(a, ",   ");
+            const prime: []const u8 = switch (p) {
+                0 => "",
+                1 => "′",
+                2 => "″",
+                else => "⁽ᵏ⁾",
+            };
+            if (p > 2) {
+                try line.print(a, "f⁽{s}⁾({s}) = {s}", .{ try sup(a, @intCast(p)), at_text, try numText(a, try num.mul(a, c, fact)) });
+            } else try line.print(a, "f{s}({s}) = {s}", .{ prime, at_text, try numText(a, try num.mul(a, c, fact)) });
+        }
+        try push(a, &steps, "The derivatives at the point (a quotient is expanded part by part)", line.items);
+    } else |_| {}
+    try push(a, &steps, "Divide each by k! and put the terms together", final);
+    return steps.items;
+}
+
+fn laplaceSteps(ctx_in: Ctx, inner: []const u8, forward: bool) Error!?[]Step {
+    var ctx = ctx_in;
+    ctx.mode.angle = .radians;
+    const a = ctx.a;
+    const args = try eval.splitTop(a, inner, ',');
+    if (args.len < 1 or args.len > 2) return null;
+    const letter = if (args.len == 2) std.mem.trim(u8, args[1], " ") else if (forward) "t" else "s";
+    var problem: eval.Problem = .{};
+    var ev: eval.Eval = .{ .a = a, .session = ctx.session, .mode = ctx.mode, .problem = &problem };
+    const node = eval.parseExpr(a, std.mem.trim(u8, args[0], " "), ctx.mode, &problem) catch return null;
+    var steps: std.ArrayList(Step) = .empty;
+    const shown = try nodeText(ctx, &ev, node);
+    if (!forward) {
+        const found = (try laplace.inverseSteps(&ev, node, letter)) orelse return null;
+        try push(a, &steps, "Start", try std.fmt.allocPrint(a, "L⁻¹{{ {s} }}", .{shown}));
+        for (found) |l| try push(a, &steps, l.note, l.math);
+        return steps.items;
+    }
+    var terms: std.ArrayList(laplace.Term) = .empty;
+    try laplace.collect(a, node, false, &terms);
+    try push(a, &steps, "Start", try std.fmt.allocPrint(a, "L{{ {s} }}", .{shown}));
+    if (terms.items.len > 1) {
+        var line: std.ArrayList(u8) = .empty;
+        for (terms.items, 0..) |t, i| {
+            if (i == 0) {
+                if (t.negative) try line.appendSlice(a, "−");
+            } else try line.appendSlice(a, if (t.negative) " − " else " + ");
+            try line.print(a, "L{{ {s} }}", .{try nodeText(ctx, &ev, t.node)});
+        }
+        try push(a, &steps, "Linearity: transform each term on its own", line.items);
+    }
+    for (terms.items) |t| {
+        const r = (try laplace.termRule(&ev, t.node, letter)) orelse return null;
+        try push(a, &steps, r.rule, try std.fmt.allocPrint(a, "L{{ {s} }} = {s}", .{ try nodeText(ctx, &ev, t.node), r.result }));
+    }
+    const total = (try laplace.laplaceText(&ev, node, letter)) orelse return null;
+    if (terms.items.len > 1) try push(a, &steps, "Add the terms over a common denominator", total);
+    return steps.items;
+}
+
 pub fn explain(ctx: Ctx, text: []const u8) Error!?[]Step {
     const a = ctx.a;
     prefer_decimals = std.mem.indexOfScalar(u8, text, '.') != null;
@@ -1711,6 +1815,12 @@ pub fn explain(ctx: Ctx, text: []const u8) Error!?[]Step {
                 return try integralSteps(ctx, std.mem.trim(u8, parts[0], " "), x);
             }
         }
+    }
+    if (eval.unwrapCall(text, "dsolve")) |inner| return try dsolveSteps(ctx, inner);
+    if (eval.unwrapCall(text, "taylor")) |inner| return try taylorSteps(ctx, inner);
+    if (eval.unwrapCall(text, "laplace")) |inner| return try laplaceSteps(ctx, inner, true);
+    inline for (.{ "ilaplace", "invlaplace" }) |word| {
+        if (eval.unwrapCall(text, word)) |inner| return try laplaceSteps(ctx, inner, false);
     }
     if (eval.unwrapCall(text, "diff")) |inner| {
         const parts = try eval.splitTop(a, inner, ',');
@@ -1856,6 +1966,22 @@ test "two equations" {
         "1 = 1  ✓",
         "x = 3,   y = 2",
     }, "x + y = 5; x - y = 1");
+}
+
+test "steps for differential equations, series and transforms" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var session: eval.Session = .{ .gpa = std.testing.allocator };
+    defer session.deinit();
+    for ([_][]const u8{ "dsolve(y' = 2y, y(0) = 3)", "dsolve(y'' + 3y' + 2y = 0, y(0) = 1, y'(0) = 0)", "taylor(exp(x), x, 0, 3)", "laplace(3t^2 - 2sin(t), t)", "ilaplace((2s+1)/((s-1)^2*(s+2)), s)" }) |src| {
+        const st = (try explain(.{ .a = a, .session = &session, .mode = .{} }, src)) orelse return error.TestUnexpectedResult;
+        if (std.c.getenv("STEPS_PRINT") != null) {
+            std.debug.print("=== {s}\n", .{src});
+            for (st) |l| std.debug.print("  [{s}]\n      {s}\n", .{ l.note, l.math });
+        }
+        try std.testing.expect(st.len >= 3);
+    }
 }
 
 test "derivatives" {

@@ -182,7 +182,7 @@ fn ratText(a: std.mem.Allocator, r_in: Rat) Error![]const u8 {
     const top = try polyText(a, r.n);
     if (r.d.len == 1 and num.isOneNumber(r.d[0])) return top;
     const bottom = try denominatorText(a, r.d);
-    const top_w = if (terms(r.n) > 1) try std.fmt.allocPrint(a, "({s})", .{top}) else top;
+    const top_w = if (terms(r.n) > 1 or std.mem.indexOfScalar(u8, top, '/') != null) try std.fmt.allocPrint(a, "({s})", .{top}) else top;
     // A single whole-number denominator reads as a coefficient: 1/2 rather than 1/(2).
     const bottom_w = if (std.mem.indexOf(u8, bottom, ")(") != null or (std.mem.indexOfAny(u8, bottom, " ") != null and bottom[0] != '(')) try std.fmt.allocPrint(a, "({s})", .{bottom}) else bottom;
     return std.fmt.allocPrint(a, "{s}/{s}", .{ top_w, bottom_w });
@@ -365,6 +365,42 @@ pub fn laplaceText(ev: *eval.Eval, f: *const Node, t: []const u8) Error!?[]const
     return try ratText(ev.a, r);
 }
 
+pub const Term = struct { negative: bool, node: *const Node };
+
+pub fn collect(a: std.mem.Allocator, n: *const Node, negative: bool, out: *std.ArrayList(Term)) Error!void {
+    switch (n.*) {
+        .binary => |b| if (b.op == .add or b.op == .sub) {
+            try collect(a, b.l, negative, out);
+            try collect(a, b.r, if (b.op == .sub) !negative else negative, out);
+            return;
+        },
+        .unary => |u| if (u.op == .neg) return collect(a, u.arg, !negative, out),
+        else => {},
+    }
+    try out.append(a, .{ .negative = negative, .node = n });
+}
+
+pub const Rule = struct { rule: []const u8, result: []const u8 };
+
+/// Which table entry and rules a single term uses, and its transform.
+pub fn termRule(ev: *eval.Eval, n: *const Node, t: []const u8) Error!?Rule {
+    const a = ev.a;
+    const p = (try part(ev, n, t)) orelse return null;
+    const r = (try transform(ev, n, t)) orelse return null;
+    var rule: std.ArrayList(u8) = .empty;
+    const table: []const u8 = switch (p.kind) {
+        .plain => "Table: L{1} = 1/s",
+        .sin => "Table: L{sin bt} = b/(s² + b²)",
+        .cos => "Table: L{cos bt} = s/(s² + b²)",
+        .sinh => "Table: L{sinh bt} = b/(s² − b²)",
+        .cosh => "Table: L{cosh bt} = s/(s² − b²)",
+    };
+    try rule.appendSlice(a, table);
+    if (!p.a.isZero()) try rule.appendSlice(a, "; e^(at) shifts s to s − a");
+    if (p.n > 0) try rule.appendSlice(a, "; tⁿ multiplies by (−1)ⁿ and differentiates n times in s");
+    return .{ .rule = rule.items, .result = try ratText(a, r) };
+}
+
 // ---- the way back -------------------------------------------------------------------------------------
 
 /// A rational function of s from an expression: numbers, s, + − × ÷ and whole powers.
@@ -485,6 +521,25 @@ fn sqrtText(a: std.mem.Allocator, v: Number) Error!struct { text: []const u8, ex
 }
 
 pub fn inverseText(ev: *eval.Eval, f: *const Node, s: []const u8) Error!?[]const u8 {
+    return inverseImpl(ev, f, s, null, null);
+}
+
+/// The steps of ilaplace: the denominator factored, the partial fractions, then each term back.
+pub fn inverseSteps(ev: *eval.Eval, f: *const Node, s: []const u8) Error!?[]Line {
+    const a = ev.a;
+    var den: []const u8 = "";
+    var decomp: []const u8 = "";
+    const result = (try inverseImpl(ev, f, s, &den, &decomp)) orelse return null;
+    var out: std.ArrayList(Line) = .empty;
+    try out.append(a, .{ .note = "Factor the denominator", .math = den });
+    try out.append(a, .{ .note = "Split into partial fractions (match numerators)", .math = decomp });
+    try out.append(a, .{ .note = "Invert each term from the table: 1/(s − a)ⁿ → tⁿ⁻¹eᵃᵗ/(n−1)!, and the quadratics by completing the square", .math = result });
+    return out.items;
+}
+
+pub const Line = struct { note: []const u8, math: []const u8 };
+
+fn inverseImpl(ev: *eval.Eval, f: *const Node, s: []const u8, den_out: ?*[]const u8, decomp_out: ?*[]const u8) Error!?[]const u8 {
     const a = ev.a;
     const r0 = (try rationalOf(ev, f, s)) orelse return null;
     const r = try rreduce(a, r0);
@@ -535,6 +590,24 @@ pub fn inverseText(ev: *eval.Eval, f: *const Node, s: []const u8) Error!?[]const
         }
     }
     const sol = (try gauss(a, m, rhs)) orelse return null;
+    if (den_out) |o| o.* = try denominatorText(a, dd);
+    if (decomp_out) |o| {
+        var dt: std.ArrayList(u8) = .empty;
+        if (!num.isOneNumber(fac.content)) try dt.print(a, "(1/{s})·(", .{try numText(a, fac.content)});
+        var first = true;
+        for (slots.items) |sl| {
+            const deg = algebra.degree(sl.f.coefs);
+            var den_poly = try pint(a, 1);
+            var j: u32 = 0;
+            while (j < sl.k) : (j += 1) den_poly = try pmul(a, den_poly, sl.f.coefs);
+            const piece = try ratText(a, .{ .n = sol[sl.start .. sl.start + deg], .d = den_poly });
+            if (!first) try dt.appendSlice(a, " + ");
+            first = false;
+            try dt.appendSlice(a, piece);
+        }
+        if (!num.isOneNumber(fac.content)) try dt.appendSlice(a, ")");
+        o.* = dt.items;
+    }
     var list: std.ArrayList(?[]const u8) = .empty;
     for (slots.items) |sl| {
         const deg = algebra.degree(sl.f.coefs);
