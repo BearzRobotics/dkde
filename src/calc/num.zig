@@ -245,19 +245,32 @@ pub fn mod(a: std.mem.Allocator, x: Number, y: Number) Error!Number {
 
 /// x to the power y: exact for whole exponents (and for roots that come
 /// out whole, such as 8^(1/3)), a float otherwise.
+/// x^y for an exact x and a whole y too large to work out exactly: a float, with ln worked
+/// out from x − 1 so that (1 + 10⁻¹⁰)^(10¹⁰) is e and not a rounding error.
+fn powBig(a: std.mem.Allocator, x: Number, y: Number) Error!Number {
+    const xf = x.toFloat();
+    if (!(xf > 0)) return error.TooLarge;
+    const one = try fromInt(a, 1);
+    const r = (try sub(a, x, one)).toFloat();
+    const l = if (@abs(r) < 0.5) std.math.log1p(r) else @log(xf);
+    const v = @exp(y.toFloat() * l);
+    if (!std.math.isFinite(v) or v == 0) return error.TooLarge;
+    return fromFloat(v);
+}
+
 pub fn pow(a: std.mem.Allocator, x: Number, y: Number) Error!Number {
     if (x == .exact and y == .exact and y.isInteger()) {
         const e = y.exact.num;
         if (e.bitCountAbs() > 31) {
             // Only 0, 1 and -1 stay small.
             if (x.isZero() or (isOne(x.exact.num) and isOne(x.exact.den))) return x;
-            return error.TooLarge;
+            return powBig(a, x, y);
         }
         const k: i64 = e.toInt(i64) catch return error.TooLarge;
         const magnitude: u32 = @intCast(@abs(k));
         // Refuse results over the limit before computing them.
         if (@as(u64, @max(x.exact.num.bitCountAbs(), x.exact.den.bitCountAbs())) * magnitude > max_bits + 64) {
-            if (!(isOne(x.exact.den) and x.exact.num.bitCountAbs() <= 1)) return error.TooLarge;
+            if (!(isOne(x.exact.den) and x.exact.num.bitCountAbs() <= 1)) return powBig(a, x, y);
         }
         var n = try Big.init(a);
         try n.pow(&x.exact.num, magnitude);
@@ -424,6 +437,12 @@ pub fn format(a: std.mem.Allocator, x: Number, style: Style) Error![]u8 {
                 r = dr;
             }
             if (r.eqlZero()) exact = true;
+            // A long fraction cut at the decimals shown must keep six significant digits.
+            if (!exact and style.notation == .auto and whole.len == 1 and whole[0] == '0') {
+                var lz: usize = 0;
+                while (lz < frac.items.len and frac.items[lz] == '0') lz += 1;
+                if (lz >= 3 and @as(usize, style.decimals) < lz + 6) return formatExactScientific(a, e.num, e.den, style);
+            }
             var digits = try std.fmt.allocPrint(a, "{s}{s}", .{ whole, frac.items });
             var point_at = whole.len;
             if (!exact or frac.items.len > style.decimals) {
@@ -562,7 +581,9 @@ fn formatFloat(a: std.mem.Allocator, f: f64, style: Style) Error![]u8 {
     if (std.math.isInf(f)) return error.TooLarge;
     if (f == 0) return a.dupe(u8, "0");
     const m = @abs(f);
-    if (style.notation == .auto and m >= 1e-9 and m < 1e15) {
+    // Fixed decimals only while at least six significant digits survive them.
+    const zeros_after_point: i32 = if (m < 1) @intFromFloat(@floor(-std.math.log10(m))) else 0;
+    if (style.notation == .auto and m < 1e15 and (m >= 1e-3 or (m >= 1e-9 and @as(i32, style.decimals) >= zeros_after_point + 6))) {
         const text = try std.fmt.allocPrint(a, "{d:.[1]}", .{ f, style.decimals });
         var end = text.len;
         if (std.mem.indexOfScalar(u8, text, '.') != null) {
@@ -733,4 +754,28 @@ test "programmer formatting" {
     try std.testing.expectEqual(@as(i128, -1), wrap(255, 8));
     try std.testing.expectEqual(@as(i128, 127), wrap(127, 8));
     try std.testing.expectEqual(@as(i128, 0), wrap(256, 8));
+}
+
+test "small results keep six significant digits" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // exp(-19.643): not 0.000000003.
+    try std.testing.expectEqualStrings("2.9454624597×10^-9", try testFormat(a, .{ .approx = 2.945462459743954e-9 }));
+    try std.testing.expectEqualStrings("0.0000294546", try format(a, .{ .approx = 2.945462459743954e-5 }, .{ .decimals = 10 }));
+    // A long exact fraction too, but a short exact decimal stays as it is.
+    const third_nano = try div(a, try fromInt(a, 1), try fromInt(a, 333333333));
+    try std.testing.expectEqualStrings("3.000000003×10^-9", try testFormat(a, third_nano));
+    try std.testing.expectEqualStrings("0.000000002", try testFormat(a, try div(a, try fromInt(a, 2), try fromInt(a, 1_000_000_000))));
+    try std.testing.expectEqualStrings("0.0003333333", try testFormat(a, try div(a, try fromInt(a, 1), try fromInt(a, 3000))));
+}
+
+test "a power too large to work out exactly is a float" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const base = try add(a, try fromInt(a, 1), try parseDecimal(a, "1e-10"));
+    const p = try pow(a, base, try fromInt(a, 10_000_000_000));
+    try std.testing.expectApproxEqRel(@as(f64, 2.718281828459045), p.toFloat(), 1e-9);
+    try std.testing.expectError(error.TooLarge, pow(a, try fromInt(a, 7), try fromInt(a, 10_000_000_000)));
 }
