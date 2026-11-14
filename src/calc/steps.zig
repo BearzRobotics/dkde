@@ -14,6 +14,8 @@ const num = @import("num.zig");
 const eval = @import("eval.zig");
 const symbolic = @import("symbolic.zig");
 const algebra = @import("algebra.zig");
+const calculus = @import("calculus.zig");
+const simplify = @import("simplify.zig");
 const Number = num.Number;
 const Big = std.math.big.int.Managed;
 
@@ -1242,6 +1244,302 @@ fn factorSteps(ctx: Ctx, inner: []const u8) Error!?[]Step {
     return steps.items;
 }
 
+// ---- derivatives -----------------------------------------------------------------------------------------------------------------
+
+const Term = struct { negative: bool, node: *const eval.Node };
+
+fn collectTerms(a: std.mem.Allocator, n: *const eval.Node, negative: bool, out: *std.ArrayList(Term)) Error!void {
+    switch (n.*) {
+        .binary => |b| switch (b.op) {
+            .add => {
+                try collectTerms(a, b.l, negative, out);
+                try collectTerms(a, b.r, negative, out);
+                return;
+            },
+            .sub => {
+                try collectTerms(a, b.l, negative, out);
+                try collectTerms(a, b.r, !negative, out);
+                return;
+            },
+            else => {},
+        },
+        .unary => |u| if (u.op == .neg) return collectTerms(a, u.arg, !negative, out),
+        else => {},
+    }
+    try out.append(a, .{ .negative = negative, .node = n });
+}
+
+const Rule = enum { constant, power, constant_multiple, product, quotient, chain, basic };
+
+fn ruleOf(n: *const eval.Node, x: []const u8) Rule {
+    if (!calculus.uses(n, x)) return .constant;
+    switch (n.*) {
+        .name => return .power,
+        .binary => |b| switch (b.op) {
+            .mul => {
+                const lu = calculus.uses(b.l, x);
+                const ru = calculus.uses(b.r, x);
+                if (lu and ru) return .product;
+                return .constant_multiple;
+            },
+            .div => return if (calculus.uses(b.r, x)) .quotient else .constant_multiple,
+            .pow => {
+                if (calculus.uses(b.r, x)) return .basic;
+                return if (b.l.* == .name) .power else .chain;
+            },
+            else => return .basic,
+        },
+        .call => |c| {
+            if (c.args.len == 1 and c.args[0].* == .name) return .basic;
+            return .chain;
+        },
+        else => return .basic,
+    }
+}
+
+fn derivText(ctx: Ctx, ev: *eval.Eval, n: *const eval.Node, x: []const u8) Error![]const u8 {
+    const d = try calculus.derivative(ctx.a, ev, n, x);
+    return simplify.simplify(ctx.a, ev, d);
+}
+
+fn nodeText(ctx: Ctx, ev: *eval.Eval, n: *const eval.Node) Error![]const u8 {
+    return simplify.print(ctx.a, ev, n);
+}
+
+fn wrapIfSum(a: std.mem.Allocator, t: []const u8) Error![]const u8 {
+    return if (std.mem.indexOfAny(u8, t, "+−") != null and t.len > 0 and !std.mem.startsWith(u8, t, "(")) std.fmt.allocPrint(a, "({s})", .{t}) else t;
+}
+
+fn derivativeSteps(ctx_in: Ctx, expr: []const u8, x: []const u8) Error!?[]Step {
+    // Calculus is done in radians.
+    var ctx = ctx_in;
+    ctx.mode.angle = .radians;
+    const a = ctx.a;
+    var problem: eval.Problem = .{};
+    const node = eval.parseExpr(a, expr, ctx.mode, &problem) catch return null;
+    var ev: eval.Eval = .{ .a = a, .session = ctx.session, .mode = ctx.mode, .problem = &problem };
+    var steps: std.ArrayList(Step) = .empty;
+    const shown = try nodeText(ctx, &ev, node);
+    try push(a, &steps, "Start (angles in radians)", try std.fmt.allocPrint(a, "d/d{s} [ {s} ]", .{ x, shown }));
+    var terms: std.ArrayList(Term) = .empty;
+    try collectTerms(a, node, false, &terms);
+    if (terms.items.len > 1) {
+        var line: std.ArrayList(u8) = .empty;
+        for (terms.items, 0..) |t, i| {
+            if (i == 0) {
+                if (t.negative) try line.appendSlice(a, "−");
+            } else try line.appendSlice(a, if (t.negative) " − " else " + ");
+            try line.print(a, "d/d{s}[{s}]", .{ x, try nodeText(ctx, &ev, t.node) });
+        }
+        try push(a, &steps, "Sum rule: differentiate each term on its own", line.items);
+    }
+    // Simple terms in one line; the others one step each.
+    var simple: std.ArrayList(u8) = .empty;
+    var any_power = false;
+    for (terms.items) |t| {
+        const rule = ruleOf(t.node, x);
+        const tt = try nodeText(ctx, &ev, t.node);
+        const result = try derivText(ctx, &ev, t.node, x);
+        switch (rule) {
+            .constant, .power, .constant_multiple => {
+                if (rule != .constant) any_power = true;
+                if (simple.items.len > 0) try simple.appendSlice(a, ",   ");
+                try simple.print(a, "d/d{s}[{s}] = {s}", .{ x, tt, result });
+            },
+            .product => {
+                const b = t.node.binary;
+                const f = try nodeText(ctx, &ev, b.l);
+                const g = try nodeText(ctx, &ev, b.r);
+                const fp = try derivText(ctx, &ev, b.l, x);
+                const gp = try derivText(ctx, &ev, b.r, x);
+                try push(a, &steps, "Product rule: (f·g)' = f'·g + f·g'", try std.fmt.allocPrint(a, "f = {s},  g = {s},  f' = {s},  g' = {s}", .{ f, g, fp, gp }));
+                try push(a, &steps, "Put the pieces in", try std.fmt.allocPrint(a, "d/d{s}[{s}] = ({s})({s}) + ({s})({s})", .{ x, tt, fp, g, f, gp }));
+            },
+            .quotient => {
+                const b = t.node.binary;
+                const f = try nodeText(ctx, &ev, b.l);
+                const g = try nodeText(ctx, &ev, b.r);
+                const fp = try derivText(ctx, &ev, b.l, x);
+                const gp = try derivText(ctx, &ev, b.r, x);
+                try push(a, &steps, "Quotient rule: (f/g)' = (f'·g − f·g') / g²", try std.fmt.allocPrint(a, "f = {s},  g = {s},  f' = {s},  g' = {s}", .{ f, g, fp, gp }));
+                try push(a, &steps, "Put the pieces in", try std.fmt.allocPrint(a, "d/d{s}[{s}] = (({s})({s}) − ({s})({s})) / ({s})²", .{ x, tt, fp, g, f, gp, g }));
+            },
+            .chain, .basic => {
+                const inner_text: ?[]const u8 = switch (t.node.*) {
+                    .call => |c| try nodeText(ctx, &ev, c.args[0]),
+                    .binary => |b| try nodeText(ctx, &ev, b.l),
+                    else => null,
+                };
+                if (rule == .chain and inner_text != null) {
+                    const inner_node: *const eval.Node = switch (t.node.*) {
+                        .call => |c| c.args[0],
+                        .binary => |b| b.l,
+                        else => t.node,
+                    };
+                    const ip = try derivText(ctx, &ev, inner_node, x);
+                    try push(a, &steps, "Chain rule: differentiate the outside, then multiply by the derivative of the inside", try std.fmt.allocPrint(a, "inside = {s},  its derivative = {s}", .{ inner_text.?, ip }));
+                    try push(a, &steps, "Put the pieces in", try std.fmt.allocPrint(a, "d/d{s}[{s}] = {s}", .{ x, tt, result }));
+                } else {
+                    try push(a, &steps, "Use the known derivative", try std.fmt.allocPrint(a, "d/d{s}[{s}] = {s}", .{ x, tt, result }));
+                }
+            },
+        }
+    }
+    if (simple.items.len > 0) {
+        const note: []const u8 = if (any_power)
+            "Power rule: d/dx[xⁿ] = n·xⁿ⁻¹. A constant factor stays; the derivative of a constant is 0"
+        else
+            "The derivative of a constant is 0";
+        // Put the power-rule line before the others when it came first.
+        try steps.insert(a, if (terms.items.len > 1) 2 else 1, .{ .note = note, .math = simple.items });
+    }
+    const total = try derivText(ctx, &ev, node, x);
+    if (steps.items.len <= 1) return null;
+    if (!std.mem.endsWith(u8, steps.items[steps.items.len - 1].math, total)) try push(a, &steps, "Put the terms together and simplify", try std.fmt.allocPrint(a, "d/d{s}[{s}] = {s}", .{ x, shown, total }));
+    return steps.items;
+}
+
+// ---- two equations in two unknowns ---------------------------------------------------------------------------------------------------
+
+/// "2x − 3y", with the zero terms left out.
+fn lin2(a: std.mem.Allocator, ca: Number, cb: Number, n1: []const u8, n2: []const u8) Error![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    const pairs = [_]struct { c: Number, n: []const u8 }{ .{ .c = ca, .n = n1 }, .{ .c = cb, .n = n2 } };
+    for (pairs) |p| {
+        if (p.c.isZero()) continue;
+        const neg_c = p.c.isNegative();
+        const mag = if (neg_c) try num.neg(a, p.c) else p.c;
+        if (out.items.len == 0) {
+            if (neg_c) try out.appendSlice(a, "−");
+        } else try out.appendSlice(a, if (neg_c) " − " else " + ");
+        if (!num.isOneNumber(mag)) try out.appendSlice(a, if (isFraction(mag)) try std.fmt.allocPrint(a, "({s})", .{try numText(a, mag)}) else try numText(a, mag));
+        try out.appendSlice(a, p.n);
+    }
+    if (out.items.len == 0) try out.appendSlice(a, "0");
+    return out.items;
+}
+
+const Linear2 = struct { a: Number, b: Number, c: Number };
+
+fn linear2(ctx: Ctx, part: []const u8, n1: []const u8, n2: []const u8) Error!?Linear2 {
+    const a = ctx.a;
+    var problem: eval.Problem = .{};
+    const st = eval.parse(a, part, ctx.mode, &problem) catch return null;
+    if (st != .equation) return null;
+    const actx: algebra.Ctx = .{ .a = a, .session = ctx.session };
+    const pl = (try algebra.fromNode(actx, st.equation.l)) orelse return null;
+    const pr = (try algebra.fromNode(actx, st.equation.r)) orelse return null;
+    const diff = try algebra.sub(a, pl, pr);
+    var out: Linear2 = .{ .a = try num.fromInt(a, 0), .b = try num.fromInt(a, 0), .c = try num.fromInt(a, 0) };
+    for (diff.terms) |t| {
+        var total: usize = 0;
+        var which: ?usize = null;
+        for (t.exps, 0..) |e, i| if (e != 0) {
+            total += e;
+            which = i;
+        };
+        if (total > 1) return null;
+        if (which) |w| {
+            if (std.mem.eql(u8, diff.vars[w], n1)) out.a = t.c else if (std.mem.eql(u8, diff.vars[w], n2)) out.b = t.c else return null;
+        } else out.c = try num.neg(a, t.c);
+    }
+    return out;
+}
+
+fn systemSteps(ctx: Ctx, text: []const u8) Error!?[]Step {
+    const a = ctx.a;
+    const parts = try eval.splitTop(a, text, ';');
+    if (parts.len != 2) return null;
+    // The two letters.
+    var problem: eval.Problem = .{};
+    var names: std.ArrayList([]const u8) = .empty;
+    for (parts) |part| {
+        const st = eval.parse(a, part, ctx.mode, &problem) catch return null;
+        if (st != .equation) return null;
+        const actx: algebra.Ctx = .{ .a = a, .session = ctx.session };
+        const pl = (try algebra.fromNode(actx, st.equation.l)) orelse return null;
+        const pr = (try algebra.fromNode(actx, st.equation.r)) orelse return null;
+        for ([_]algebra.Poly{ pl, pr }) |poly| for (poly.vars, 0..) |v, vi| {
+            var used = false;
+            for (poly.terms) |t| if (t.exps[vi] != 0) {
+                used = true;
+            };
+            if (!used) continue;
+            var have = false;
+            for (names.items) |nm| if (std.mem.eql(u8, nm, v)) {
+                have = true;
+            };
+            if (!have) try names.append(a, v);
+        };
+    }
+    if (names.items.len != 2) return null;
+    std.mem.sort([]const u8, names.items, {}, struct {
+        fn lt(_: void, x: []const u8, y: []const u8) bool {
+            return std.mem.lessThan(u8, x, y);
+        }
+    }.lt);
+    const n1 = names.items[0];
+    const n2 = names.items[1];
+    const e1 = (try linear2(ctx, parts[0], n1, n2)) orelse return null;
+    const e2 = (try linear2(ctx, parts[1], n1, n2)) orelse return null;
+    var steps: std.ArrayList(Step) = .empty;
+    const eq1 = try eqText(a, try lin2(a, e1.a, e1.b, n1, n2), try numText(a, e1.c));
+    const eq2 = try eqText(a, try lin2(a, e2.a, e2.b, n1, n2), try numText(a, e2.c));
+    try push(a, &steps, "Start", try std.fmt.allocPrint(a, "{s}\n{s}", .{ eq1, eq2 }));
+    // Eliminate the second letter.
+    const det = try num.sub(a, try num.mul(a, e1.a, e2.b), try num.mul(a, e2.a, e1.b));
+    if (det.isZero()) {
+        try push(a, &steps, "The two equations are multiples of each other, or can never both hold: there is no single solution", try std.fmt.allocPrint(a, "{s}\n{s}", .{ eq1, eq2 }));
+        return steps.items;
+    }
+    var s1 = e1;
+    var s2 = e2;
+    var how: []const u8 = "";
+    var subtract = true;
+    if ((try num.order(a, e1.b, e2.b)) == .eq) {
+        how = "The coefficients of the second letter are the same: subtract the equations";
+    } else if ((try num.order(a, e1.b, try num.neg(a, e2.b))) == .eq) {
+        how = "The coefficients of the second letter are opposites: add the equations";
+        subtract = false;
+    } else {
+        // Make the coefficients of the second letter equal.
+        const k1 = e2.b;
+        const k2 = e1.b;
+        s1 = .{ .a = try num.mul(a, e1.a, k1), .b = try num.mul(a, e1.b, k1), .c = try num.mul(a, e1.c, k1) };
+        s2 = .{ .a = try num.mul(a, e2.a, k2), .b = try num.mul(a, e2.b, k2), .c = try num.mul(a, e2.c, k2) };
+        try push(a, &steps, try std.fmt.allocPrint(a, "Multiply the first equation by {s} and the second by {s}, so that the {s} terms match", .{ try numText(a, k1), try numText(a, k2), n2 }), try std.fmt.allocPrint(a, "{s}\n{s}", .{ try eqText(a, try lin2(a, s1.a, s1.b, n1, n2), try numText(a, s1.c)), try eqText(a, try lin2(a, s2.a, s2.b, n1, n2), try numText(a, s2.c)) }));
+        how = "Subtract the second equation from the first";
+        if ((try num.order(a, s1.b, try num.neg(a, s2.b))) == .eq) {
+            how = "The coefficients are opposites: add the equations";
+            subtract = false;
+        }
+    }
+    const xa = if (subtract) try num.sub(a, s1.a, s2.a) else try num.add(a, s1.a, s2.a);
+    const xc = if (subtract) try num.sub(a, s1.c, s2.c) else try num.add(a, s1.c, s2.c);
+    try push(a, &steps, how, try eqText(a, try lin2(a, xa, try num.fromInt(a, 0), n1, n2), try numText(a, xc)));
+    if (xa.isZero()) return steps.items;
+    const xv = try num.div(a, xc, xa);
+    if (!num.isOneNumber(xa)) try push(a, &steps, try std.fmt.allocPrint(a, "Divide both sides by {s}", .{try numText(a, xa)}), try eqText(a, n1, try numText(a, xv)));
+    // Back into the first equation.
+    const xt = try wrapNeg(a, xv);
+    const put = try std.fmt.allocPrint(a, "{s}{s}{s}{s}", .{
+        if (e1.a.isZero()) "" else try std.fmt.allocPrint(a, "{s}{s}", .{ if (num.isOneNumber(e1.a)) "" else try numText(a, e1.a), if (num.isOneNumber(e1.a)) xt else try std.fmt.allocPrint(a, "({s})", .{try numText(a, xv)}) }),
+        if (e1.b.isZero() or e1.a.isZero()) "" else if (e1.b.isNegative()) " − " else " + ",
+        if (e1.b.isZero()) "" else (if (e1.a.isZero() and e1.b.isNegative()) "−" else ""),
+        if (e1.b.isZero()) "" else try std.fmt.allocPrint(a, "{s}{s}", .{ if (num.isOneNumber(try absNumber(a, e1.b))) "" else try numText(a, try absNumber(a, e1.b)), n2 }),
+    });
+    try push(a, &steps, try std.fmt.allocPrint(a, "Put {s} = {s} into the first equation", .{ n1, try numText(a, xv) }), try eqText(a, put, try numText(a, e1.c)));
+    const rest = try num.sub(a, e1.c, try num.mul(a, e1.a, xv));
+    try push(a, &steps, "Simplify", try eqText(a, try lin2(a, try num.fromInt(a, 0), e1.b, n1, n2), try numText(a, rest)));
+    const yv = try num.div(a, rest, e1.b);
+    if (!num.isOneNumber(e1.b)) try push(a, &steps, try std.fmt.allocPrint(a, "Divide both sides by {s}", .{try numText(a, e1.b)}), try eqText(a, n2, try numText(a, yv)));
+    // Check in the second equation.
+    const lhs2 = try num.add(a, try num.mul(a, e2.a, xv), try num.mul(a, e2.b, yv));
+    try push(a, &steps, "Check in the second equation", try std.fmt.allocPrint(a, "{s} = {s}  ✓", .{ try numText(a, lhs2), try numText(a, e2.c) }));
+    try push(a, &steps, "The solution", try std.fmt.allocPrint(a, "{s} = {s},   {s} = {s}", .{ n1, try numText(a, xv), n2, try numText(a, yv) }));
+    return steps.items;
+}
+
 // ---- the entry point -------------------------------------------------------------------------------------------------------
 
 /// The steps for an entry, or null when there are none (a number already, no steps worth showing, or a
@@ -1254,6 +1552,14 @@ pub fn explain(ctx: Ctx, text: []const u8) Error!?[]Step {
         if (eval.unwrapCall(text, word)) |inner| return explain(ctx, inner);
     }
     if (eval.unwrapCall(text, "factor")) |inner| return try factorSteps(ctx, inner);
+    if (eval.unwrapCall(text, "diff")) |inner| {
+        const parts = try eval.splitTop(a, inner, ',');
+        if (parts.len >= 1 and parts.len <= 2) {
+            const x = if (parts.len == 2) std.mem.trim(u8, parts[1], " ") else "x";
+            return try derivativeSteps(ctx, std.mem.trim(u8, parts[0], " "), x);
+        }
+    }
+    if (std.mem.indexOfScalar(u8, text, ';') != null) return try systemSteps(ctx, text);
     var problem: eval.Problem = .{};
     const st = eval.parse(a, text, ctx.mode, &problem) catch return null;
     switch (st) {
@@ -1380,6 +1686,27 @@ test "factoring" {
     try lines(&.{ "x² + 1", "x² + 1" }, "factor(x^2+1)");
 }
 
+test "two equations" {
+    try lines(&.{
+        "x + y = 5\nx − y = 1",
+        "2x = 6",
+        "x = 3",
+        "3 + y = 5",
+        "y = 2",
+        "1 = 1  ✓",
+        "x = 3,   y = 2",
+    }, "x + y = 5; x - y = 1");
+}
+
+test "derivatives" {
+    try lines(&.{
+        "d/dx [ 3x² + 2x + 1 ]",
+        "d/dx[3x²] + d/dx[2x] + d/dx[1]",
+        "d/dx[3x²] = 6x,   d/dx[2x] = 2,   d/dx[1] = 0",
+        "d/dx[3x² + 2x + 1] = 6x + 2",
+    }, "diff(3x^2 + 2x + 1, x)");
+}
+
 test "zz print" {
     if (std.c.getenv("STEPS_PRINT") == null) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -1387,7 +1714,7 @@ test "zz print" {
     const a = arena.allocator();
     var session: eval.Session = .{ .gpa = std.testing.allocator };
     defer session.deinit();
-    const list = [_][]const u8{ "factor(x^3-5x^2+3x+9)", "factor(x^2-9)", "factor(4x^2-25)", "factor(x^2+6x+9)", "factor(2x^2+4x)", "factor(6x^2-7x-3)", "factor(x^3-x)", "factor(x^2+1)", "factor(x^3-6x^2+11x-6)", "(x+2)(x+3)", "(x+1)^3", "(2x-1)(x+4)", "2(x+3) + 4", "(x+y)^2", "(x-1)(x+1)", "3x + 2x - 5 + 1", "(x+1)(x+2)(x+3)", "6x^2 - 7x - 3 = 0", "x^2 = 2", "x^2 = 72", "x^2 - x - 1 = 0", "x^2 + x + 1 = 0", "2x^2 - 2x - 12 = 0", "x^2 + 4x = 0", "x^2 = -9", "x^2 - 6x + 9 = 0", "(x+1)^2 = 4", "x/2 + 1/3 = 5/6", "2x + 3 = 2x + 5", "3x - 1 = 3x - 1" };
+    const list = [_][]const u8{ "x + y = 5; x - y = 1", "2x + 3y = 12; x - y = 1", "x + 2y = 5; 3x - 2y = 3", "diff(3x^2 + 2x + 1, x)", "diff(x*sin(x), x)", "diff(sin(2x), x)", "diff((x+1)/(x-1), x)", "diff(x^3 - 4x, x)", "diff(sqrt(x), x)", "factor(x^3-5x^2+3x+9)", "factor(x^2-9)", "factor(4x^2-25)", "factor(x^2+6x+9)", "factor(2x^2+4x)", "factor(6x^2-7x-3)", "factor(x^3-x)", "factor(x^2+1)", "factor(x^3-6x^2+11x-6)", "(x+2)(x+3)", "(x+1)^3", "(2x-1)(x+4)", "2(x+3) + 4", "(x+y)^2", "(x-1)(x+1)", "3x + 2x - 5 + 1", "(x+1)(x+2)(x+3)", "6x^2 - 7x - 3 = 0", "x^2 = 2", "x^2 = 72", "x^2 - x - 1 = 0", "x^2 + x + 1 = 0", "2x^2 - 2x - 12 = 0", "x^2 + 4x = 0", "x^2 = -9", "x^2 - 6x + 9 = 0", "(x+1)^2 = 4", "x/2 + 1/3 = 5/6", "2x + 3 = 2x + 5", "3x - 1 = 3x - 1" };
     for (list) |src| {
         std.debug.print("\n=== {s}\n", .{src});
         const steps = (try explain(.{ .a = a, .session = &session, .mode = .{} }, src)) orelse {
