@@ -400,13 +400,18 @@ session it starts. Run the panel under a session D-Bus (`dkde-session` does
 this when `dbus-run-session` is installed) to get notifications and the
 system tray.
 
+## Changes
+
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 dkde is released under the [MIT License](LICENSE). Copyright (c) 2026 Dakota
 James Owen Keeler.
 
 Things dkde builds on keep their own licenses: GTK 4 and gtk4-layer-shell are
-dynamically linked system libraries (LGPL); libghostty-vt (Ghostty) and
+dynamically linked system libraries (LGPL); libarchive (archives in the file
+manager) is a dynamically linked system library (BSD-2-Clause); libghostty-vt (Ghostty) and
 zig-wayland, fetched by `zig build`, are MIT, as I read their license files;
 the zig-gobject package I fetched ships no license file, so check its
 upstream before redistributing binaries; and the protocol XML files in

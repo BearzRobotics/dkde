@@ -209,4 +209,4 @@ MIT. The full text is in the LICENSE file of the source code.
 Source code: https://github.com/BearzRobotics/dkde
 
 # VERSION
-This manual describes dkde-calc 0.1.1.
+This manual describes dkde-calc 0.2.0.
