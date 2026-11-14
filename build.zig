@@ -23,6 +23,7 @@ const programs = .{
     .{ "view", @import("src/view/build.zig") },
     .{ "tasks", @import("src/tasks/build.zig") },
     .{ "snip", @import("src/snip/build.zig") },
+    .{ "snap", @import("src/snap/build.zig") },
     .{ "setup", @import("src/setup/build.zig") },
     .{ "greeter", @import("src/greeter/build.zig") },
     .{ "pointer", @import("src/pointer/build.zig") },

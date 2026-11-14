@@ -3290,8 +3290,9 @@ const Calc = struct {
         title.as(gtk.Widget).addCssClass("heading");
         box.append(title.as(gtk.Widget));
         const scroll = gtk.ScrolledWindow.new();
-        scroll.setPolicy(.never, .automatic);
-        scroll.setMinContentWidth(600);
+        // Wide working scrolls sideways: the window must still be able to take half a screen.
+        scroll.setPolicy(.automatic, .automatic);
+        scroll.setMinContentWidth(340);
         scroll.as(gtk.Widget).setVexpand(1);
         self.steps_box = gtk.Box.new(.vertical, 10);
         self.steps_box.as(gtk.Widget).setMarginEnd(6);

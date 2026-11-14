@@ -184,6 +184,21 @@ pub const dkde_keybinds = [_]Keybind{
     .{ .name = "Snap window to the top half", .key = "W-Up", .action = "SnapToEdge", .attr = "direction", .to = "up" },
     .{ .name = "Snap window to the bottom half", .key = "W-Down", .action = "SnapToEdge", .attr = "direction", .to = "down" },
     .{ .name = "Window menu", .key = "A-Space", .action = "ShowMenu", .attr = "menu", .to = "client-menu" },
+    // Snap layouts: a picker with the usual arrangements; each zone it offers is one of the regions below.
+    .{ .name = "Snap layouts (choose where the window goes)", .key = "W-z", .command = "dkde-snap" },
+    .{ .name = "Snap window to the region: left half", .key = "W-C-A-S-a", .action = "SnapToRegion", .attr = "region", .to = "left-half" },
+    .{ .name = "Snap window to the region: right half", .key = "W-C-A-S-b", .action = "SnapToRegion", .attr = "region", .to = "right-half" },
+    .{ .name = "Snap window to the region: top half", .key = "W-C-A-S-c", .action = "SnapToRegion", .attr = "region", .to = "top-half" },
+    .{ .name = "Snap window to the region: bottom half", .key = "W-C-A-S-d", .action = "SnapToRegion", .attr = "region", .to = "bottom-half" },
+    .{ .name = "Snap window to the region: left third", .key = "W-C-A-S-e", .action = "SnapToRegion", .attr = "region", .to = "left-third" },
+    .{ .name = "Snap window to the region: middle third", .key = "W-C-A-S-f", .action = "SnapToRegion", .attr = "region", .to = "middle-third" },
+    .{ .name = "Snap window to the region: right third", .key = "W-C-A-S-g", .action = "SnapToRegion", .attr = "region", .to = "right-third" },
+    .{ .name = "Snap window to the region: left two thirds", .key = "W-C-A-S-h", .action = "SnapToRegion", .attr = "region", .to = "left-two-thirds" },
+    .{ .name = "Snap window to the region: right two thirds", .key = "W-C-A-S-i", .action = "SnapToRegion", .attr = "region", .to = "right-two-thirds" },
+    .{ .name = "Snap window to the region: top left", .key = "W-C-A-S-j", .action = "SnapToRegion", .attr = "region", .to = "top-left" },
+    .{ .name = "Snap window to the region: top right", .key = "W-C-A-S-k", .action = "SnapToRegion", .attr = "region", .to = "top-right" },
+    .{ .name = "Snap window to the region: bottom left", .key = "W-C-A-S-l", .action = "SnapToRegion", .attr = "region", .to = "bottom-left" },
+    .{ .name = "Snap window to the region: bottom right", .key = "W-C-A-S-m", .action = "SnapToRegion", .attr = "region", .to = "bottom-right" },
 };
 
 /// What identifies an entry inside a `<keybind>` block, whatever key it is on.
@@ -375,11 +390,73 @@ pub fn takeOverKeybinds(allocator: std.mem.Allocator, xml_in: []const u8, wanted
     errdefer if (merged) |m| allocator.free(m);
     const base = merged orelse xml_in;
     const stripped = try removeKeyboardDefault(allocator, base);
-    if (stripped) |st| {
+    const current: ?[]u8 = if (stripped) |st| blk: {
         if (merged) |m| allocator.free(m);
-        return st;
+        break :blk st;
+    } else merged;
+    errdefer if (current) |c| allocator.free(c);
+    // The regions the snap layouts use.
+    if (try ensureRegions(allocator, current orelse xml_in)) |with_regions| {
+        if (current) |c| allocator.free(c);
+        return with_regions;
     }
-    return merged;
+    return current;
+}
+
+
+/// A named screen region for labwc's SnapToRegion, in percent of the output.
+pub const SnapRegion = struct { name: []const u8, x: u8, y: u8, w: u8, h: u8 };
+
+/// The zones of the snap layouts (dkde-snap). Thirds are rounded to whole percents.
+pub const snap_regions = [_]SnapRegion{
+    .{ .name = "left-half", .x = 0, .y = 0, .w = 50, .h = 100 },
+    .{ .name = "right-half", .x = 50, .y = 0, .w = 50, .h = 100 },
+    .{ .name = "top-half", .x = 0, .y = 0, .w = 100, .h = 50 },
+    .{ .name = "bottom-half", .x = 0, .y = 50, .w = 100, .h = 50 },
+    .{ .name = "left-third", .x = 0, .y = 0, .w = 33, .h = 100 },
+    .{ .name = "middle-third", .x = 33, .y = 0, .w = 34, .h = 100 },
+    .{ .name = "right-third", .x = 67, .y = 0, .w = 33, .h = 100 },
+    .{ .name = "left-two-thirds", .x = 0, .y = 0, .w = 67, .h = 100 },
+    .{ .name = "right-two-thirds", .x = 33, .y = 0, .w = 67, .h = 100 },
+    .{ .name = "top-left", .x = 0, .y = 0, .w = 50, .h = 50 },
+    .{ .name = "top-right", .x = 50, .y = 0, .w = 50, .h = 50 },
+    .{ .name = "bottom-left", .x = 0, .y = 50, .w = 50, .h = 50 },
+    .{ .name = "bottom-right", .x = 50, .y = 50, .w = 50, .h = 50 },
+};
+
+/// Adds the snap regions to rc.xml when it does not have them. Null when it already does.
+pub fn ensureRegions(allocator: std.mem.Allocator, xml_in: []const u8) !?[]u8 {
+    var missing: std.ArrayList(SnapRegion) = .empty;
+    defer missing.deinit(allocator);
+    for (snap_regions) |r| {
+        var buf: [96]u8 = undefined;
+        const needle = std.fmt.bufPrint(&buf, "<region name=\"{s}\"", .{r.name}) catch continue;
+        if (std.mem.indexOf(u8, xml_in, needle) == null) try missing.append(allocator, r);
+    }
+    if (missing.items.len == 0) return null;
+    var xml: std.ArrayList(u8) = .empty;
+    defer xml.deinit(allocator);
+    try xml.appendSlice(allocator, if (std.mem.trim(u8, xml_in, " \t\r\n").len == 0) empty_rc else xml_in);
+    if (std.mem.indexOf(u8, xml.items, "<regions>") == null) {
+        const close = std.mem.lastIndexOf(u8, xml.items, "</labwc_config>") orelse return error.NotLabwcConfig;
+        try xml.insertSlice(allocator, close, "  <regions>\n  </regions>\n");
+    }
+    const close = std.mem.indexOf(u8, xml.items, "</regions>") orelse return error.NotLabwcConfig;
+    var block: std.ArrayList(u8) = .empty;
+    defer block.deinit(allocator);
+    for (missing.items) |r| try block.print(allocator, "    <region name=\"{s}\" x=\"{d}%\" y=\"{d}%\" width=\"{d}%\" height=\"{d}%\" />\n", .{ r.name, r.x, r.y, r.w, r.h });
+    var at = close;
+    while (at > 0 and (xml.items[at - 1] == ' ' or xml.items[at - 1] == '\t')) at -= 1;
+    try xml.insertSlice(allocator, at, block.items);
+    return try xml.toOwnedSlice(allocator);
+}
+
+test "regions: added once" {
+    const a = std.testing.allocator;
+    const first = (try ensureRegions(a, "")).?;
+    defer a.free(first);
+    try std.testing.expect(std.mem.indexOf(u8, first, "<region name=\"top-left\" x=\"0%\" y=\"0%\" width=\"50%\" height=\"50%\" />") != null);
+    try std.testing.expect((try ensureRegions(a, first)) == null);
 }
 
 /// Adds the keybindings in `wanted` that rc.xml does not already bind,
