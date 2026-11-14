@@ -32,6 +32,8 @@ const formulas = @import("formulas.zig");
 const calculus = @import("calculus.zig");
 const quantity = @import("quantity.zig");
 const rates = @import("rates.zig");
+const highlight = @import("highlight.zig");
+const pango = @import("pango1");
 
 const t = common.tr;
 /// Thousands are grouped with a narrow no-break space, which can never be
@@ -249,6 +251,7 @@ const Calc = struct {
         self.entry.setPlaceholderText("0");
         _ = gtk.Entry.signals.activate.connect(self.entry, *Calc, &onActivate, self, .{});
         _ = gtk.Editable.signals.changed.connect(self.entry.as(gtk.Editable), *Calc, &onChanged, self, .{});
+        _ = gobject.Object.signals.notify.connect(self.entry, *Calc, &onCursorMoved, self, .{ .detail = "cursor-position" });
         display.append(self.entry.as(gtk.Widget));
         self.preview.setXalign(1);
         self.preview.setEllipsize(.end);
@@ -972,6 +975,62 @@ const Calc = struct {
         // Editing a shown result by hand goes on from it.
         self.fresh = false;
         self.refreshPreview();
+        self.highlightEntry();
+    }
+
+    fn onCursorMoved(_: *gtk.Entry, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        self.highlightEntry();
+    }
+
+    /// Colours the entry's text by what each part is (see highlight.zig).
+    fn highlightEntry(self: *Calc) void {
+        const text = self.entryText();
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const chars: usize = @intCast(@max(self.entry.as(gtk.Editable).getPosition(), 0));
+        var cursor: usize = 0;
+        var seen: usize = 0;
+        while (cursor < text.len and seen < chars) : (seen += 1) {
+            cursor += std.unicode.utf8ByteSequenceLength(text[cursor]) catch 1;
+        }
+        const list = highlight.spans(a, text, cursor, &self.session) catch return;
+        // Light text means a dark theme: lighter colours there.
+        var fg: gdk.RGBA = undefined;
+        self.entry.as(gtk.Widget).getStyleContext().getColor(&fg);
+        const dark = fg.f_red * 0.3 + fg.f_green * 0.59 + fg.f_blue * 0.11 > 0.5;
+        const attrs = pango.AttrList.new();
+        defer attrs.unref();
+        for (list) |sp| {
+            const rgb: [3]u16 = switch (sp.kind) {
+                .number => if (dark) .{ 0x7a00, 0xb800, 0xff00 } else .{ 0x0b00, 0x4f00, 0xc500 },
+                .function => if (dark) .{ 0xd700, 0x9b00, 0xff00 } else .{ 0x7a00, 0x2a00, 0xa800 },
+                .constant => if (dark) .{ 0xff00, 0xc200, 0x5c00 } else .{ 0xa800, 0x5c00, 0x0000 },
+                .variable => if (dark) .{ 0x5c00, 0xd900, 0xc800 } else .{ 0x0000, 0x6b00, 0x5e00 },
+                .unit => if (dark) .{ 0x6ee0, 0xd800, 0x7a00 } else .{ 0x1a00, 0x6a00, 0x2400 },
+                .operator => if (dark) .{ 0xb000, 0xb000, 0xb000 } else .{ 0x6000, 0x6000, 0x6000 },
+                .bracket => if (dark) .{ 0xb000, 0xb000, 0xb000 } else .{ 0x6000, 0x6000, 0x6000 },
+                .bracket_match => if (dark) .{ 0xff00, 0xff00, 0xff00 } else .{ 0x0000, 0x0000, 0x0000 },
+                .bracket_error => if (dark) .{ 0xff00, 0x6600, 0x6600 } else .{ 0xc800, 0x1400, 0x1400 },
+            };
+            const fgattr = pango.attrForegroundNew(rgb[0], rgb[1], rgb[2]);
+            fgattr.f_start_index = @intCast(sp.start);
+            fgattr.f_end_index = @intCast(sp.end);
+            attrs.insert(fgattr);
+            if (sp.kind == .bracket_match or sp.kind == .function) {
+                const w = pango.attrWeightNew(.bold);
+                w.f_start_index = @intCast(sp.start);
+                w.f_end_index = @intCast(sp.end);
+                attrs.insert(w);
+            }
+            if (sp.kind == .bracket_error) {
+                const u = pango.attrUnderlineNew(.@"error");
+                u.f_start_index = @intCast(sp.start);
+                u.f_end_index = @intCast(sp.end);
+                attrs.insert(u);
+            }
+        }
+        self.entry.setAttributes(attrs);
     }
 
     fn refreshPreview(self: *Calc) void {
@@ -2771,4 +2830,5 @@ test {
     _ = @import("convert.zig");
     _ = @import("rich.zig");
     _ = @import("quantity.zig");
+    _ = @import("highlight.zig");
 }
