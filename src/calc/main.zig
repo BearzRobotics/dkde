@@ -140,6 +140,12 @@ const Calc = struct {
 
     mode: Mode = .standard,
     pane: Pane = .none,
+    /// The tape of recent entries above the entry (View > Expanded).
+    expanded: bool = false,
+    tape_scroll: *gtk.ScrolledWindow = undefined,
+    tape_list: *gtk.ListBox = undefined,
+    /// The tape is at the newest line (set when it changes; scrolling up is free until the next change).
+    tape_stick: bool = true,
     angle: eval.Angle = .degrees,
     base: u8 = 10,
     word: u8 = 64,
@@ -235,6 +241,23 @@ const Calc = struct {
         // The display.
         const display = gtk.Box.new(.vertical, 2);
         display.as(gtk.Widget).addCssClass("dkde-calc-screen");
+        // The tape: recent entries and answers, oldest at the top (View > Expanded).
+        self.tape_scroll = gtk.ScrolledWindow.new();
+        self.tape_list = gtk.ListBox.new();
+        self.tape_scroll.setChild(self.tape_list.as(gtk.Widget));
+        self.tape_scroll.setPolicy(.never, .automatic);
+        self.tape_scroll.setMinContentHeight(170);
+        const adj = self.tape_scroll.getVadjustment();
+        _ = gtk.Adjustment.signals.changed.connect(adj, *Calc, &onTapeSized, self, .{});
+        _ = gobject.Object.signals.notify.connect(adj, *Calc, &onTapeNotify, self, .{ .detail = "upper" });
+        _ = gobject.Object.signals.notify.connect(adj, *Calc, &onTapeNotify, self, .{ .detail = "page-size" });
+        self.tape_list.setSelectionMode(.none);
+        self.tape_list.setActivateOnSingleClick(1);
+        self.tape_list.as(gtk.Widget).addCssClass("dkde-calc-history");
+        _ = gtk.ListBox.signals.row_activated.connect(self.tape_list, *Calc, &onTapeRow, self, .{});
+        self.tape_scroll.as(gtk.Widget).setTooltipText(t("Click a line to use its result."));
+        self.tape_scroll.as(gtk.Widget).setVisible(@intFromBool(self.expanded));
+        display.append(self.tape_scroll.as(gtk.Widget));
         const top = gtk.Box.new(.horizontal, 6);
         self.memory_label.as(gtk.Widget).addCssClass("dkde-calc-memory");
         self.memory_label.as(gtk.Widget).setTooltipText(t("A value is in the memory"));
@@ -343,6 +366,7 @@ const Calc = struct {
         self.word = if (w == 8 or w == 16 or w == 32) @intCast(w) else 64;
         self.style.decimals = @intCast(std.math.clamp(self.config.getInt("calc", "decimals", 10), 0, 30));
         self.style.grouping = self.config.getBool("calc", "grouping", true);
+        self.expanded = self.config.getBool("calc", "expanded", false);
         self.style.notation = std.meta.stringToEnum(num.Notation, self.configString(&buf, "notation", "auto")) orelse .auto;
     }
 
@@ -386,6 +410,7 @@ const Calc = struct {
                 mb.checkKey("S_cientific", "mode-scientific", self.mode == .scientific, "<Alt>2"),
                 mb.checkKey("_Programmer", "mode-programmer", self.mode == .programmer, "<Alt>3"),
                 .separator,
+                mb.checkKey("E_xpanded Tape", "expanded", self.expanded, "<Control>t"),
                 mb.checkKey("_History", "pane-history", self.pane == .history, "<Control>h"),
                 mb.checkKey("_Unit Conversion", "pane-units", self.pane == .units, "<Control>u"),
                 mb.checkKey("_Currency", "pane-currency", self.pane == .currency, "<Control>k"),
@@ -1303,39 +1328,81 @@ const Calc = struct {
         self.fillHistory();
     }
 
+    fn historyRow(h: HistoryItem) *gtk.Widget {
+        const box = gtk.Box.new(.vertical, 0);
+        box.as(gtk.Widget).setMarginTop(4);
+        box.as(gtk.Widget).setMarginBottom(4);
+        var buf: [4096]u8 = undefined;
+        const e = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.expr}, 0) catch "");
+        e.setXalign(1);
+        e.setWrap(1);
+        e.setMaxWidthChars(40);
+        e.setWrapMode(.word_char);
+        e.as(gtk.Widget).addCssClass("dim-label");
+        const r = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.result}, 0) catch "");
+        r.setXalign(1);
+        r.setWrap(1);
+        r.setMaxWidthChars(40);
+        r.setWrapMode(.word_char);
+        r.as(gtk.Widget).addCssClass("dkde-calc-history-result");
+        box.append(e.as(gtk.Widget));
+        box.append(r.as(gtk.Widget));
+        return box.as(gtk.Widget);
+    }
+
     fn fillHistory(self: *Calc) void {
         self.history_list.removeAll();
+        self.tape_list.removeAll();
+        // The History pane: newest first. The tape: oldest first, scrolled to the newest.
         var i = self.history.items.len;
-        // Newest first.
         while (i > 0) {
             i -= 1;
-            const h = self.history.items[i];
-            const box = gtk.Box.new(.vertical, 0);
-            box.as(gtk.Widget).setMarginTop(4);
-            box.as(gtk.Widget).setMarginBottom(4);
-            var buf: [4096]u8 = undefined;
-            const e = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.expr}, 0) catch "");
-            e.setXalign(1);
-            e.setWrap(1);
-            e.setMaxWidthChars(40);
-            e.setWrapMode(.word_char);
-            e.as(gtk.Widget).addCssClass("dim-label");
-            const r = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.result}, 0) catch "");
-            r.setXalign(1);
-            r.setWrap(1);
-            r.setMaxWidthChars(40);
-            r.setWrapMode(.word_char);
-            r.as(gtk.Widget).addCssClass("dkde-calc-history-result");
-            box.append(e.as(gtk.Widget));
-            box.append(r.as(gtk.Widget));
-            self.history_list.append(box.as(gtk.Widget));
+            self.history_list.append(historyRow(self.history.items[i]));
         }
+        for (self.history.items) |h| self.tape_list.append(historyRow(h));
+        if (self.expanded) self.scrollTape();
+    }
+
+    fn scrollTape(self: *Calc) void {
+        self.tape_stick = true;
+        onTapeSized(self.tape_scroll.getVadjustment(), self);
+        // Layout settles after this call: once more a moment later.
+        _ = glib.timeoutAdd(60, onTapeLater, self);
+    }
+
+    fn onTapeLater(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Calc = @ptrCast(@alignCast(data.?));
+        if (!self.tape_stick) return 0;
+        // A value set while the view is being laid out is not drawn; set it again from here.
+        const adj = self.tape_scroll.getVadjustment();
+        adj.setValue(0);
+        adj.setValue(adj.getUpper() - adj.getPageSize());
+        return 0;
+    }
+
+    fn onTapeNotify(adj: *gtk.Adjustment, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        onTapeSized(adj, self);
+    }
+
+    /// The tape grew or was resized: stay at the newest line.
+    fn onTapeSized(adj: *gtk.Adjustment, self: *Calc) callconv(.c) void {
+        if (self.tape_stick) adj.setValue(adj.getUpper() - adj.getPageSize());
+    }
+
+    fn onTapeRow(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Calc) callconv(.c) void {
+        const index: usize = @intCast(row.getIndex());
+        if (index >= self.history.items.len) return;
+        self.useHistoryResult(self.history.items[index]);
     }
 
     fn onHistoryRow(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Calc) callconv(.c) void {
         const index: usize = @intCast(row.getIndex());
         if (index >= self.history.items.len) return;
-        const h = self.history.items[self.history.items.len - 1 - index];
+        self.useHistoryResult(self.history.items[self.history.items.len - 1 - index]);
+    }
+
+    /// Puts a history line's result into the entry (or in at the cursor).
+    fn useHistoryResult(self: *Calc, h: HistoryItem) void {
         var arena = std.heap.ArenaAllocator.init(self.gpa);
         defer arena.deinit();
         const plain = cleaned(arena.allocator(), h.result) catch return;
@@ -2482,6 +2549,15 @@ const Calc = struct {
             return self.showPane(if (p == self.pane) .none else p);
         }
         if (std.mem.startsWith(u8, action, "angle-")) return self.setAngle(eval.Angle.parse(action[6..]));
+        if (eql(u8, action, "expanded")) {
+            self.expanded = !self.expanded;
+            self.config.setBool("calc", "expanded", self.expanded) catch {};
+            self.tape_scroll.as(gtk.Widget).setVisible(@intFromBool(self.expanded));
+            common.menubar.setChecked(self.window, "expanded", self.expanded);
+            if (self.expanded) self.scrollTape();
+            self.window.as(gtk.Window).setDefaultSize(-1, -1);
+            return;
+        }
         if (eql(u8, action, "grouping")) {
             self.style.grouping = !self.style.grouping;
             self.config.setBool("calc", "grouping", self.style.grouping) catch {};
