@@ -677,7 +677,7 @@ fn odd(c: *const Ctx, a: []const Number) Error!Number {
 // ---- incomplete gamma and beta, and the distributions built on them ---------------------
 
 /// Regularized lower incomplete gamma P(a, x).
-fn gammaP(a: f64, x: f64) f64 {
+pub fn gammaP(a: f64, x: f64) f64 {
     if (x <= 0) return 0;
     if (x < a + 1) {
         var ap = a;
@@ -718,7 +718,7 @@ fn gammaQcf(a: f64, x: f64) f64 {
 }
 
 /// Regularized upper incomplete gamma Q(a, x).
-fn gammaQ(a: f64, x: f64) f64 {
+pub fn gammaQ(a: f64, x: f64) f64 {
     if (x <= 0) return 1;
     if (x < a + 1) return 1 - gammaP(a, x);
     return gammaQcf(a, x);
@@ -758,7 +758,7 @@ fn betacf(a: f64, b: f64, x: f64) f64 {
 }
 
 /// Regularized incomplete beta I_x(a, b).
-fn betaI(a: f64, b: f64, x: f64) f64 {
+pub fn betaI(a: f64, b: f64, x: f64) f64 {
     if (x <= 0) return 0;
     if (x >= 1) return 1;
     const bt = @exp(lgammaf(a + b) - lgammaf(a) - lgammaf(b) + a * @log(x) + b * std.math.log1p(-x));
@@ -767,7 +767,7 @@ fn betaI(a: f64, b: f64, x: f64) f64 {
 }
 
 /// The x where an increasing function `cdf` reaches `p`, found by bracketing and bisection.
-fn invert(comptime cdf: fn (f64, f64, f64, f64) f64, p: f64, a: f64, b: f64, c: f64, lo0: f64, hi0: f64) f64 {
+pub fn invert(comptime cdf: fn (f64, f64, f64, f64) f64, p: f64, a: f64, b: f64, c: f64, lo0: f64, hi0: f64) f64 {
     var lo = lo0;
     var hi = hi0;
     if (std.math.isInf(hi)) {
@@ -787,14 +787,14 @@ fn invert(comptime cdf: fn (f64, f64, f64, f64) f64, p: f64, a: f64, b: f64, c: 
     return lo + (hi - lo) / 2;
 }
 
-fn cdfChi(x: f64, k: f64, _: f64, _: f64) f64 {
+pub fn cdfChi(x: f64, k: f64, _: f64, _: f64) f64 {
     return gammaP(k / 2, x / 2);
 }
-fn cdfT(x: f64, v: f64, _: f64, _: f64) f64 {
+pub fn cdfT(x: f64, v: f64, _: f64, _: f64) f64 {
     const tail = betaI(v / 2, 0.5, v / (x * x + v)) / 2;
     return if (x < 0) tail else 1 - tail;
 }
-fn cdfF(x: f64, d1: f64, d2: f64, _: f64) f64 {
+pub fn cdfF(x: f64, d1: f64, d2: f64, _: f64) f64 {
     return betaI(d1 / 2, d2 / 2, d1 * x / (d1 * x + d2));
 }
 

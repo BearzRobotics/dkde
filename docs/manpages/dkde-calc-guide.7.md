@@ -226,6 +226,24 @@ The characteristic polynomial is worked out exactly, so rational eigenvalues, sq
 # STATISTICS
 These take a list of numbers or a matrix: **mean**, **median**, **mode**, **geomean**, **harmmean**, **trimmean**, **winsormean**, **weighmean**, **rms**, **range**, **iqr**, **mad**, **meandev**, **stdev**, **var**, **poolvar**, **stderr**, **skew**, **sumsq**, **cumsum**, **sort**, **rank**, **zscore**, **decile**, **quartile**, **percentile** (nine methods), and for pairs of lists **cov**, **covar**, **pearson** and **spearman**.
 
+Regressions, tests and intervals take lists (vectors) and give a row of results:
+
+| Typed | Result |
+|---|---|
+| **linreg(x, y)** | [a, b, r²] for y = a·x + b |
+| **quadreg(x, y)** | [a, b, c, r²] for y = a·x² + b·x + c |
+| **expreg(x, y)** | [a, b, r²] for y = a·bˣ |
+| **powreg(x, y)** | [a, b, r²] for y = a·xᵇ |
+| **logreg(x, y)** | [a, b, r²] for y = a + b·ln x |
+| **ttest(list, mean)** | [t, degrees of freedom, p] (two-sided), one sample against a mean |
+| **ttest2(list1, list2)** | the same for two samples (Welch's test) |
+| **tinterval(list, level)** | the confidence interval of the mean, **tinterval(data, 0.95)** |
+| **zinterval(list, σ, level)** | the same when the standard deviation is known |
+| **chisqtest(observed, expected)** | [χ², degrees of freedom, p] |
+| **anova(list1, list2, …)** | [F, df between, df within, p] (one-way) |
+
+The r² of the exponential, power and logarithmic fits is that of the straight line fitted to the transformed data, as on a graphing calculator.
+
 # SHOWING AN ANSWER ANOTHER WAY
 **EXPRESSION to KIND** works the expression out and writes the answer as KIND; the entry itself is not changed.
 

@@ -241,3 +241,12 @@ test "eigenvalues, eigenvectors and factorizations" {
     try runShows(&s, "[4, 3; 0, -1.5]", "luU([4,3;6,3])");
     try runShows(&s, "[2, 0; 1, 2]", "cholesky([4,2;2,5])");
 }
+
+test "regressions and tests from the entry" {
+    var s: eval.Session = .{ .gpa = std.testing.allocator };
+    defer s.deinit();
+    try runShows(&s, "[1.95, 0.21, 0.998241100494]", "linreg([1,2,3,4,5],[2.2,4.1,5.9,8.2,9.9])");
+    try runShows(&s, "[2.840953585413, 5, 0.03620590324]", "ttest([5.1,4.9,5.6,5.8,6,5.5], 5)");
+    try runShows(&s, "[2, 2, 0.367879441171]", "chisqtest([20,30,50],[25,25,50])");
+    try runShows(&s, "[27, 2, 6, 0.001]", "anova([4,5,6],[7,8,9],[10,11,12])");
+}

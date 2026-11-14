@@ -10,6 +10,7 @@ const num = @import("num.zig");
 const eval = @import("eval.zig");
 const quantity = @import("quantity.zig");
 const linalg = @import("linalg.zig");
+const stats = @import("stats.zig");
 const Number = num.Number;
 const Error = eval.Error;
 const Node = eval.Node;
@@ -519,7 +520,7 @@ const rich_only = [_][]const u8{
     "mode",       "range",    "number",   "harmmean",  "geomean", "rms",      "stdevp",  "varp",    "stderr", "meandev",
     "cov",        "covar",    "pearson",  "spearman",  "weighmean", "trimmean", "winsormean", "poolvar", "re",   "im",
     "arg",        "conj",     "polar",    "cis",       "flip",    "reverse",  "cumsum",  "mad",     "skew",   "kurtosis",
-    "zscore",     "sumsq",    "multisolve", "eq",      "divisors", "primes", "charpoly", "eigenvalues", "eigenvectors", "nullspace", "lul", "luu", "qrq", "qrr", "cholesky",
+    "zscore",     "sumsq",    "multisolve", "eq",      "divisors", "primes", "linreg", "quadreg", "expreg", "powreg", "logreg", "ttest", "ttest2", "tinterval", "zinterval", "chisqtest", "anova", "charpoly", "eigenvalues", "eigenvectors", "nullspace", "lul", "luu", "qrq", "qrr", "cholesky",
 };
 
 /// Names only this module knows (so the plain evaluator does not take them for a product).
@@ -1226,6 +1227,67 @@ pub const Rich = struct {
             const items = try flatten(a, args);
             const m = try newMatrix(a, 1, items.len);
             @memcpy(m.items, items);
+            return .{ .matrix = m };
+        }
+        if (isOneOf(f, .{ "linreg", "quadreg", "expreg", "powreg", "logreg", "ttest", "ttest2", "tinterval", "zinterval", "chisqtest", "anova" })) {
+            const floats = try a.alloc([]f64, args.len);
+            var scalars: std.ArrayList(f64) = .empty;
+            for (args, 0..) |arg, i| {
+                // A list (a vector or matrix) or a single number.
+                switch (arg) {
+                    .matrix => |m| {
+                        const list = try a.alloc(f64, m.items.len);
+                        for (m.items, 0..) |c, k| {
+                            if (!c.isReal()) return error.Domain;
+                            list[k] = c.re.toFloat();
+                        }
+                        floats[i] = list;
+                    },
+                    .scalar => |c| {
+                        if (!c.isReal()) return error.Domain;
+                        floats[i] = &.{};
+                        try scalars.append(a, c.re.toFloat());
+                    },
+                    .quantity => return error.Units,
+                }
+            }
+            const e = std.mem.eql;
+            const out_list: []const f64 = blk: {
+                if (isOneOf(f, .{ "linreg", "quadreg", "expreg", "powreg", "logreg" })) {
+                    if (args.len != 2) return error.WrongArguments;
+                    const r = stats_err: {
+                        if (e(u8, f, "linreg")) break :stats_err (try stats.linreg(floats[0], floats[1]))[0..];
+                        if (e(u8, f, "quadreg")) break :stats_err (try stats.quadreg(a, floats[0], floats[1]))[0..];
+                        if (e(u8, f, "expreg")) break :stats_err (try stats.expreg(a, floats[0], floats[1]))[0..];
+                        if (e(u8, f, "powreg")) break :stats_err (try stats.powreg(a, floats[0], floats[1]))[0..];
+                        break :stats_err (try stats.logreg(a, floats[0], floats[1]))[0..];
+                    };
+                    break :blk try a.dupe(f64, r);
+                }
+                if (e(u8, f, "ttest")) {
+                    if (args.len != 2 or scalars.items.len != 1) return error.WrongArguments;
+                    break :blk try a.dupe(f64, &(try stats.ttest(floats[0], scalars.items[0])));
+                }
+                if (e(u8, f, "ttest2")) {
+                    if (args.len != 2) return error.WrongArguments;
+                    break :blk try a.dupe(f64, &(try stats.ttest2(floats[0], floats[1])));
+                }
+                if (e(u8, f, "tinterval")) {
+                    if (args.len != 2 or scalars.items.len != 1) return error.WrongArguments;
+                    break :blk try a.dupe(f64, &(try stats.tinterval(floats[0], scalars.items[0])));
+                }
+                if (e(u8, f, "zinterval")) {
+                    if (args.len != 3 or scalars.items.len != 2) return error.WrongArguments;
+                    break :blk try a.dupe(f64, &(try stats.zinterval(floats[0], scalars.items[0], scalars.items[1])));
+                }
+                if (e(u8, f, "chisqtest")) {
+                    if (args.len != 2) return error.WrongArguments;
+                    break :blk try a.dupe(f64, &(try stats.chisqtest(floats[0], floats[1])));
+                }
+                break :blk try a.dupe(f64, &(try stats.anova(floats)));
+            };
+            const m = try newMatrix(a, 1, out_list.len);
+            for (out_list, 0..) |v, i| m.items[i] = try C.real(try num.fromFloat(v), a);
             return .{ .matrix = m };
         }
         if (isOneOf(f, .{ "charpoly", "eigenvalues", "eigenvectors", "nullspace", "lul", "luu", "qrq", "qrr", "cholesky" })) {
