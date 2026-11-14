@@ -187,3 +187,14 @@ test "which entries can be drawn as graphs" {
     try std.testing.expectEqualStrings("f", eval.graphable(a, &s, "f", m).?);
     try std.testing.expect(eval.graphable(a, &s, "g", m) == null);
 }
+
+test "algebra from the entry" {
+    var s: eval.Session = .{ .gpa = std.testing.allocator };
+    defer s.deinit();
+    try runShows(&s, "x³ + 3x² + 3x + 1", "expand((x+1)^3)");
+    try runShows(&s, "(x − 1)(x + 1)", "factor(x^2-1)");
+    try runShows(&s, "x + 1", "simplify((x^2-1)/(x-1))");
+    try runShows(&s, "5", "expand(2+3)");
+    try runShows(&s, "-1.414213562373; 1.414213562373", "solve(x^2 = 2)");
+    try runShows(&s, "4", "2x + 3 = 11");
+}

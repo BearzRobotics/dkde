@@ -846,6 +846,11 @@ const Calc = struct {
                 for (s.roots, 0..) |r, i| {
                     if (i > 0) parts.appendSlice(a, ";  ") catch return;
                     const shown = num.format(a, r, self.style) catch return;
+                    // An exact form: x = −√2 ≈ −1.4142135624.
+                    if (s.exact) |ex| if (i < ex.len and !r.isExact()) {
+                        parts.print(a, "{s} = {s} ≈ {s}", .{ s.name, ex[i], shown }) catch return;
+                        continue;
+                    };
                     // In letters too when that says more: A = 9π ≈ 28.27.
                     if (s.form) |f| if (!r.isExact() and !std.mem.eql(u8, f, shown) and f.len < 60 and !looksNumeric(f)) {
                         parts.print(a, "{s} = {s} ≈ {s}", .{ s.name, f, shown }) catch return;
@@ -889,6 +894,10 @@ const Calc = struct {
                 for (cx.re, cx.im, 0..) |re, im, i| {
                     if (i > 0) parts.appendSlice(a, ";  ") catch return;
                     const z = complexText(a, re, im, self.style) catch return;
+                    if (cx.exact) |ex| if (i < ex.len) {
+                        parts.print(a, "{s} = {s} ≈ {s}", .{ cx.name, ex[i], z }) catch return;
+                        continue;
+                    };
                     parts.print(a, "{s} = {s}", .{ cx.name, z }) catch return;
                 }
                 self.finishResult(expr_copy, parts.items, null, a);

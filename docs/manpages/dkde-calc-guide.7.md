@@ -232,6 +232,20 @@ These take a list of numbers or a matrix: **mean**, **median**, **mode**, **geom
 | **time** (seconds) | **3725 to time** | 1:02:05 |
 | **scientific**, **engineering** | **12345 to scientific** | the answer in scientific notation |
 
+# EXACT FORMS
+Results that are not fractions are also given in exact form, above the decimals: **√8** is **2√2**, **sin(45)** is **√2/2**, **tan(75)** is **2 + √3**, **π/4 × 4** is **π**, **(1 + √5)/2** is the golden ratio, **e²** stays **e²**. The entry shows the decimals (so you can go on calculating) and the line above shows **(= 2√2)**.
+
+The exact forms are sums of terms like **c·πᵃ·eᵇ·√r** with a fraction c. They are kept through **+**, **−**, **×**, whole powers and division (by a single term, or by two terms such as **1 + √2**, which is rationalized). Sines, cosines and tangents are exact for multiples of 15° (π/12), in degrees, radians or gradians, and so are **asin**, **acos** and **atan** of those values: **asin(√3/2)** is **60**. Entries with other values (**sin(1)**, **ln 2**, **√** of a sum) are worked out as decimals.
+
+# ALGEBRA
+**expand((x + 1)³)** is **x³ + 3x² + 3x + 1**; **expand((x + y)²)** is **x² + 2xy + y²**.
+
+**factor(x² − 5x + 6)** is **(x − 2)(x − 3)**. Polynomials in one letter are factored over the rationals by their rational roots (and **x⁴ + bx² + c**); **factor(x³ − 5x² + 3x + 9)** is **(x + 1)(x − 3)²**. With several letters the common number and powers are taken out: **2x²y + 2xy²** is **2xy(x + y)**.
+
+**simplify((x² − 4)/(x − 2))** is **x + 2**: common factors of a fraction of polynomials cancel.
+
+Equations that are polynomials in one letter are solved exactly: **x² = 2** gives **x = −√2 ≈ −1.4142135624; x = √2 ≈ 1.4142135624**, **x² − x − 1 = 0** gives **(1 − √5)/2** and **(1 + √5)/2**, **x² + x + 1 = 0** gives **−1/2 − (√3/2)i** and **−1/2 + (√3/2)i**. A cubic or higher polynomial with no rational roots is solved as decimals.
+
 # UNITS
 An amount may carry units anywhere in an entry, not only in a conversion. Units combine with exact dimensional arithmetic: **5 ft + 3 in** is **5.25 ft**; **5 kg × 2 m/s²** is **10 N**; **10 m / 2 s** is **5 m/s**; **60 km/h × 2 h** is **120 km**. Adding amounts of different kinds (**5 m + 3 s**) is an error: "These units do not match". About 120 units are known, with SI and binary prefixes (**km**, **mA**, **GiB**) and some physical constants. Amounts are kept between runs like any other value.
 

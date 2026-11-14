@@ -15,7 +15,9 @@ Besides numbers, an entry can be:
 
 - a variable: **x = 5**, used later as **x**; **ans** is always the last result;
 - a function of your own: **f(x) = x² − 3x + 2**, used as **f(4)**;
-- an equation with one unknown: **2y + 3 = 11** gives **y = 4**; **x² = 2** gives both roots;
+- an equation with one unknown: **2y + 3 = 11** gives **y = 4**; **x² = 2** gives both roots, exactly (**x = −√2**, **x = √2**);
+- algebra: **expand((x + 1)³)**, **factor(x² − 1)**, **simplify((x² − 1)/(x − 1))**;
+- an exact form beside the decimals: **√8** is **2√2**, **sin(45)** is **√2/2**, **π/4**;
 - an expression with letters that have no value: **2a + 3a** is simplified to **5a**;
 - an amount with units: **5 ft + 3 in**, **5 kg × 2 m/s²** (= 10 N), **100 °F to °C**, **5 km in mi**;
 - a date: **today + 30 days**, **2026-12-25 − today** (41 d), **weekday(2026-12-25)**;

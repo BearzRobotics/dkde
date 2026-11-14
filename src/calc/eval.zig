@@ -33,6 +33,7 @@ const letters = @import("letters.zig");
 const rich = @import("rich.zig");
 const bigreal = @import("bigreal.zig");
 const symbolic = @import("symbolic.zig");
+const algebra = @import("algebra.zig");
 const Number = num.Number;
 
 pub const Angle = enum {
@@ -1588,11 +1589,11 @@ pub const Outcome = union(enum) {
     defined: []const u8,
     /// An equation: the unknown and where it holds (exact where possible),
     /// and the answer in letters when it has them ("9π").
-    solved: struct { name: []const u8, roots: []Number, form: ?[]const u8 = null },
+    solved: struct { name: []const u8, roots: []Number, form: ?[]const u8 = null, exact: ?[]const []const u8 = null },
     /// Unknowns left: the entry tidied as far as it goes ("E = 2v²").
     simplified: []const u8,
     /// No real solution, but a polynomial equation has complex ones.
-    complex: struct { name: []const u8, re: []f64, im: []f64 },
+    complex: struct { name: []const u8, re: []f64, im: []f64, exact: ?[]const []const u8 = null },
     /// Both sides known: whether they are equal.
     truth: bool,
     /// A complex number or a matrix.
@@ -1668,7 +1669,21 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
             const eq = if (std.mem.indexOfScalar(u8, args[0], '=') == null) try std.fmt.allocPrint(a, "{s} = 0", .{args[0]}) else args[0];
             return run(a, session, eq, .{ .angle = mode.angle, .solve_only = true }, problem);
         }
-        if (unwrapCall(text, "simplify")) |inner| return run(a, session, inner, mode, problem);
+        inline for (.{ "expand", "factor", "simplify" }) |word| {
+            if (unwrapCall(text, word)) |inner| {
+                const n = try parseExpr(a, inner, mode, problem);
+                const ctx: algebra.Ctx = .{ .a = a, .session = session };
+                const answer: ?[]u8 = if (comptime std.mem.eql(u8, word, "expand"))
+                    try algebra.expand(ctx, n)
+                else if (comptime std.mem.eql(u8, word, "factor"))
+                    try algebra.factor(ctx, n)
+                else
+                    try algebra.cancel(ctx, n);
+                if (answer) |t| return .{ .simplified = t };
+                // Nothing to do beyond working it out (a number, an entry that is not a polynomial).
+                return run(a, session, inner, mode, problem);
+            }
+        }
         // x = 5; x * 2: the entries one after the other, the last one's answer (several
         // equations in a row are a system of equations instead).
         const parts = try splitTop(a, text, ';');
@@ -1891,6 +1906,29 @@ fn solve(a: std.mem.Allocator, ev: *Eval, l: *Node, r: *Node) Error!Outcome {
     }
     const diff = try a.create(Node);
     diff.* = .{ .binary = .{ .op = .sub, .l = l, .r = r } };
+    // Polynomials: the roots in exact form (−√2, (1 + √5)/2, −1/2 + (√3/2)i) when they have one.
+    if (!ev.mode.programmer) if (algebra.solveEquation(.{ .a = a, .session = ev.session }, l, r, x_name) catch null) |sol| {
+        if (sol.real.len > 0) {
+            const values = try a.alloc(Number, sol.real.len);
+            const texts = try a.alloc([]const u8, sol.real.len);
+            for (sol.real, 0..) |root, i| {
+                values[i] = try symbolic.toNumber(a, root.re);
+                texts[i] = try algebra.rootText(a, root);
+            }
+            return .{ .solved = .{ .name = x_name, .roots = values, .exact = texts } };
+        }
+        if (sol.complex.len > 0) {
+            const re = try a.alloc(f64, sol.complex.len);
+            const im = try a.alloc(f64, sol.complex.len);
+            const texts = try a.alloc([]const u8, sol.complex.len);
+            for (sol.complex, 0..) |root, i| {
+                re[i] = (try symbolic.toNumber(a, root.re)).toFloat();
+                im[i] = (try symbolic.toNumber(a, root.im)).toFloat();
+                texts[i] = try algebra.rootText(a, root);
+            }
+            return .{ .complex = .{ .name = x_name, .re = re, .im = im, .exact = texts } };
+        }
+    };
     const roots = try findRoots(a, ev, diff, x_name);
     if (roots.len == 0) {
         // A polynomial with no real roots still has complex ones.
