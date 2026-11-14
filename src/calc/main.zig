@@ -3920,4 +3920,5 @@ test {
     _ = @import("linalg.zig");
     _ = @import("stats.zig");
     _ = @import("integral.zig");
+    _ = @import("ode.zig");
 }

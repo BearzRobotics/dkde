@@ -195,6 +195,10 @@ A formula in the entry is always solved; it never stores a variable. **Save Entr
 
 **integral(f, x)** (or **integrate(f)**) gives an antiderivative plus **C**: **integral(x², x)** is **x³/3 + C**, **integral(x·sin(x), x)** is **−x·cos(x) + sin(x) + C**. It knows powers, sums and constant multiples, **exp**, **sin**, **cos**, **tan**, **ln**, **sqrt**, **atan**, **asin**, **acos** of a linear argument, integration by parts for a polynomial times one of those, and rational functions with distinct rational roots (partial fractions) or of the form 1/(x² + c) and x/(x² + c). Every answer is checked by differentiating it; when no closed form is found the entry is refused. Show Work (**Ctrl+L**) writes the steps.
 
+**dsolve(equation, conditions…)**
+
+: Solves an ordinary differential equation for y(x), exactly. Write primes as **y'** and **y''**. First order, **a·y' + b·y = f(x)** with f a polynomial: **dsolve(y' = 2y)** is **y = C·e^(2x)**, **dsolve(y' = y + x)** is **y = C·e^x − x − 1**; one condition such as **y(0) = 5** fixes C. Second order with constant coefficients and a constant right side: **dsolve(y'' + 2y' + 5y = 0)** is **y = e^(−x)·(C1·cos(2x) + C2·sin(2x))**; the conditions **y(0) = 1, y'(0) = 0** fix C1 and C2.
+
 **sum(f, k, m, n)**, **prod(f, k, m, n)**
 : f added up, or multiplied together, for k = m, m + 1, … n, exactly: **sum(k², k, 1, 10)** is 385; **prod(k, k, 1, 5)** is 120.
 

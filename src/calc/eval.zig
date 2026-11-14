@@ -37,6 +37,7 @@ const algebra = @import("algebra.zig");
 const library = @import("library.zig");
 const uncertain = @import("uncertain.zig");
 const integral = @import("integral.zig");
+const ode = @import("ode.zig");
 const Number = num.Number;
 
 pub const Angle = enum {
@@ -821,7 +822,7 @@ const builtin_functions = [_][]const u8{
     "ln",   "log",   "log2", "log10", "exp",   "sqrt",  "cbrt", "root",  "abs",   "floor", "ceil",   "round",
     "trunc", "frac", "sign", "fact",  "gcd",   "lcm",   "ncr",  "npr",   "min",   "max",   "sum",    "mean",
     "avg",  "median", "stdev", "var", "mod",   "pow",   "atan2", "hypot", "rand",  "rol",  "ror",    "sec",
-    "csc",  "cot",  "diff", "derivative", "integral", "integrate", "limit", "prod",
+    "csc",  "cot",  "diff", "derivative", "integral", "integrate", "dsolve", "limit", "prod",
     "if",   "xor",  "parallel", "multifactorial", "shift", "randuniform", "randbetween", "randnorm", "randexp",
     "randrayleigh", "randpoisson", "uncertainty", "midpoint", "errorPart", "lowerEndpoint", "upperEndpoint",
 };
@@ -1833,6 +1834,11 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
             if (args.len < 1 or args.len > 2) return error.WrongArguments;
             const eq = if (std.mem.indexOfScalar(u8, args[0], '=') == null) try std.fmt.allocPrint(a, "{s} = 0", .{args[0]}) else args[0];
             return run(a, session, eq, .{ .angle = mode.angle, .solve_only = true }, problem);
+        }
+        // dsolve(y' = 2y, y(0) = 1): an ordinary differential equation.
+        if (unwrapCall(text, "dsolve")) |inner| {
+            if (try ode.solve(a, session, inner)) |found| return .{ .simplified = found };
+            return error.Domain;
         }
         // integral(x², x): the antiderivative (the definite form with limits is worked out as a number).
         inline for (.{ "integral", "integrate" }) |word| {
