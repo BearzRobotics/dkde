@@ -229,3 +229,15 @@ test "polar and parametric curves are graphable" {
     try std.testing.expect(eval.graphable(a, &s, "(1, 2)", m) == null);
     try std.testing.expect(eval.graphable(a, &s, "(cos(q), sin(q))", m) == null);
 }
+
+test "eigenvalues, eigenvectors and factorizations" {
+    var s: eval.Session = .{ .gpa = std.testing.allocator };
+    defer s.deinit();
+    try runShows(&s, "[1, -4, 3]", "charpoly([2,1;1,2])");
+    try runShows(&s, "[1; 3]", "eigenvalues([2,1;1,2])");
+    try runShows(&s, "[-1, 1; 1, 1]", "eigenvectors([2,1;1,2])");
+    try runShows(&s, "[-2; 1]", "nullspace([1,2;2,4])");
+    try runShows(&s, "[1, 0; 1.5, 1]", "luL([4,3;6,3])");
+    try runShows(&s, "[4, 3; 0, -1.5]", "luU([4,3;6,3])");
+    try runShows(&s, "[2, 0; 1, 2]", "cholesky([4,2;2,5])");
+}

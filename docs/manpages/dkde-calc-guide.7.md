@@ -214,6 +214,14 @@ A matrix is written with commas between the entries of a row and **;** between r
 | **rk(M)**, **rref(M)**, **trace(M)**, **permanent(M)** | rank, reduced row echelon form, trace, permanent |
 | **dot(u, v)**, **cross(u, v)**, **norm(v)** | scalar product, vector product, length |
 | **identity(n)**, **lsolve(A, b)** | the identity matrix, the solution of A·x = b |
+| **charpoly(M)** | the coefficients of det(λI − M), highest power first |
+| **eigenvalues(M)**, **eigenvectors(M)** | the eigenvalues (a column) and an eigenvector for each (the columns) |
+| **nullspace(M)** | the vectors that M sends to zero, as columns |
+| **luL(M)**, **luU(M)** | L and U with M = L·U (no row swaps) |
+| **qrQ(M)**, **qrR(M)** | Q and R with M = Q·R |
+| **cholesky(M)** | L with M = L·Lᵀ for a symmetric positive-definite M |
+
+The characteristic polynomial is worked out exactly, so rational eigenvalues, square roots and complex pairs come out exactly (**eigenvalues([2,1;1,2])** is 1 and 3, **eigenvalues([0,−1;1,0])** is −i and i); the eigenvectors of a rational eigenvalue are exact too.
 
 # STATISTICS
 These take a list of numbers or a matrix: **mean**, **median**, **mode**, **geomean**, **harmmean**, **trimmean**, **winsormean**, **weighmean**, **rms**, **range**, **iqr**, **mad**, **meandev**, **stdev**, **var**, **poolvar**, **stderr**, **skew**, **sumsq**, **cumsum**, **sort**, **rank**, **zscore**, **decile**, **quartile**, **percentile** (nine methods), and for pairs of lists **cov**, **covar**, **pearson** and **spearman**.

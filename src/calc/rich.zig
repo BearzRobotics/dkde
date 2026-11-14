@@ -9,6 +9,7 @@ const std = @import("std");
 const num = @import("num.zig");
 const eval = @import("eval.zig");
 const quantity = @import("quantity.zig");
+const linalg = @import("linalg.zig");
 const Number = num.Number;
 const Error = eval.Error;
 const Node = eval.Node;
@@ -164,6 +165,12 @@ fn cpow(a: std.mem.Allocator, x: C, y: C) Error!C {
 }
 
 // ---- matrices -------------------------------------------------------------------
+
+fn fromLinalg(a: std.mem.Allocator, m: linalg.M) Error!Matrix {
+    const out = try newMatrix(a, m.rows, m.cols);
+    for (m.v, 0..) |x, i| out.items[i] = try C.real(x, a);
+    return out;
+}
 
 fn newMatrix(a: std.mem.Allocator, rows: usize, cols: usize) Error!Matrix {
     if (rows == 0 or cols == 0 or rows * cols > max_cells) return error.TooLarge;
@@ -512,7 +519,7 @@ const rich_only = [_][]const u8{
     "mode",       "range",    "number",   "harmmean",  "geomean", "rms",      "stdevp",  "varp",    "stderr", "meandev",
     "cov",        "covar",    "pearson",  "spearman",  "weighmean", "trimmean", "winsormean", "poolvar", "re",   "im",
     "arg",        "conj",     "polar",    "cis",       "flip",    "reverse",  "cumsum",  "mad",     "skew",   "kurtosis",
-    "zscore",     "sumsq",    "multisolve", "eq",      "divisors", "primes",
+    "zscore",     "sumsq",    "multisolve", "eq",      "divisors", "primes", "charpoly", "eigenvalues", "eigenvectors", "nullspace", "lul", "luu", "qrq", "qrr", "cholesky",
 };
 
 /// Names only this module knows (so the plain evaluator does not take them for a product).
@@ -1220,6 +1227,41 @@ pub const Rich = struct {
             const m = try newMatrix(a, 1, items.len);
             @memcpy(m.items, items);
             return .{ .matrix = m };
+        }
+        if (isOneOf(f, .{ "charpoly", "eigenvalues", "eigenvectors", "nullspace", "lul", "luu", "qrq", "qrr", "cholesky" })) {
+            if (args.len != 1) return error.WrongArguments;
+            const m = try self.asMatrix(args[0]);
+            const lm = try a.alloc(num.Number, m.items.len);
+            for (m.items, 0..) |c, i| {
+                if (!c.isReal()) return error.Domain;
+                lm[i] = c.re;
+            }
+            const input: linalg.M = .{ .rows = m.rows, .cols = m.cols, .v = lm };
+            if (std.mem.eql(u8, f, "charpoly")) {
+                const coefs = try linalg.charPoly(a, input);
+                // Highest power first, as it is written.
+                const out = try newMatrix(a, 1, coefs.len);
+                for (coefs, 0..) |x, i| out.items[coefs.len - 1 - i] = try C.real(x, a);
+                return .{ .matrix = out };
+            }
+            if (std.mem.eql(u8, f, "eigenvalues")) {
+                const ev = try linalg.eigenvalues(a, input);
+                const out = try newMatrix(a, ev.len, 1);
+                for (ev, 0..) |e, i| out.items[i] = .{ .re = e.re, .im = e.im };
+                return .{ .matrix = out };
+            }
+            if (std.mem.eql(u8, f, "nullspace")) {
+                const ns = (try linalg.nullspace(a, input)) orelse return error.Domain;
+                return .{ .matrix = try fromLinalg(a, ns) };
+            }
+            const result: linalg.M = if (std.mem.eql(u8, f, "eigenvectors")) try linalg.eigenvectors(a, input) else if (std.mem.eql(u8, f, "cholesky")) try linalg.cholesky(a, input) else if (isOneOf(f, .{ "lul", "luu" })) blk: {
+                const parts = try linalg.lu(a, input);
+                break :blk if (std.mem.eql(u8, f, "lul")) parts.l else parts.u;
+            } else blk: {
+                const parts = try linalg.qr(a, input);
+                break :blk if (std.mem.eql(u8, f, "qrq")) parts.q else parts.r;
+            };
+            return .{ .matrix = try fromLinalg(a, result) };
         }
         if (isOneOf(f, .{ "divisors", "primes" })) {
             if (args.len != 1) return error.WrongArguments;
