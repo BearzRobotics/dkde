@@ -38,6 +38,7 @@ const library = @import("library.zig");
 const uncertain = @import("uncertain.zig");
 const integral = @import("integral.zig");
 const ode = @import("ode.zig");
+const seriesmod = @import("series.zig");
 const Number = num.Number;
 
 pub const Angle = enum {
@@ -822,7 +823,7 @@ const builtin_functions = [_][]const u8{
     "ln",   "log",   "log2", "log10", "exp",   "sqrt",  "cbrt", "root",  "abs",   "floor", "ceil",   "round",
     "trunc", "frac", "sign", "fact",  "gcd",   "lcm",   "ncr",  "npr",   "min",   "max",   "sum",    "mean",
     "avg",  "median", "stdev", "var", "mod",   "pow",   "atan2", "hypot", "rand",  "rol",  "ror",    "sec",
-    "csc",  "cot",  "diff", "derivative", "integral", "integrate", "dsolve", "limit", "prod",
+    "csc",  "cot",  "diff", "derivative", "integral", "integrate", "dsolve", "taylor", "limit", "prod",
     "if",   "xor",  "parallel", "multifactorial", "shift", "randuniform", "randbetween", "randnorm", "randexp",
     "randrayleigh", "randpoisson", "uncertainty", "midpoint", "errorPart", "lowerEndpoint", "upperEndpoint",
 };
@@ -1057,6 +1058,11 @@ pub const Eval = struct {
         if (is(name, "limit")) {
             if (args.len != 3 or args[1].* != .name) return self.wrongArgs(name, pos);
             const at = try self.limitPoint(args[2], b);
+            // An exact answer from the series, when the point is a number.
+            if (!std.math.isInf(at)) {
+                const point = try self.eval(args[2], b);
+                if (point.isExact()) if (try seriesmod.limit(self, args[0], args[1].name.text, point)) |exact| return exact;
+            }
             const r = try calculus.limit(self, args[0], args[1].name.text, at);
             return try self.snap(r, 1e-8);
         }
@@ -1834,6 +1840,20 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
             if (args.len < 1 or args.len > 2) return error.WrongArguments;
             const eq = if (std.mem.indexOfScalar(u8, args[0], '=') == null) try std.fmt.allocPrint(a, "{s} = 0", .{args[0]}) else args[0];
             return run(a, session, eq, .{ .angle = mode.angle, .solve_only = true }, problem);
+        }
+        // taylor(f, x, a, n): the series about a, up to the power n.
+        if (unwrapCall(text, "taylor")) |inner| {
+            const args = try splitTop(a, inner, ',');
+            if (args.len < 2 or args.len > 4) return error.WrongArguments;
+            var radians = mode;
+            radians.angle = .radians;
+            var ev: Eval = .{ .a = a, .session = session, .mode = radians, .problem = problem };
+            const n = try parseExpr(a, std.mem.trim(u8, args[0], " "), mode, problem);
+            const point = if (args.len >= 3) try ev.eval(try parseExpr(a, args[2], mode, problem), null) else try num.fromInt(a, 0);
+            const order: usize = if (args.len == 4) @intCast(num.intValue(try ev.eval(try parseExpr(a, args[3], mode, problem), null)) orelse return error.NotInteger) else 5;
+            if (order > 20) return error.TooLarge;
+            if (try seriesmod.taylorText(&ev, n, std.mem.trim(u8, args[1], " "), point, order)) |found| return .{ .simplified = found };
+            return error.Domain;
         }
         // dsolve(y' = 2y, y(0) = 1): an ordinary differential equation.
         if (unwrapCall(text, "dsolve")) |inner| {

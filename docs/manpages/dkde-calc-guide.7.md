@@ -195,6 +195,10 @@ A formula in the entry is always solved; it never stores a variable. **Save Entr
 
 **integral(f, x)** (or **integrate(f)**) gives an antiderivative plus **C**: **integral(x², x)** is **x³/3 + C**, **integral(x·sin(x), x)** is **−x·cos(x) + sin(x) + C**. It knows powers, sums and constant multiples, **exp**, **sin**, **cos**, **tan**, **ln**, **sqrt**, **atan**, **asin**, **acos** of a linear argument, integration by parts for a polynomial times one of those, and rational functions with distinct rational roots (partial fractions) or of the form 1/(x² + c) and x/(x² + c). Every answer is checked by differentiating it; when no closed form is found the entry is refused. Show Work (**Ctrl+L**) writes the steps.
 
+**taylor(f, x, a, n)**
+
+: The Taylor series of f about x = a up to the power n (a defaults to 0, n to 5), with the **O(…)** remainder: **taylor(sin(x), x, 0, 3)** is **x − x³/6 + O(x⁴)**; **taylor(ln(x), x, 1, 3)** is **(x − 1) − (x − 1)²/2 + (x − 1)³/3 + O((x − 1)⁴)**. A quotient is expanded term by term, so a pole gives a Laurent series. **limit(f, x, a)** now tries the same series first and gives exact answers such as **limit((1 − cos(x))/x², x, 0)** = 1/2 before falling back to the numeric estimate.
+
 **dsolve(equation, conditions…)**
 
 : Solves an ordinary differential equation for y(x), exactly. Write primes as **y'** and **y''**. First order, **a·y' + b·y = f(x)** with f a polynomial: **dsolve(y' = 2y)** is **y = C·e^(2x)**, **dsolve(y' = y + x)** is **y = C·e^x − x − 1**; one condition such as **y(0) = 5** fixes C. Second order with constant coefficients and a constant right side: **dsolve(y'' + 2y' + 5y = 0)** is **y = e^(−x)·(C1·cos(2x) + C2·sin(2x))**; the conditions **y(0) = 1, y'(0) = 0** fix C1 and C2.
