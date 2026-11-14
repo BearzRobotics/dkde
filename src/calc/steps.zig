@@ -299,13 +299,15 @@ fn replace(a: std.mem.Allocator, n: *const N, target: *const N, with: *N) Error!
 
 // ---- working out one operation ----------------------------------------------------------------------------------
 
+const Between = struct { note: []const u8, text: []const u8 };
+
 const Done = struct {
     /// The number the operation comes to (null when it has no number: an irrational root).
     value: ?Number,
     /// What it was, for the note: "Add 2 + 3 = 5".
     note: []const u8,
     /// Lines before the result, each the operation in another form (common denominators).
-    between: []const []const u8 = &.{},
+    between: []const Between = &.{},
 };
 
 fn lcmBig(a: std.mem.Allocator, x: Big, y: Big) Error!Big {
@@ -394,11 +396,14 @@ fn workBinary(ctx: Ctx, op: u8, x: Number, y: Number) Error!Done {
             const plus = op == '+';
             const v = if (plus) try num.add(a, x, y) else try num.sub(a, x, y);
             const verb: []const u8 = if (plus) "Add" else "Subtract";
-            var between: std.ArrayList([]const u8) = .empty;
+            var between: std.ArrayList(Between) = .empty;
             if (isFraction(x) or isFraction(y)) {
                 const d = try lcmBig(a, x.exact.den, y.exact.den);
                 if (!x.exact.den.eql(y.exact.den)) {
-                    try between.append(a, try std.fmt.allocPrint(a, "{s} {s} {s}", .{ try overDenominator(a, x, d), if (plus) "+" else "−", try overDenominator(a, y, d) }));
+                    try between.append(a, .{
+                        .note = try std.fmt.allocPrint(a, "Write both over the common denominator {s}", .{try bigText(a, d)}),
+                        .text = try std.fmt.allocPrint(a, "{s} {s} {s}", .{ try overDenominator(a, x, d), if (plus) "+" else "−", try overDenominator(a, y, d) }),
+                    });
                 }
                 var top = try Big.init(a);
                 var xs = try Big.init(a);
@@ -414,32 +419,42 @@ fn workBinary(ctx: Ctx, op: u8, x: Number, y: Number) Error!Done {
                 top.abs();
                 const combined = try std.fmt.allocPrint(a, "{s}{s}/{s}", .{ if (t_neg) "−" else "", try bigText(a, top), try bigText(a, d) });
                 const result_text = try numText(a, v);
-                if (!std.mem.eql(u8, combined, result_text)) try between.append(a, combined);
-                return .{ .value = v, .note = try std.fmt.allocPrint(a, "{s} {s} and {s}: common denominator {s}", .{ verb, xt, yt, try bigText(a, d) }), .between = between.items };
+                if (!std.mem.eql(u8, combined, result_text)) {
+                    try between.append(a, .{ .note = try std.fmt.allocPrint(a, "{s} the numerators, keep the denominator {s}", .{ verb, try bigText(a, d) }), .text = combined });
+                    return .{ .value = v, .note = try std.fmt.allocPrint(a, "Reduce {s} to lowest terms", .{combined}), .between = between.items };
+                }
+                return .{ .value = v, .note = try std.fmt.allocPrint(a, "{s} the numerators, keep the denominator {s}", .{ verb, try bigText(a, d) }), .between = between.items };
             }
             return .{ .value = v, .note = try std.fmt.allocPrint(a, "{s} {s} {s} {s}", .{ verb, xt, if (plus) "and" else "from", yt }) };
         },
         '*' => {
             const v = try num.mul(a, x, y);
-            var between: std.ArrayList([]const u8) = .empty;
+            var between: std.ArrayList(Between) = .empty;
             if (isFraction(x) or isFraction(y)) {
                 const xn = try intNumber(a, x.exact.num);
                 const yn = try intNumber(a, y.exact.num);
                 const dn = try num.mul(a, try intNumber(a, x.exact.den), try intNumber(a, y.exact.den));
                 const raw = try std.fmt.allocPrint(a, "{s}/{s}", .{ try numText(a, try num.mul(a, xn, yn)), try numText(a, dn) });
-                if (!std.mem.eql(u8, raw, try numText(a, v))) try between.append(a, raw);
+                if (!std.mem.eql(u8, raw, try numText(a, v))) {
+                    try between.append(a, .{ .note = "Multiply the numerators and multiply the denominators", .text = raw });
+                    return .{ .value = v, .note = try std.fmt.allocPrint(a, "Reduce {s} to lowest terms", .{raw}), .between = between.items };
+                }
+                return .{ .value = v, .note = "Multiply the numerators and multiply the denominators" };
             }
-            return .{ .value = v, .note = try std.fmt.allocPrint(a, "Multiply {s} × {s}", .{ xt, yt }), .between = between.items };
+            return .{ .value = v, .note = try std.fmt.allocPrint(a, "Multiply {s} × {s}", .{ xt, yt }) };
         },
         '/' => {
             if (y.isZero()) return error.DivisionByZero;
             const v = try num.div(a, x, y);
-            var between: std.ArrayList([]const u8) = .empty;
+            var between: std.ArrayList(Between) = .empty;
             if (isFraction(x) or isFraction(y)) {
                 // Dividing by a fraction: multiply by its reciprocal.
                 const recip = try num.div(a, try num.fromInt(a, 1), y);
-                try between.append(a, try std.fmt.allocPrint(a, "{s} × {s}", .{ try wrapFraction(a, x), try wrapFraction(a, recip) }));
-                return .{ .value = v, .note = try std.fmt.allocPrint(a, "Divide {s} ÷ {s}: multiply by the reciprocal", .{ xt, yt }), .between = between.items };
+                try between.append(a, .{
+                    .note = "Dividing by a fraction is multiplying by its reciprocal",
+                    .text = try std.fmt.allocPrint(a, "{s} × {s}", .{ try wrapFraction(a, x), try wrapFraction(a, recip) }),
+                });
+                return .{ .value = v, .note = try std.fmt.allocPrint(a, "Multiply {s} × {s}", .{ try wrapFraction(a, x), try wrapFraction(a, recip) }), .between = between.items };
             }
             return .{ .value = v, .note = try std.fmt.allocPrint(a, "Divide {s} ÷ {s}", .{ xt, yt }) };
         },
@@ -454,9 +469,9 @@ fn workBinary(ctx: Ctx, op: u8, x: Number, y: Number) Error!Done {
                     if (i > 0) try repeated.appendSlice(a, " × ");
                     try repeated.appendSlice(a, try wrapNeg(a, x));
                 }
-                var between: std.ArrayList([]const u8) = .empty;
-                try between.append(a, repeated.items);
-                return .{ .value = v, .note = try std.fmt.allocPrint(a, "{s}: {s} to the power {s}", .{ word, xt, yt }), .between = between.items };
+                var between: std.ArrayList(Between) = .empty;
+                try between.append(a, .{ .note = try std.fmt.allocPrint(a, "{s}: write the multiplication out", .{word}), .text = repeated.items });
+                return .{ .value = v, .note = try std.fmt.allocPrint(a, "Multiply: {s} to the power {s} is {s}", .{ xt, yt, try numText(a, v) }), .between = between.items };
             };
             return .{ .value = v, .note = try std.fmt.allocPrint(a, "{s} {s} to the power {s}", .{ word, xt, yt }) };
         },
@@ -502,8 +517,8 @@ fn arithmetic(ctx: Ctx, root_node: *const eval.Node) Error!?[]Step {
         const note = if (bracketed) try std.fmt.allocPrint(a, "Brackets first: {s}", .{done.note}) else done.note;
         // Intermediate forms of the same operation (common denominators), then the result.
         for (done.between) |line| {
-            const raw = try mk(a, .{ .raw = .{ .text = line, .prec = precOf(pick.node) } });
-            try steps.append(a, .{ .note = "", .math = try write(a, try replace(a, tree, pick.node, raw)) });
+            const raw = try mk(a, .{ .raw = .{ .text = line.text, .prec = precOf(pick.node) } });
+            try steps.append(a, .{ .note = line.note, .math = try write(a, try replace(a, tree, pick.node, raw)) });
         }
         const result = try mk(a, .{ .num = value });
         tree = try replace(a, tree, pick.node, result);

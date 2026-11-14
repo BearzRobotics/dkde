@@ -34,6 +34,7 @@ const quantity = @import("quantity.zig");
 const rates = @import("rates.zig");
 const highlight = @import("highlight.zig");
 const export_session = @import("export.zig");
+const steps_mod = @import("steps.zig");
 const pango = @import("pango1");
 
 const t = common.tr;
@@ -42,7 +43,7 @@ const t = common.tr;
 const group_sep = "\u{202F}";
 
 const Mode = enum { standard, scientific, programmer };
-const Pane = enum { none, history, units, currency, dates, graph, formulas };
+const Pane = enum { none, history, units, currency, dates, graph, formulas, steps };
 
 const Cmd = enum { insert, enter, clear, back, negate, reciprocal, mc, mr, ms, mplus, mminus, plot };
 
@@ -177,6 +178,8 @@ const Calc = struct {
     unit_to: *gtk.DropDown = undefined,
     unit_value: *gtk.Entry = undefined,
     unit_result: *gtk.Label = undefined,
+    // Show Work.
+    steps_box: *gtk.Box = undefined,
     // Currency.
     cur_from: *gtk.DropDown = undefined,
     cur_to: *gtk.DropDown = undefined,
@@ -332,6 +335,7 @@ const Calc = struct {
         _ = self.side.addNamed(self.buildDates(), "dates");
         _ = self.side.addNamed(self.graph.widget(), "graph");
         _ = self.side.addNamed(self.buildFormulas(), "formulas");
+        _ = self.side.addNamed(self.buildSteps(), "steps");
 
         const body = gtk.Box.new(.horizontal, 0);
         body.append(left.as(gtk.Widget));
@@ -427,6 +431,7 @@ const Calc = struct {
                 mb.checkKey("_Date Calculation", "pane-dates", self.pane == .dates, "<Control>e"),
                 mb.checkKey("_Graph", "pane-graph", self.pane == .graph, "<Control>g"),
                 mb.checkKey("_Formulas", "pane-formulas", self.pane == .formulas, "<Control><Shift>f"),
+                mb.checkKey("Show _Work", "pane-steps", self.pane == .steps, "<Control>l"),
                 mb.item("Update E_xchange Rates", "update-rates", null),
                 .separator,
                 mb.check("_Degrees", "angle-degrees", self.angle == .degrees),
@@ -784,6 +789,9 @@ const Calc = struct {
         const a = arena.allocator();
         const text = cleaned(a, raw) catch return;
         const expr_copy = a.dupe(u8, raw) catch return;
+
+        // With Show Work open, the steps to the answer are written out too.
+        if (self.pane == .steps) self.showSteps(a, text);
 
         // With the Graph pane open, functions of x are drawn: "sin(x)", "y = x^2", "sin(x); cos(x)".
         if (self.pane == .graph and self.formula == null and self.mode != .programmer and self.plotFunctions(a, text)) return;
@@ -2679,6 +2687,79 @@ const Calc = struct {
         return 0;
     }
 
+    // ---- show your work ------------------------------------------------------------------------
+
+    fn buildSteps(self: *Calc) *gtk.Widget {
+        const box = gtk.Box.new(.vertical, 8);
+        const title = gtk.Label.new(t("Show Your Work"));
+        title.setXalign(0);
+        title.as(gtk.Widget).addCssClass("heading");
+        box.append(title.as(gtk.Widget));
+        const scroll = gtk.ScrolledWindow.new();
+        scroll.setPolicy(.never, .automatic);
+        scroll.as(gtk.Widget).setVexpand(1);
+        self.steps_box = gtk.Box.new(.vertical, 10);
+        self.steps_box.as(gtk.Widget).setMarginEnd(6);
+        scroll.setChild(self.steps_box.as(gtk.Widget));
+        box.append(scroll.as(gtk.Widget));
+        const button = gtk.Button.newWithLabel(t("Show steps for the entry"));
+        _ = gtk.Button.signals.clicked.connect(button, *Calc, &onShowSteps, self, .{});
+        box.append(button.as(gtk.Widget));
+        self.stepsMessage(t("Work out an entry, or press the button, to see the steps written out as on paper."));
+        return box.as(gtk.Widget);
+    }
+
+    fn stepsMessage(self: *Calc, text: [:0]const u8) void {
+        while (self.steps_box.as(gtk.Widget).getFirstChild()) |c| self.steps_box.remove(c);
+        const label = gtk.Label.new(text);
+        label.setXalign(0);
+        label.setWrap(1);
+        label.setMaxWidthChars(40);
+        label.as(gtk.Widget).addCssClass("dim-label");
+        self.steps_box.append(label.as(gtk.Widget));
+    }
+
+    fn onShowSteps(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        // A result is on show: its entry is the last in the history.
+        const raw = if (self.fresh and self.history.items.len > 0) self.history.items[self.history.items.len - 1].expr else self.entryText();
+        const text = cleaned(a, raw) catch return;
+        self.showSteps(a, text);
+    }
+
+    fn showSteps(self: *Calc, a: std.mem.Allocator, text: []const u8) void {
+        if (std.mem.trim(u8, text, " ").len == 0) return self.stepsMessage(t("Type an entry first."));
+        const ctx: steps_mod.Ctx = .{ .a = a, .session = &self.session, .mode = self.evalMode() };
+        const found = steps_mod.explain(ctx, text) catch {
+            return self.stepsMessage(t("The steps could not be worked out for this entry."));
+        } orelse {
+            return self.stepsMessage(t("No written-out steps for this kind of entry yet. They are written for arithmetic, fractions and roots, equations, expanding and factoring, derivatives and pairs of linear equations."));
+        };
+        while (self.steps_box.as(gtk.Widget).getFirstChild()) |c| self.steps_box.remove(c);
+        for (found, 0..) |st, i| {
+            const row = gtk.Box.new(.vertical, 2);
+            if (st.note.len > 0 or i == 0) {
+                const label_text = if (i == 0) t("Start") else (a.dupeSentinel(u8, st.note, 0) catch continue);
+                const note = gtk.Label.new(label_text);
+                note.setXalign(0);
+                note.setWrap(1);
+                note.setMaxWidthChars(44);
+                note.as(gtk.Widget).addCssClass("dim-label");
+                row.append(note.as(gtk.Widget));
+            }
+            const math = gtk.Label.new(a.dupeSentinel(u8, st.math, 0) catch continue);
+            math.setXalign(0);
+            math.setWrap(1);
+            math.setMaxWidthChars(40);
+            math.setSelectable(1);
+            math.as(gtk.Widget).addCssClass("dkde-calc-step-math");
+            row.append(math.as(gtk.Widget));
+            self.steps_box.append(row.as(gtk.Widget));
+        }
+    }
+
     // ---- graph ----------------------------------------------------------------------------
 
     /// Draws each ;-separated part of the entry that is a function of x, if all of them are.
@@ -2727,7 +2808,7 @@ const Calc = struct {
         const w = self.side.as(gtk.Widget);
         w.setVisible(@intFromBool(pane != .none));
         if (pane != .none) self.side.setVisibleChildName(@tagName(pane));
-        inline for (.{ "history", "units", "currency", "dates", "graph", "formulas" }) |name| {
+        inline for (.{ "history", "units", "currency", "dates", "graph", "formulas", "steps" }) |name| {
             common.menubar.setChecked(self.window, "pane-" ++ name, std.mem.eql(u8, @tagName(pane), name));
         }
         self.config.setString("calc", "pane", @tagName(pane)) catch {};

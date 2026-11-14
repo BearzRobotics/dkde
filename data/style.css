@@ -1084,3 +1084,9 @@ headerbar .dkde-tabs button.dkde-tab.dkde-tab-attention {
   font-weight: bold;
   min-width: 24px;
 }
+
+/* Calculator: a step of the written-out work. */
+.dkde-calc-step-math {
+  font-family: monospace;
+  font-size: 13pt;
+}
