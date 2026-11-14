@@ -65,6 +65,9 @@ Currency (**Ctrl+K**)
 Date Calculation (**Ctrl+E**)
 : The time between two dates (in years, months and days, and in days and weeks), or a date plus or minus a number of years, months and days. It works in every calendar dkde-calendar(1) shows: Julian, Gregorian, the International Fixed calendar, the Rosquin calendar in its three layouts, Chinese, Hebrew, Coptic and Ethiopian. Dates are typed year-month-day in the chosen calendar's own numbering (or picked on a Gregorian calendar and converted), each is described under its field with its Gregorian date, and changing the calendar keeps the same days. Years and months are counted in the chosen calendar: a Hebrew year from Kislev 1 is Kislev 1 the next year.
 
+Show Work (**Ctrl+L**)
+: The steps to the answer, written out as you would on paper, each line with a short note about what was done. While the pane is open, every calculation also writes out its steps; **Show steps for the entry** does it for the entry (or the last answer) without calculating. Steps are written for arithmetic (brackets, powers, multiplication and division, addition and subtraction, one operation a line, fractions over a common denominator), linear equations (expand, collect, move terms across, divide), quadratic equations (factoring, with the grouping method when the first coefficient is not 1, square roots, or the quadratic formula with the discriminant and simplified roots), expanding brackets, factoring (common factor, difference of squares, perfect squares, rational roots), derivatives (the sum, power, product, quotient and chain rules) and two linear equations in two unknowns (eliminate, substitute back, check). Other entries say that they have no steps yet.
+
 Graph (**Ctrl+G**)
 : Draws up to six functions of x, each in its own colour. Drag to move, scroll or pinch to zoom. Where a curve crosses zero, and where two curves cross, a point is marked; point at it for its coordinates. Point near a curve to read its value. **Scale…** sets the ranges shown on the axes (numbers or expressions such as 2π), fits the vertical range to the curves, or gives both axes the same scale. **Save…** writes the graph as a PNG picture, a scalable SVG drawing, or a CSV table, chosen by the file name (.png, .svg, .csv) or the file type list. The CSV has a header row (x, then each function as typed) and 401 rows across the x range on screen; a value that is not defined at a point (a pole, a square root of a negative) is left empty. Graphs are drawn in radians. **Plot** on the scientific keypad, and **Graph** in the Formulas pane, draw what is in the entry and fit the view to it. While the Graph pane is open, a function of x typed into the entry is drawn when you press **Enter**: **sin(x)**, **y = x² / 10**, the name of a function of your own (**f**), or several at once, **sin(x); cos(x)**. Each takes the next free row, up to six.
 
@@ -97,8 +100,8 @@ Fiat currencies come from the European Central Bank's daily reference rates (abo
 **Alt+1**, **Alt+2**, **Alt+3**
 : Standard, Scientific and Programmer modes.
 
-**Ctrl+H**, **Ctrl+U**, **Ctrl+K**, **Ctrl+E**, **Ctrl+G**, **Ctrl+Shift+F**
-: The History, Unit Conversion, Currency, Date Calculation, Graph and Formulas panes.
+**Ctrl+H**, **Ctrl+U**, **Ctrl+K**, **Ctrl+E**, **Ctrl+G**, **Ctrl+Shift+F**, **Ctrl+L**
+: The History, Unit Conversion, Currency, Date Calculation, Graph, Formulas and Show Work panes.
 
 **Ctrl+T**
 : Show or hide the tape of recent entries.
@@ -165,7 +168,7 @@ All keys are in the **[calc]** group.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | mode | text | standard | standard, scientific or programmer |
-| pane | text | none | none, history, units, currency, dates, graph or formulas |
+| pane | text | none | none, history, units, currency, dates, graph, formulas or steps |
 | expanded | true/false | false | show the tape of recent entries |
 | angle | text | degrees | degrees, radians or gradians |
 | base | number | 10 | programmer mode: 2, 8, 10 or 16 |

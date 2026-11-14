@@ -246,6 +246,17 @@ The exact forms are sums of terms like **c·πᵃ·eᵇ·√r** with a fraction 
 
 Equations that are polynomials in one letter are solved exactly: **x² = 2** gives **x = −√2 ≈ −1.4142135624; x = √2 ≈ 1.4142135624**, **x² − x − 1 = 0** gives **(1 − √5)/2** and **(1 + √5)/2**, **x² + x + 1 = 0** gives **−1/2 − (√3/2)i** and **−1/2 + (√3/2)i**. A cubic or higher polynomial with no rational roots is solved as decimals.
 
+# SHOWING YOUR WORK
+**View ▸ Show Work** (**Ctrl+L**) writes out how an answer is reached, as you would do it with pencil and paper. Work out an entry with the pane open, or press **Show steps for the entry**.
+
+**2 + 3 × (4 − 1)²**: the brackets first (4 − 1 = 3), then the power (3² = 9, written as 3 × 3), then the multiplication, then the addition, one operation on each line. Fractions are put over a common denominator (**1/2 + 1/3** becomes **3/6 + 2/6**, then **5/6**); dividing by a fraction is multiplying by its reciprocal.
+
+**2x + 3 = 11**: subtract 3 from both sides, then divide both sides by 2. Letters on both sides are collected on the left and constants on the right, and a result such as **0 = 2** says that no value works.
+
+**6x² − 7x − 3 = 0**: multiply a and c, find the two numbers that multiply to ac and add to b, split the middle term, group in pairs, take out what each pair shares, take out the common bracket, and set each factor to zero. A square (**x² = 72**) takes the square root with the root simplified (√72 = √(36 × 2) = 6√2); anything else uses the quadratic formula, with the discriminant worked out and, when it is negative, the complex roots.
+
+**(x + 2)(x + 3)**, **(x + y)²**: every term of one bracket times every term of the other, then each product, then like terms. **factor(x³ − 5x² + 3x + 9)**: try the possible roots, divide, then factor what is left (a pattern, or two numbers). **diff(x³ − 4x, x)**: the sum rule, then the rule for each term, then the terms put together. **x + y = 5; x − y = 1**: add or subtract the equations to remove a letter, divide, put the value back, and check in the other equation.
+
 # UNITS
 An amount may carry units anywhere in an entry, not only in a conversion. Units combine with exact dimensional arithmetic: **5 ft + 3 in** is **5.25 ft**; **5 kg × 2 m/s²** is **10 N**; **10 m / 2 s** is **5 m/s**; **60 km/h × 2 h** is **120 km**. Adding amounts of different kinds (**5 m + 3 s**) is an error: "These units do not match". About 120 units are known, with SI and binary prefixes (**km**, **mA**, **GiB**) and some physical constants. Amounts are kept between runs like any other value.
 
