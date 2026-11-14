@@ -309,22 +309,22 @@ pub fn text(a: std.mem.Allocator, poly: Poly) Error![]u8 {
 
 // ---- dense univariate polynomials ------------------------------------------------------------------
 
-const Coefs = []Number;
+pub const Coefs = []Number;
 
-fn degree(c: []const Number) usize {
+pub fn degree(c: []const Number) usize {
     var d = c.len;
     while (d > 0 and c[d - 1].isZero()) d -= 1;
     return if (d == 0) 0 else d - 1;
 }
 
-fn trimmed(c: []const Number) []const Number {
+pub fn trimmed(c: []const Number) []const Number {
     var d = c.len;
     while (d > 0 and c[d - 1].isZero()) d -= 1;
     return c[0..d];
 }
 
 /// A polynomial in one letter as coefficients, lowest power first (null: more letters).
-fn dense(a: std.mem.Allocator, p: Poly, name: []const u8) Error!?Coefs {
+pub fn dense(a: std.mem.Allocator, p: Poly, name: []const u8) Error!?Coefs {
     var vi: ?usize = null;
     for (p.vars, 0..) |v, i| if (std.mem.eql(u8, v, name)) {
         vi = i;
@@ -345,7 +345,7 @@ fn dense(a: std.mem.Allocator, p: Poly, name: []const u8) Error!?Coefs {
     return out;
 }
 
-fn fromDense(a: std.mem.Allocator, c: []const Number, name: []const u8) Error!Poly {
+pub fn fromDense(a: std.mem.Allocator, c: []const Number, name: []const u8) Error!Poly {
     const vars = try a.alloc([]const u8, 1);
     vars[0] = name;
     var terms: std.ArrayList(PTerm) = .empty;
@@ -358,9 +358,9 @@ fn fromDense(a: std.mem.Allocator, c: []const Number, name: []const u8) Error!Po
     return .{ .vars = vars, .terms = terms.items };
 }
 
-const DivMod = struct { q: Coefs, r: Coefs };
+pub const DivMod = struct { q: Coefs, r: Coefs };
 
-fn divmod(a: std.mem.Allocator, n_in: []const Number, d_in: []const Number) Error!DivMod {
+pub fn divmod(a: std.mem.Allocator, n_in: []const Number, d_in: []const Number) Error!DivMod {
     const n = trimmed(n_in);
     const d = trimmed(d_in);
     if (d.len == 0) return error.DivisionByZero;
@@ -379,7 +379,7 @@ fn divmod(a: std.mem.Allocator, n_in: []const Number, d_in: []const Number) Erro
     return .{ .q = q, .r = r };
 }
 
-fn evalAt(a: std.mem.Allocator, c: []const Number, x: Number) Error!Number {
+pub fn evalAt(a: std.mem.Allocator, c: []const Number, x: Number) Error!Number {
     var v = try num.fromInt(a, 0);
     var i = c.len;
     while (i > 0) {
@@ -401,7 +401,7 @@ fn bigGcd(a: std.mem.Allocator, x: Big, y: Big) Error!Big {
 
 /// Scales to whole-number coefficients with no common factor and a positive leading
 /// coefficient: returns the primitive polynomial and the rational factor that was taken out.
-fn primitive(a: std.mem.Allocator, c_in: []const Number) Error!struct { prim: Coefs, content: Number } {
+pub fn primitive(a: std.mem.Allocator, c_in: []const Number) Error!struct { prim: Coefs, content: Number } {
     const c = trimmed(c_in);
     var lcm = try Big.initSet(a, 1);
     for (c) |v| {
@@ -431,7 +431,7 @@ fn primitive(a: std.mem.Allocator, c_in: []const Number) Error!struct { prim: Co
 }
 
 /// The positive divisors of |n|, when n is not too large to factor by trial division.
-fn divisors(a: std.mem.Allocator, n: Number) Error!?[]u64 {
+pub fn divisors(a: std.mem.Allocator, n: Number) Error!?[]u64 {
     const v = num.intValue(n) orelse return null;
     var m: u64 = @abs(v);
     if (m == 0) return null;
@@ -570,7 +570,7 @@ pub fn factorDense(a: std.mem.Allocator, c_in: []const Number) Error!Factored {
     return .{ .content = content, .factors = list.items };
 }
 
-fn mulDense(a: std.mem.Allocator, x: []const Number, y: []const Number) Error!Coefs {
+pub fn mulDense(a: std.mem.Allocator, x: []const Number, y: []const Number) Error!Coefs {
     const out = try a.alloc(Number, x.len + y.len - 1);
     for (out) |*o| o.* = try num.fromInt(a, 0);
     for (x, 0..) |p, i| for (y, 0..) |q, j| {
@@ -626,7 +626,7 @@ pub fn expand(ctx: Ctx, n: *const Node) Error!?[]u8 {
 }
 
 /// The one letter of a polynomial, or null (none, or several).
-fn onlyVar(p: Poly) ?[]const u8 {
+pub fn onlyVar(p: Poly) ?[]const u8 {
     var name: ?[]const u8 = null;
     for (p.vars, 0..) |v, i| {
         var used = false;

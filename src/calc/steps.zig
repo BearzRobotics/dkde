@@ -96,13 +96,18 @@ fn mk(a: std.mem.Allocator, n: N) Error!*N {
     return p;
 }
 
+var allow_letters: bool = false;
+
 fn fromNode(a: std.mem.Allocator, n: *const eval.Node) Error!?*N {
     switch (n.*) {
         .number => |v| {
             if (!v.isExact()) return null;
             return try mk(a, .{ .num = v });
         },
-        .name => return null,
+        .name => |nm| {
+            if (!allow_letters) return null;
+            return try mk(a, .{ .raw = .{ .text = nm.text, .prec = 7 } });
+        },
         .unary => |u| {
             const x = (try fromNode(a, u.arg)) orelse return null;
             return switch (u.op) {
@@ -137,6 +142,15 @@ fn fromNode(a: std.mem.Allocator, n: *const eval.Node) Error!?*N {
             return try mk(a, .{ .call = .{ .name = c.name, .arg = x } });
         },
     }
+}
+
+/// A letter, or a power of one (x, x²).
+fn startsWithLetter(n: *const N) bool {
+    return switch (n.*) {
+        .raw => |r| r.prec == 7 and r.text.len > 0 and std.ascii.isAlphabetic(r.text[0]),
+        .bin => |b| b.op == '^' and startsWithLetter(b.l),
+        else => false,
+    };
 }
 
 fn precOf(n: *const N) u8 {
@@ -187,6 +201,12 @@ fn writePrec(a: std.mem.Allocator, n: *const N, outer: u8, right: bool) Error![]
                 '*', '%' => {
                     const l = try writePrec(a, b.l, p, false);
                     const r = try writePrec(a, b.r, p + 1, true);
+                    // 2x, 3(x + 1): a number in front of a letter or a bracket is written without a sign.
+                    if (b.op == '*' and b.l.* == .num and !isFraction(b.l.num) and !b.l.num.isNegative() and
+                        (startsWithLetter(b.r) or (b.r.* == .bin and precOf(b.r) < p)))
+                    {
+                        return wrap(a, try std.fmt.allocPrint(a, "{s}{s}", .{ l, r }), outer > p);
+                    }
                     return wrap(a, try std.fmt.allocPrint(a, "{s} {s} {s}", .{ l, if (b.op == '*') "×" else "mod", r }), outer > p);
                 },
                 '/' => {
@@ -527,6 +547,358 @@ fn arithmetic(ctx: Ctx, root_node: *const eval.Node) Error!?[]Step {
     return steps.items;
 }
 
+// ---- equations ---------------------------------------------------------------------------------------------------------------
+
+fn push(a: std.mem.Allocator, list: *std.ArrayList(Step), note: []const u8, math: []const u8) Error!void {
+    try list.append(a, .{ .note = note, .math = math });
+}
+
+fn eqText(a: std.mem.Allocator, l: []const u8, r: []const u8) Error![]const u8 {
+    return std.fmt.allocPrint(a, "{s} = {s}", .{ l, r });
+}
+
+fn polyOf(a: std.mem.Allocator, c: []const Number, name: []const u8) Error![]const u8 {
+    return algebra.text(a, try algebra.fromDense(a, c, name));
+}
+
+fn coefAt(a: std.mem.Allocator, c: []const Number, i: usize) Error!Number {
+    if (i < c.len) return c[i];
+    return num.fromInt(a, 0);
+}
+
+/// "+ 3" or "− 3x": a term to add to both sides, written with its sign.
+fn withSign(a: std.mem.Allocator, term: []const u8, negative: bool) Error![]const u8 {
+    return std.fmt.allocPrint(a, "{s} {s}", .{ if (negative) "−" else "+", term });
+}
+
+fn absNumber(a: std.mem.Allocator, x: Number) Error!Number {
+    return if (x.isNegative()) num.neg(a, x) else x;
+}
+
+fn linearEquation(ctx: Ctx, start: []const u8, cl: []const Number, cr: []const Number, name: []const u8) Error![]Step {
+    const a = ctx.a;
+    var steps: std.ArrayList(Step) = .empty;
+    try push(a, &steps, "Start", start);
+    // Combined form of each side.
+    var a1 = try coefAt(a, cl, 1);
+    var b1 = try coefAt(a, cl, 0);
+    var a2 = try coefAt(a, cr, 1);
+    var b2 = try coefAt(a, cr, 0);
+    var lc = [_]Number{ b1, a1 };
+    var rc = [_]Number{ b2, a2 };
+    var lt = try polyOf(a, &lc, name);
+    var rt = try polyOf(a, &rc, name);
+    const combined = try eqText(a, lt, rt);
+    if (!std.mem.eql(u8, combined, start)) try push(a, &steps, "Expand the brackets and combine like terms on each side", combined);
+    // The letter on both sides: subtract the right one from both.
+    if (!a2.isZero()) {
+        const term = try polyOf(a, &[_]Number{ try num.fromInt(a, 0), try absNumber(a, a2) }, name);
+        const sign = try withSign(a, term, !a2.isNegative());
+        try push(a, &steps, try std.fmt.allocPrint(a, "{s} {s} {s} both sides", .{ if (a2.isNegative()) "Add" else "Subtract", term, if (a2.isNegative()) "to" else "from" }), try eqText(a, try std.fmt.allocPrint(a, "{s} {s}", .{ lt, sign }), try std.fmt.allocPrint(a, "{s} {s}", .{ rt, sign })));
+        a1 = try num.sub(a, a1, a2);
+        a2 = try num.fromInt(a, 0);
+        lc = .{ b1, a1 };
+        rc = .{ b2, a2 };
+        lt = try polyOf(a, &lc, name);
+        rt = try polyOf(a, &rc, name);
+        try push(a, &steps, "Simplify", try eqText(a, lt, rt));
+    }
+    // The letter has gone: the equation is always true, or never.
+    if (a1.isZero()) {
+        const same = (try num.order(a, b1, b2)) == .eq;
+        try push(a, &steps, if (same) "Both sides are the same: true for every value" else "The two sides can never be equal: no value works", try eqText(a, try numText(a, b1), try numText(a, b2)));
+        return steps.items;
+    }
+    // The constant on the left: move it across.
+    if (!b1.isZero()) {
+        const abs_b = try absNumber(a, b1);
+        const sign = try withSign(a, try numText(a, abs_b), !b1.isNegative());
+        try push(a, &steps, try std.fmt.allocPrint(a, "{s} {s} {s} both sides", .{ if (b1.isNegative()) "Add" else "Subtract", try numText(a, abs_b), if (b1.isNegative()) "to" else "from" }), try eqText(a, try std.fmt.allocPrint(a, "{s} {s}", .{ lt, sign }), try std.fmt.allocPrint(a, "{s} {s}", .{ rt, sign })));
+        b2 = try num.sub(a, b2, b1);
+        b1 = try num.fromInt(a, 0);
+        lc = .{ b1, a1 };
+        rc = .{ b2, a2 };
+        lt = try polyOf(a, &lc, name);
+        rt = try polyOf(a, &rc, name);
+        try push(a, &steps, "Simplify", try eqText(a, lt, rt));
+    }
+    if (a1.isZero()) {
+        const text = if (b2.isZero()) "Both sides are 0: true for every value" else "0 equals a number that is not 0: no value works";
+        try push(a, &steps, text, if (b2.isZero()) "0 = 0" else try eqText(a, "0", try numText(a, b2)));
+        return steps.items;
+    }
+    // A fraction in front of the letter: multiply by its reciprocal.
+    if (isFraction(a1)) {
+        const recip = try num.div(a, try num.fromInt(a, 1), a1);
+        const rec_text = try wrapFraction(a, recip);
+        const rhs = try numText(a, b2);
+        try push(a, &steps, try std.fmt.allocPrint(a, "Multiply both sides by {s}, the reciprocal of {s}", .{ try numText(a, recip), try numText(a, a1) }), try eqText(a, try std.fmt.allocPrint(a, "{s}({s})", .{ rec_text, lt }), try std.fmt.allocPrint(a, "{s}({s})", .{ rec_text, rhs })));
+        const answer0 = try eqText(a, name, try numText(a, try num.div(a, b2, a1)));
+        try push(a, &steps, "Simplify", answer0);
+        return steps.items;
+    }
+    // Divide by the coefficient.
+    if (!num.isOneNumber(a1)) {
+        const at = try numText(a, a1);
+        const wrapped = if (a1.isNegative() or isFraction(a1)) try std.fmt.allocPrint(a, "({s})", .{at}) else at;
+        const rhs = try numText(a, b2);
+        const rhs_w = if (b2.isNegative() or isFraction(b2)) try std.fmt.allocPrint(a, "({s})", .{rhs}) else rhs;
+        try push(a, &steps, try std.fmt.allocPrint(a, "Divide both sides by {s}", .{at}), try eqText(a, try std.fmt.allocPrint(a, "{s}/{s}", .{ lt, wrapped }), try std.fmt.allocPrint(a, "{s}/{s}", .{ rhs_w, wrapped })));
+    }
+    const x = try num.div(a, b2, a1);
+    const answer = try eqText(a, name, try numText(a, x));
+    if (steps.items.len > 0 and std.mem.eql(u8, steps.items[steps.items.len - 1].math, answer)) return steps.items;
+    try push(a, &steps, if (num.isOneNumber(a1)) "The letter is alone" else "Simplify", answer);
+    return steps.items;
+}
+
+/// The squares inside a whole number: 72 = 6² × 2.
+fn radicalText(a: std.mem.Allocator, n: u64) Error!?[]const u8 {
+    var sq: u64 = 1;
+    var rest = n;
+    var p: u64 = 2;
+    while (p * p <= rest) : (p += 1) {
+        while (rest % (p * p) == 0) {
+            rest /= p * p;
+            sq *= p;
+        }
+    }
+    if (sq == 1) return null;
+    if (rest == 1) return try std.fmt.allocPrint(a, "√{d} = √({d} × {d}) = {d}", .{ n, sq * sq, rest, sq });
+    return try std.fmt.allocPrint(a, "√{d} = √({d} × {d}) = {d}√{d}", .{ n, sq * sq, rest, sq, rest });
+}
+
+fn linearFactorText(a: std.mem.Allocator, f: []const Number, name: []const u8) Error![]const u8 {
+    return std.fmt.allocPrint(a, "({s})", .{try polyOf(a, f, name)});
+}
+
+/// A whole number with a proper minus sign.
+fn iText(a: std.mem.Allocator, v: i64) Error![]const u8 {
+    return std.fmt.allocPrint(a, "{s}{d}", .{ if (v < 0) "−" else "", @abs(v) });
+}
+
+/// The same, in brackets when negative: (−3).
+fn iWrap(a: std.mem.Allocator, v: i64) Error![]const u8 {
+    return if (v < 0) std.fmt.allocPrint(a, "({s})", .{try iText(a, v)}) else iText(a, v);
+}
+
+fn gcdInt(x: i64, y: i64) i64 {
+    return @intCast(std.math.gcd(@as(u64, @intCast(@abs(x))), @as(u64, @intCast(@abs(y)))));
+}
+
+fn quadraticEquation(ctx: Ctx, start: []const u8, diff: []const Number, name: []const u8) Error![]Step {
+    const a = ctx.a;
+    var steps: std.ArrayList(Step) = .empty;
+    try push(a, &steps, "Start", start);
+    var c = try a.dupe(Number, algebra.trimmed(diff));
+    const standard = try eqText(a, try polyOf(a, c, name), "0");
+    const pure_square = c.len == 3 and c[1].isZero() and !c[0].isZero();
+    if (!pure_square and !std.mem.eql(u8, standard, start)) try push(a, &steps, "Move everything to one side and combine like terms", standard);
+    // Whole-number coefficients with a positive leading one.
+    const pr = try algebra.primitive(a, c);
+    if (!num.isOneNumber(pr.content)) {
+        const k = pr.content;
+        const note = if (k.isInteger() and !k.isNegative())
+            try std.fmt.allocPrint(a, "Divide both sides by {s} (every coefficient has that factor)", .{try numText(a, k)})
+        else if (k.isInteger())
+            try std.fmt.allocPrint(a, "Divide both sides by {s}", .{try numText(a, k)})
+        else
+            try std.fmt.allocPrint(a, "Multiply both sides by {s} to clear the fractions", .{try numText(a, try num.div(a, try num.fromInt(a, 1), k))});
+        c = pr.prim;
+        try push(a, &steps, note, try eqText(a, try polyOf(a, c, name), "0"));
+    }
+    const qa = num.intValue(c[2]) orelse return steps.items;
+    const qb = num.intValue(c[1]) orelse return steps.items;
+    const qc = num.intValue(c[0]) orelse return steps.items;
+    const A = try numText(a, c[2]);
+    const B = try numText(a, c[1]);
+    const C = try numText(a, c[0]);
+    // c = 0: take the letter out.
+    if (qc == 0) {
+        const inner = try polyOf(a, &[_]Number{ c[1], c[2] }, name);
+        try push(a, &steps, "Factor out the common letter", try std.fmt.allocPrint(a, "{s}({s}) = 0", .{ name, inner }));
+        const r2 = try num.div(a, try num.neg(a, c[1]), c[2]);
+        try push(a, &steps, "A product is zero when one factor is zero", try std.fmt.allocPrint(a, "{s} = 0   or   {s} = 0", .{ name, inner }));
+        try push(a, &steps, "Solve each", try std.fmt.allocPrint(a, "{s} = 0   or   {s} = {s}", .{ name, name, try numText(a, r2) }));
+        return steps.items;
+    }
+    // b = 0: a square.
+    if (qb == 0) {
+        const rhs = try num.div(a, try num.neg(a, c[0]), c[2]);
+        if (!num.isOneNumber(c[2]) or true) {
+            try push(a, &steps, try std.fmt.allocPrint(a, "Move {s} to the other side", .{C}), try eqText(a, try polyOf(a, &[_]Number{ try num.fromInt(a, 0), try num.fromInt(a, 0), c[2] }, name), try numText(a, try num.neg(a, c[0]))));
+        }
+        if (!num.isOneNumber(c[2])) try push(a, &steps, try std.fmt.allocPrint(a, "Divide both sides by {s}", .{A}), try eqText(a, try std.fmt.allocPrint(a, "{s}²", .{name}), try numText(a, rhs)));
+        const sym = try symbolic.rational(a, rhs);
+        if (rhs.isNegative()) {
+            const pos = try symbolic.rational(a, try num.neg(a, rhs));
+            const root = (try symbolic.sqrt(a, pos)) orelse return steps.items;
+            try push(a, &steps, "A square is never negative: the roots are not real. Take the square root of both sides", try eqText(a, name, try std.fmt.allocPrint(a, "±{s}i", .{try symbolic.format(a, root)})));
+            return steps.items;
+        }
+        const root = (try symbolic.sqrt(a, sym)) orelse return steps.items;
+        try push(a, &steps, "Take the square root of both sides (both signs)", try eqText(a, name, try std.fmt.allocPrint(a, "±√{s}", .{try wrapFraction(a, rhs)})));
+        if (rhs.isExact() and rhs.isInteger() and num.intValue(rhs) != null) {
+            if (try radicalText(a, @intCast(num.intValue(rhs).?))) |rt| try push(a, &steps, "Simplify the root", rt);
+        }
+        try push(a, &steps, "The two solutions", try eqText(a, name, try std.fmt.allocPrint(a, "±{s}", .{try symbolic.format(a, root)})));
+        return steps.items;
+    }
+    // Whole-number factors?
+    const fac = try algebra.factorDense(a, c);
+    var linear_factors: usize = 0;
+    var total_mult: u32 = 0;
+    for (fac.factors) |f| {
+        if (algebra.degree(f.coefs) == 1) linear_factors += 1;
+        total_mult += f.mult * @as(u32, @intCast(algebra.degree(f.coefs)));
+    }
+    if (linear_factors == fac.factors.len and total_mult == 2) {
+        // Find the two numbers.
+        const ac = qa * qc;
+        var m: i64 = 0;
+        var n: i64 = 0;
+        const divs = (try algebra.divisors(a, try num.fromInt(a, ac))) orelse return steps.items;
+        var found = false;
+        outer: for (divs) |d| {
+            var sign: i64 = 1;
+            while (sign >= -1) : (sign -= 2) {
+                const mm = sign * @as(i64, @intCast(d));
+                if (@rem(ac, mm) != 0) continue;
+                const nn = @divExact(ac, mm);
+                if (mm + nn == qb) {
+                    if (mm <= nn) {
+                        m = mm;
+                        n = nn;
+                    } else {
+                        m = nn;
+                        n = mm;
+                    }
+                    found = true;
+                    break :outer;
+                }
+            }
+        }
+        if (!found) return steps.items;
+        if (qa == 1) {
+            try push(a, &steps, try std.fmt.allocPrint(a, "Find two numbers that multiply to {s} and add to {s}: {s} and {s}", .{ C, B, try iText(a, m), try iText(a, n) }), try std.fmt.allocPrint(a, "{s} × {s} = {s},   {s} + {s} = {s}", .{ try iWrap(a, m), try iWrap(a, n), try iText(a, qc), try iWrap(a, m), try iWrap(a, n), try iText(a, qb) }));
+        } else {
+            try push(a, &steps, try std.fmt.allocPrint(a, "Multiply {s} and {s}: {s}. Find two numbers that multiply to {s} and add to {s}: {s} and {s}", .{ A, C, try iText(a, ac), try iText(a, ac), B, try iText(a, m), try iText(a, n) }), try std.fmt.allocPrint(a, "{s} × {s} = {s},   {s} + {s} = {s}", .{ try iWrap(a, m), try iWrap(a, n), try iText(a, ac), try iWrap(a, m), try iWrap(a, n), try iText(a, qb) }));
+            // Split the middle term, group in pairs, take out what each pair shares.
+            var pair = [2]i64{ m, n };
+            var attempt: usize = 0;
+            while (attempt < 2) : (attempt += 1) {
+                const first = pair[0];
+                const second = pair[1];
+                const g1 = gcdInt(qa, first);
+                const in1a = @divExact(qa, g1);
+                const in1b = @divExact(first, g1);
+                // The second pair, n x + c, must be g2 times the same bracket.
+                if (in1a == 0 or @rem(second, in1a) != 0 or @divExact(second, in1a) * in1b != qc) {
+                    pair = .{ n, m };
+                    continue;
+                }
+                const g2 = @divExact(second, in1a);
+                const sq_term = try termStr(a, qa, 2, name, true);
+                try push(a, &steps, "Split the middle term", try std.fmt.allocPrint(a, "{s}{s}{s}{s} = 0", .{ sq_term, try termStr(a, first, 1, name, false), try termStr(a, second, 1, name, false), try termStr(a, qc, 0, name, false) }));
+                try push(a, &steps, "Group the terms in pairs", try std.fmt.allocPrint(a, "({s}{s}) + ({s}{s}) = 0", .{ sq_term, try termStr(a, first, 1, name, false), try termStr(a, second, 1, name, true), try termStr(a, qc, 0, name, false) }));
+                const bracket = try polyOf(a, &[_]Number{ try num.fromInt(a, in1b), try num.fromInt(a, in1a) }, name);
+                const g1x = try polyOf(a, &[_]Number{ try num.fromInt(a, 0), try num.fromInt(a, g1) }, name);
+                const g2_mag: i64 = @intCast(@abs(g2));
+                try push(a, &steps, "Take out what each pair shares", try std.fmt.allocPrint(a, "{s}({s}) {s} {d}({s}) = 0", .{ g1x, bracket, if (g2 < 0) "−" else "+", g2_mag, bracket }));
+                const outer_factor = try polyOf(a, &[_]Number{ try num.fromInt(a, g2), try num.fromInt(a, g1) }, name);
+                try push(a, &steps, try std.fmt.allocPrint(a, "Take out the common bracket ({s})", .{bracket}), try std.fmt.allocPrint(a, "({s})({s}) = 0", .{ outer_factor, bracket }));
+                break;
+            }
+        }
+        // The factored form, then each factor to zero.
+        var product: std.ArrayList(u8) = .empty;
+        var zeros: std.ArrayList(u8) = .empty;
+        var answers: std.ArrayList(u8) = .empty;
+        for (fac.factors) |f| {
+            const ft = try linearFactorText(a, f.coefs, name);
+            const r1 = try num.div(a, try num.neg(a, f.coefs[0]), f.coefs[1]);
+            try product.appendSlice(a, ft);
+            if (f.mult > 1) try product.appendSlice(a, "²");
+            if (zeros.items.len > 0) try zeros.appendSlice(a, "   or   ");
+            try zeros.print(a, "{s} = 0", .{try polyOf(a, f.coefs, name)});
+            if (answers.items.len > 0) try answers.appendSlice(a, "   or   ");
+            try answers.print(a, "{s} = {s}", .{ name, try numText(a, r1) });
+        }
+        if (qa == 1) try push(a, &steps, "Write it as a product of brackets", try std.fmt.allocPrint(a, "{s} = 0", .{product.items}));
+        try push(a, &steps, "A product is zero when one factor is zero", zeros.items);
+        try push(a, &steps, "Solve each", answers.items);
+        return steps.items;
+    }
+    // The quadratic formula.
+    try push(a, &steps, "No whole-number factors work: use the quadratic formula", try std.fmt.allocPrint(a, "{s} = (−b ± √(b² − 4ac)) / (2a)", .{name}));
+    try push(a, &steps, try std.fmt.allocPrint(a, "Here a = {s}, b = {s}, c = {s}", .{ A, B, C }), try std.fmt.allocPrint(a, "{s} = (−({s}) ± √(({s})² − 4({s})({s}))) / (2({s}))", .{ name, B, B, A, C, A }));
+    const disc = try num.sub(a, try num.mul(a, c[1], c[1]), try num.mul(a, try num.fromInt(a, 4), try num.mul(a, c[2], c[0])));
+    const dt = try numText(a, disc);
+    try push(a, &steps, "Work out what is under the root (the discriminant)", try std.fmt.allocPrint(a, "({s})² − 4({s})({s}) = {s}", .{ B, A, C, dt }));
+    const neg_b = try numText(a, try num.neg(a, c[1]));
+    const two_a = try numText(a, try num.mul(a, try num.fromInt(a, 2), c[2]));
+    if (disc.isNegative()) {
+        const mag = try num.neg(a, disc);
+        try push(a, &steps, "The discriminant is negative: there is no real root, the roots are complex (i = √−1)", try std.fmt.allocPrint(a, "{s} = ({s} ± √({s})) / {s}", .{ name, neg_b, dt, two_a }));
+        if (num.intValue(mag)) |mv| if (try radicalText(a, @intCast(mv))) |rt| try push(a, &steps, "Simplify the root of the positive part, and put i in front", rt);
+    } else {
+        try push(a, &steps, "Put the numbers in", try std.fmt.allocPrint(a, "{s} = ({s} ± √{s}) / {s}", .{ name, neg_b, dt, two_a }));
+        if (num.intValue(disc)) |dv| if (try radicalText(a, @intCast(dv))) |rt| try push(a, &steps, "Simplify the root", rt);
+    }
+    if (try algebra.solveDense(a, c)) |sol| {
+        var out: std.ArrayList(u8) = .empty;
+        const all = [_][]algebra.Root{ sol.real, sol.complex };
+        for (all) |group| for (group) |r| {
+            if (out.items.len > 0) try out.appendSlice(a, "   or   ");
+            try out.print(a, "{s} = {s}", .{ name, try algebra.rootText(a, r) });
+        };
+        try push(a, &steps, "The two solutions", out.items);
+        if (sol.real.len == 2) {
+            const v1 = try symbolic.toNumber(a, sol.real[0].re);
+            const v2 = try symbolic.toNumber(a, sol.real[1].re);
+            try push(a, &steps, "As decimals", try std.fmt.allocPrint(a, "{s} ≈ {s}   or   {s} ≈ {s}", .{ name, try num.format(a, v1, .{ .decimals = 6 }), name, try num.format(a, v2, .{ .decimals = 6 }) }));
+        }
+    }
+    return steps.items;
+}
+
+/// A term of a polynomial with its sign: "6x²", " − 9x", " + 2". The first term has no plus.
+fn termStr(a: std.mem.Allocator, v: i64, power: u8, name: []const u8, first: bool) Error![]const u8 {
+    const mag: u64 = @abs(v);
+    var body: std.ArrayList(u8) = .empty;
+    if (power == 0) {
+        try body.print(a, "{d}", .{mag});
+    } else {
+        if (mag != 1) try body.print(a, "{d}", .{mag});
+        try body.appendSlice(a, name);
+        if (power > 1) try body.appendSlice(a, sup_digits[power]);
+    }
+    if (first) return std.fmt.allocPrint(a, "{s}{s}", .{ if (v < 0) "−" else "", body.items });
+    return std.fmt.allocPrint(a, " {s} {s}", .{ if (v < 0) "−" else "+", body.items });
+}
+
+/// Equations in one letter: linear and quadratic.
+fn equation(ctx: Ctx, l: *const eval.Node, r: *const eval.Node) Error!?[]Step {
+    const a = ctx.a;
+    const actx: algebra.Ctx = .{ .a = a, .session = ctx.session };
+    const pl = (try algebra.fromNode(actx, l)) orelse return null;
+    const pr = (try algebra.fromNode(actx, r)) orelse return null;
+    const diff = try algebra.sub(a, pl, pr);
+    const name = algebra.onlyVar(diff) orelse algebra.onlyVar(pl) orelse algebra.onlyVar(pr) orelse return null;
+    const cl = (try algebra.dense(a, pl, name)) orelse return null;
+    const cr = (try algebra.dense(a, pr, name)) orelse return null;
+    const cd = (try algebra.dense(a, diff, name)) orelse return null;
+    const deg = algebra.degree(cd);
+    allow_letters = true;
+    defer allow_letters = false;
+    const ln = (try fromNode(a, l)) orelse return null;
+    const rn = (try fromNode(a, r)) orelse return null;
+    const start = try eqText(a, try write(a, ln), try write(a, rn));
+    if (deg <= 1) return try linearEquation(ctx, start, cl, cr, name);
+    if (deg == 2) return try quadraticEquation(ctx, start, cd, name);
+    return null;
+}
+
 // ---- the entry point -------------------------------------------------------------------------------------------------------
 
 /// The steps for an entry, or null when there are none (a number already, no steps worth showing, or a
@@ -542,7 +914,7 @@ pub fn explain(ctx: Ctx, text: []const u8) Error!?[]Step {
             if (steps.len <= 1) return null;
             return steps;
         },
-        .equation => return null,
+        .equation => |eq| return try equation(ctx, eq.l, eq.r),
     }
 }
 
@@ -585,4 +957,59 @@ test "negative numbers and powers" {
 
 test "roots and functions" {
     try lines(&.{ "√16 + 2", "4 + 2", "6" }, "sqrt(16) + 2");
+}
+
+test "a linear equation" {
+    try lines(&.{
+        "2x + 3 = 11",
+        "2x + 3 − 3 = 11 − 3",
+        "2x = 8",
+        "2x/2 = 8/2",
+        "x = 4",
+    }, "2x + 3 = 11");
+    try lines(&.{
+        "5x − 2 = 3x + 8",
+        "5x − 2 − 3x = 3x + 8 − 3x",
+        "2x − 2 = 8",
+        "2x − 2 + 2 = 8 + 2",
+        "2x = 10",
+        "2x/2 = 10/2",
+        "x = 5",
+    }, "5x - 2 = 3x + 8");
+    try lines(&.{
+        "3(x + 1) = 2x + 7",
+        "3x + 3 = 2x + 7",
+        "3x + 3 − 2x = 2x + 7 − 2x",
+        "x + 3 = 7",
+        "x + 3 − 3 = 7 − 3",
+        "x = 4",
+    }, "3(x+1) = 2x + 7");
+}
+
+test "a quadratic equation, factored" {
+    try lines(&.{
+        "x² − 5x + 6 = 0",
+        "(−3) × (−2) = 6,   (−3) + (−2) = −5",
+        "(x − 2)(x − 3) = 0",
+        "x − 2 = 0   or   x − 3 = 0",
+        "x = 2   or   x = 3",
+    }, "x^2 - 5x + 6 = 0");
+}
+
+test "zz print" {
+    if (std.c.getenv("STEPS_PRINT") == null) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var session: eval.Session = .{ .gpa = std.testing.allocator };
+    defer session.deinit();
+    const list = [_][]const u8{ "6x^2 - 7x - 3 = 0", "x^2 = 2", "x^2 = 72", "x^2 - x - 1 = 0", "x^2 + x + 1 = 0", "2x^2 - 2x - 12 = 0", "x^2 + 4x = 0", "x^2 = -9", "x^2 - 6x + 9 = 0", "(x+1)^2 = 4", "x/2 + 1/3 = 5/6", "2x + 3 = 2x + 5", "3x - 1 = 3x - 1" };
+    for (list) |src| {
+        std.debug.print("\n=== {s}\n", .{src});
+        const steps = (try explain(.{ .a = a, .session = &session, .mode = .{} }, src)) orelse {
+            std.debug.print("  (no steps)\n", .{});
+            continue;
+        };
+        for (steps) |st| std.debug.print("  [{s}]\n      {s}\n", .{ st.note, st.math });
+    }
 }
