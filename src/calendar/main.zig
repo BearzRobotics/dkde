@@ -432,8 +432,15 @@ pub const CalendarApp = struct {
         self.grid.as(gtk.Widget).setVexpand(1);
         const month_box = gtk.Box.new(.vertical, 4);
         month_box.as(gtk.Widget).setHexpand(1);
-        month_box.append(bar.as(gtk.Widget));
-        month_box.append(bar2.as(gtk.Widget));
+        // The button rows scroll sideways rather than hold the window wide (it must shrink to half a screen).
+        inline for (.{ bar, bar2 }) |row| {
+            const row_scroll = gtk.ScrolledWindow.new();
+            row_scroll.setPolicy(.automatic, .never);
+            row_scroll.setPropagateNaturalHeight(1);
+            row_scroll.setMinContentWidth(120);
+            row_scroll.setChild(row.as(gtk.Widget));
+            month_box.append(row_scroll.as(gtk.Widget));
+        }
         // The grid scrolls when it does not fit, so it never makes the window bigger
         // than the screen.
         const grid_scroll = gtk.ScrolledWindow.new();
