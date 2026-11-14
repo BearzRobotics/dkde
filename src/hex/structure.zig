@@ -34,7 +34,148 @@ pub const Entry = struct {
     magic_offset: usize = 0,
     /// Content types the pattern claims (`#pragma MIME`).
     mimes: [][]u8 = &.{},
+    /// Modification time and size of the file when it was read; the index
+    /// is trusted for a file only while both are unchanged.
+    mtime: i64 = 0,
+    size: u64 = 0,
 };
+
+fn freeEntry(a: std.mem.Allocator, e: Entry) void {
+    a.free(e.path);
+    a.free(e.id);
+    a.free(e.title);
+    for (e.extensions) |x| a.free(x);
+    a.free(e.extensions);
+    a.free(e.magic);
+    for (e.mimes) |x| a.free(x);
+    a.free(e.mimes);
+}
+
+// The index: what was learned from each format file, kept in the user's cache
+// so that opening the editor does not parse hundreds of files again. A file is
+// parsed again only when it is new or its size or modification time changed.
+
+const index_header = "dkde-hex-index 1";
+const sep_list: u8 = 0x1f;
+
+fn indexPath(a: std.mem.Allocator) ![:0]u8 {
+    return std.fmt.allocPrintSentinel(a, "{s}/dkde/hex-formats.index", .{std.mem.span(glib.getUserCacheDir())}, 0);
+}
+
+/// A field with tabs and line ends taken out, so a line stays one record.
+fn cleanField(out: *std.ArrayList(u8), a: std.mem.Allocator, text: []const u8) !void {
+    for (text) |c| try out.append(a, if (c == '\t' or c == '\n' or c == '\r' or c == sep_list) ' ' else c);
+}
+
+fn writeIndex(a: std.mem.Allocator, entries: []const Entry) void {
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(a);
+    out.appendSlice(a, index_header ++ "\n") catch return;
+    for (entries) |e| {
+        out.print(a, "{d}\t{d}\t{d}\t{d}\t", .{ @intFromEnum(e.kind), e.mtime, e.size, e.magic_offset }) catch return;
+        for ([_][]const u8{ e.path, e.id, e.title }) |f| {
+            cleanField(&out, a, f) catch return;
+            out.append(a, '\t') catch return;
+        }
+        for (e.extensions, 0..) |x, i| {
+            if (i > 0) out.append(a, sep_list) catch return;
+            cleanField(&out, a, x) catch return;
+        }
+        out.append(a, '\t') catch return;
+        for (e.mimes, 0..) |x, i| {
+            if (i > 0) out.append(a, sep_list) catch return;
+            cleanField(&out, a, x) catch return;
+        }
+        out.append(a, '\t') catch return;
+        for (e.magic) |b| out.print(a, "{x:0>2}", .{b}) catch return;
+        out.append(a, '\n') catch return;
+    }
+    const path = indexPath(a) catch return;
+    defer a.free(path);
+    if (std.fs.path.dirname(path)) |d| {
+        const dz = a.dupeSentinel(u8, d, 0) catch return;
+        defer a.free(dz);
+        _ = glib.mkdirWithParents(dz, 0o755);
+    }
+    _ = glib.fileSetContents(path, out.items.ptr, @intCast(out.items.len), null);
+}
+
+fn splitList(a: std.mem.Allocator, text: []const u8) ![][]u8 {
+    var list: std.ArrayList([]u8) = .empty;
+    errdefer {
+        for (list.items) |x| a.free(x);
+        list.deinit(a);
+    }
+    if (text.len > 0) {
+        var it = std.mem.splitScalar(u8, text, sep_list);
+        while (it.next()) |part| try list.append(a, try a.dupe(u8, part));
+    }
+    return list.toOwnedSlice(a);
+}
+
+fn parseIndexLine(a: std.mem.Allocator, line: []const u8) ?Entry {
+    var it = std.mem.splitScalar(u8, line, '\t');
+    const kind_n = std.fmt.parseInt(u8, it.next() orelse return null, 10) catch return null;
+    if (kind_n > 1) return null;
+    const mtime = std.fmt.parseInt(i64, it.next() orelse return null, 10) catch return null;
+    const size = std.fmt.parseInt(u64, it.next() orelse return null, 10) catch return null;
+    const moff = std.fmt.parseInt(usize, it.next() orelse return null, 10) catch return null;
+    const path = it.next() orelse return null;
+    const id = it.next() orelse return null;
+    const title = it.next() orelse return null;
+    const exts_t = it.next() orelse return null;
+    const mimes_t = it.next() orelse return null;
+    const magic_t = it.next() orelse return null;
+    if (magic_t.len % 2 != 0) return null;
+    const magic = a.alloc(u8, magic_t.len / 2) catch return null;
+    errdefer a.free(magic);
+    _ = std.fmt.hexToBytes(magic, magic_t) catch {
+        a.free(magic);
+        return null;
+    };
+    const p = a.dupeSentinel(u8, path, 0) catch return null;
+    const i_d = a.dupe(u8, id) catch return null;
+    const t = a.dupe(u8, title) catch return null;
+    const exts = splitList(a, exts_t) catch return null;
+    const mimes = splitList(a, mimes_t) catch return null;
+    return .{
+        .kind = @enumFromInt(kind_n),
+        .path = p,
+        .id = i_d,
+        .title = t,
+        .extensions = exts,
+        .magic = magic,
+        .magic_offset = moff,
+        .mimes = mimes,
+        .mtime = mtime,
+        .size = size,
+    };
+}
+
+/// The saved index by file path; empty when there is none or it is unreadable.
+fn readIndex(a: std.mem.Allocator, map: *std.StringHashMapUnmanaged(Entry)) void {
+    const path = indexPath(a) catch return;
+    defer a.free(path);
+    const text = readFile(a, path) catch return;
+    defer a.free(text);
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    if (!std.mem.eql(u8, lines.next() orelse return, index_header)) return;
+    while (lines.next()) |line| {
+        if (line.len == 0) continue;
+        const e = parseIndexLine(a, line) orelse continue;
+        map.put(a, e.path, e) catch {
+            freeEntry(a, e);
+            return;
+        };
+    }
+}
+
+/// Modification time (ns) and size of `path`, or null.
+fn stamp(path: []const u8) ?struct { mtime: i64, size: u64 } {
+    var threaded: std.Io.Threaded = .init_single_threaded;
+    const st = std.Io.Dir.cwd().statFile(threaded.io(), path, .{}) catch return null;
+    return .{ .mtime = @truncate(st.mtime.nanoseconds), .size = st.size };
+}
 
 const max_entries = 4000;
 
@@ -46,12 +187,23 @@ pub const Library = struct {
     entries: std.ArrayList(Entry) = .empty,
     /// Where imports of a hand-picked file are also looked for.
     extra_dir: ?[]u8 = null,
+    /// While scanning: the saved index, entries not yet met in the folders.
+    cached: std.StringHashMapUnmanaged(Entry) = .empty,
+    /// How many files had to be parsed in the last scan.
+    reparsed: usize = 0,
 
     pub fn scan(allocator: std.mem.Allocator, dir: []const u8, pattern_dir: []const u8) !*Library {
         const self = try allocator.create(Library);
         errdefer allocator.destroy(self);
         self.* = .{ .allocator = allocator, .dir = try allocator.dupe(u8, dir), .pattern_dir = try allocator.dupe(u8, pattern_dir) };
         errdefer self.deinit();
+        readIndex(allocator, &self.cached);
+        defer {
+            var it = self.cached.valueIterator();
+            while (it.next()) |e| freeEntry(allocator, e.*);
+            self.cached.deinit(allocator);
+            self.cached = .empty;
+        }
         try self.walk(self.dir, 0);
         if (self.pattern_dir.len > 0) {
             // Clone layout first (patterns/ inside), else the folder itself.
@@ -62,6 +214,8 @@ pub const Library = struct {
             try self.walk(if (glib.fileTest(z, .{ .is_dir = true }) != 0) inner else self.pattern_dir, 0);
         }
         std.mem.sort(Entry, self.entries.items, {}, entryLess);
+        // Rewrite the index when a file was parsed, or one it listed is gone.
+        if (self.reparsed > 0 or self.cached.count() > 0) writeIndex(allocator, self.entries.items);
         return self;
     }
 
@@ -71,16 +225,7 @@ pub const Library = struct {
 
     pub fn deinit(self: *Library) void {
         const a = self.allocator;
-        for (self.entries.items) |e| {
-            a.free(e.path);
-            a.free(e.id);
-            a.free(e.title);
-            for (e.extensions) |x| a.free(x);
-            a.free(e.extensions);
-            a.free(e.magic);
-            for (e.mimes) |x| a.free(x);
-            a.free(e.mimes);
-        }
+        for (self.entries.items) |e| freeEntry(a, e);
         self.entries.deinit(a);
         if (self.extra_dir) |d| a.free(d);
         a.free(self.dir);
@@ -106,18 +251,39 @@ pub const Library = struct {
             defer self.allocator.free(full);
             if (glib.fileTest(full, .{ .is_dir = true }) != 0) {
                 try self.walk(full, depth + 1);
+            } else if ((std.mem.endsWith(u8, name, ".ksy") or std.mem.endsWith(u8, name, ".hexpat")) and self.reuse(full)) {
+                continue;
             } else if (std.mem.endsWith(u8, name, ".ksy")) {
-                self.addFile(full) catch |e| switch (e) {
+                if (self.addFile(full)) |_| {
+                    self.reparsed += 1;
+                } else |e| switch (e) {
                     error.OutOfMemory => return e,
                     else => {},
-                };
+                }
             } else if (std.mem.endsWith(u8, name, ".hexpat")) {
-                self.addPattern(full, name) catch |e| switch (e) {
+                if (self.addPattern(full, name)) |_| {
+                    self.reparsed += 1;
+                } else |e| switch (e) {
                     error.OutOfMemory => return e,
                     else => {},
-                };
+                }
             }
         }
+    }
+
+    /// Takes the entry for `path` from the saved index if the file is unchanged.
+    fn reuse(self: *Library, path: [:0]const u8) bool {
+        const st = stamp(path) orelse return false;
+        const kv = self.cached.fetchRemove(path) orelse return false;
+        if (kv.value.mtime != st.mtime or kv.value.size != st.size) {
+            freeEntry(self.allocator, kv.value);
+            return false;
+        }
+        self.entries.append(self.allocator, kv.value) catch {
+            freeEntry(self.allocator, kv.value);
+            return false;
+        };
+        return true;
     }
 
     fn addFile(self: *Library, path: [:0]const u8) !void {
@@ -143,6 +309,8 @@ pub const Library = struct {
             .title = try a.dupe(u8, if (f.title.len > 0) f.title else f.id),
             .extensions = exts,
             .magic = try a.dupe(u8, f.magic),
+            .mtime = if (stamp(path)) |st| st.mtime else 0,
+            .size = if (stamp(path)) |st| st.size else 0,
         };
         errdefer {
             a.free(entry.path);
@@ -184,6 +352,8 @@ pub const Library = struct {
             .magic = try a.dupe(u8, info.magic),
             .magic_offset = info.magic_offset,
             .mimes = mimes,
+            .mtime = if (stamp(path)) |st| st.mtime else 0,
+            .size = if (stamp(path)) |st| st.size else 0,
         };
         errdefer {
             a.free(entry.path);
@@ -232,6 +402,36 @@ pub const Library = struct {
         if (ksy_count == 1) return ksy_hit;
         if (ksy_count == 0 and pat_count == 1) return pat_hit;
         return null;
+    }
+
+    /// Every format that could describe `data`, best first: the one `detect`
+    /// picks, then the others that handle the file's extension (a WAV file has
+    /// the magic of every RIFF format, so the first pick can be the wrong one).
+    pub fn candidates(self: *const Library, a: std.mem.Allocator, data: []const u8, path: ?[]const u8) std.mem.Allocator.Error![]*const Entry {
+        var out: std.ArrayList(*const Entry) = .empty;
+        errdefer out.deinit(a);
+        if (self.detect(data, path)) |e| try out.append(a, e);
+        const p = path orelse return out.toOwnedSlice(a);
+        const ext_raw = std.fs.path.extension(p);
+        if (ext_raw.len < 2 or ext_raw.len - 1 > 32) return out.toOwnedSlice(a);
+        var buf: [32]u8 = undefined;
+        const ext = std.ascii.lowerString(&buf, ext_raw[1..]);
+        // Kaitai formats first, then patterns.
+        for ([_]Kind{ .ksy, .hexpat }) |kind| {
+            for (self.entries.items) |*e| {
+                if (e.kind != kind) continue;
+                const listed = for (e.extensions) |x| {
+                    if (std.mem.eql(u8, x, ext)) break true;
+                } else false;
+                if (!listed) continue;
+                if (e.magic.len >= 2 and e.magic_offset + e.magic.len <= data.len and !std.mem.eql(u8, data[e.magic_offset..][0..e.magic.len], e.magic)) continue;
+                const seen = for (out.items) |o| {
+                    if (o == e) break true;
+                } else false;
+                if (!seen) try out.append(a, e);
+            }
+        }
+        return out.toOwnedSlice(a);
     }
 
     fn byMime(self: *const Library, data: []const u8, path: ?[]const u8) ?*const Entry {
@@ -710,4 +910,19 @@ test "node lookup finds the innermost field" {
     defer a.free(ranges);
     try std.testing.expectEqual(@as(usize, 1), ranges.len);
     try std.testing.expectEqual(@as(usize, 2), ranges[0].start);
+}
+
+test "an index line gives back the entry it was written from" {
+    const a = std.testing.allocator;
+    const e = parseIndexLine(a, "1\t123456789\t5206\t4\t/x/png.hexpat\tpng\tPNG file\tpng\x1fapng\timage/png\t89504e47") orelse return error.TestUnexpectedResult;
+    defer freeEntry(a, e);
+    try std.testing.expectEqual(Kind.hexpat, e.kind);
+    try std.testing.expectEqual(@as(i64, 123456789), e.mtime);
+    try std.testing.expectEqual(@as(u64, 5206), e.size);
+    try std.testing.expectEqual(@as(usize, 4), e.magic_offset);
+    try std.testing.expectEqualStrings("PNG file", e.title);
+    try std.testing.expectEqual(@as(usize, 2), e.extensions.len);
+    try std.testing.expectEqualStrings("apng", e.extensions[1]);
+    try std.testing.expectEqualSlices(u8, "\x89PNG", e.magic);
+    try std.testing.expect(parseIndexLine(a, "9\tbroken") == null);
 }

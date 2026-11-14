@@ -5,6 +5,8 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 ## Unreleased
 
 ### Added
+- **dkde-hex: format index.** The Kaitai and ImHex folders are indexed in `~/.cache/dkde/hex-formats.index`; only new or changed files are parsed at start (a 500-file scan went from over a second to under 30 ms).
+- **dkde-hex: more formats work.** Kaitai instances honour `if:` before `pos:`, and `parent:`; ImHex gains `$ = offset`, `std::mem::find_sequence(_in_range)`, `find_string(_in_range)`, `std::time::to_utc/to_local/format` and `sizeof` of a structure. ELF, JPEG, ZIP and tar now describe in full; a file's format is chosen among all candidates for the first that parses without error (a WAV file is no longer taken for AVI).
 - **dkde-hex** is back: the hex editor (disk mode, data inspector, Kaitai Struct and ImHex structure views), restored from before the restructure and moved to `hex.toml`, `--help`/`--version` and the per-program build.
 
 ## 0.2.0 (2026-11-13), first alpha

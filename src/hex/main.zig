@@ -1099,7 +1099,18 @@ const HexEditor = struct {
     fn autoDetect(self: *HexEditor) void {
         if (self.buffer.len() == 0) return;
         const lib = self.ensureLibrary() orelse return;
-        const entry = lib.detect(self.buffer.slice(), if (self.path) |p| p else null) orelse {
+        const cands = lib.candidates(self.allocator, self.buffer.slice(), if (self.path) |p| p else null) catch return;
+        defer self.allocator.free(cands);
+        // The first format that describes the whole file without an error;
+        // else the best guess (its error is shown).
+        var chosen: ?*const structure.Entry = if (cands.len > 0) cands[0] else null;
+        if (cands.len > 1) for (cands) |c| {
+            if (self.tryEntry(lib, c)) {
+                chosen = c;
+                break;
+            }
+        };
+        const entry = chosen orelse {
             // Say what was looked at, so a missing match can be told from a missing library.
             var ksy_n: usize = 0;
             var pat_n: usize = 0;
@@ -1113,6 +1124,22 @@ const HexEditor = struct {
         const copy = self.allocator.dupe(u8, entry.path) catch return;
         defer self.allocator.free(copy);
         self.applyPath(copy);
+    }
+
+    /// Whether the format at `entry` parses the buffer without an error.
+    fn tryEntry(self: *HexEditor, lib: *structure.Library, entry: *const structure.Entry) bool {
+        const engine: structure.Engine = if (std.mem.endsWith(u8, entry.path, ".hexpat")) blk: {
+            var failure: ?hexpat.LoadFailure = null;
+            const pattern = lib.loadPattern(entry.path, &failure) catch null orelse {
+                if (failure) |fl| self.allocator.free(fl.message);
+                return false;
+            };
+            break :blk .{ .hexpat = pattern };
+        } else .{ .ksy = lib.load(entry.path) catch return false };
+        defer engine.deinit();
+        const result = engine.run(self.allocator, self.buffer.slice()) catch return false;
+        defer result.deinit();
+        return result.message == null;
     }
 
     fn clearStructure(self: *HexEditor) void {

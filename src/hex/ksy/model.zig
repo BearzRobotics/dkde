@@ -51,6 +51,8 @@ pub const Attr = struct {
     pos: ?*const Expr = null,
     /// Instances only: read from this stream instead of the current one.
     io: ?*const Expr = null,
+    /// `parent:`, the object a nested type reports as its `_parent`.
+    parent_expr: ?*const Expr = null,
     value: ?*const Expr = null,
     process: bool = false,
     strz: bool = false,
@@ -392,6 +394,7 @@ fn parseAttr(ctx: *Ctx, id: []const u8, v: Value) LoadError!Attr {
     a.cond = exprOf(ctx, get(v, "if"));
     a.pos = exprOf(ctx, get(v, "pos"));
     a.io = exprOf(ctx, get(v, "io"));
+    a.parent_expr = exprOf(ctx, get(v, "parent"));
     a.value = exprOf(ctx, get(v, "value"));
     a.consume = flag(get(v, "consume"), true);
     a.include = flag(get(v, "include"), false);

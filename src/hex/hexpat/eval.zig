@@ -1205,6 +1205,13 @@ const Interp = struct {
                     return v;
                 };
             },
+            // `$ = offset` moves the read position.
+            .dollar => {
+                const off = try self.asInt(ctx.obj, v);
+                if (off < 0 or off > self.data.len) return self.fail(ctx.obj, "the position is outside the data", .{});
+                self.cursor = @intCast(off);
+                return v;
+            },
             else => {},
         }
         return self.fail(ctx.obj, "cannot assign to that", .{});
@@ -1232,7 +1239,16 @@ const Interp = struct {
                 return switch (t) {
                     .builtin => |b| .{ .int = b.size },
                     .enum_ => |ed| .{ .int = (try self.enumBase(ctx, ed)).size },
-                    else => self.fail(ctx.obj, "sizeof of a structure type is not supported; use sizeof on a field", .{}),
+                    // A structure's size is what reading one at the current position takes
+                    // (done over again, without showing it, and then undone).
+                    .strukt => |sd| {
+                        const saved_cursor = self.cursor;
+                        defer self.cursor = saved_cursor;
+                        var cx = ctx.*;
+                        const f = try self.readStruct(&cx, sd.def, sd.tb, sd.def.name, null, &.{}, null);
+                        return .{ .int = @intCast(f.size) };
+                    },
+                    else => self.fail(ctx.obj, "sizeof of this kind of type is not supported; use sizeof on a field", .{}),
                 };
             },
             .expr => |e| {
@@ -1335,6 +1351,52 @@ const Interp = struct {
             if (off < 0 or @as(usize, @intCast(off)) + size > self.data.len) return self.fail(ctx.obj, "read outside the data", .{});
             return .{ .str = self.data[@intCast(off)..][0..size] };
         }
+        if (eql(u8, name, "std::mem::find_sequence_in_range") or eql(u8, name, "std::mem::find_sequence")) {
+            // (occurrence, [from, to,] byte...): the offset of the nth match, or -1.
+            const ranged = name.len > "std::mem::find_sequence".len;
+            const first: usize = if (ranged) 3 else 1;
+            const occurrence = try self.intArg(ctx, args, 0);
+            var from: i128 = 0;
+            var to: i128 = self.data.len;
+            if (ranged) {
+                from = try self.intArg(ctx, args, 1);
+                to = try self.intArg(ctx, args, 2);
+            }
+            if (args.len <= first) return self.fail(ctx.obj, "a function is missing an argument", .{});
+            const needle = try self.arena.alloc(u8, args.len - first);
+            for (args[first..], needle) |a, *b| b.* = @truncate(@as(u128, @bitCast(try self.asInt(ctx.obj, a))));
+            return .{ .int = self.findBytes(occurrence, from, to, needle) };
+        }
+        if (eql(u8, name, "std::mem::find_string_in_range") or eql(u8, name, "std::mem::find_string")) {
+            const ranged = name.len > "std::mem::find_string".len;
+            const occurrence = try self.intArg(ctx, args, 0);
+            var from: i128 = 0;
+            var to: i128 = self.data.len;
+            if (ranged) {
+                from = try self.intArg(ctx, args, 1);
+                to = try self.intArg(ctx, args, 2);
+            }
+            const needle = try self.strArg(ctx, args, if (ranged) 3 else 1);
+            return .{ .int = self.findBytes(occurrence, from, to, needle) };
+        }
+        // Times are kept as seconds since 1970 (UTC; there is no time zone here).
+        if (eql(u8, name, "std::time::to_utc") or eql(u8, name, "std::time::to_local")) {
+            return .{ .int = try self.asInt(ctx.obj, args[0]) };
+        }
+        if (eql(u8, name, "std::time::filetime_to_unix")) {
+            return .{ .int = @divTrunc(try self.intArg(ctx, args, 0), 10_000_000) - 11644473600 };
+        }
+        if (eql(u8, name, "std::time::format")) {
+            const secs: i64 = @intCast(std.math.clamp(try self.intArg(ctx, args, 0), 0, 253402300799));
+            const es = std.time.epoch.EpochSeconds{ .secs = @intCast(secs) };
+            const day = es.getEpochDay().calculateYearDay();
+            const md = day.calculateMonthDay();
+            const ds = es.getDaySeconds();
+            return .{ .str = try std.fmt.allocPrint(self.arena, "{d:0>4}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}:{d:0>2}", .{
+                day.year,                    md.month.numeric(),         md.day_index + 1,
+                ds.getHoursIntoDay(),        ds.getMinutesIntoHour(),    ds.getSecondsIntoMinute(),
+            }) };
+        }
         if (eql(u8, name, "std::mem::align_to")) {
             const a = try self.intArg(ctx, args, 0);
             const v = try self.intArg(ctx, args, 1);
@@ -1409,6 +1471,23 @@ const Interp = struct {
         if (eql(u8, name, "std::format")) return .{ .str = try self.format(ctx, args) };
         _ = exprs;
         return self.fail(ctx.obj, "the function {s} is not supported", .{name});
+    }
+
+    /// The offset of the `occurrence`th (from 0) match of `needle` that starts in [from, to), or -1.
+    fn findBytes(self: *Interp, occurrence: i128, from: i128, to: i128, needle: []const u8) i128 {
+        if (needle.len == 0 or occurrence < 0) return -1;
+        const lo: usize = @intCast(std.math.clamp(from, 0, @as(i128, self.data.len)));
+        const hi: usize = @intCast(std.math.clamp(to, 0, @as(i128, self.data.len)));
+        var left = occurrence;
+        var at = lo;
+        while (at < hi) {
+            const found = std.mem.indexOfPos(u8, self.data[0..@min(self.data.len, hi + needle.len - 1)], at, needle) orelse return -1;
+            if (found >= hi) return -1;
+            if (left == 0) return @intCast(found);
+            left -= 1;
+            at = found + 1;
+        }
+        return -1;
     }
 
     /// `std::format` with `{}`, `{:x}`, `{:X}`, `{:08X}` and `{:d}`.

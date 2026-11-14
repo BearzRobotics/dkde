@@ -205,7 +205,7 @@ const Interp = struct {
         for (obj.td.seq) |a| {
             if (std.mem.eql(u8, a.id, name)) return self.fail(obj, obj.io.abs(), "{s} is used before it is read", .{name});
         }
-        return self.fail(obj, obj.io.abs(), "unknown name {s}", .{name});
+        return self.fail(obj, obj.io.abs(), "unknown name {s} (in {s})", .{ name, obj.td.name });
     }
 
     fn eval(self: *Interp, obj: *Obj, e: *const Expr) Error!Val {
@@ -439,6 +439,14 @@ const Interp = struct {
                 n.text = try self.display(obj, inst, v);
             };
             return v;
+        }
+        // `if:` comes before everything else: an instance that does not apply
+        // has no io or pos to evaluate (they may point nowhere then).
+        if (inst.cond) |c| {
+            if (!try self.truthy(obj, try self.eval(obj, c))) {
+                try obj.fields.put(self.arena, inst.id, .none);
+                return .none;
+            }
         }
         const saved_io = obj.io;
         defer obj.io = saved_io;
@@ -687,6 +695,12 @@ const Interp = struct {
         var vals: std.ArrayList(Val) = .empty;
         for (args) |e| try vals.append(self.arena, try self.eval(obj, e));
 
+        // `parent: expr` replaces the object that `_parent` finds.
+        var owner = obj;
+        if (a.parent_expr) |pe| switch (try self.eval(obj, pe)) {
+            .obj => |o| owner = o,
+            else => {},
+        };
         const io = obj.io;
         if (a.size != null or a.size_eos) {
             io.bits_left = 0;
@@ -699,9 +713,9 @@ const Interp = struct {
             const sub = try self.arena.create(Stream);
             sub.* = .{ .data = io.data[io.pos..][0..n], .base = io.base + io.pos };
             io.pos += n;
-            return self.parseObj(td, obj, sub, vals.items, node);
+            return self.parseObj(td, owner, sub, vals.items, node);
         }
-        return self.parseObj(td, obj, io, vals.items, node);
+        return self.parseObj(td, owner, io, vals.items, node);
     }
 
     fn resolveEndian(self: *Interp, td: *TypeDef, parent: ?*Obj, obj: *Obj) Error!bool {
