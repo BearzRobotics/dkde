@@ -28,17 +28,21 @@ pub const Number = union(enum) {
         return switch (self) {
             .approx => |f| f,
             .exact => |e| blk: {
-                // Scale both down together so huge parts still divide well.
+                // The top 64 bits of each part (so neither overflows a float),
+                // divided, and scaled back by the bits that were dropped.
                 const nb = e.num.bitCountAbs();
                 const db = e.den.bitCountAbs();
-                if (nb < 1000 and db < 1000) break :blk e.num.toFloat(f64, .nearest_even)[0] / e.den.toFloat(f64, .nearest_even)[0];
-                const shift = @max(nb, db) -| 900;
+                const shn: usize = nb -| 64;
+                const shd: usize = db -| 64;
                 var n = e.num.clone() catch break :blk std.math.nan(f64);
                 var d = e.den.clone() catch break :blk std.math.nan(f64);
-                n.shiftRight(&n, shift) catch break :blk std.math.nan(f64);
-                d.shiftRight(&d, shift) catch break :blk std.math.nan(f64);
-                if (d.eqlZero()) break :blk if (e.num.isPositive()) std.math.inf(f64) else -std.math.inf(f64);
-                break :blk n.toFloat(f64, .nearest_even)[0] / d.toFloat(f64, .nearest_even)[0];
+                n.abs();
+                n.shiftRight(&n, shn) catch break :blk std.math.nan(f64);
+                d.shiftRight(&d, shd) catch break :blk std.math.nan(f64);
+                if (d.eqlZero()) break :blk std.math.nan(f64);
+                const ratio = n.toFloat(f64, .nearest_even)[0] / d.toFloat(f64, .nearest_even)[0];
+                const scaled = std.math.ldexp(ratio, @as(i32, @intCast(@min(shn, 1 << 30))) - @as(i32, @intCast(@min(shd, 1 << 30))));
+                break :blk if (e.num.isPositive()) scaled else -scaled;
             },
         };
     }
@@ -374,7 +378,17 @@ pub fn format(a: std.mem.Allocator, x: Number, style: Style) Error![]u8 {
         .exact => |e| {
             const int_digits = decimalDigits(e.num) -| decimalDigits(e.den);
             // Very large or very small values (and the scientific styles) as d.ddd×10^n.
-            if (style.notation != .auto or int_digits > 30) return formatFloat(a, x.toFloat(), style);
+            // Below a billionth a fixed decimal would show a few digits or none (a
+            // nonzero result must not read as 0): d.ddd×10^-n, as for floats.
+            var small = false;
+            if (style.notation == .auto and int_digits < 1 and !e.num.eqlZero()) {
+                var scaled = try e.num.clone();
+                scaled.abs();
+                var g = try Big.initSet(a, 1_000_000_000);
+                try scaled.mul(&scaled, &g);
+                small = scaled.order(e.den) == .lt;
+            }
+            if (style.notation != .auto or int_digits > 30 or small) return formatExactScientific(a, e.num, e.den, style);
             if (isOne(e.den)) {
                 const s = try decString(a, e.num);
                 return group(a, s, style);
@@ -440,6 +454,92 @@ pub fn format(a: std.mem.Allocator, x: Number, style: Style) Error![]u8 {
     }
 }
 
+/// d.ddd×10^n straight from the fraction, so that a whole number of any size
+/// keeps its leading digits (a float would overflow past 10^308). Engineering
+/// keeps n a multiple of 3.
+fn formatExactScientific(a: std.mem.Allocator, num_in: Big, den: Big, style: Style) Error![]u8 {
+    if (num_in.eqlZero()) return a.dupe(u8, "0");
+    const negative = !num_in.isPositive();
+    var n = try num_in.clone();
+    n.abs();
+    const sig: usize = @min(style.decimals, 15);
+    // Enough digits of n/d: sig + 1 to show, one more to round by, and slack
+    // for the estimate of the size being off by one or two.
+    const want: i64 = @intCast(sig + 4);
+    const est: i64 = @as(i64, @intCast(decimalDigits(n))) - @as(i64, @intCast(decimalDigits(den)));
+    const k: i64 = want - est; // multiply n by 10^k (divide by 10^-k when negative)
+    // 10^|k| by repeated squaring.
+    var scale = try Big.initSet(a, 1);
+    var p = try Big.initSet(a, 10);
+    var e_: u64 = @intCast(@abs(k));
+    while (e_ > 0) : (e_ >>= 1) {
+        if (e_ & 1 == 1) try scale.mul(&scale, &p);
+        if (e_ > 1) {
+            var sq = try Big.init(a);
+            try sq.mul(&p, &p);
+            p = sq;
+        }
+    }
+    var top = try Big.init(a);
+    var bottom = try Big.init(a);
+    var q = try Big.init(a);
+    var r = try Big.init(a);
+    if (k >= 0) {
+        try top.mul(&n, &scale);
+        try bottom.copy(den.toConst());
+    } else {
+        var d0 = try den.clone();
+        try top.copy(n.toConst());
+        try bottom.mul(&d0, &scale);
+    }
+    try q.divTrunc(&r, &top, &bottom);
+    const digits_all = try decString(a, q);
+    const L: i64 = @intCast(digits_all.len);
+    var exp10: i64 = L - 1 - k; // the exponent of the first digit
+    var lead: usize = 1; // digits before the point
+    if (style.notation == .engineering) {
+        const e3 = @divFloor(exp10, 3) * 3;
+        lead = @intCast(exp10 - e3 + 1);
+        exp10 = e3;
+    }
+    const keep = sig + lead; // digits shown
+    var digits = try a.dupe(u8, digits_all[0..@min(keep, digits_all.len)]);
+    const round_up = digits_all.len > keep and digits_all[keep] >= '5';
+    var carried = false;
+    if (round_up) {
+        var j = digits.len;
+        while (j > 0) {
+            j -= 1;
+            if (digits[j] == '9') {
+                digits[j] = '0';
+            } else {
+                digits[j] += 1;
+                break;
+            }
+        } else carried = true;
+    }
+    if (carried) {
+        digits = try std.fmt.allocPrint(a, "1{s}", .{digits});
+        if (style.notation == .engineering and lead == 3) {
+            // 999.9 -> 1000: one group higher.
+            exp10 += 3;
+            digits = digits[0 .. digits.len - 2];
+            lead = 1;
+        } else if (style.notation == .engineering) {
+            lead += 1;
+            digits = digits[0 .. digits.len - 1];
+        } else {
+            exp10 += 1;
+            digits = digits[0 .. digits.len - 1];
+        }
+    }
+    var frac_end = digits.len;
+    while (frac_end > lead and digits[frac_end - 1] == '0') frac_end -= 1;
+    const whole = digits[0..@min(lead, digits.len)];
+    const frac = if (frac_end > lead) digits[lead..frac_end] else "";
+    return std.fmt.allocPrint(a, "{s}{s}{s}{s}×10^{d}", .{ if (negative) "-" else "", whole, if (frac.len > 0) style.point else "", frac, exp10 });
+}
+
 fn decString(a: std.mem.Allocator, b: Big) Error![]u8 {
     return b.toString(a, 10, .lower) catch |e| switch (e) {
         error.OutOfMemory => error.OutOfMemory,
@@ -453,6 +553,8 @@ fn decimalDigits(b: Big) usize {
 }
 
 fn formatFloat(a: std.mem.Allocator, f: f64, style: Style) Error![]u8 {
+    if (std.math.isNan(f)) return error.Domain;
+    if (std.math.isInf(f)) return error.TooLarge;
     if (f == 0) return a.dupe(u8, "0");
     const m = @abs(f);
     if (style.notation == .auto and m >= 1e-9 and m < 1e15) {

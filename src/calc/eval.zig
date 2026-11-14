@@ -901,7 +901,9 @@ pub const Eval = struct {
         if (eql(u8, f, "ncr") or eql(u8, f, "npr")) {
             const nn = num.intValue(x) orelse return error.Domain;
             const r = num.intValue(args[1]) orelse return error.Domain;
-            if (nn < 0 or r < 0 or r > nn) return error.Domain;
+            if (nn < 0 or r < 0) return error.Domain;
+            // Choosing more than there are: no way to do it.
+            if (r > nn) return num.fromInt(a, 0);
             if (nn > 100_000) return error.TooLarge;
             var acc = try num.fromInt(a, 1);
             var i: i64 = 0;

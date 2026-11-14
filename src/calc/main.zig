@@ -2316,4 +2316,5 @@ test {
     _ = @import("calculus.zig");
     _ = @import("formulas.zig");
     _ = @import("letters.zig");
+    _ = @import("accuracy_test.zig");
 }
