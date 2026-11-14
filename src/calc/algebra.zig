@@ -721,7 +721,7 @@ fn factorMonomial(a: std.mem.Allocator, p: Poly) Error![]u8 {
 
 // ---- cancelling a fraction ------------------------------------------------------------------------------
 
-fn gcdDense(a: std.mem.Allocator, x_in: []const Number, y_in: []const Number) Error!Coefs {
+pub fn gcdDense(a: std.mem.Allocator, x_in: []const Number, y_in: []const Number) Error!Coefs {
     var x = try a.dupe(Number, trimmed(x_in));
     var y = try a.dupe(Number, trimmed(y_in));
     while (y.len > 0) {

@@ -199,6 +199,10 @@ A formula in the entry is always solved; it never stores a variable. **Save Entr
 
 : The Taylor series of f about x = a up to the power n (a defaults to 0, n to 5), with the **O(…)** remainder: **taylor(sin(x), x, 0, 3)** is **x − x³/6 + O(x⁴)**; **taylor(ln(x), x, 1, 3)** is **(x − 1) − (x − 1)²/2 + (x − 1)³/3 + O((x − 1)⁴)**. A quotient is expanded term by term, so a pole gives a Laurent series. **limit(f, x, a)** now tries the same series first and gives exact answers such as **limit((1 − cos(x))/x², x, 0)** = 1/2 before falling back to the numeric estimate.
 
+**laplace(f, t)**, **ilaplace(F, s)**
+
+: The Laplace transform and its inverse, exact. **laplace** takes sums of **c·tⁿ·e^(at)** times **1**, **sin(bt)**, **cos(bt)**, **sinh(bt)** or **cosh(bt)**: **laplace(t·exp(t), t)** is **1/(s − 1)²**, **laplace(exp(-t)·sin(2t), t)** is **2/(s² + 2s + 5)**. **ilaplace** takes a rational function of s whose denominator factors into **(s − a)^k** and quadratics, by partial fractions: **ilaplace(1/(s·(s+1)), s)** is **1 − e^(−t)**, **ilaplace((s+3)/(s²+2s+5), s)** is **e^(−t)·(cos(2t) + sin(2t))**. Anything else is refused.
+
 **dsolve(equation, conditions…)**
 
 : Solves an ordinary differential equation for y(x), exactly. Write primes as **y'** and **y''**. First order, **a·y' + b·y = f(x)** with f a polynomial: **dsolve(y' = 2y)** is **y = C·e^(2x)**, **dsolve(y' = y + x)** is **y = C·e^x − x − 1**; one condition such as **y(0) = 5** fixes C. Second order with constant coefficients and a constant right side: **dsolve(y'' + 2y' + 5y = 0)** is **y = e^(−x)·(C1·cos(2x) + C2·sin(2x))**; the conditions **y(0) = 1, y'(0) = 0** fix C1 and C2.

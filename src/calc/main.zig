@@ -3929,4 +3929,5 @@ test {
     _ = @import("integral.zig");
     _ = @import("ode.zig");
     _ = @import("series.zig");
+    _ = @import("laplace.zig");
 }

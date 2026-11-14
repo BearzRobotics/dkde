@@ -39,6 +39,7 @@ const uncertain = @import("uncertain.zig");
 const integral = @import("integral.zig");
 const ode = @import("ode.zig");
 const seriesmod = @import("series.zig");
+const laplace = @import("laplace.zig");
 const Number = num.Number;
 
 pub const Angle = enum {
@@ -823,7 +824,7 @@ const builtin_functions = [_][]const u8{
     "ln",   "log",   "log2", "log10", "exp",   "sqrt",  "cbrt", "root",  "abs",   "floor", "ceil",   "round",
     "trunc", "frac", "sign", "fact",  "gcd",   "lcm",   "ncr",  "npr",   "min",   "max",   "sum",    "mean",
     "avg",  "median", "stdev", "var", "mod",   "pow",   "atan2", "hypot", "rand",  "rol",  "ror",    "sec",
-    "csc",  "cot",  "diff", "derivative", "integral", "integrate", "dsolve", "taylor", "limit", "prod",
+    "csc",  "cot",  "diff", "derivative", "integral", "integrate", "dsolve", "taylor", "laplace", "ilaplace", "limit", "prod",
     "if",   "xor",  "parallel", "multifactorial", "shift", "randuniform", "randbetween", "randnorm", "randexp",
     "randrayleigh", "randpoisson", "uncertainty", "midpoint", "errorPart", "lowerEndpoint", "upperEndpoint",
 };
@@ -1840,6 +1841,22 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
             if (args.len < 1 or args.len > 2) return error.WrongArguments;
             const eq = if (std.mem.indexOfScalar(u8, args[0], '=') == null) try std.fmt.allocPrint(a, "{s} = 0", .{args[0]}) else args[0];
             return run(a, session, eq, .{ .angle = mode.angle, .solve_only = true }, problem);
+        }
+        // laplace(f, t) and ilaplace(F, s): transforms to and from the s-domain.
+        inline for (.{ "laplace", "ilaplace", "invlaplace" }) |word| {
+            if (unwrapCall(text, word)) |inner| {
+                const args = try splitTop(a, inner, ',');
+                if (args.len < 1 or args.len > 2) return error.WrongArguments;
+                const forward = comptime std.mem.eql(u8, word, "laplace");
+                const letter = if (args.len == 2) std.mem.trim(u8, args[1], " ") else if (forward) "t" else "s";
+                const n = try parseExpr(a, std.mem.trim(u8, args[0], " "), mode, problem);
+                var radians = mode;
+                radians.angle = .radians;
+                var ev: Eval = .{ .a = a, .session = session, .mode = radians, .problem = problem };
+                const found = if (forward) try laplace.laplaceText(&ev, n, letter) else try laplace.inverseText(&ev, n, letter);
+                if (found) |f| return .{ .simplified = f };
+                return error.Domain;
+            }
         }
         // taylor(f, x, a, n): the series about a, up to the power n.
         if (unwrapCall(text, "taylor")) |inner| {
