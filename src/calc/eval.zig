@@ -1786,6 +1786,7 @@ fn polarOrParametric(a: std.mem.Allocator, session: *Session, text: []const u8, 
         pieces[0] = std.mem.trim(u8, t[eq + 1 ..], " ");
         count = 1;
     } else return null;
+    var uses_parameter = false;
     for (pieces[0..count]) |piece| {
         var p: Problem = .{};
         const n = parseExpr(a, piece, mode, &p) catch return null;
@@ -1793,9 +1794,11 @@ fn polarOrParametric(a: std.mem.Allocator, session: *Session, text: []const u8, 
         unknowns(a, n, session, &names) catch return null;
         for (names.items) |nm| {
             if (!(std.mem.eql(u8, nm, "t") or std.mem.eql(u8, nm, "θ") or std.mem.eql(u8, nm, "theta"))) return null;
+            uses_parameter = true;
         }
-        if (names.items.len == 0 and count == 1) return null;
     }
+    // A curve runs along something: (1, 2) and r = 5 do not use the parameter.
+    if (!uses_parameter) return null;
     return t;
 }
 
