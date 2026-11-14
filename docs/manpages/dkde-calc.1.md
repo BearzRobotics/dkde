@@ -65,6 +65,9 @@ Currency (**Ctrl+K**)
 Date Calculation (**Ctrl+E**)
 : The time between two dates (in years, months and days, and in days and weeks), or a date plus or minus a number of years, months and days. It works in every calendar dkde-calendar(1) shows: Julian, Gregorian, the International Fixed calendar, the Rosquin calendar in its three layouts, Chinese, Hebrew, Coptic and Ethiopian. Dates are typed year-month-day in the chosen calendar's own numbering (or picked on a Gregorian calendar and converted), each is described under its field with its Gregorian date, and changing the calendar keeps the same days. Years and months are counted in the chosen calendar: a Hebrew year from Kislev 1 is Kislev 1 the next year.
 
+Functions (**Ctrl+Shift+Y**)
+: Every function with a short description, searchable by name or by what it does and filterable by category (trigonometry, statistics, geometry, economics, number theory …). Click one to put it in the entry; its arguments are listed under its name and any other names it goes by are shown below the list.
+
 Show Work (**Ctrl+L**)
 : The steps to the answer, written out as you would on paper, each line with a short note about what was done. While the pane is open, every calculation also writes out its steps; **Show steps for the entry** does it for the entry (or the last answer) without calculating. Steps are written for arithmetic (brackets, powers, multiplication and division, addition and subtraction, one operation a line, fractions over a common denominator), linear equations (expand, collect, move terms across, divide), quadratic equations (factoring, with the grouping method when the first coefficient is not 1, square roots, or the quadratic formula with the discriminant and simplified roots), expanding brackets, factoring (common factor, difference of squares, perfect squares, rational roots), derivatives (the sum, power, product, quotient and chain rules) and two linear equations in two unknowns (eliminate, substitute back, check). Other entries say that they have no steps yet.
 
@@ -117,6 +120,9 @@ Typing anywhere in the window goes into the entry.
 # SESSIONS
 **File ▸ Save Session…** writes the history, variables, functions, matrices, amounts with units, last result and memory to a **.dkcalc** file; **File ▸ Open Session…** replaces the current session with one. **File ▸ Export Session…** writes the history, variables and functions for reading, as plain text (**.txt**) or as a self-contained HTML page (**.html**), chosen by the file name; an exported file cannot be opened again. Without doing any of these, the session is kept between runs (see FILES).
 
+# RPN
+**View ▸ RPN Mode** shows a stack above the entry and works as on an HP calculator. **Enter** puts the entry on the stack (with nothing typed, it copies the top). **+**, **−**, **×**, **÷** and **^**, from the keypad or the keyboard, work on the top two numbers; **x²**, **√**, **1/x**, **±**, **%**, **n!** and the function keys work on the top one; **π** and **e** are put on the stack. **Backspace** with nothing typed drops the top. **Edit ▸ RPN** has Swap, Drop, Duplicate and Clear the Stack. Each calculation goes into the history. The mode is remembered.
+
 # MEMORY
 **MS** stores the result (or what the entry works out to), **MR** puts it into the entry, **M+** and **M−** add to it and subtract from it, **MC** clears it. An **M** beside the display shows that something is stored.
 
@@ -168,7 +174,8 @@ All keys are in the **[calc]** group.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | mode | text | standard | standard, scientific or programmer |
-| pane | text | none | none, history, units, currency, dates, graph, formulas or steps |
+| pane | text | none | none, history, units, currency, dates, graph, formulas, steps or functions |
+| rpn | true/false | false | RPN mode (a stack) |
 | expanded | true/false | false | show the tape of recent entries |
 | angle | text | degrees | degrees, radians or gradians |
 | base | number | 10 | programmer mode: 2, 8, 10 or 16 |

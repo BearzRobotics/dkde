@@ -184,6 +184,11 @@ const Calc = struct {
     unit_to: *gtk.DropDown = undefined,
     unit_value: *gtk.Entry = undefined,
     unit_result: *gtk.Label = undefined,
+    // RPN mode: the stack, and where it is shown.
+    rpn: bool = false,
+    rpn_stack: std.ArrayList(eval.Stored) = .empty,
+    rpn_box: *gtk.Box = undefined,
+    rpn_labels: [4]*gtk.Label = undefined,
     // Functions.
     fn_search: *gtk.SearchEntry = undefined,
     fn_category: *gtk.DropDown = undefined,
@@ -297,6 +302,16 @@ const Calc = struct {
         self.expr_label.as(gtk.Widget).setHexpand(1);
         self.expr_label.as(gtk.Widget).addCssClass("dkde-calc-expr");
         top.append(self.expr_label.as(gtk.Widget));
+        // RPN: the stack, newest at the bottom, just above the entry.
+        self.rpn_box = gtk.Box.new(.vertical, 0);
+        for (&self.rpn_labels) |*l| {
+            l.* = gtk.Label.new("");
+            l.*.setXalign(1);
+            l.*.as(gtk.Widget).addCssClass("dkde-calc-expr");
+            self.rpn_box.append(l.*.as(gtk.Widget));
+        }
+        self.rpn_box.as(gtk.Widget).setVisible(@intFromBool(self.rpn));
+        display.append(self.rpn_box.as(gtk.Widget));
         display.append(top.as(gtk.Widget));
         self.entry.setAlignment(1);
         self.entry.as(gtk.Widget).addCssClass("dkde-calc-display");
@@ -398,6 +413,7 @@ const Calc = struct {
         self.style.decimals = @intCast(std.math.clamp(self.config.getInt("calc", "decimals", 10), 0, 30));
         self.style.grouping = self.config.getBool("calc", "grouping", true);
         self.expanded = self.config.getBool("calc", "expanded", false);
+        self.rpn = self.config.getBool("calc", "rpn", false);
         self.style.notation = std.meta.stringToEnum(num.Notation, self.configString(&buf, "notation", "auto")) orelse .auto;
     }
 
@@ -434,6 +450,12 @@ const Calc = struct {
                 mb.item("_Paste", "paste", null),
                 .separator,
                 mb.item("C_lear", "clear", null),
+                .separator,
+                mb.item("RPN: S_wap the Top Two", "rpn-swap", null),
+                mb.item("RPN: _Drop the Top", "rpn-drop", null),
+                mb.item("RPN: D_uplicate the Top", "rpn-dup", null),
+                mb.item("RPN: Clear the _Stack", "rpn-clear", null),
+                .separator,
                 mb.item("Clear _History", "clear-history", null),
                 mb.item("Clear _Variables and Functions", "clear-vars", null),
             } },
@@ -457,6 +479,7 @@ const Calc = struct {
                 mb.check("_Radians", "angle-radians", self.angle == .radians),
                 mb.check("_Gradians", "angle-gradians", self.angle == .gradians),
                 .separator,
+                mb.check("_RPN Mode (stack)", "rpn", self.rpn),
                 mb.check("Digit G_rouping", "grouping", self.style.grouping),
                 mb.check("Scientific _Notation", "notation-scientific", self.style.notation == .scientific),
                 mb.check("_Engineering Notation", "notation-engineering", self.style.notation == .engineering),
@@ -676,8 +699,8 @@ const Calc = struct {
             .enter => self.calculate(),
             .clear => self.clear(),
             .back => self.backspace(),
-            .negate => self.wrapEntry("−(", ")", true),
-            .reciprocal => self.wrapEntry("1/(", ")", false),
+            .negate => if (self.rpn) self.rpnUnary("-rpnb", "negate") else self.wrapEntry("−(", ")", true),
+            .reciprocal => if (self.rpn) self.rpnUnary("1/rpnb", "1/x") else self.wrapEntry("1/(", ")", false),
             .mc => {
                 if (self.memory) |m| m.deinit(self.gpa);
                 self.memory = null;
@@ -711,6 +734,7 @@ const Calc = struct {
     }
 
     fn insert(self: *Calc, text: []const u8) void {
+        if (self.rpn and self.rpnInsert(text)) return;
         if (self.fresh) {
             self.fresh = false;
             // After a result an operator goes on from it; anything else starts over.
@@ -741,6 +765,7 @@ const Calc = struct {
     }
 
     fn backspace(self: *Calc) void {
+        if (self.rpn and self.entryText().len == 0) return self.rpnDrop();
         if (self.fresh) return self.clear();
         const editable = self.entry.as(gtk.Editable);
         var start: c_int = 0;
@@ -798,6 +823,7 @@ const Calc = struct {
     }
 
     fn calculate(self: *Calc) void {
+        if (self.rpn) return self.rpnEnter();
         var arena0 = std.heap.ArenaAllocator.init(self.gpa);
         defer arena0.deinit();
         const raw = self.withAns(arena0.allocator(), self.entryText());
@@ -2837,6 +2863,226 @@ const Calc = struct {
         return 0;
     }
 
+    // ---- RPN ---------------------------------------------------------------------------------------
+
+    fn setRpn(self: *Calc, on: bool) void {
+        self.rpn = on;
+        self.config.setBool("calc", "rpn", on) catch {};
+        self.rpn_box.as(gtk.Widget).setVisible(@intFromBool(on));
+        common.menubar.setChecked(self.window, "rpn", on);
+        self.fresh = false;
+        self.rpnRefresh();
+    }
+
+    fn rpnRefresh(self: *Calc) void {
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const n = self.rpn_stack.items.len;
+        for (&self.rpn_labels, 0..) |label, i| {
+            // The top of the stack is the last label.
+            const from_top = self.rpn_labels.len - 1 - i;
+            if (from_top >= n) {
+                label.setText("");
+                continue;
+            }
+            const v = self.rpn_stack.items[n - 1 - from_top].load(a) catch {
+                label.setText("?");
+                continue;
+            };
+            const shown = self.displayText(a, v) catch "?";
+            const line = std.fmt.allocPrintSentinel(a, "{d}:  {s}", .{ from_top + 1, shown }, 0) catch continue;
+            label.setText(line);
+        }
+    }
+
+    fn rpnPush(self: *Calc, v: num.Number) void {
+        if (self.rpn_stack.items.len >= 64) {
+            const old = self.rpn_stack.orderedRemove(0);
+            old.deinit(self.gpa);
+        }
+        const stored = eval.Stored.of(self.gpa, v) catch return;
+        self.rpn_stack.append(self.gpa, stored) catch stored.deinit(self.gpa);
+        self.rpnRefresh();
+    }
+
+    fn rpnPop(self: *Calc, a: std.mem.Allocator) ?num.Number {
+        const stored = self.rpn_stack.pop() orelse return null;
+        defer stored.deinit(self.gpa);
+        return stored.load(a) catch null;
+    }
+
+    /// The entry worked out as a number; null (and the error shown) when it is not one.
+    fn rpnEntryValue(self: *Calc, a: std.mem.Allocator) ?num.Number {
+        const raw = self.entryText();
+        const text = cleaned(a, raw) catch return null;
+        var p: eval.Problem = .{};
+        const out = eval.run(a, &self.session, text, self.evalMode(), &p) catch |e| {
+            self.showError(e, p, text);
+            return null;
+        };
+        return eval.plainValue(out) orelse {
+            self.showError(error.Syntax, p, text);
+            return null;
+        };
+    }
+
+    /// Enter: the entry goes on the stack; with nothing typed, the top is copied.
+    fn rpnEnter(self: *Calc) void {
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        self.preview.as(gtk.Widget).removeCssClass("error");
+        if (std.mem.trim(u8, self.entryText(), " ").len == 0) return self.rpnDuplicate();
+        const v = self.rpnEntryValue(a) orelse return;
+        self.rpnPush(v);
+        self.setEntry("");
+        self.preview.setText("");
+    }
+
+    /// Puts a typed entry on the stack first (when there is one).
+    fn rpnFlushEntry(self: *Calc, a: std.mem.Allocator) bool {
+        if (std.mem.trim(u8, self.entryText(), " ").len == 0) return true;
+        const v = self.rpnEntryValue(a) orelse return false;
+        self.rpnPush(v);
+        self.setEntry("");
+        return true;
+    }
+
+    fn rpnDuplicate(self: *Calc) void {
+        if (self.rpn_stack.items.len == 0) return;
+        const top = self.rpn_stack.items[self.rpn_stack.items.len - 1];
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const v = top.load(arena.allocator()) catch return;
+        self.rpnPush(v);
+    }
+
+    fn rpnDrop(self: *Calc) void {
+        const old = self.rpn_stack.pop() orelse return;
+        old.deinit(self.gpa);
+        self.rpnRefresh();
+    }
+
+    fn rpnSwap(self: *Calc) void {
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        if (!self.rpnFlushEntry(a)) return;
+        const n = self.rpn_stack.items.len;
+        if (n < 2) return;
+        std.mem.swap(eval.Stored, &self.rpn_stack.items[n - 1], &self.rpn_stack.items[n - 2]);
+        self.rpnRefresh();
+    }
+
+    fn rpnClear(self: *Calc) void {
+        for (self.rpn_stack.items) |x| x.deinit(self.gpa);
+        self.rpn_stack.clearRetainingCapacity();
+        self.rpnRefresh();
+    }
+
+    /// Works `expression` out with the top operands bound to rpna (below) and rpnb (top), and puts
+    /// the answer back; `label` is what goes in the history.
+    fn rpnApply(self: *Calc, expression: []const u8, binary: bool, label: []const u8) void {
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        self.preview.as(gtk.Widget).removeCssClass("error");
+        if (!self.rpnFlushEntry(a)) return;
+        const need: usize = if (binary) 2 else 1;
+        if (self.rpn_stack.items.len < need) {
+            self.preview.as(gtk.Widget).addCssClass("error");
+            self.preview.setText(t("Not enough numbers on the stack"));
+            return;
+        }
+        const b = self.rpnPop(a) orelse return;
+        const lower: ?num.Number = if (binary) self.rpnPop(a) else null;
+        self.session.setVar("rpnb", b) catch {};
+        if (lower) |l| self.session.setVar("rpna", l) catch {};
+        defer {
+            _ = self.session.remove("rpna");
+            _ = self.session.remove("rpnb");
+        }
+        var p: eval.Problem = .{};
+        const out = eval.run(a, &self.session, expression, self.evalMode(), &p) catch |e| {
+            // Put the operands back so that nothing is lost.
+            if (lower) |l| self.rpnPush(l);
+            self.rpnPush(b);
+            return self.showError(e, p, label);
+        };
+        const v = eval.plainValue(out) orelse {
+            if (lower) |l| self.rpnPush(l);
+            self.rpnPush(b);
+            return self.showError(error.Syntax, p, label);
+        };
+        self.rpnPush(v);
+        // The history shows the operands and the answer.
+        const shown_b = self.displayText(a, b) catch "?";
+        const shown_v = self.displayText(a, v) catch "?";
+        const line = if (lower) |l| std.fmt.allocPrint(a, "{s} {s} {s}", .{ self.displayText(a, l) catch "?", shown_b, label }) catch return else std.fmt.allocPrint(a, "{s} {s}", .{ shown_b, label }) catch return;
+        self.addHistory(line, shown_v);
+        self.session.setAns(v) catch {};
+        self.preview.setText("");
+        self.saveState();
+    }
+
+    fn rpnUnary(self: *Calc, expression: []const u8, label: []const u8) void {
+        self.rpnApply(expression, false, label);
+    }
+
+    /// A keypad or typed insertion in RPN mode: operators and functions act on the stack, π and e
+    /// are put on it. Returns false for anything that is just text for the entry.
+    fn rpnInsert(self: *Calc, text: []const u8) bool {
+        const eql = std.mem.eql;
+        if (eql(u8, text, "+") or eql(u8, text, "−") or eql(u8, text, "-") or eql(u8, text, "×") or eql(u8, text, "*") or
+            eql(u8, text, "÷") or eql(u8, text, "/") or eql(u8, text, "^"))
+        {
+            const op_text: []const u8 = if (eql(u8, text, "+")) "+" else if (eql(u8, text, "−") or eql(u8, text, "-")) "-" else if (eql(u8, text, "×") or eql(u8, text, "*")) "*" else if (eql(u8, text, "^")) "^" else "/";
+            var buf: [32]u8 = undefined;
+            const expression = std.fmt.bufPrint(&buf, "rpna {s} rpnb", .{op_text}) catch return false;
+            const label: []const u8 = if (eql(u8, op_text, "*")) "×" else if (eql(u8, op_text, "/")) "÷" else if (eql(u8, op_text, "-")) "−" else op_text;
+            self.rpnApply(expression, true, label);
+            return true;
+        }
+        if (eql(u8, text, "²")) {
+            self.rpnUnary("rpnb^2", "x²");
+            return true;
+        }
+        if (eql(u8, text, "!")) {
+            self.rpnUnary("rpnb!", "!");
+            return true;
+        }
+        if (eql(u8, text, "%")) {
+            self.rpnUnary("rpnb/100", "%");
+            return true;
+        }
+        if (eql(u8, text, "π") or eql(u8, text, "e")) {
+            var arena = std.heap.ArenaAllocator.init(self.gpa);
+            defer arena.deinit();
+            const a = arena.allocator();
+            if (!self.rpnFlushEntry(a)) return true;
+            var p: eval.Problem = .{};
+            const out = eval.run(a, &self.session, text, self.evalMode(), &p) catch return true;
+            if (eval.plainValue(out)) |v| self.rpnPush(v);
+            return true;
+        }
+        // sin(, ln(, √(: a function of the top.
+        if (text.len > 1 and text[text.len - 1] == '(') {
+            const name = text[0 .. text.len - 1];
+            var buf: [64]u8 = undefined;
+            if (eql(u8, name, "√")) {
+                self.rpnUnary("sqrt(rpnb)", "√");
+                return true;
+            }
+            if (name.len < 16 and eval.isBuiltin(name)) {
+                const expression = std.fmt.bufPrint(&buf, "{s}(rpnb)", .{name}) catch return false;
+                self.rpnUnary(expression, name);
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ---- the function browser --------------------------------------------------------------------
 
     const fn_categories = blk: {
@@ -3147,6 +3393,11 @@ const Calc = struct {
         if (eql(u8, action, "open-session")) return self.sessionDialog(false);
         if (eql(u8, action, "export-session")) return self.exportDialog();
         if (eql(u8, action, "update-rates")) return self.updateRates();
+        if (eql(u8, action, "rpn")) return self.setRpn(!self.rpn);
+        if (eql(u8, action, "rpn-swap")) return self.rpnSwap();
+        if (eql(u8, action, "rpn-drop")) return self.rpnDrop();
+        if (eql(u8, action, "rpn-dup")) return self.rpnDuplicate();
+        if (eql(u8, action, "rpn-clear")) return self.rpnClear();
         if (eql(u8, action, "copy")) return self.copyResult();
         if (eql(u8, action, "paste")) {
             _ = self.entry.as(gtk.Widget).activateAction("clipboard.paste", null);
@@ -3224,6 +3475,20 @@ const Calc = struct {
         const in_other_field = focus != null and !in_main and gobject.typeCheckInstanceIsA(@ptrCast(focus.?), gtk.Text.getGObjectType()) != 0;
         if (in_other_field) return 0;
         const plain_key = !state.control_mask and !state.alt_mask;
+        // RPN: +, −, ×, ÷ and ^ work on the stack at once.
+        if (self.rpn and plain_key and in_main) {
+            const typed: ?[]const u8 = switch (keyval) {
+                gdk.KEY_plus, gdk.KEY_KP_Add => "+",
+                gdk.KEY_asterisk, gdk.KEY_KP_Multiply => "×",
+                gdk.KEY_slash, gdk.KEY_KP_Divide => "÷",
+                gdk.KEY_asciicircum => "^",
+                gdk.KEY_minus, gdk.KEY_KP_Subtract => if (self.entryText().len > 0 and !std.mem.endsWith(u8, self.entryText(), "e") or self.rpn_stack.items.len >= 2) "−" else null,
+                else => null,
+            };
+            if (typed) |op_text| {
+                if (self.rpnInsert(op_text)) return 1;
+            }
+        }
         switch (keyval) {
             gdk.KEY_Return, gdk.KEY_KP_Enter, gdk.KEY_ISO_Enter => {
                 if (!plain_key) return 0;
@@ -3587,6 +3852,8 @@ const Calc = struct {
         }
         self.manual.deinit(self.gpa);
         self.fn_shown.deinit(self.gpa);
+        for (self.rpn_stack.items) |x| x.deinit(self.gpa);
+        self.rpn_stack.deinit(self.gpa);
         if (self.tape_timer != 0) _ = glib.Source.remove(self.tape_timer);
         if (self.row_popover) |p| p.as(gtk.Widget).unparent();
         self.session.deinit();
