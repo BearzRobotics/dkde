@@ -34,6 +34,7 @@ const rich = @import("rich.zig");
 const bigreal = @import("bigreal.zig");
 const symbolic = @import("symbolic.zig");
 const algebra = @import("algebra.zig");
+const library = @import("library.zig");
 const Number = num.Number;
 
 pub const Angle = enum {
@@ -851,7 +852,7 @@ pub fn isBuiltin(name: []const u8) bool {
     const lower = std.ascii.lowerString(&buf, name);
     const canon = functions.canonical(lower);
     for (builtin_functions) |f| if (std.mem.eql(u8, f, canon)) return true;
-    return functions.isKnown(lower) or rich.isRichFunction(lower);
+    return functions.isKnown(lower) or rich.isRichFunction(lower) or library.find(lower) != null;
 }
 
 const constants = [_][]const u8{ "pi", "π", "e", "tau", "τ", "phi", "φ", "ans" };
@@ -982,6 +983,25 @@ pub const Eval = struct {
             }
             var inner: Problem = .{};
             const body = parseExpr(a, f.body, self.mode, &inner) catch |e| return e;
+            return self.eval(body, chain);
+        }
+        // Qalculate's library of formulas (circle, cone, sphere, …).
+        if (library.find(name)) |lf| {
+            if (lf.params.len != arg_nodes.len) {
+                self.problem.* = .{ .pos = pos, .name = name };
+                return error.WrongArguments;
+            }
+            self.depth += 1;
+            defer self.depth -= 1;
+            if (self.depth > 64) return error.Recursion;
+            var chain: ?*const Binding = null;
+            for (lf.params, arg_nodes) |prm, an| {
+                const bind = try a.create(Binding);
+                bind.* = .{ .name = prm, .value = try self.eval(an, b), .next = chain };
+                chain = bind;
+            }
+            var inner: Problem = .{};
+            const body = try parseExpr(a, lf.body, self.mode, &inner);
             return self.eval(body, chain);
         }
         // k(k + 1) where k is a value, not a function: a product.

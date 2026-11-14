@@ -3433,4 +3433,5 @@ test {
     _ = @import("symbolic.zig");
     _ = @import("algebra.zig");
     _ = @import("steps.zig");
+    _ = @import("library.zig");
 }
