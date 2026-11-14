@@ -155,6 +155,8 @@ const Calc = struct {
     tape_timer: c_uint = 0,
     /// The right-click menu of a history line, and which line it is for.
     row_popover: ?*gtk.Popover = null,
+    history_scroll: *gtk.ScrolledWindow = undefined,
+    row_idle: c_uint = 0,
     row_index: usize = 0,
     angle: eval.Angle = .degrees,
     base: u8 = 10,
@@ -1377,6 +1379,7 @@ const Calc = struct {
         title.as(gtk.Widget).addCssClass("heading");
         box.append(title.as(gtk.Widget));
         const scroll = gtk.ScrolledWindow.new();
+        self.history_scroll = scroll;
         scroll.setChild(self.history_list.as(gtk.Widget));
         scroll.as(gtk.Widget).setVexpand(1);
         scroll.setPolicy(.never, .automatic);
@@ -1545,11 +1548,32 @@ const Calc = struct {
             box.append(button.as(gtk.Widget));
         }
         popover.setChild(box.as(gtk.Widget));
-        popover.as(gtk.Widget).setParent(list.as(gtk.Widget));
-        var rect: gdk.Rectangle = .{ .f_x = @intFromFloat(x), .f_y = @intFromFloat(y), .f_width = 1, .f_height = 1 };
+        // Not the list box itself: a child there would be taken for a row (and removeAll would never end).
+        const holder: *gtk.Widget = if (newest_first) self.history_scroll.as(gtk.Widget) else self.tape_scroll.as(gtk.Widget);
+        popover.as(gtk.Widget).setParent(holder);
+        var hx: f64 = x;
+        var hy: f64 = y;
+        _ = list.as(gtk.Widget).translateCoordinates(holder, x, y, &hx, &hy);
+        var rect: gdk.Rectangle = .{ .f_x = @intFromFloat(hx), .f_y = @intFromFloat(hy), .f_width = 1, .f_height = 1 };
         popover.setPointingTo(&rect);
         self.row_popover = popover;
+        _ = gtk.Popover.signals.closed.connect(popover, *Calc, &onRowMenuClosed, self, .{});
         popover.popup();
+    }
+
+    /// The menu is done with: it comes off its parent once GTK has finished closing it.
+    fn onRowMenuClosed(_: *gtk.Popover, self: *Calc) callconv(.c) void {
+        if (self.row_idle == 0) self.row_idle = glib.idleAdd(releaseRowMenu, self);
+    }
+
+    fn releaseRowMenu(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Calc = @ptrCast(@alignCast(data.?));
+        self.row_idle = 0;
+        if (self.row_popover) |p| {
+            if (p.as(gtk.Widget).getParent() != null) p.as(gtk.Widget).unparent();
+            self.row_popover = null;
+        }
+        return 0;
     }
 
     fn closeRowMenu(self: *Calc) void {
@@ -3855,7 +3879,8 @@ const Calc = struct {
         for (self.rpn_stack.items) |x| x.deinit(self.gpa);
         self.rpn_stack.deinit(self.gpa);
         if (self.tape_timer != 0) _ = glib.Source.remove(self.tape_timer);
-        if (self.row_popover) |p| p.as(gtk.Widget).unparent();
+        if (self.row_idle != 0) _ = glib.Source.remove(self.row_idle);
+        if (self.row_popover) |p| if (p.as(gtk.Widget).getParent() != null) p.as(gtk.Widget).unparent();
         self.session.deinit();
         self.config.deinit();
         self.gpa.destroy(self);
