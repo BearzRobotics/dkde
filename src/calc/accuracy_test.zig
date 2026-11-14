@@ -17,6 +17,7 @@ fn show(a: std.mem.Allocator, o: eval.Outcome) ![]const u8 {
         .assigned => |s| num.format(a, s.value, .{ .decimals = probe_decimals }),
         .defined => |d| d,
         .truth => |t| if (t) "true" else "false",
+        .uncertain => |u| u.text,
         .symbolic => |sy| try std.fmt.allocPrint(a, "{s} ~ {s}", .{ sy.text, try num.format(a, sy.value, .{ .decimals = probe_decimals }) }),
         .simplified => |x| x,
         .rich => |v| try rich.format(a, v, .{ .decimals = probe_decimals }),

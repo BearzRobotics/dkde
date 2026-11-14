@@ -36,7 +36,7 @@ fn partner(c: u8) u8 {
 }
 
 /// Operator symbols beyond ASCII that are not part of a name.
-const symbol_operators = [_][]const u8{ "×", "÷", "−", "·", "√", "±", "≠", "≤", "≥", "→", "≤", "≥", "∑", "∏", "²", "³", "∞" };
+const symbol_operators = [_][]const u8{ "×", "÷", "−", "·", "√", "±", "≠", "≤", "≥", "→", "≤", "≥", "±", "∑", "∏", "²", "³", "∞" };
 
 fn symbolAt(text: []const u8, i: usize) usize {
     for (symbol_operators) |s| if (std.mem.startsWith(u8, text[i..], s)) return s.len;

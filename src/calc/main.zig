@@ -892,6 +892,10 @@ const Calc = struct {
                 if (self.plain) |pl| self.gpa.free(pl);
                 self.plain = null;
             },
+            .uncertain => |u| {
+                self.finishResultAs(expr_copy, u.text, null, a, true);
+                self.session.setAns(u.value) catch {};
+            },
             .symbolic => |sy| {
                 const shown = self.displayText(a, sy.value) catch return;
                 self.exact_tail = sy.text;
@@ -3434,4 +3438,5 @@ test {
     _ = @import("algebra.zig");
     _ = @import("steps.zig");
     _ = @import("library.zig");
+    _ = @import("uncertain.zig");
 }

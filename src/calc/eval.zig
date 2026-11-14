@@ -35,6 +35,7 @@ const bigreal = @import("bigreal.zig");
 const symbolic = @import("symbolic.zig");
 const algebra = @import("algebra.zig");
 const library = @import("library.zig");
+const uncertain = @import("uncertain.zig");
 const Number = num.Number;
 
 pub const Angle = enum {
@@ -262,6 +263,15 @@ const Parser = struct {
     fn sum(self: *Parser) Error!*Node {
         var l = try self.product();
         while (true) {
+            // 5 ± 0.1, 5 +/- 0.1: a value and its uncertainty.
+            if (self.eat("±") or self.eat("+/-")) {
+                const err = try self.product();
+                const args = try self.a.alloc(*Node, 2);
+                args[0] = l;
+                args[1] = err;
+                l = try self.node(.{ .call = .{ .name = "uncertainty", .args = args, .pos = self.pos } });
+                continue;
+            }
             const plus = self.eat("+");
             const minus = !plus and (self.eat("-") or self.eat("−"));
             if (!plus and !minus) return l;
@@ -812,7 +822,7 @@ const builtin_functions = [_][]const u8{
     "avg",  "median", "stdev", "var", "mod",   "pow",   "atan2", "hypot", "rand",  "rol",  "ror",    "sec",
     "csc",  "cot",  "diff", "derivative", "integral", "integrate", "limit", "prod",
     "if",   "xor",  "parallel", "multifactorial", "shift", "randuniform", "randbetween", "randnorm", "randexp",
-    "randrayleigh", "randpoisson",
+    "randrayleigh", "randpoisson", "uncertainty", "midpoint", "errorPart", "lowerEndpoint", "upperEndpoint",
 };
 
 /// lt, le, gt, ge, ne: what a comparison in an entry is read as.
@@ -1112,6 +1122,11 @@ pub const Eval = struct {
 
     /// sin, cos and tan of whole multiples of 30° (and 45°) exactly.
     /// xor, parallel, multifactorial, shift and the random-number functions.
+    /// A function by name, for the modules that work out values themselves.
+    pub fn callFunction(self: *Eval, name: []const u8, args: []const Number) Error!Number {
+        return self.builtin(name, args);
+    }
+
     fn extraFunction(self: *Eval, f: []const u8, args: []const Number) Error!?Number {
         const a = self.a;
         const eql = std.mem.eql;
@@ -1697,6 +1712,8 @@ pub const Outcome = union(enum) {
     complex: struct { name: []const u8, re: []f64, im: []f64, exact: ?[]const []const u8 = null },
     /// Both sides known: whether they are equal.
     truth: bool,
+    /// A value with an uncertainty ("12.3 ± 0.4"): the text, and the value itself.
+    uncertain: struct { text: []const u8, value: Number },
     /// A complex number or a matrix.
     rich: rich.Value,
     /// An exact form that is not a fraction (2√2, π/4): the text, and the value to full precision.
@@ -1801,6 +1818,12 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
             if (!mode.programmer and rich.needs(n0, session)) return richOutcome(a, &ev, session, n0);
             // diff(f, x) on its own is a formula: tidy it.
             const n = if (calculus.hasDiff(n0)) try calculus.expand(a, &ev, n0) else n0;
+            // 5 ± 0.1: the error carried through.
+            if (!mode.programmer and uncertain.has(n)) {
+                const u = try uncertain.evaluate(&ev, n);
+                if (u.s == 0) return .{ .value = u.v };
+                return .{ .uncertain = .{ .text = try uncertain.format(a, u), .value = u.v } };
+            }
             // √8 is 2√2, sin(π/4) is √2/2: the exact form first, when there is one.
             if (!mode.programmer and !mode.solve_only and symbolic.worthTrying(n, session)) {
                 if (symbolic.evaluate(.{ .a = a, .session = session, .mode = mode }, n) catch null) |sym| {
@@ -2209,6 +2232,7 @@ const Tester = struct {
             .defined => |d| d,
             .truth => |t| if (t) "true" else "false",
             .simplified => |x| x,
+            .uncertain => |u| u.text,
             .symbolic => |sy| num.format(a, sy.value, .{}),
             .rich => |v| try rich.format(a, v, .{}),
             .system => |sy| blk: {

@@ -257,6 +257,14 @@ Equations that are polynomials in one letter are solved exactly: **x² = 2** giv
 
 **(x + 2)(x + 3)**, **(x + y)²**: every term of one bracket times every term of the other, then each product, then like terms. **factor(x³ − 5x² + 3x + 9)**: try the possible roots, divide, then factor what is left (a pattern, or two numbers). **diff(x³ − 4x, x)**: the sum rule, then the rule for each term, then the terms put together. **x + y = 5; x − y = 1**: add or subtract the equations to remove a letter, divide, put the value back, and check in the other equation.
 
+# UNCERTAINTY
+**5 ± 0.1** (or **5 +/- 0.1**) is a measured value with an error. The error is carried through the arithmetic as a lab report does it, for independent errors: errors add in quadrature for **+** and **−**, relative errors for **×** and **÷**, and a function f(x) has the error |f′(x)|·σ. **(5 ± 0.1) × (3 ± 0.2)** is **15.0 ± 1.0**, **sqrt(4 ± 0.2)** is **2.00 ± 0.05**, **circle(2 ± 0.1)** is **12.6 ± 1.3**. A result is written with its error to one significant figure (two when it starts with 1) and the value rounded to the same place. The entry shows the whole **12.3 ± 0.4**, so you can go on from it; **ans** is the value alone. **midpoint(u)**, **errorPart(u)**, **lowerEndpoint(u)** and **upperEndpoint(u)** take a value apart.
+
+# MORE FUNCTIONS
+Areas, volumes and surface areas: **circle(r)** (area), **circumference(r)**, **sphere(r)**, **sphere_sa(r)**, **cylinder(r, h)**, **cylinder_sa(r, h)**, **cone(r, h)**, **cone_sa(r, h)**, **cube(s)**, **cube_sa(s)**, **square(s)**, **square_perimeter(s)**, **rect(l, w)**, **rect_perimeter(l, w)**, **rectprism(l, w, h)**, **rectprism_sa(l, w, h)**, **triangle(base, height)**, **triangle_perimeter(a, b, c)**, **triangleprism**, **pyramid**, **tetrahedron**, **tetrahedron_sa**, **tetrahedron_height**, **sqpyramid**, **sqpyramid_sa**, **sqpyramid_height**, **parallelogram**, **parallelogram_perimeter**, **trapezoid(a, b, h)**; **g_duration** and **level_coupon** in finance.
+
+**if(condition, a, b)** gives a when the condition holds (**if(x > 3, 1, 0)**); **xor(a, b)**; **shift(x, n)** (bits); **parallel(a, b, …)** (resistors in parallel); **multifactorial(n, k)** (7 ×× 2 is 105); **divisors(n)** and **primes(n)** (lists); **week(date)** and **yearday(date)**. Random numbers: **randuniform(a, b)**, **randbetween(a, b)**, **randnorm(mean, sd)**, **randexp(rate)**, **randrayleigh(σ)**, **randpoisson(λ)**.
+
 # UNITS
 An amount may carry units anywhere in an entry, not only in a conversion. Units combine with exact dimensional arithmetic: **5 ft + 3 in** is **5.25 ft**; **5 kg × 2 m/s²** is **10 N**; **10 m / 2 s** is **5 m/s**; **60 km/h × 2 h** is **120 km**. Adding amounts of different kinds (**5 m + 3 s**) is an error: "These units do not match". About 120 units are known, with SI and binary prefixes (**km**, **mA**, **GiB**) and some physical constants. Amounts are kept between runs like any other value.
 
