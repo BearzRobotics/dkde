@@ -2114,7 +2114,15 @@ pub const FilesWindow = struct {
         _ = gtk.Popover.signals.closed.connect(popover, *FilesWindow, &onMenuClosed, self, .{});
 
         const box = gtk.Box.new(.vertical, 0);
-        popover.setChild(box.as(gtk.Widget));
+        // A popover taller than its window is not shown at all on X11 (a blank box appears
+        // below the window): keep the menu within the window and scroll when it is longer.
+        const scroller = gtk.ScrolledWindow.new();
+        scroller.setPolicy(.never, .automatic);
+        scroller.setPropagateNaturalHeight(1);
+        scroller.setPropagateNaturalWidth(1);
+        scroller.setMaxContentHeight(@max(160, self.window.as(gtk.Widget).getHeight() - 48));
+        scroller.setChild(box.as(gtk.Widget));
+        popover.setChild(scroller.as(gtk.Widget));
 
         var sel = self.describeSelection(on_item);
         defer sel.deinit(self.allocator);
