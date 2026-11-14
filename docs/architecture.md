@@ -15,7 +15,7 @@ Describes what the code does today, not the goals; goals are in `ai/DKDE-SPEC.md
  imgcodec, pdfrender, truetype, third_party/{zigimg,stb}   per-app libraries
  pdf/session.zig             an open PDF and its edit history, without GTK (dkde-pdf)
 
-External packages (fetched by hash, see Build): toml-zig, util-unix, dkman, pdf-zig and
+External packages (fetched by hash, see Build): toml-zig, util-unix, dkman (with md-zig, gtroff-zig, regex-zig), pdf-zig and
 DKTermCore. DKTermCore owns terminal state, key encoding, colour schemes, the PTY adapter
 and libghostty-vt; dkde-term, dkde-settings and the embedded panel use its `termcore` module.
 ```

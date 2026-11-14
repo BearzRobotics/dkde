@@ -10,8 +10,8 @@
             .hash = "toml-0.2.0-dDatLIhiAgBq8q4SLFu0RZSUcCJLAwl49UZRIZ-fHqqx",
         },
         .dkman = .{
-            .url = "https://github.com/BearzRobotics/dkman/releases/download/v0.3.1/dkman-0.3.1.tar.gz",
-            .hash = "dkman-0.3.1-lbczzr3KAQARFnvZ964Cu8OuUExHPyZ0BlOTREV-cXHe",
+            .url = "https://github.com/BearzRobotics/dkman/releases/download/v0.5.0/dkman-0.5.0.tar.gz",
+            .hash = "dkman-0.5.0-lbczzuVKBAA-02dGCms8k5j2W-NTLykLbRwVekqXONvN",
             .lazy = true,
         },
         .util_unix = .{

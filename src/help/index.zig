@@ -58,8 +58,8 @@ pub fn dkdeEntries(arena: Allocator, io: Io, dir_path: []const u8) Allocator.Err
 
 /// Pages under the manual directories named by `manpath` (null: defaults).
 pub fn systemEntries(arena: Allocator, io: Io, manpath: ?[]const u8) Allocator.Error![]Entry {
-    const dirs = try dkman.paths.searchDirs(arena, manpath);
-    const pages = try dkman.paths.scan(arena, io, dirs, null, null);
+    const dirs = try dkman.paths.searchDirs(arena, manpath, &dkman.paths.default_dirs);
+    const pages = try dkman.paths.scan(arena, io, dirs, null, null, false);
     const out = try arena.alloc(Entry, pages.len);
     for (pages, out) |p, *e| e.* = .{ .name = p.name, .section = p.section, .path = p.path, .source = .system };
     return out;

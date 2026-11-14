@@ -378,7 +378,7 @@ const Help = struct {
         const a = self.arena.allocator();
         const manpath: ?[]const u8 = if (glib.getenv("MANPATH")) |m| std.mem.span(m) else null;
         const help_dir: ?[]const u8 = helpDir(a);
-        self.dirs = dkman.paths.searchDirs(a, manpath) catch &.{};
+        self.dirs = dkman.paths.searchDirs(a, manpath, &dkman.paths.default_dirs) catch &.{};
         self.entries = index.all(a, common.fsio.io(), help_dir, manpath) catch &.{};
         self.showGroups();
     }

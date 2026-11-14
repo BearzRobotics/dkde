@@ -109,7 +109,7 @@ below for the full list and one install command.
 
 | Package | Source |
 |---|---|
-| toml-zig, util-unix, dkman, pdf-zig, DKTermCore | GitHub releases of BearzRobotics' own libraries (TOML, /etc/passwd parsing, man pages, PDF, terminal core) |
+| toml-zig, util-unix, dkman (which brings md-zig, gtroff-zig and regex-zig), pdf-zig, DKTermCore | GitHub releases of BearzRobotics' own libraries (TOML, /etc/passwd parsing, man pages, PDF, terminal core) |
 | zig-gobject (GTK bindings) | Ghostty's build of zig-gobject (`deps.files.ghostty.org`, from ghostty-org/zig-gobject), the same bindings Ghostty uses |
 | zig-wayland | `deps.files.ghostty.org`, from ifreund/zig-wayland |
 | libghostty-vt | Ghostty tag `v1.4.0` (needs Zig 0.17.1), through DKTermCore |
