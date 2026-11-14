@@ -450,6 +450,23 @@ window.dkde-panel popover label {
   color: inherit;
 }
 
+/* The right-click menu is compact, like Windows 11's. */
+window.dkde popover.dkde-context-menu contents {
+  padding: 3px;
+}
+
+window.dkde popover.dkde-context-menu button {
+  padding: 2px 10px;
+}
+
+window.dkde popover.dkde-context-menu box.dkde-quick-row button {
+  padding: 3px 4px;
+}
+
+window.dkde popover.dkde-context-menu separator {
+  margin: 2px 4px;
+}
+
 /* ---- Settings in the style of Windows 11 ---- */
 
 window.dkde .dkde-settings-side {

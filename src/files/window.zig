@@ -2114,15 +2114,6 @@ pub const FilesWindow = struct {
         _ = gtk.Popover.signals.closed.connect(popover, *FilesWindow, &onMenuClosed, self, .{});
 
         const box = gtk.Box.new(.vertical, 0);
-        // A popover taller than its window is not shown at all on X11 (a blank box appears
-        // below the window): keep the menu within the window and scroll when it is longer.
-        const scroller = gtk.ScrolledWindow.new();
-        scroller.setPolicy(.never, .automatic);
-        scroller.setPropagateNaturalHeight(1);
-        scroller.setPropagateNaturalWidth(1);
-        scroller.setMaxContentHeight(@max(160, self.window.as(gtk.Widget).getHeight() - 48));
-        scroller.setChild(box.as(gtk.Widget));
-        popover.setChild(scroller.as(gtk.Widget));
 
         var sel = self.describeSelection(on_item);
         defer sel.deinit(self.allocator);
@@ -2132,7 +2123,8 @@ pub const FilesWindow = struct {
         const quick = self.configuredIds("quick", context.default_quick);
         defer quick.deinit(self.allocator);
         const row = gtk.Box.new(.horizontal, 2);
-        row.as(gtk.Widget).setMarginBottom(2);
+        row.as(gtk.Widget).addCssClass("dkde-quick-row");
+        row.as(gtk.Widget).setMarginBottom(1);
         var quick_count: usize = 0;
         for (quick.ids) |id| {
             const entry = self.entryFor(id, &sel) orelse continue;
@@ -2169,6 +2161,22 @@ pub const FilesWindow = struct {
             defer if (entry.free_label) self.allocator.free(entry.label);
             self.menuItem(box, popover, entry.label, id, entry.enabled);
             shown += 1;
+        }
+        // A popover taller than its window is not shown at all on X11 (a blank box appears
+        // below the window): when the menu is longer than the window, keep it inside and scroll.
+        const room = @max(160, self.window.as(gtk.Widget).getHeight() - 48);
+        var natural: c_int = 0;
+        box.as(gtk.Widget).measure(.vertical, -1, null, &natural, null, null);
+        if (natural > room) {
+            const scroller = gtk.ScrolledWindow.new();
+            scroller.setPolicy(.never, .automatic);
+            scroller.setPropagateNaturalWidth(1);
+            scroller.setPropagateNaturalHeight(1);
+            scroller.setMaxContentHeight(room);
+            scroller.setChild(box.as(gtk.Widget));
+            popover.setChild(scroller.as(gtk.Widget));
+        } else {
+            popover.setChild(box.as(gtk.Widget));
         }
         log.debug("context menu: {d} entries, popping up", .{shown});
         popover.popup();
