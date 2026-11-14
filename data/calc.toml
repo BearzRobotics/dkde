@@ -4,7 +4,7 @@
 [calc]
 # "standard", "scientific" or "programmer".
 mode = "standard"
-# The pane on the right: "none", "history", "units", "dates", "graph" or "formulas".
+# The pane on the right: "none", "history", "units", "currency", "dates", "graph" or "formulas".
 pane = "none"
 # "degrees", "radians" or "gradians".
 angle = "degrees"
@@ -26,3 +26,5 @@ history-size = 200
 # The window's size, remembered.
 width = 380
 height = 520
+# Show the tape of recent entries above the entry (View > Expanded Tape).
+expanded = false

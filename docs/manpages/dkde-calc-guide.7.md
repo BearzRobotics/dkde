@@ -1,5 +1,5 @@
 # NAME
-dkde-calc-guide - how to use the DKDE calculator: numbers, the order of operations, functions, equations, formulas, calculus and the programmer mode
+dkde-calc-guide - how to use the DKDE calculator: numbers, the order of operations, functions, equations, formulas, calculus, complex numbers, matrices, statistics, units, currencies and the programmer mode
 
 # DESCRIPTION
 This guide explains what you can type into dkde-calc(1) and how it is worked out. Everything here can also be done with the keys; the keys only type text into the entry. **Enter** (or the blue **⏎** key) works the entry out; **=** is something you type, for equations.
@@ -61,6 +61,7 @@ Things to know:
 | **τ**, **tau** | 2π |
 | **φ**, **phi** | 1.61803398874989… (the golden ratio) |
 | **ans** | the last result |
+| **i** | the imaginary unit (see COMPLEX NUMBERS AND MATRICES) |
 
 **e** is a constant only on its own: **2e3** is 2000, but **2e** is 2 × e.
 
@@ -86,7 +87,19 @@ Whole numbers
 : **n!** and **fact(n)**, **gcd**, **lcm** (any number of arguments), **nCr(n, r)** (combinations), **nPr(n, r)** (arrangements), **mod(a, b)** or **a mod b** (the remainder, with the sign of b: −1 mod 3 = 2).
 
 Lists
-: **min**, **max**, **sum**, **mean** (or **avg**), **median**, **stdev** (sample standard deviation), **var** (sample variance): **mean(2, 4, 9)** = 5.
+: **min**, **max**, **sum**, **mean** (or **avg**), **median**, **stdev** (sample standard deviation), **var** (sample variance): **mean(2, 4, 9)** = 5. See STATISTICS for the rest.
+
+Special functions
+: **gamma**, **beta**, **digamma**, **erf**, **erfc**, **erfinv**, **zeta**, **lambertw**, **igamma**, **betainc**, **sinc**, **sigmoid**, and the reciprocal and inverse hyperbolic functions (**sec**, **csch**, **asech** …).
+
+Number theory
+: **isprime**, **nextprime**, **prevprime**, **nthprime**, **primepi**, **totient**, **fibonacci**, **factorial2**, **hyperfactorial**, **superfactorial**, **derangements**, **bernoulli**, **numerator**, **denominator**.
+
+Distributions
+: Density or probability, cumulative distribution and inverse for about 20 distributions: **normdist**, **binomdist**, **poisson**, **expondist**, **chisqdist**, **tdist**, **fdist**, **gammadist**, **betadist**, **weibulldist**, **logistic**, **pareto**, **rayleigh** and others, with inverses such as **normdistinv**, **tdistinv** and **chisqdistinv**.
+
+Money
+: The functions of a spreadsheet: **pv**, **fv**, **pmt**, **nper**, **rate**, **ipmt**, **ppmt**, **effect**, **nominal**, **sln**, **syd**, **dollarfr**, **dollarde**.
 
 Random
 : **rand()**: a number between 0 and 1.
@@ -99,7 +112,7 @@ Random
 : Sets x to 6 (x already has a value).
 
 **ans**
-: The last result: **ans × 2**.
+: The last result: **ans × 2**. An entry that starts with an operator (**+**, **×**, **÷**, **^** and so on) goes on from it: **+ 3** is **ans + 3**, as on a TI. A leading **−** stays a minus sign.
 
 Names start with a letter and go on with letters, digits and **_**: **x**, **total**, **v0**, **rate_2**. A Greek letter is a name by itself, with digits after it: **θ**, **θ1**.
 
@@ -176,11 +189,59 @@ A formula in the entry is always solved; it never stores a variable. **Save Entr
 
 In degrees, derivatives of trigonometric functions carry the factor π/180 (the rate per degree). Use **Rad** for the usual textbook results.
 
-# UNITS
-**AMOUNT UNIT in UNIT**, **AMOUNT UNIT to UNIT**
-: **5 km in mi**, **(2 + 3) kg to lb**, **100 °F to °C**, **3 nautical miles in km**, **8 GiB in GB**.
+# SYSTEMS OF EQUATIONS
+Several equations at once, separated by **;**: **x + y = 5; x − y = 1** gives **x = 3;  y = 2**. Linear systems are solved exactly (fractions stay fractions). A nonlinear system is solved by Newton's method and shows **≈**; it gives one root even when there are several. **multisolve** takes the same equations as a list.
 
-The Unit Conversion pane (**Ctrl+U**) lists every unit: length, area, volume, mass, temperature, time, speed, pressure, energy, power, data (decimal and binary prefixes), angle and fuel economy (including litres per 100 km).
+# COMPLEX NUMBERS AND MATRICES
+**i** is the imaginary unit. Complex numbers stay exact while their parts are fractions: **i·i** is **−1**, **(1 + i)²** is **2i**. A result the real numbers refuse is tried among the complex ones: **sqrt(−4)** is **2i**. The principal branches are used, as in Qalculate. **re**, **im**, **conj**, **polar** and **cis** take them apart and put them together.
+
+A matrix is written with commas between the entries of a row and **;** between rows: **[1, 2; 3, 4]**. A vector is one row or one column. They can be stored (**M = [1, 2; 3, 4]**) and are kept between runs.
+
+| Typed | Result |
+|---|---|
+| **[1,2;3,4] × [5,6;7,8]** | [19, 22; 43, 50] |
+| **[1,2;3,4]^2** | [7, 10; 15, 22] |
+| **det(M)**, **inv(M)**, **adj(M)**, **transpose(M)** | determinant, inverse, adjugate, transpose |
+| **rk(M)**, **rref(M)**, **trace(M)**, **permanent(M)** | rank, reduced row echelon form, trace, permanent |
+| **dot(u, v)**, **cross(u, v)**, **norm(v)** | scalar product, vector product, length |
+| **identity(n)**, **lsolve(A, b)** | the identity matrix, the solution of A·x = b |
+
+# STATISTICS
+These take a list of numbers or a matrix: **mean**, **median**, **mode**, **geomean**, **harmmean**, **trimmean**, **winsormean**, **weighmean**, **rms**, **range**, **iqr**, **mad**, **meandev**, **stdev**, **var**, **poolvar**, **stderr**, **skew**, **sumsq**, **cumsum**, **sort**, **rank**, **zscore**, **decile**, **quartile**, **percentile** (nine methods), and for pairs of lists **cov**, **covar**, **pearson** and **spearman**.
+
+# SHOWING AN ANSWER ANOTHER WAY
+**EXPRESSION to KIND** works the expression out and writes the answer as KIND; the entry itself is not changed.
+
+| KIND | Example | Shows |
+|---|---|---|
+| **fraction**, **mixed**, **decimal** | **0.75 to fraction** | 3/4 |
+| **hex**, **bin**, **oct**, **dec**, **base N** | **255 to hex** | 0xFF |
+| **roman** | **2024 to roman** | MMXXIV |
+| **factors** | **360 to factors** | 2³ × 3² × 5 |
+| **percent** | **0.25 to percent** | 25% |
+| **sexagesimal** | **12.5 to sexagesimal** | 12°30′0″ |
+| **time** (seconds) | **3725 to time** | 1:02:05 |
+| **scientific**, **engineering** | **12345 to scientific** | the answer in scientific notation |
+
+# UNITS
+An amount may carry units anywhere in an entry, not only in a conversion. Units combine with exact dimensional arithmetic: **5 ft + 3 in** is **5.25 ft**; **5 kg × 2 m/s²** is **10 N**; **10 m / 2 s** is **5 m/s**; **60 km/h × 2 h** is **120 km**. Adding amounts of different kinds (**5 m + 3 s**) is an error: "These units do not match". About 120 units are known, with SI and binary prefixes (**km**, **mA**, **GiB**) and some physical constants. Amounts are kept between runs like any other value.
+
+**AMOUNT UNIT in UNIT**, **AMOUNT UNIT to UNIT**
+: **5 km in mi**, **(2 + 3) kg to lb**, **100 °F to °C**, **3 nautical miles in km**, **8 GiB in GB**, **90° to rad**. Temperatures and angles convert correctly (a temperature is not a plain factor).
+
+The Unit Conversion pane (**Ctrl+U**) lists the units by kind: length, area, volume, mass, temperature, time, speed, pressure, energy, power, data (decimal and binary prefixes), angle and fuel economy (including litres per 100 km).
+
+# CURRENCIES
+Money is one more kind of unit: **100 USD to EUR**, **0.5 BTC in USD**, **3 goldback to USD**. The codes of about 30 national currencies (the European Central Bank's list and the dollar), 20 crypto coins (BTC, ETH, XRP, SOL, LTC, XMR and others, and PAXG, one troy ounce of gold) and **GBK**, the Goldback, are known; names such as **dollars**, **euro**, **yen**, **bitcoin** and **goldbacks** work too.
+
+The program never uses the network by itself. Choose **View ▸ Update Exchange Rates** (or **Update exchange rates** in the Currency pane, **Ctrl+K**) to fetch new rates: fiat from the European Central Bank (one rate each working day), crypto from CoinGecko, Goldbacks from goldback.com. The last rates are kept in a cache file and used offline, and an answer that used them shows where they came from and when. Before the first update, a currency conversion says that there are no rates yet. If goldback.com's page feed ever changes, the Goldback keeps its last rate and the other sources keep working.
+
+# THE ENTRY
+The entry is coloured as you type: numbers, functions, constants, variables, units and currencies, and operators each have their own colour; the bracket next to the cursor and its partner are bold, and a bracket without a partner is red and underlined. When an entry cannot be worked out, the part where the problem is gets selected.
+
+**View ▸ Expanded Tape** (**Ctrl+T**) shows a scrollable tape of recent entries and answers above the entry. Click a line to use its result (it is inserted at the cursor if the entry is not empty).
+
+**File ▸ Save Session…** and **Open Session…** write and read a **.dkcalc** file with the history, variables, functions, matrices, amounts, last result and memory.
 
 # DATES
 The Date Calculation pane (**Ctrl+E**) gives the time between two dates in years, months and days (and in days and weeks), or the date a number of years, months and days before or after another.
