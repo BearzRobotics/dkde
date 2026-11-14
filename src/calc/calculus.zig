@@ -315,6 +315,7 @@ const Fix = struct {
             .value => |v| num.format(a, v, .{ .decimals = 8 }),
             .simplified => |s| s,
             .assigned => |x| num.format(a, x.value, .{ .decimals = 8 }),
+            .symbolic => |x| num.format(a, x.value, .{ .decimals = 8 }),
             else => "?",
         };
     }

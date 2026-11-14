@@ -32,6 +32,7 @@ const functions = @import("functions.zig");
 const letters = @import("letters.zig");
 const rich = @import("rich.zig");
 const bigreal = @import("bigreal.zig");
+const symbolic = @import("symbolic.zig");
 const Number = num.Number;
 
 pub const Angle = enum {
@@ -834,6 +835,15 @@ fn isBoolean(n: *const Node) bool {
     };
 }
 
+/// The number an outcome stands for, when it is just a number (also for an exact form).
+pub fn plainValue(o: Outcome) ?Number {
+    return switch (o) {
+        .value => |v| v,
+        .symbolic => |s| s.value,
+        else => null,
+    };
+}
+
 pub fn isBuiltin(name: []const u8) bool {
     var buf: [48]u8 = undefined;
     if (name.len > buf.len) return false;
@@ -1587,6 +1597,8 @@ pub const Outcome = union(enum) {
     truth: bool,
     /// A complex number or a matrix.
     rich: rich.Value,
+    /// An exact form that is not a fraction (2√2, π/4): the text, and the value to full precision.
+    symbolic: struct { text: []const u8, value: Number },
     /// x + y = 5; x - y = 1: each unknown and its value.
     system: struct { names: [][]const u8, values: []Number },
     /// M = [1, 2; 3, 4]: a stored matrix or complex number.
@@ -1673,6 +1685,15 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
             if (!mode.programmer and rich.needs(n0, session)) return richOutcome(a, &ev, session, n0);
             // diff(f, x) on its own is a formula: tidy it.
             const n = if (calculus.hasDiff(n0)) try calculus.expand(a, &ev, n0) else n0;
+            // √8 is 2√2, sin(π/4) is √2/2: the exact form first, when there is one.
+            if (!mode.programmer and !mode.solve_only and symbolic.worthTrying(n, session)) {
+                if (symbolic.evaluate(.{ .a = a, .session = session, .mode = mode }, n) catch null) |sym| {
+                    if (sym.isRational()) {
+                        return .{ .value = if (sym.terms.len == 0) try num.fromInt(a, 0) else sym.terms[0].c };
+                    }
+                    return .{ .symbolic = .{ .text = try symbolic.format(a, sym), .value = try symbolic.toNumber(a, sym) } };
+                }
+            }
             if (ev.eval(n, null)) |v| return if (isBoolean(n)) .{ .truth = !v.isZero() } else .{ .value = v } else |e| {
                 // sqrt(-4), ln(-1): an answer among the complex numbers.
                 if (e == error.Domain and !mode.programmer) {
@@ -2049,6 +2070,7 @@ const Tester = struct {
             .defined => |d| d,
             .truth => |t| if (t) "true" else "false",
             .simplified => |x| x,
+            .symbolic => |sy| num.format(a, sy.value, .{}),
             .rich => |v| try rich.format(a, v, .{}),
             .system => |sy| blk: {
                 var parts: std.ArrayList(u8) = .empty;

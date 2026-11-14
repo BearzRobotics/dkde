@@ -141,6 +141,8 @@ const Calc = struct {
 
     mode: Mode = .standard,
     pane: Pane = .none,
+    /// The exact form (2√2) of the result being shown, for the line above the entry.
+    exact_tail: ?[]const u8 = null,
     /// The tape of recent entries above the entry (View > Expanded).
     expanded: bool = false,
     tape_scroll: *gtk.ScrolledWindow = undefined,
@@ -790,8 +792,8 @@ const Calc = struct {
         if (self.mode != .programmer) if (convert.request(text)) |req| {
             var p: eval.Problem = .{};
             const out = eval.run(a, &self.session, req.expr, self.evalMode(), &p) catch |e| return self.showError(e, p, text);
-            if (out != .value) return self.showError(error.Syntax, p, text);
-            const sh = convert.apply(a, out.value, req.kind, self.style) catch |e| return self.showError(switch (e) {
+            const out_value = eval.plainValue(out) orelse return self.showError(error.Syntax, p, text);
+            const sh = convert.apply(a, out_value, req.kind, self.style) catch |e| return self.showError(switch (e) {
                 error.OutOfMemory => error.OutOfMemory,
                 error.TooLarge => error.TooLarge,
                 else => error.Domain,
@@ -804,8 +806,8 @@ const Calc = struct {
         if (self.mode != .programmer) if (units.request(text)) |req| {
             var p: eval.Problem = .{};
             const amount = eval.run(a, &self.session, req.amount, self.evalMode(), &p) catch |e| return self.showError(e, p, text);
-            if (amount != .value) return self.showError(error.Syntax, p, text);
-            const v = units.convert(req.from.category, req.from.unit, req.to.unit, amount.value.toFloat());
+            const amount_value = eval.plainValue(amount) orelse return self.showError(error.Syntax, p, text);
+            const v = units.convert(req.from.category, req.from.unit, req.to.unit, amount_value.toFloat());
             const shown = num.format(a, .{ .approx = v }, self.style) catch return;
             const result = std.fmt.allocPrint(a, "{s} {s}", .{ shown, units.shortName(req.to) }) catch return;
             self.finishResult(expr_copy, result, num.fromFloat(v) catch null, a);
@@ -868,6 +870,11 @@ const Calc = struct {
                 self.finishResultAs(expr_copy, parts.items, null, a, false);
                 if (self.plain) |pl| self.gpa.free(pl);
                 self.plain = null;
+            },
+            .symbolic => |sy| {
+                const shown = self.displayText(a, sy.value) catch return;
+                self.exact_tail = sy.text;
+                self.finishResult(expr_copy, shown, sy.value, a);
             },
             .rich => |v| {
                 self.finishRich(expr_copy, v, null, a);
@@ -955,7 +962,11 @@ const Calc = struct {
         var line_buf: [4096]u8 = undefined;
         // The expression above, with "≈" when the result is rounded and the fraction when there is one.
         var tail: []const u8 = "";
-        if (value) |v| {
+        if (self.exact_tail) |exact| {
+            // 2√2, π/4: the exact form beside the decimals.
+            tail = std.fmt.allocPrint(a, "   (= {s})", .{exact}) catch "";
+            self.exact_tail = null;
+        } else if (value) |v| {
             if (num.fraction(a, v) catch null) |f| {
                 if (self.mode != .programmer) tail = std.fmt.allocPrint(a, "   (= {s})", .{f}) catch "";
             }
@@ -3184,4 +3195,5 @@ test {
     _ = @import("highlight.zig");
     _ = @import("export.zig");
     _ = @import("bigreal.zig");
+    _ = @import("symbolic.zig");
 }
