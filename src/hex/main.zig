@@ -80,6 +80,8 @@ const Host = struct {
     window: *gtk.ApplicationWindow,
     notebook: *gtk.Notebook,
     tabs: std.ArrayList(*HexEditor) = .empty,
+    /// hex.toml, for the window's size and the inspector; each tab also reads it.
+    config: common.Config,
 
     fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*Host {
         const self = try allocator.create(Host);
@@ -88,12 +90,18 @@ const Host = struct {
             .allocator = allocator,
             .window = gtk.ApplicationWindow.new(app),
             .notebook = gtk.Notebook.new(),
+            .config = try common.Config.load(allocator, "hex.toml"),
         };
+        errdefer self.config.deinit();
         const window = self.window.as(gtk.Window);
         window.setTitle(common.tr("Hex Editor"));
-        window.setDefaultSize(1160, 640);
+        window.setDefaultSize(
+            std.math.clamp(self.config.getInt("hex", "width", 1160), 400, 10000),
+            std.math.clamp(self.config.getInt("hex", "height", 640), 300, 10000),
+        );
+        if (self.config.getBool("hex", "maximized", false)) window.maximize();
         self.window.as(gtk.Widget).addCssClass("dkde");
-        _ = common.header.create(window, "accessories-text-editor", true);
+        _ = common.header.create(window, "text-x-hex", true);
 
         const mb = common.menubar;
         const menus = [_]mb.Menu{
@@ -161,7 +169,7 @@ const Host = struct {
                 mb.check("_Uppercase hex", "uppercase", true),
                 mb.check("_Insert mode  Insert", "insert", false),
                 .separator,
-                mb.check("Data _inspector", "inspector", true),
+                mb.check("Data _inspector", "inspector", self.config.getBool("hex", "inspector", true)),
                 mb.check("_Big-endian values", "big-endian", false),
             } },
             .{ .label = "_Disk", .entries = &.{
@@ -212,6 +220,7 @@ const Host = struct {
     }
 
     fn onDestroy(_: *gtk.ApplicationWindow, self: *Host) callconv(.c) void {
+        self.config.deinit();
         self.tabs.deinit(self.allocator);
         self.allocator.destroy(self);
     }
@@ -228,6 +237,7 @@ const Host = struct {
             return null;
         };
         self.tabs.append(self.allocator, editor) catch return null;
+        editor.inspector.as(gtk.Widget).setVisible(@intFromBool(self.config.getBool("hex", "inspector", true)));
         const head = gtk.Box.new(.horizontal, 6);
         head.append(editor.tab_label.as(gtk.Widget));
         const close = gtk.Button.newWithLabel("\u{00D7}");
@@ -286,7 +296,19 @@ const Host = struct {
             t.confirmDiscard(.quit);
             return 1;
         };
+        self.saveWindow();
         return 0;
+    }
+
+    /// Remembers the window's size (not while maximized) for the next start.
+    fn saveWindow(self: *Host) void {
+        const win = self.window.as(gtk.Window);
+        const w = self.window.as(gtk.Widget);
+        if (win.isMaximized() == 0 and w.getWidth() > 0) {
+            self.config.setInt("hex", "width", w.getWidth()) catch {};
+            self.config.setInt("hex", "height", w.getHeight()) catch {};
+        }
+        self.config.setBool("hex", "maximized", win.isMaximized() != 0) catch {};
     }
 
     fn onAction(self: *Host, action: []const u8) void {
@@ -3005,7 +3027,9 @@ const HexEditor = struct {
         if (eql(u8, action, "insert")) return self.view.setInsertMode(!self.view.insert_mode);
         if (eql(u8, action, "inspector")) {
             const w = self.inspector.as(gtk.Widget);
-            return w.setVisible(@intFromBool(w.getVisible() == 0));
+            w.setVisible(@intFromBool(w.getVisible() == 0));
+            self.host.config.setBool("hex", "inspector", w.getVisible() != 0) catch {};
+            return;
         }
         if (eql(u8, action, "get-formats")) return self.getFormats(.ksy);
         if (eql(u8, action, "get-patterns")) return self.getFormats(.hexpat);

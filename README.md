@@ -18,11 +18,16 @@ GTK4 (no libadwaita). The compositor is labwc. See `ai/DKDE-SPEC.md` for the des
 | `dkde-calendar` | Calendar with events, notes and liturgical calendars |
 | `dkde-color` | Colour mixer |
 | `dkde-parted` | Partitions: tables, partitions, formatting, mounting |
+| `dkde-hex` | Hex editor: files, disks and process memory, Kaitai Struct and ImHex formats |
 | `dkde-calc` | Calculator |
 | `dkde-view` | Image viewer |
 | `dkde-tasks` | Task Manager |
 | `dkde-snip` | Screenshots |
 | `dkde-setup` | First-run check and fixes |
+
+## Trying the hex editor's disk mode safely
+
+`dkde-hex` opens disks read-only; writing and cloning are separate, confirmed steps that change the device. Try them on an image file first (`dkde-hex --device` takes a device, so use a loop device on a scratch image) and never on a disk you need.
 
 ## Trying the partition tool safely
 
@@ -263,7 +268,7 @@ installed under the prefix:
 
 | Path | What |
 |---|---|
-| `bin/dkde-*` | The programs: `dkde-panel`, `dkde-term`, `dkde-files`, `dkde-settings`, `dkde-edit`, `dkde-calc`, `dkde-parted`, `dkde-view`, `dkde-tasks`, `dkde-snip`, `dkde-setup`, `dkde-greeter`, and the session scripts `dkde-session`, `dkde-greeter-session`, `dkde-greeter-start` (`dkde-pointer` is a test tool you can delete) |
+| `bin/dkde-*` | The programs: `dkde-panel`, `dkde-term`, `dkde-files`, `dkde-settings`, `dkde-edit`, `dkde-calc`, `dkde-parted`, `dkde-hex`, `dkde-view`, `dkde-tasks`, `dkde-snip`, `dkde-setup`, `dkde-greeter`, and the session scripts `dkde-session`, `dkde-greeter-session`, `dkde-greeter-start` (`dkde-pointer` is a test tool you can delete) |
 | `share/applications/` | Start menu entries for the apps |
 | `share/wayland-sessions/dkde.desktop` | The session entry for login managers (GDM, SDDM, greetd's own menu and so on) |
 | `share/dkde/` | The stylesheet, default config, example labwc files and the service files for dinit, systemd, SysV init, PAM and greetd |

@@ -14,7 +14,7 @@ are confirmed.
   `dkde-setup --once`) starts in a private headless compositor with an empty
   panel log; the Start menu opens with Super and searches; `dkde-term` opens.
 - Every program (calc, calendar, charmap, clock, color, edit, files, help,
-  parted, pdf, settings, snip, tasks, term, view) starts in that session and
+  hex, parted, pdf, settings, snip, tasks, term, view) starts in that session and
   stays up with empty stderr.
 - All 19 Settings pages open without a trace.
 - The greeter against a fake greetd: wrong password, retry, `start_session`.
@@ -41,6 +41,10 @@ are confirmed.
 9. Idle lock and screen off (Power page) with a lock program installed.
 10. `ldd` on the binaries inside the image: no missing libraries (musl: see
     PACKAGING.md section 8).
+
+## Hex editor (dkde-hex)
+
+Restored after the restructure (2026-11-13). Checked: builds, `--help`/`--version`, opens a file with an empty stderr, `zig build test`. Not exercised: disk mode. Do it on an image file only, never a disk in use: attach a scratch image as a loop device, open it with `dkde-hex --device /dev/loopN` (as administrator), check the window moves (Alt+Page Up/Down) and Find searches the whole device; Enable writing, change a byte, Write changes, confirm it on re-reading; Save as image to a file and refuse a device; Clone onto a second loop device and check the refusals (the source itself, a mounted disk, a smaller target). Open a file with a known format (ELF, PNG) and check Structure picks it.
 
 ## Archives in Files (libarchive)
 

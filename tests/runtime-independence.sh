@@ -13,7 +13,7 @@ set -u
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bindir=${1:-$root/zig-out/bin}
 [ "$#" -gt 0 ] && shift
-apps=${*:-calc calendar charmap clock color edit files parted settings snip tasks term view}
+apps=${*:-calc calendar charmap clock color edit files hex parted settings snip tasks term view}
 wait_s=${SECONDS_TO_RUN:-4}
 data=$root/data
 

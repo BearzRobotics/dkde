@@ -67,7 +67,7 @@ Things worth knowing:
 
 | Where | What |
 |---|---|
-| `$PREFIX/bin/` | `dkde-panel`, `dkde-session`, `dkde-greeter`, `dkde-greeter-session`, `dkde-greeter-start`, `dkde-setup`, `dkde-idle`, `dkde-pointer`, the apps (`dkde-term`, `-files`, `-settings`, `-edit`, `-calc`, `-calendar`, `-clock`, `-color`, `-charmap`, `-parted`, `-snip`, `-tasks`, `-view`) |
+| `$PREFIX/bin/` | `dkde-panel`, `dkde-session`, `dkde-greeter`, `dkde-greeter-session`, `dkde-greeter-start`, `dkde-setup`, `dkde-idle`, `dkde-pointer`, the apps (`dkde-term`, `-files`, `-settings`, `-edit`, `-calc`, `-calendar`, `-clock`, `-color`, `-charmap`, `-parted`, `-hex`, `-snip`, `-tasks`, `-view`) |
 | `$PREFIX/share/applications/` | the apps' `.desktop` files |
 | `$PREFIX/share/wayland-sessions/dkde.desktop` | the login-manager session entry |
 | `$PREFIX/share/dkde/` | defaults (`*.toml`, `style.css`), labwc config and keybindings, the service-file templates |
