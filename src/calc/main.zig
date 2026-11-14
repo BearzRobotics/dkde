@@ -23,6 +23,7 @@ const common = @import("common");
 const num = @import("num.zig");
 const eval = @import("eval.zig");
 const units = @import("units.zig");
+const convert = @import("convert.zig");
 const dates = @import("dates.zig");
 const graph_mod = @import("graph.zig");
 const simplify = @import("simplify.zig");
@@ -708,6 +709,20 @@ const Calc = struct {
         const text = cleaned(a, raw) catch return;
         const expr_copy = a.dupe(u8, raw) catch return;
 
+        // "255 to hex", "0.75 to fraction", "360 to factors".
+        if (self.mode != .programmer) if (convert.request(text)) |req| {
+            var p: eval.Problem = .{};
+            const out = eval.run(a, &self.session, req.expr, self.evalMode(), &p) catch |e| return self.showError(e, p, text);
+            if (out != .value) return self.showError(error.Syntax, p, text);
+            const sh = convert.apply(a, out.value, req.kind, self.style) catch |e| return self.showError(switch (e) {
+                error.OutOfMemory => error.OutOfMemory,
+                error.TooLarge => error.TooLarge,
+                else => error.Domain,
+            }, p, text);
+            self.finishResultAs(expr_copy, sh.text, null, a, false);
+            return;
+        };
+
         // "5 km in mi".
         if (self.mode != .programmer) if (units.request(text)) |req| {
             var p: eval.Problem = .{};
@@ -911,6 +926,16 @@ const Calc = struct {
         defer arena.deinit();
         const a = arena.allocator();
         const text = cleaned(a, raw) catch return;
+        if (self.mode != .programmer) if (convert.request(text)) |req| {
+            var p: eval.Problem = .{};
+            const st = eval.parse(a, req.expr, self.evalMode(), &p) catch return self.preview.setText("");
+            if (st != .expr) return self.preview.setText("");
+            var ev: eval.Eval = .{ .a = a, .session = &self.session, .mode = self.evalMode(), .problem = &p };
+            const v = ev.eval(st.expr, null) catch return self.preview.setText("");
+            const sh = convert.apply(a, v, req.kind, self.style) catch return self.preview.setText("");
+            var buf: [512]u8 = undefined;
+            return self.preview.setText(std.fmt.bufPrintSentinel(&buf, "{s} {s}", .{ if (sh.approx) "≈" else "=", sh.text }, 0) catch "");
+        };
         if (self.mode != .programmer) if (units.request(text)) |req| {
             var p: eval.Problem = .{};
             const st = eval.parse(a, req.amount, self.evalMode(), &p) catch return self.preview.setText("");
@@ -2319,4 +2344,5 @@ test {
     _ = @import("accuracy_test.zig");
     _ = @import("qalc_reference_test.zig");
     _ = @import("functions.zig");
+    _ = @import("convert.zig");
 }
