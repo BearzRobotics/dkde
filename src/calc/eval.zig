@@ -209,9 +209,39 @@ const Parser = struct {
     }
 
     fn andExpr(self: *Parser) Error!*Node {
-        var l = try self.shift();
-        while (self.eat("&") or self.eatWord("and")) l = try self.binary(.band, l, try self.shift());
+        var l = try self.compare();
+        while (self.eat("&") or self.eatWord("and")) l = try self.binary(.band, l, try self.compare());
         return l;
+    }
+
+    /// a < b, a <= b, a > b, a >= b, a != b (also ≤ ≥ ≠): 1 or 0, shown as true or false.
+    fn compare(self: *Parser) Error!*Node {
+        const l = try self.shift();
+        self.skipSpace();
+        const r = self.rest();
+        const table = [_]struct { tok: []const u8, name: []const u8 }{
+            .{ .tok = "<=", .name = "le" },  .{ .tok = ">=", .name = "ge" },  .{ .tok = "!=", .name = "ne" },
+            .{ .tok = "≤", .name = "le" },   .{ .tok = "≥", .name = "ge" },   .{ .tok = "≠", .name = "ne" },
+            .{ .tok = "<>", .name = "ne" },
+        };
+        var cmp_name: []const u8 = "";
+        var skip: usize = 0;
+        for (table) |e| if (std.mem.startsWith(u8, r, e.tok)) {
+            cmp_name = e.name;
+            skip = e.tok.len;
+            break;
+        };
+        if (skip == 0 and r.len > 0 and (r[0] == '<' or r[0] == '>') and !(r.len > 1 and r[1] == r[0])) {
+            cmp_name = if (r[0] == '<') "lt" else "gt";
+            skip = 1;
+        }
+        if (skip == 0) return l;
+        self.pos += skip;
+        const rhs = try self.shift();
+        const args = try self.a.alloc(*Node, 2);
+        args[0] = l;
+        args[1] = rhs;
+        return self.node(.{ .call = .{ .name = cmp_name, .args = args, .pos = self.pos } });
     }
 
     fn shift(self: *Parser) Error!*Node {
@@ -264,6 +294,9 @@ const Parser = struct {
                     }
                 }
                 l = try self.binary(.div, l, r);
+            } else if (l.* == .unary and l.unary.op == .pct and self.eatWord("of")) {
+                // 20% of 50 is 10.
+                l = try self.binary(.mul, l, try self.unary());
             } else if (self.eatWord("mod")) {
                 l = try self.binary(.mod, l, try self.unary());
             } else if (self.implicitNext()) {
@@ -282,7 +315,7 @@ const Parser = struct {
         if (std.mem.startsWith(u8, r, "√") or std.mem.startsWith(u8, r, "∛")) return true;
         if (isNameStart(r)) {
             // Not a word operator.
-            inline for (.{ "mod", "and", "or", "xor", "not" }) |w| {
+            inline for (.{ "mod", "and", "or", "xor", "not", "of" }) |w| {
                 if (std.ascii.startsWithIgnoreCase(r, w) and (r.len == w.len or !isNameChar(r[w.len]))) return false;
             }
             if (convertWord(r) != null) return false;
@@ -308,7 +341,16 @@ const Parser = struct {
     fn postfix(self: *Parser) Error!*Node {
         var v = try self.primary();
         while (true) {
-            if (self.eat("!")) {
+            self.skipSpace();
+            const here = self.rest();
+            if (std.mem.startsWith(u8, here, "!=")) return v;
+            if (std.mem.startsWith(u8, here, "!!") and !std.mem.startsWith(u8, here, "!!=")) {
+                // 7!! is the double factorial 7·5·3·1.
+                self.pos += 2;
+                const args = try self.a.alloc(*Node, 1);
+                args[0] = v;
+                v = try self.node(.{ .call = .{ .name = "factorial2", .args = args, .pos = self.pos } });
+            } else if (self.eat("!")) {
                 v = try self.node(.{ .unary = .{ .op = .fact, .arg = v } });
             } else if (self.eat("%")) {
                 v = try self.node(.{ .unary = .{ .op = .pct, .arg = v } });
@@ -748,6 +790,30 @@ const builtin_functions = [_][]const u8{
     "csc",  "cot",  "diff", "derivative", "integral", "integrate", "limit", "prod",
 };
 
+/// lt, le, gt, ge, ne: what a comparison in an entry is read as.
+fn comparison(name: []const u8) ?void {
+    inline for (.{ "lt", "le", "gt", "ge", "ne" }) |c| if (std.mem.eql(u8, name, c)) return {};
+    return null;
+}
+
+fn compareNumbers(a: std.mem.Allocator, x: Number, y: Number) Error!std.math.Order {
+    if (x.isExact() and y.isExact()) return num.order(a, x, y);
+    const xf = x.toFloat();
+    const yf = y.toFloat();
+    if (@abs(xf - yf) <= 1e-12 * @max(1, @abs(xf))) return .eq;
+    return if (xf < yf) .lt else .gt;
+}
+
+/// A comparison, or and/or/xor/not of them: its answer is true or false.
+fn isBoolean(n: *const Node) bool {
+    return switch (n.*) {
+        .call => |c| comparison(c.name) != null,
+        .binary => |b| (b.op == .band or b.op == .bor or b.op == .bxor) and isBoolean(b.l) and isBoolean(b.r),
+        .unary => |u| u.op == .bnot and isBoolean(u.arg),
+        else => false,
+    };
+}
+
 pub fn isBuiltin(name: []const u8) bool {
     var buf: [48]u8 = undefined;
     if (name.len > buf.len) return false;
@@ -1020,6 +1086,20 @@ pub const Eval = struct {
     fn builtin(self: *Eval, f_in: []const u8, args: []const Number) Error!Number {
         const a = self.a;
         const f = functions.canonical(f_in);
+        if (comparison(f)) |_| {
+            if (args.len != 2) return error.WrongArguments;
+            const o = try compareNumbers(a, args[0], args[1]);
+            const yes = if (std.mem.eql(u8, f, "lt")) o == .lt else if (std.mem.eql(u8, f, "le")) o != .gt else if (std.mem.eql(u8, f, "gt")) o == .gt else if (std.mem.eql(u8, f, "ge")) o != .lt else o != .eq;
+            return num.fromInt(a, @as(i64, if (yes) 1 else 0));
+        }
+        if (std.mem.eql(u8, f, "round") and args.len == 2) {
+            // round(2.567, 2) is 2.57; round(1234.5, -2) is 1200.
+            const digits = num.intValue(args[1]) orelse return error.Domain;
+            if (digits < -300 or digits > 300) return error.Domain;
+            const scale = try num.pow(a, try num.fromInt(a, 10), try num.fromInt(a, digits));
+            const scaled = try self.builtin("round", &.{try num.mul(a, args[0], scale)});
+            return num.div(a, scaled, scale);
+        }
         if (functions.find(f)) |def| {
             if (args.len < def.min or args.len > def.max) return error.WrongArguments;
             const fctx: functions.Ctx = .{ .a = a, .rad_per_unit = self.toRad(1) };
@@ -1341,7 +1421,56 @@ pub const Outcome = union(enum) {
 };
 
 /// Works out one entry. Everything returned lives in `a`.
+/// The text inside `name(…)` when the whole entry is that one call.
+fn unwrapCall(text: []const u8, name: []const u8) ?[]const u8 {
+    const t = std.mem.trim(u8, text, " ");
+    if (t.len <= name.len + 1 or !std.ascii.startsWithIgnoreCase(t, name) or t[name.len] != '(' or t[t.len - 1] != ')') return null;
+    var depth: usize = 0;
+    for (t[name.len..], name.len..) |c, i| {
+        if (c == '(') depth += 1;
+        if (c == ')') {
+            depth -|= 1;
+            if (depth == 0 and i != t.len - 1) return null;
+        }
+    }
+    return t[name.len + 1 .. t.len - 1];
+}
+
+/// Splits at the separators outside brackets.
+fn splitTop(a: std.mem.Allocator, text: []const u8, sep: u8) Error![][]const u8 {
+    var parts: std.ArrayList([]const u8) = .empty;
+    var depth: usize = 0;
+    var start: usize = 0;
+    for (text, 0..) |c, i| switch (c) {
+        '(', '[' => depth += 1,
+        ')', ']' => depth -|= 1,
+        else => if (c == sep and depth == 0) {
+            try parts.append(a, text[start..i]);
+            start = i + 1;
+        },
+    };
+    try parts.append(a, text[start..]);
+    return parts.items;
+}
+
 pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode, problem: *Problem) Error!Outcome {
+    // solve(x^2 = 4, x) and solve(x^2 - 4): the equation itself. simplify(2x + 3x): the entry itself.
+    if (!mode.programmer) {
+        if (unwrapCall(text, "solve")) |inner| {
+            const args = try splitTop(a, inner, ',');
+            if (args.len < 1 or args.len > 2) return error.WrongArguments;
+            const eq = if (std.mem.indexOfScalar(u8, args[0], '=') == null) try std.fmt.allocPrint(a, "{s} = 0", .{args[0]}) else args[0];
+            return run(a, session, eq, .{ .angle = mode.angle, .solve_only = true }, problem);
+        }
+        if (unwrapCall(text, "simplify")) |inner| return run(a, session, inner, mode, problem);
+        // x = 5; x * 2: the entries one after the other, the last one's answer (several
+        // equations in a row are a system of equations instead).
+        const parts = try splitTop(a, text, ';');
+        if (parts.len > 1 and std.mem.indexOfScalar(u8, parts[parts.len - 1], '=') == null and std.mem.trim(u8, parts[parts.len - 1], " ").len > 0) {
+            for (parts[0 .. parts.len - 1]) |part| _ = try run(a, session, part, mode, problem);
+            return run(a, session, parts[parts.len - 1], mode, problem);
+        }
+    }
     if (!mode.programmer and !mode.solve_only) if (try systemOf(a, session, text, mode, problem)) |o| return o;
     const st = try parse(a, text, mode, problem);
     var ev: Eval = .{ .a = a, .session = session, .mode = mode, .problem = problem };
@@ -1350,7 +1479,7 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
             if (!mode.programmer and rich.needs(n0, session)) return richOutcome(a, &ev, session, n0);
             // diff(f, x) on its own is a formula: tidy it.
             const n = if (calculus.hasDiff(n0)) try calculus.expand(a, &ev, n0) else n0;
-            if (ev.eval(n, null)) |v| return .{ .value = v } else |e| {
+            if (ev.eval(n, null)) |v| return if (isBoolean(n)) .{ .truth = !v.isZero() } else .{ .value = v } else |e| {
                 // sqrt(-4), ln(-1): an answer among the complex numbers.
                 if (e == error.Domain and !mode.programmer) {
                     if (richOutcome(a, &ev, session, n)) |o| return o else |_| {}

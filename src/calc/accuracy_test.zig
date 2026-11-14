@@ -110,3 +110,57 @@ test "choosing more than there are is zero ways" {
     try expectShows(&s, "0", "nPr(7, 8)");
     try expectShows(&s, "1", "nCr(7, 0)");
 }
+
+fn runShows(session: *eval.Session, want: []const u8, text: []const u8) !void {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var p: eval.Problem = .{};
+    const o = try eval.run(a, session, text, .{}, &p);
+    const got = try show(a, o);
+    std.testing.expectEqualStrings(want, got) catch |e| {
+        std.debug.print("for {s}\n", .{text});
+        return e;
+    };
+}
+
+test "comparisons are true or false" {
+    var s: eval.Session = .{ .gpa = std.testing.allocator };
+    defer s.deinit();
+    try runShows(&s, "true", "5 > 3");
+    try runShows(&s, "false", "5 < 3");
+    try runShows(&s, "true", "3 <= 3");
+    try runShows(&s, "true", "2 >= 1+1");
+    try runShows(&s, "true", "1/3 != 0.3333");
+    try runShows(&s, "false", "0.1+0.2 != 0.3");
+    try runShows(&s, "true", "5 ≥ 5 and 2 ≠ 3");
+    try runShows(&s, "true", "1 < 2 or 5 < 3");
+    try runShows(&s, "120", "5!");
+    try runShows(&s, "true", "5!=3");
+}
+
+test "round with digits, double factorial, percent of" {
+    var s: eval.Session = .{ .gpa = std.testing.allocator };
+    defer s.deinit();
+    try runShows(&s, "2.57", "round(2.567, 2)");
+    try runShows(&s, "1200", "round(1234.5678, -2)");
+    try runShows(&s, "3", "round(2.5)");
+    try runShows(&s, "105", "7!!");
+    try runShows(&s, "48", "6!!");
+    try runShows(&s, "10", "20% of 50");
+    try runShows(&s, "20", "10% of 200");
+    try runShows(&s, "55", "50 + 10%");
+}
+
+test "statements in a row, solve and simplify" {
+    var s: eval.Session = .{ .gpa = std.testing.allocator };
+    defer s.deinit();
+    try runShows(&s, "10", "x = 5; x * 2");
+    try runShows(&s, "9", "f(x) = x^2; f(3)");
+    try runShows(&s, "6", "a = 2; b = 3; a * b");
+    var t: eval.Session = .{ .gpa = std.testing.allocator };
+    defer t.deinit();
+    try runShows(&t, "-2; 2", "solve(x^2 = 4, x)");
+    try runShows(&t, "-2; 2", "solve(x^2 - 4)");
+    try runShows(&t, "5x", "simplify(2x + 3x)");
+}

@@ -36,7 +36,7 @@ fn partner(c: u8) u8 {
 }
 
 /// Operator symbols beyond ASCII that are not part of a name.
-const symbol_operators = [_][]const u8{ "×", "÷", "−", "·", "√", "±", "≠", "≤", "≥", "→", "∑", "∏", "²", "³", "∞" };
+const symbol_operators = [_][]const u8{ "×", "÷", "−", "·", "√", "±", "≠", "≤", "≥", "→", "≤", "≥", "∑", "∏", "²", "³", "∞" };
 
 fn symbolAt(text: []const u8, i: usize) usize {
     for (symbol_operators) |s| if (std.mem.startsWith(u8, text[i..], s)) return s.len;
@@ -64,7 +64,7 @@ fn isCaseWord(name: []const u8, word: []const u8) bool {
 }
 
 fn nameKind(session: ?*const eval.Session, name: []const u8, call: bool) ?Kind {
-    if (isCaseWord(name, "to") or isCaseWord(name, "in") or isCaseWord(name, "mod") or isCaseWord(name, "and") or isCaseWord(name, "or") or isCaseWord(name, "xor")) return .operator;
+    if (isCaseWord(name, "to") or isCaseWord(name, "in") or isCaseWord(name, "mod") or isCaseWord(name, "and") or isCaseWord(name, "or") or isCaseWord(name, "xor") or isCaseWord(name, "of")) return .operator;
     if (call) {
         if (eval.isBuiltin(name) or functions.isKnown(name) or quantity.isDateFunction(name)) return .function;
         if (session) |s| if (s.funcs.contains(name)) return .function;
