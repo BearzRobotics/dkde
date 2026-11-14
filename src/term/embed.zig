@@ -27,6 +27,8 @@ pub const Panel = struct {
     /// Called when the shell ends and the panel closes itself.
     on_closed: ?*const fn (data: ?*anyopaque) void = null,
     on_closed_data: ?*anyopaque = null,
+    /// The idle that moves the focus into the terminal once the panel is on screen.
+    focus_source: c_uint = 0,
 
     pub fn create(allocator: std.mem.Allocator) !*Panel {
         const self = try allocator.create(Panel);
@@ -42,6 +44,7 @@ pub const Panel = struct {
     /// not touched: GTK has already destroyed it with the window, and it frees
     /// itself and stops its timers when its widget goes.
     pub fn destroy(self: *Panel) void {
+        if (self.focus_source != 0) _ = glib.Source.remove(self.focus_source);
         if (self.config) |*c| c.deinit();
         self.allocator.destroy(self);
     }
@@ -63,6 +66,15 @@ pub const Panel = struct {
         };
         self.box.as(gtk.Widget).setVisible(1);
         if (self.view) |v| v.grabFocus();
+        // The first time the widgets are not on screen yet, and a focus request is refused: ask again when idle.
+        if (self.focus_source == 0) self.focus_source = glib.idleAdd(onFocusIdle, self);
+    }
+
+    fn onFocusIdle(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Panel = @ptrCast(@alignCast(data.?));
+        self.focus_source = 0;
+        if (self.isVisible()) if (self.view) |v| v.grabFocus();
+        return 0;
     }
 
     pub fn hide(self: *Panel) void {

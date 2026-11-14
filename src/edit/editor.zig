@@ -579,8 +579,9 @@ pub const Editor = struct {
     fn onMenuAction(self: *Editor, action: []const u8) void {
         self.perform(action);
         // The menu gives the keyboard back to the text (an entry the action
-        // opened keeps it).
-        self.focusTextSoon();
+        // opened keeps it), except when the action opened the terminal: that has it.
+        const to_terminal = (std.mem.eql(u8, action, "toggle-terminal") or std.mem.eql(u8, action, "terminal-cd")) and self.term_panel.isVisible();
+        if (!to_terminal) self.focusTextSoon();
     }
 
     fn checked(self: *Editor, action: [:0]const u8) bool {
