@@ -206,6 +206,57 @@ pub const all = [_]Formula{
     .{ .group = "Everyday", .name = "Scaling a recipe", .text = "q2 = q1·s2/s1", .vars = &.{ v("q2", "new amount"), v("q1", "amount in the recipe"), v("s2", "servings wanted"), v("s1", "servings in the recipe") } },
     .{ .group = "Everyday", .name = "Paint needed", .text = "L = A/c·k", .vars = &.{ v("L", "litres"), v("A", "area (m²)"), v("c", "coverage (m² per litre)"), c("k", "coats", "2") } },
     .{ .group = "Everyday", .name = "Screen size", .text = "d = √(w² + h²)", .vars = &.{ v("d", "diagonal"), v("w", "width"), v("h", "height") } },
+
+    // ---- Investments and loans
+    .{ .group = "Investments and loans", .name = "Present value of a future amount", .text = "P = F/(1 + r/100)^n", .vars = &.{ v("P", "present value"), v("F", "future value"), v("r", "rate per period (%)"), v("n", "periods") } },
+    .{ .group = "Investments and loans", .name = "Future value of regular payments", .text = "F = M·((1 + r/100)^n − 1)/(r/100)", .vars = &.{ v("F", "future value"), v("M", "payment each period"), v("r", "rate per period (%)"), v("n", "periods") } },
+    .{ .group = "Investments and loans", .name = "Present value of regular payments", .text = "P = M·(1 − (1 + r/100)^(−n))/(r/100)", .vars = &.{ v("P", "present value"), v("M", "payment each period"), v("r", "rate per period (%)"), v("n", "periods") } },
+    .{ .group = "Investments and loans", .name = "Regular payment to reach a goal", .text = "M = F·(r/100)/((1 + r/100)^n − 1)", .vars = &.{ v("M", "payment each period"), v("F", "goal"), v("r", "rate per period (%)"), v("n", "periods") } },
+    .{ .group = "Investments and loans", .name = "Balance of a loan after k payments", .text = "B = P·(1 + r/100)^k − M·((1 + r/100)^k − 1)/(r/100)", .vars = &.{ v("B", "balance owed"), v("P", "loan"), v("M", "payment each period"), v("r", "rate per period (%)"), v("k", "payments made") } },
+    .{ .group = "Investments and loans", .name = "Interest in payment k of a loan", .text = "I = (P·(1 + r/100)^(k − 1) − M·((1 + r/100)^(k − 1) − 1)/(r/100))·r/100", .vars = &.{ v("I", "interest in that payment"), v("P", "loan"), v("M", "payment each period"), v("r", "rate per period (%)"), v("k", "number of the payment") } },
+    .{ .group = "Investments and loans", .name = "Principal in payment k of a loan", .text = "Q = M − (P·(1 + r/100)^(k − 1) − M·((1 + r/100)^(k − 1) − 1)/(r/100))·r/100", .vars = &.{ v("Q", "principal in that payment"), v("M", "payment each period"), v("P", "loan"), v("r", "rate per period (%)"), v("k", "number of the payment") } },
+    .{ .group = "Investments and loans", .name = "Effective annual rate", .text = "E = ((1 + r/100/m)^m − 1)·100", .vars = &.{ v("E", "effective rate (% a year)"), v("r", "nominal rate (% a year)"), v("m", "times compounded a year") } },
+    .{ .group = "Investments and loans", .name = "Nominal rate from the effective rate", .text = "r = m·((1 + E/100)^(1/m) − 1)·100", .vars = &.{ v("r", "nominal rate (% a year)"), v("m", "times compounded a year"), v("E", "effective rate (% a year)") } },
+    .{ .group = "Investments and loans", .name = "Real interest rate (Fisher)", .text = "r = ((1 + n/100)/(1 + f/100) − 1)·100", .vars = &.{ v("r", "real rate (%)"), v("n", "nominal rate (%)"), v("f", "inflation (%)") } },
+    .{ .group = "Investments and loans", .name = "Return on investment", .text = "R = (G − C)/C·100", .vars = &.{ v("R", "return (%)"), v("G", "final value"), v("C", "cost") } },
+    .{ .group = "Investments and loans", .name = "Compound annual growth rate", .text = "g = ((E/B)^(1/n) − 1)·100", .vars = &.{ v("g", "growth (% a year)"), v("E", "end value"), v("B", "beginning value"), v("n", "years") } },
+    .{ .group = "Investments and loans", .name = "Time to double", .text = "t = ln(2)/ln(1 + r/100)", .vars = &.{ v("t", "periods to double"), v("r", "rate per period (%)") } },
+    .{ .group = "Investments and loans", .name = "Straight-line depreciation", .text = "D = (C − S)/L", .vars = &.{ v("D", "depreciation each year"), v("C", "cost"), v("S", "salvage value"), v("L", "life (years)") } },
+    .{ .group = "Investments and loans", .name = "Sum-of-years'-digits depreciation", .text = "D = (C − S)·(L − p + 1)·2/(L·(L + 1))", .vars = &.{ v("D", "depreciation in that year"), v("C", "cost"), v("S", "salvage value"), v("L", "life (years)"), v("p", "the year") } },
+    .{ .group = "Investments and loans", .name = "Price elasticity of demand (midpoint)", .text = "E = ((q2 − q1)/(q1 + q2))/((p2 − p1)/(p1 + p2))", .vars = &.{ v("E", "elasticity"), v("q1", "quantity before"), v("q2", "quantity after"), v("p1", "price before"), v("p2", "price after") } },
+    .{ .group = "Investments and loans", .name = "Zero-coupon bond yield", .text = "y = ((F/P)^(1/n) − 1)·100", .vars = &.{ v("y", "yield (% a year)"), v("F", "face value"), v("P", "price"), v("n", "years") } },
+    .{ .group = "Investments and loans", .name = "Treasury bill price", .text = "P = F·(1 − d/100·t/360)", .vars = &.{ v("P", "price"), v("F", "face value"), v("d", "discount rate (%)"), v("t", "days to maturity") } },
+    .{ .group = "Investments and loans", .name = "Treasury bill discount rate", .text = "d = (F − P)/F·360/t·100", .vars = &.{ v("d", "discount rate (%)"), v("F", "face value"), v("P", "price"), v("t", "days to maturity") } },
+    .{ .group = "Investments and loans", .name = "Treasury bill yield", .text = "y = (F − P)/P·365/t·100", .vars = &.{ v("y", "yield (% a year)"), v("F", "face value"), v("P", "price"), v("t", "days to maturity") } },
+    .{ .group = "Investments and loans", .name = "Accrued interest", .text = "A = F·c/100·t/360", .vars = &.{ v("A", "accrued interest"), v("F", "face value"), v("c", "coupon rate (% a year)"), v("t", "days (30/360)") } },
+
+    // ---- More geometry
+    .{ .group = "Solid geometry", .name = "Volume of a regular tetrahedron", .text = "V = a³/(6√2)", .vars = &.{ v("V", "volume"), v("a", "edge") } },
+    .{ .group = "Solid geometry", .name = "Surface of a regular tetrahedron", .text = "A = √3·a²", .vars = &.{ v("A", "surface area"), v("a", "edge") } },
+    .{ .group = "Solid geometry", .name = "Height of a regular tetrahedron", .text = "h = a·√(2/3)", .vars = &.{ v("h", "height"), v("a", "edge") } },
+    .{ .group = "Solid geometry", .name = "Volume of a square pyramid", .text = "V = b²·h/3", .vars = &.{ v("V", "volume"), v("b", "base side"), v("h", "height") } },
+    .{ .group = "Solid geometry", .name = "Slant height of a square pyramid", .text = "s = √(h² + b²/4)", .vars = &.{ v("s", "slant height"), v("h", "height"), v("b", "base side") } },
+    .{ .group = "Solid geometry", .name = "Surface of a square pyramid", .text = "A = b² + 2b·√(h² + b²/4)", .vars = &.{ v("A", "surface area"), v("b", "base side"), v("h", "height") } },
+    .{ .group = "Solid geometry", .name = "Volume of a triangular prism", .text = "V = b·h·l/2", .vars = &.{ v("V", "volume"), v("b", "triangle base"), v("h", "triangle height"), v("l", "length") } },
+    .{ .group = "Solid geometry", .name = "Side area of a cone", .text = "A = π·r·s", .vars = &.{ v("A", "side area"), v("r", "radius"), v("s", "slant height") } },
+    .{ .group = "Solid geometry", .name = "Side area of a cylinder", .text = "A = 2π·r·h", .vars = &.{ v("A", "side area"), v("r", "radius"), v("h", "height") } },
+
+    // ---- More plane geometry
+    .{ .group = "Plane geometry", .name = "Perimeter of a square", .text = "P = 4s", .vars = &.{ v("P", "perimeter"), v("s", "side") } },
+    .{ .group = "Plane geometry", .name = "Perimeter of a triangle", .text = "P = a + b + c", .vars = &.{ v("P", "perimeter"), v("a", "side"), v("b", "side"), v("c", "side") } },
+    .{ .group = "Plane geometry", .name = "Perimeter of a parallelogram", .text = "P = 2(a + b)", .vars = &.{ v("P", "perimeter"), v("a", "side"), v("b", "side") } },
+    .{ .group = "Plane geometry", .name = "Perimeter of a trapezoid", .text = "P = a + b + c + d", .vars = &.{ v("P", "perimeter"), v("a", "side"), v("b", "side"), v("c", "side"), v("d", "side") } },
+    .{ .group = "Plane geometry", .name = "Perimeter of a rhombus", .text = "P = 4s", .vars = &.{ v("P", "perimeter"), v("s", "side") } },
+
+    // ---- Electronics and computers
+    .{ .group = "Electronics and computers", .name = "Wire diameter from the AWG gauge", .text = "d = 0.127·92^((36 − n)/39)", .vars = &.{ v("d", "diameter (mm)"), v("n", "AWG gauge") } },
+    .{ .group = "Electronics and computers", .name = "RAID 0 capacity", .text = "C = n·s", .vars = &.{ v("C", "usable capacity"), v("n", "disks"), v("s", "size of one disk") } },
+    .{ .group = "Electronics and computers", .name = "RAID 5 capacity", .text = "C = (n − 1)·s", .vars = &.{ v("C", "usable capacity"), v("n", "disks"), v("s", "size of one disk") } },
+    .{ .group = "Electronics and computers", .name = "RAID 6 capacity", .text = "C = (n − 2)·s", .vars = &.{ v("C", "usable capacity"), v("n", "disks"), v("s", "size of one disk") } },
+    .{ .group = "Electronics and computers", .name = "RAID 10 capacity", .text = "C = n·s/2", .vars = &.{ v("C", "usable capacity"), v("n", "disks"), v("s", "size of one disk") } },
+    .{ .group = "Electronics and computers", .name = "Memory latency in nanoseconds", .text = "L = 2000·c/f", .vars = &.{ v("L", "latency (ns)"), v("c", "CAS latency (cycles)"), v("f", "speed (MT/s)") } },
+    .{ .group = "Electronics and computers", .name = "Hyperfocal distance", .text = "H = f²/(N·c) + f", .vars = &.{ v("H", "hyperfocal distance (mm)"), v("f", "focal length (mm)"), v("N", "f-number"), v("c", "circle of confusion (mm)") } },
+    .{ .group = "Electronics and computers", .name = "Depth of field", .text = "D = 2·N·c·f²·s²/(f^4 − N²·c²·s²)", .vars = &.{ v("D", "total depth of field (mm)"), v("N", "f-number"), v("c", "circle of confusion (mm)"), v("f", "focal length (mm)"), v("s", "distance to the subject (mm)") } },
 };
 
 const std = @import("std");

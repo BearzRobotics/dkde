@@ -46,6 +46,9 @@ test "probe" {
         if (std.mem.startsWith(u8, line, "rad:")) {
             mode.angle = .radians;
             line = line[4..];
+        } else if (std.mem.startsWith(u8, line, "solve:")) {
+            mode.solve_only = true;
+            line = line[6..];
         } else if (std.mem.startsWith(u8, line, "grad:")) {
             mode.angle = .gradians;
             line = line[5..];
