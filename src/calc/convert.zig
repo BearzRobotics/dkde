@@ -82,7 +82,13 @@ pub const Shown = struct {
     approx: bool = false,
 };
 
-pub fn apply(a: std.mem.Allocator, v: Number, kind: Kind, style: num.Style) num.Error!Shown {
+pub fn apply(a: std.mem.Allocator, v_in: Number, kind: Kind, style: num.Style) num.Error!Shown {
+    // The conversions that need a float or an exact value take a high-precision real as the
+    // float it is closest to; decimal, scientific and engineering keep every digit.
+    const v: Number = switch (v_in) {
+        .big => if (kind == .decimal or kind == .scientific or kind == .engineering or kind == .percent) v_in else .{ .approx = v_in.toFloat() },
+        else => v_in,
+    };
     return switch (kind) {
         .decimal => .{ .text = try num.format(a, v, style), .approx = !v.isExact() },
         .scientific => blk: {
@@ -115,7 +121,8 @@ pub fn apply(a: std.mem.Allocator, v: Number, kind: Kind, style: num.Style) num.
 const Ratio = struct { neg: bool, num: Big, den: Big };
 
 /// The exact value of `v` (a float is its exact binary value).
-fn ratio(a: std.mem.Allocator, v: Number) num.Error!Ratio {
+fn ratio(a: std.mem.Allocator, v_in: Number) num.Error!Ratio {
+    const v: Number = if (v_in == .big) .{ .approx = v_in.toFloat() } else v_in;
     var r: Number = v;
     if (v == .approx) {
         const f = v.approx;
@@ -164,7 +171,7 @@ fn fractionOf(a: std.mem.Allocator, v: Number, mixed: bool, style: num.Style) nu
         r = try ratio(a, v);
     } else {
         // The simplest ratio within a hair of the float (continued fraction).
-        const f = v.approx;
+        const f = v.toFloat();
         if (!std.math.isFinite(f)) return error.Domain;
         const best = simplest(f) orelse return .{ .text = try num.format(a, v, style), .approx = true };
         r = .{

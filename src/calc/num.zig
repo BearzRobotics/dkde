@@ -9,6 +9,7 @@
 
 const std = @import("std");
 const Big = std.math.big.int.Managed;
+const bigreal = @import("bigreal.zig");
 
 pub const Error = error{ OutOfMemory, TooLarge, DivisionByZero, Domain };
 
@@ -19,6 +20,8 @@ pub const Number = union(enum) {
     /// num/den in lowest terms, den > 0.
     exact: struct { num: Big, den: Big },
     approx: f64,
+    /// A result that cannot be exact, kept to about 77 digits (sin 1, √2, π).
+    big: bigreal.Real,
 
     pub fn isExact(self: Number) bool {
         return self == .exact;
@@ -27,6 +30,7 @@ pub const Number = union(enum) {
     pub fn toFloat(self: Number) f64 {
         return switch (self) {
             .approx => |f| f,
+            .big => |r| bigreal.toF64(r),
             .exact => |e| blk: {
                 // The top 64 bits of each part (so neither overflows a float),
                 // divided, and scaled back by the bits that were dropped.
@@ -50,6 +54,7 @@ pub const Number = union(enum) {
     pub fn isZero(self: Number) bool {
         return switch (self) {
             .approx => |f| f == 0,
+            .big => |r| r.isZero(),
             .exact => |e| e.num.eqlZero(),
         };
     }
@@ -57,6 +62,7 @@ pub const Number = union(enum) {
     pub fn isNegative(self: Number) bool {
         return switch (self) {
             .approx => |f| f < 0,
+            .big => |r| r.isNegative(),
             .exact => |e| !e.num.isPositive() and !e.num.eqlZero(),
         };
     }
@@ -64,6 +70,7 @@ pub const Number = union(enum) {
     pub fn isInteger(self: Number) bool {
         return switch (self) {
             .approx => |f| f == @floor(f) and std.math.isFinite(f),
+            .big => false,
             .exact => |e| isOne(e.den),
         };
     }
@@ -77,6 +84,37 @@ pub fn fromInt(a: std.mem.Allocator, v: anytype) Error!Number {
     var n = try Big.initSet(a, v);
     _ = &n;
     return .{ .exact = .{ .num = n, .den = try Big.initSet(a, 1) } };
+}
+
+/// Both numbers can be worked out to full precision: neither is a plain float, and one is a big real.
+fn highPath(x: Number, y: Number) bool {
+    return (x == .big or y == .big) and x != .approx and y != .approx;
+}
+
+/// Any number as a high-precision real.
+pub fn toReal(a: std.mem.Allocator, x: Number) Error!bigreal.Real {
+    return switch (x) {
+        .big => |r| r,
+        .approx => |f| try bigreal.fromF64(a, f),
+        .exact => |e| try bigreal.fromRatio(a, e.num, e.den),
+    };
+}
+
+/// A high-precision real as a number (an exact whole number stays one when it is zero).
+pub fn fromReal(r: bigreal.Real) Number {
+    return .{ .big = r };
+}
+
+/// The exact value of a real (a dyadic fraction).
+pub fn realToExact(a: std.mem.Allocator, r: bigreal.Real) Error!Number {
+    var n = try r.m.clone();
+    var d = try Big.initSet(a, 1);
+    if (r.e >= 0) {
+        try n.shiftLeft(&n, @intCast(r.e));
+    } else {
+        try d.shiftLeft(&d, @intCast(-r.e));
+    }
+    return fromParts(a, n, d);
 }
 
 pub fn fromFloat(f: f64) Error!Number {
@@ -172,16 +210,17 @@ pub fn add(a: std.mem.Allocator, x: Number, y: Number) Error!Number {
         try d.mul(&x.exact.den, &y.exact.den);
         return fromParts(a, n, d);
     }
+    if (highPath(x, y)) return .{ .big = try bigreal.add(a, try toReal(a, x), try toReal(a, y)) };
     return fromFloat(x.toFloat() + y.toFloat());
 }
 
 pub fn neg(a: std.mem.Allocator, x: Number) Error!Number {
     return switch (x) {
         .approx => |f| .{ .approx = -f },
+        .big => |r| .{ .big = try bigreal.neg(a, r) },
         .exact => |e| blk: {
             var n = try e.num.clone();
             n.negate();
-            _ = a;
             break :blk .{ .exact = .{ .num = n, .den = e.den } };
         },
     };
@@ -199,6 +238,7 @@ pub fn mul(a: std.mem.Allocator, x: Number, y: Number) Error!Number {
         try d.mul(&x.exact.den, &y.exact.den);
         return fromParts(a, n, d);
     }
+    if (highPath(x, y)) return .{ .big = try bigreal.mul(a, try toReal(a, x), try toReal(a, y)) };
     return fromFloat(x.toFloat() * y.toFloat());
 }
 
@@ -211,6 +251,7 @@ pub fn div(a: std.mem.Allocator, x: Number, y: Number) Error!Number {
         try d.mul(&x.exact.den, &y.exact.num);
         return fromParts(a, n, d);
     }
+    if (highPath(x, y)) return .{ .big = try bigreal.div(a, try toReal(a, x), try toReal(a, y)) };
     return fromFloat(x.toFloat() / y.toFloat());
 }
 
@@ -220,6 +261,7 @@ pub fn order(a: std.mem.Allocator, x: Number, y: Number) Error!std.math.Order {
         if (d.isZero()) return .eq;
         return if (d.isNegative()) .lt else .gt;
     }
+    if (highPath(x, y)) return bigreal.order(a, try toReal(a, x), try toReal(a, y));
     return std.math.order(x.toFloat(), y.toFloat());
 }
 
@@ -227,6 +269,7 @@ pub fn order(a: std.mem.Allocator, x: Number, y: Number) Error!std.math.Order {
 pub fn floor(a: std.mem.Allocator, x: Number) Error!Number {
     return switch (x) {
         .approx => |f| fromFloat(@floor(f)),
+        .big => |r| floor(a, try realToExact(a, r)),
         .exact => |e| blk: {
             var q = try Big.init(a);
             var r = try Big.init(a);
@@ -245,17 +288,12 @@ pub fn mod(a: std.mem.Allocator, x: Number, y: Number) Error!Number {
 
 /// x to the power y: exact for whole exponents (and for roots that come
 /// out whole, such as 8^(1/3)), a float otherwise.
-/// x^y for an exact x and a whole y too large to work out exactly: a float, with ln worked
-/// out from x − 1 so that (1 + 10⁻¹⁰)^(10¹⁰) is e and not a rounding error.
+/// x^y for an exact x and a whole y too large to work out exactly: a high-precision real
+/// ((1 + 10⁻¹⁰)^(10¹⁰) is e), or too large.
 fn powBig(a: std.mem.Allocator, x: Number, y: Number) Error!Number {
-    const xf = x.toFloat();
-    if (!(xf > 0)) return error.TooLarge;
-    const one = try fromInt(a, 1);
-    const r = (try sub(a, x, one)).toFloat();
-    const l = if (@abs(r) < 0.5) std.math.log1p(r) else @log(xf);
-    const v = @exp(y.toFloat() * l);
-    if (!std.math.isFinite(v) or v == 0) return error.TooLarge;
-    return fromFloat(v);
+    if (!(x.toFloat() > 0)) return error.TooLarge;
+    const r = bigreal.pow(a, try toReal(a, x), try toReal(a, y)) catch return error.TooLarge;
+    return .{ .big = r };
 }
 
 pub fn pow(a: std.mem.Allocator, x: Number, y: Number) Error!Number {
@@ -296,6 +334,10 @@ pub fn pow(a: std.mem.Allocator, x: Number, y: Number) Error!Number {
         return error.Domain;
     }
     if (xf == 0 and yf < 0) return error.DivisionByZero;
+    // Both exact or high precision, and a positive base: to full precision.
+    if (x != .approx and y != .approx and xf > 0 and !y.isZero()) {
+        if (bigreal.pow(a, try toReal(a, x), try toReal(a, y))) |r| return .{ .big = r } else |_| {}
+    }
     return fromFloat(std.math.pow(f64, xf, yf));
 }
 
@@ -358,6 +400,7 @@ pub fn isOneNumber(x: Number) bool {
 
 pub fn intValue(x: Number) ?i64 {
     return switch (x) {
+        .big => null,
         .approx => |f| if (f == @floor(f) and @abs(f) < 9.2e18) @as(i64, @intFromFloat(f)) else null,
         .exact => |e| if (isOne(e.den)) (e.num.toInt(i64) catch null) else null,
     };
@@ -366,6 +409,7 @@ pub fn intValue(x: Number) ?i64 {
 /// The value as an i128 when it is a whole number that fits (programmer mode).
 pub fn int128(x: Number) ?i128 {
     return switch (x) {
+        .big => null,
         .approx => |f| if (f == @floor(f) and @abs(f) < 1.7e38) @as(i128, @intFromFloat(f)) else null,
         .exact => |e| if (isOne(e.den)) (e.num.toInt(i128) catch null) else null,
     };
@@ -393,6 +437,7 @@ pub const Style = struct {
 pub fn format(a: std.mem.Allocator, x: Number, style: Style) Error![]u8 {
     switch (x) {
         .approx => |f| return formatFloat(a, f, style),
+        .big => |r| return format(a, try realToExact(a, r), style),
         .exact => |e| {
             const int_digits = decimalDigits(e.num) -| decimalDigits(e.den);
             // Very large or very small values (and the scientific styles) as d.ddd×10^n.
@@ -486,7 +531,7 @@ fn formatExactScientific(a: std.mem.Allocator, num_in: Big, den: Big, style: Sty
     const negative = !num_in.isPositive();
     var n = try num_in.clone();
     n.abs();
-    const sig: usize = @min(style.decimals, 15);
+    const sig: usize = @min(style.decimals, 30);
     // Enough digits of n/d: sig + 1 to show, one more to round by, and slack
     // for the estimate of the size being off by one or two.
     const want: i64 = @intCast(sig + 4);
@@ -714,7 +759,7 @@ test "powers and roots" {
     try std.testing.expectEqualStrings("2", try testFormat(a, try pow(a, try fromInt(a, 8), third)));
     try std.testing.expectEqualStrings("-2", try testFormat(a, try pow(a, try fromInt(a, -8), third)));
     const half = try div(a, try fromInt(a, 1), try fromInt(a, 2));
-    try std.testing.expect((try pow(a, try fromInt(a, 2), half)) == .approx);
+    try std.testing.expect((try pow(a, try fromInt(a, 2), half)) != .exact);
     try std.testing.expectEqualStrings("1.4142135624", try testFormat(a, try pow(a, try fromInt(a, 2), half)));
     try std.testing.expectError(error.Domain, pow(a, try fromInt(a, -4), half));
     try std.testing.expectError(error.TooLarge, pow(a, try fromInt(a, 10), try fromInt(a, 1_000_000)));

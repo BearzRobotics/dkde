@@ -8,22 +8,25 @@ const num = @import("num.zig");
 const eval = @import("eval.zig");
 const rich = @import("rich.zig");
 
+/// Decimals the probe shows (CALC_PROBE_DECIMALS, up to 30).
+var probe_decimals: u8 = 12;
+
 fn show(a: std.mem.Allocator, o: eval.Outcome) ![]const u8 {
     return switch (o) {
-        .value => |v| num.format(a, v, .{ .decimals = 12 }),
-        .assigned => |s| num.format(a, s.value, .{ .decimals = 12 }),
+        .value => |v| num.format(a, v, .{ .decimals = probe_decimals }),
+        .assigned => |s| num.format(a, s.value, .{ .decimals = probe_decimals }),
         .defined => |d| d,
         .truth => |t| if (t) "true" else "false",
         .simplified => |x| x,
-        .rich => |v| try rich.format(a, v, .{ .decimals = 12 }),
+        .rich => |v| try rich.format(a, v, .{ .decimals = probe_decimals }),
         .system => |sy| try std.fmt.allocPrint(a, "{d} unknowns", .{sy.names.len}),
-        .rich_assigned => |s| try rich.format(a, s.value, .{ .decimals = 12 }),
+        .rich_assigned => |s| try rich.format(a, s.value, .{ .decimals = probe_decimals }),
         .complex => |cx| try std.fmt.allocPrint(a, "{d} complex", .{cx.re.len}),
         .solved => |s| blk: {
             var parts: std.ArrayList(u8) = .empty;
             for (s.roots, 0..) |r, i| {
                 if (i > 0) try parts.appendSlice(a, "; ");
-                try parts.appendSlice(a, try num.format(a, r, .{ .decimals = 12 }));
+                try parts.appendSlice(a, try num.format(a, r, .{ .decimals = probe_decimals }));
             }
             break :blk parts.items;
         },
@@ -32,6 +35,7 @@ fn show(a: std.mem.Allocator, o: eval.Outcome) ![]const u8 {
 
 test "probe" {
     const path_c = std.c.getenv("CALC_PROBE") orelse return error.SkipZigTest;
+    if (std.c.getenv("CALC_PROBE_DECIMALS")) |d| probe_decimals = std.fmt.parseInt(u8, std.mem.span(d), 10) catch 12;
     var io_threaded: std.Io.Threaded = .init_single_threaded;
     const io = io_threaded.io();
     const text = try std.Io.Dir.cwd().readFileAlloc(io, std.mem.span(path_c), std.testing.allocator, .limited(1 << 22));

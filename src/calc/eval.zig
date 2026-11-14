@@ -31,6 +31,7 @@ const calculus = @import("calculus.zig");
 const functions = @import("functions.zig");
 const letters = @import("letters.zig");
 const rich = @import("rich.zig");
+const bigreal = @import("bigreal.zig");
 const Number = num.Number;
 
 pub const Angle = enum {
@@ -594,6 +595,8 @@ pub fn parseExpr(a: std.mem.Allocator, raw: []const u8, mode: Mode, problem: *Pr
 pub const Stored = union(enum) {
     exact: struct { num: []u8, den: []u8 },
     approx: f64,
+    /// A high-precision real: the mantissa in decimal and the binary exponent.
+    big: struct { mant: []u8, exp: i64 },
 
     pub fn deinit(self: Stored, gpa: std.mem.Allocator) void {
         switch (self) {
@@ -601,6 +604,7 @@ pub const Stored = union(enum) {
                 gpa.free(e.num);
                 gpa.free(e.den);
             },
+            .big => |b| gpa.free(b.mant),
             .approx => {},
         }
     }
@@ -608,6 +612,7 @@ pub const Stored = union(enum) {
     pub fn of(gpa: std.mem.Allocator, n: Number) error{OutOfMemory}!Stored {
         return switch (n) {
             .approx => |f| .{ .approx = f },
+            .big => |r| .{ .big = .{ .mant = try decimal(gpa, r.m), .exp = r.e } },
             .exact => |e| blk: {
                 const ns = try decimal(gpa, e.num);
                 errdefer gpa.free(ns);
@@ -626,6 +631,11 @@ pub const Stored = union(enum) {
     pub fn load(self: Stored, a: std.mem.Allocator) Error!Number {
         return switch (self) {
             .approx => |f| .{ .approx = f },
+            .big => |b| blk: {
+                var m = try std.math.big.int.Managed.init(a);
+                m.setString(10, b.mant) catch return error.Domain;
+                break :blk .{ .big = .{ .m = m, .e = b.exp } };
+            },
             .exact => |e| blk: {
                 var n = try std.math.big.int.Managed.init(a);
                 n.setString(10, e.num) catch return error.Domain;
@@ -640,12 +650,22 @@ pub const Stored = union(enum) {
     pub fn text(self: Stored, a: std.mem.Allocator) ![]u8 {
         return switch (self) {
             .approx => |f| std.fmt.allocPrint(a, "f:{e}", .{f}),
+            .big => |b| std.fmt.allocPrint(a, "b:{s}@{d}", .{ b.mant, b.exp }),
             .exact => |e| std.fmt.allocPrint(a, "{s}/{s}", .{ e.num, e.den }),
         };
     }
 
     pub fn fromText(gpa: std.mem.Allocator, t: []const u8) !Stored {
         if (std.mem.startsWith(u8, t, "f:")) return .{ .approx = std.fmt.parseFloat(f64, t[2..]) catch return error.Domain };
+        if (std.mem.startsWith(u8, t, "b:")) {
+            const at = std.mem.indexOfScalar(u8, t, '@') orelse return error.Domain;
+            const mant = t[2..at];
+            if (mant.len == 0 or mant.len > 200) return error.Domain;
+            for (mant, 0..) |c, i| if (!(std.ascii.isDigit(c) or (i == 0 and c == '-'))) return error.Domain;
+            const exp = std.fmt.parseInt(i64, t[at + 1 ..], 10) catch return error.Domain;
+            if (@abs(exp) > 100_000) return error.Domain;
+            return .{ .big = .{ .mant = try gpa.dupe(u8, mant), .exp = exp } };
+        }
         const slash = std.mem.indexOfScalar(u8, t, '/') orelse return error.Domain;
         const n = t[0..slash];
         const d = t[slash + 1 ..];
@@ -880,10 +900,13 @@ pub const Eval = struct {
                 if (lookup(b, nm.text)) |v| return v;
                 if (self.session.vars.get(nm.text)) |s| return s.load(a);
                 if (std.mem.eql(u8, nm.text, "ans")) return if (self.session.ans) |s| s.load(a) else num.fromInt(a, 0);
-                if (std.mem.eql(u8, nm.text, "pi") or std.mem.eql(u8, nm.text, "π")) return .{ .approx = std.math.pi };
-                if (std.mem.eql(u8, nm.text, "tau") or std.mem.eql(u8, nm.text, "τ")) return .{ .approx = std.math.tau };
-                if (std.mem.eql(u8, nm.text, "e")) return .{ .approx = std.math.e };
-                if (std.mem.eql(u8, nm.text, "phi") or std.mem.eql(u8, nm.text, "φ")) return .{ .approx = (1.0 + @sqrt(5.0)) / 2.0 };
+                if (std.mem.eql(u8, nm.text, "pi") or std.mem.eql(u8, nm.text, "π")) return num.fromReal(try bigreal.pi(a, 8));
+                if (std.mem.eql(u8, nm.text, "tau") or std.mem.eql(u8, nm.text, "τ")) return num.fromReal(bigreal.scale2(try bigreal.pi(a, 8), 1));
+                if (std.mem.eql(u8, nm.text, "e")) return num.fromReal(try bigreal.exp(a, try bigreal.one(a)));
+                if (std.mem.eql(u8, nm.text, "phi") or std.mem.eql(u8, nm.text, "φ")) {
+                    const root5 = try bigreal.sqrt(a, try bigreal.fromInt(a, 5));
+                    return num.fromReal(bigreal.scale2(try bigreal.add(a, try bigreal.one(a), root5), -1));
+                }
                 self.problem.* = .{ .pos = nm.pos, .name = nm.text };
                 return error.UnknownName;
             },
@@ -1050,6 +1073,138 @@ pub const Eval = struct {
     }
 
     /// sin, cos and tan of whole multiples of 30° (and 45°) exactly.
+    /// An angle as radians, to full precision.
+    fn bigRad(self: *Eval, x: Number) Error!bigreal.Real {
+        const a = self.a;
+        const r = try num.toReal(a, x);
+        const full: i64 = switch (self.mode.angle) {
+            .radians => return r,
+            .degrees => 180,
+            .gradians => 200,
+        };
+        return bigreal.div(a, try bigreal.mul(a, r, try bigreal.pi(a, 8)), try bigreal.fromInt(a, full));
+    }
+
+    /// Radians as an angle in the chosen unit, to full precision.
+    fn bigFromRad(self: *Eval, r: bigreal.Real) Error!bigreal.Real {
+        const a = self.a;
+        const full: i64 = switch (self.mode.angle) {
+            .radians => return r,
+            .degrees => 180,
+            .gradians => 200,
+        };
+        return bigreal.div(a, try bigreal.mul(a, r, try bigreal.fromInt(a, full)), try bigreal.pi(a, 8));
+    }
+
+    /// The elementary functions of an exact or high-precision argument, to about 70 digits
+    /// (null for the functions and arguments that go through plain floats instead).
+    fn highFunction(self: *Eval, f: []const u8, x: Number) Error!?Number {
+        const a = self.a;
+        const eql = std.mem.eql;
+        if (x == .approx) return null;
+        const zero = try num.fromInt(a, 0);
+        const one = try num.fromInt(a, 1);
+        if (eql(u8, f, "sqrt")) {
+            if (x.isNegative()) return error.Domain;
+            if (try num.root(a, x, 2)) |r| return r;
+            return num.fromReal(try bigreal.sqrt(a, try num.toReal(a, x)));
+        }
+        if (eql(u8, f, "cbrt")) {
+            if (try num.root(a, x, 3)) |r| return r;
+            if (x.isZero()) return zero;
+            const r = try num.toReal(a, bigAbs(x));
+            const root = try bigreal.pow(a, r, try bigreal.div(a, try bigreal.one(a), try bigreal.fromInt(a, 3)));
+            return num.fromReal(if (x.isNegative()) try bigreal.neg(a, root) else root);
+        }
+        if (eql(u8, f, "sin") or eql(u8, f, "cos") or eql(u8, f, "tan") or eql(u8, f, "sec") or eql(u8, f, "csc") or eql(u8, f, "cot")) {
+            if (eql(u8, f, "sin") or eql(u8, f, "cos") or eql(u8, f, "tan")) {
+                if (try self.exactTrig(f, x)) |v| return v;
+            }
+            if (x.isZero()) {
+                if (eql(u8, f, "sin") or eql(u8, f, "tan")) return zero;
+                if (eql(u8, f, "cos") or eql(u8, f, "sec")) return one;
+                return error.Domain; // csc, cot
+            }
+            const sc = bigreal.sinCos(a, try self.bigRad(x)) catch |e| return if (e == error.TooLarge) null else e;
+            const tiny = bigreal.scale2(try bigreal.one(a), -200);
+            const v = if (eql(u8, f, "sin")) sc.s else if (eql(u8, f, "cos")) sc.c else if (eql(u8, f, "tan") or eql(u8, f, "cot")) blk: {
+                const den = if (eql(u8, f, "tan")) sc.c else sc.s;
+                if ((try bigreal.order(a, bigreal.abs(den), tiny)) == .lt) return error.Domain;
+                break :blk if (eql(u8, f, "tan")) try bigreal.div(a, sc.s, sc.c) else try bigreal.div(a, sc.c, sc.s);
+            } else blk: {
+                const den = if (eql(u8, f, "sec")) sc.c else sc.s;
+                if ((try bigreal.order(a, bigreal.abs(den), tiny)) == .lt) return error.Domain;
+                break :blk try bigreal.div(a, try bigreal.one(a), den);
+            };
+            return num.fromReal(v);
+        }
+        if (eql(u8, f, "asin") or eql(u8, f, "acos") or eql(u8, f, "atan")) {
+            if (x.isZero() and !eql(u8, f, "acos")) return zero;
+            const r = try num.toReal(a, x);
+            const v = if (eql(u8, f, "asin")) try bigreal.asin(a, r) else if (eql(u8, f, "acos")) try bigreal.acos(a, r) else try bigreal.atan(a, r);
+            return num.fromReal(try self.bigFromRad(v));
+        }
+        if (eql(u8, f, "sinh") or eql(u8, f, "cosh") or eql(u8, f, "tanh") or eql(u8, f, "asinh") or eql(u8, f, "acosh") or eql(u8, f, "atanh")) {
+            if (x.isZero() and !eql(u8, f, "cosh") and !eql(u8, f, "acosh")) return zero;
+            if (x.isZero() and eql(u8, f, "cosh")) return one;
+            const r = try num.toReal(a, x);
+            const v = if (eql(u8, f, "sinh")) try bigreal.sinh(a, r) else if (eql(u8, f, "cosh")) try bigreal.cosh(a, r) else if (eql(u8, f, "tanh")) try bigreal.tanh(a, r) else if (eql(u8, f, "asinh")) try bigreal.asinh(a, r) else if (eql(u8, f, "acosh")) try bigreal.acosh(a, r) else try bigreal.atanh(a, r);
+            return num.fromReal(v);
+        }
+        if (eql(u8, f, "sech") or eql(u8, f, "csch") or eql(u8, f, "coth")) {
+            if (x.isZero()) return if (eql(u8, f, "sech")) one else error.Domain;
+            const r = try num.toReal(a, x);
+            const sh = try bigreal.sinh(a, r);
+            const ch = try bigreal.cosh(a, r);
+            return num.fromReal(if (eql(u8, f, "sech")) try bigreal.div(a, try bigreal.one(a), ch) else if (eql(u8, f, "csch")) try bigreal.div(a, try bigreal.one(a), sh) else try bigreal.div(a, ch, sh));
+        }
+        if (eql(u8, f, "asech") or eql(u8, f, "acsch") or eql(u8, f, "acoth")) {
+            if (x.isZero()) return error.Domain;
+            const inv = try bigreal.div(a, try bigreal.one(a), try num.toReal(a, x));
+            if (eql(u8, f, "asech")) {
+                if (x.isNegative()) return error.Domain;
+                return num.fromReal(try bigreal.acosh(a, inv));
+            }
+            return num.fromReal(if (eql(u8, f, "acsch")) try bigreal.asinh(a, inv) else try bigreal.atanh(a, inv));
+        }
+        if (eql(u8, f, "asec") or eql(u8, f, "acsc") or eql(u8, f, "acot")) {
+            if (x.isZero()) {
+                if (!eql(u8, f, "acot")) return error.Domain;
+                return num.fromReal(try self.bigFromRad(bigreal.scale2(try bigreal.pi(a, 8), -1)));
+            }
+            const inv = try bigreal.div(a, try bigreal.one(a), try num.toReal(a, x));
+            const v = if (eql(u8, f, "asec")) try bigreal.acos(a, inv) else if (eql(u8, f, "acsc")) try bigreal.asin(a, inv) else try bigreal.atan(a, inv);
+            return num.fromReal(try self.bigFromRad(v));
+        }
+        if (eql(u8, f, "sinc")) {
+            if (x.isZero()) return one;
+            const r = try num.toReal(a, x);
+            return num.fromReal(try bigreal.div(a, try bigreal.sin(a, r), r));
+        }
+        if (eql(u8, f, "exp")) {
+            if (x.isZero()) return one;
+            return num.fromReal(bigreal.exp(a, try num.toReal(a, x)) catch |e| return if (e == error.TooLarge) null else e);
+        }
+        if (eql(u8, f, "ln")) {
+            if (x.isNegative() or x.isZero()) return error.Domain;
+            if (try num.order(a, x, one) == .eq) return zero;
+            return num.fromReal(try bigreal.ln(a, try num.toReal(a, x)));
+        }
+        return null;
+    }
+
+    fn bigAbs(x: Number) Number {
+        return switch (x) {
+            .exact => |e| blk: {
+                var n = e.num;
+                n.abs();
+                break :blk .{ .exact = .{ .num = n, .den = e.den } };
+            },
+            .big => |r| .{ .big = bigreal.abs(r) },
+            .approx => |f| .{ .approx = @abs(f) },
+        };
+    }
+
     fn exactTrig(self: *Eval, f: []const u8, x: Number) Error!?Number {
         if (self.mode.angle != .degrees or !x.isExact() or !x.isInteger()) return null;
         const d = num.intValue(x) orelse return null;
@@ -1100,6 +1255,7 @@ pub const Eval = struct {
             const scaled = try self.builtin("round", &.{try num.mul(a, args[0], scale)});
             return num.div(a, scaled, scale);
         }
+        if (args.len == 1) if (try self.highFunction(f, args[0])) |v| return v;
         if (functions.find(f)) |def| {
             if (args.len < def.min or args.len > def.max) return error.WrongArguments;
             const fctx: functions.Ctx = .{ .a = a, .rad_per_unit = self.toRad(1) };
@@ -1157,8 +1313,19 @@ pub const Eval = struct {
             if (eql(u8, f, "npr")) return acc;
             return num.div(a, acc, try num.factorial(a, args[1]));
         }
-        if (eql(u8, f, "atan2")) return num.fromFloat(self.fromRad(std.math.atan2(x.toFloat(), args[1].toFloat())));
-        if (eql(u8, f, "hypot")) return num.fromFloat(std.math.hypot(x.toFloat(), args[1].toFloat()));
+        if (eql(u8, f, "atan2")) {
+            if (x != .approx and args[1] != .approx) {
+                if (bigreal.atan2(a, try num.toReal(a, x), try num.toReal(a, args[1]))) |r| return num.fromReal(try self.bigFromRad(r)) else |e| if (e != error.Domain) return e;
+            }
+            return num.fromFloat(self.fromRad(std.math.atan2(x.toFloat(), args[1].toFloat())));
+        }
+        if (eql(u8, f, "hypot")) {
+            if (x != .approx and args[1] != .approx) {
+                const sq = try num.add(a, try num.mul(a, x, x), try num.mul(a, args[1], args[1]));
+                return self.builtin("sqrt", &.{sq});
+            }
+            return num.fromFloat(std.math.hypot(x.toFloat(), args[1].toFloat()));
+        }
         if (eql(u8, f, "log") and n == 2) {
             const v = x.toFloat();
             const base = args[1].toFloat();
@@ -1168,6 +1335,11 @@ pub const Eval = struct {
             if (x.isExact() and args[1].isExact() and @abs(r - @round(r)) < 1e-12) {
                 const k = try num.fromInt(a, @as(i64, @intFromFloat(@round(r))));
                 if ((try num.order(a, try num.pow(a, args[1], k), x)) == .eq) return k;
+            }
+            if (x != .approx and args[1] != .approx) {
+                const lx = try self.builtin("ln", &.{x});
+                const lb = try self.builtin("ln", &.{args[1]});
+                return num.div(a, lx, lb);
             }
             return num.fromFloat(r);
         }
@@ -1184,6 +1356,7 @@ pub const Eval = struct {
         if (eql(u8, f, "frac")) return num.sub(a, x, try num.floor(a, x));
         if (eql(u8, f, "sign")) return num.fromInt(a, if (x.isZero()) @as(i64, 0) else if (x.isNegative()) @as(i64, -1) else 1);
         if (eql(u8, f, "fact")) return num.factorial(a, x);
+        if (try self.highFunction(f, x)) |v| return v;
         if (eql(u8, f, "sqrt")) {
             if (x.isNegative()) return error.Domain;
             if (try num.root(a, x, 2)) |r| return r;

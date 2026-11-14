@@ -12,7 +12,7 @@ This guide explains what you can type into dkde-calc(1) and how it is worked out
 : Whole numbers in hexadecimal, binary and octal, in any mode.
 
 Exact and approximate
-: The calculator works with fractions of whole numbers of any size: **1/3** stays one third, **1/3 × 3** is **1**, **2^200** has all 61 digits. A result that cannot be a fraction (**√2**, **sin(1)**, **ln 5**, anything with π) is worked out to about 16 significant digits and shown after **≈**. A fraction that is shown as a decimal also shows as a fraction above the display: **0.1428571429** **(= 1/7)**.
+: The calculator works with fractions of whole numbers of any size: **1/3** stays one third, **1/3 × 3** is **1**, **2^200** has all 61 digits. A result that cannot be a fraction (**√2**, **sin(1)**, **ln 5**, anything with π) is worked out to about 70 significant digits and shown after **≈**, to as many decimals as **View ▸ Decimal Places** allows (up to 30). The elementary functions (**sin**, **ln**, **exp**, **√**, **atan**, the hyperbolic ones and their inverses), π, e and powers all keep that precision through further arithmetic, so **√2 × √2** is 2 and **sin(1)² + cos(1)²** is 1. The special functions (**gamma**, **erf**, **zeta** and similar) have about 15 digits. A fraction that is shown as a decimal also shows as a fraction above the display: **0.1428571429** **(= 1/7)**.
 
 Digit grouping
 : Results group thousands with a narrow space (**1 234 567**). You can type such a result back in: the spaces are ignored.

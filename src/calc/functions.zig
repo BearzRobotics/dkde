@@ -628,14 +628,14 @@ fn clip(c: *const Ctx, a: []const Number) Error!Number {
 fn numerator(c: *const Ctx, a: []const Number) Error!Number {
     return switch (a[0]) {
         .exact => |e| num.fromParts(c.a, e.num, try @TypeOf(e.den).initSet(c.a, 1)),
-        .approx => error.Domain,
+        .approx, .big => error.Domain,
     };
 }
 
 fn denominator(c: *const Ctx, a: []const Number) Error!Number {
     return switch (a[0]) {
         .exact => |e| num.fromParts(c.a, e.den, try @TypeOf(e.den).initSet(c.a, 1)),
-        .approx => error.Domain,
+        .approx, .big => error.Domain,
     };
 }
 

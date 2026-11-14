@@ -9,7 +9,7 @@ dkde-calc
 # DESCRIPTION
 dkde-calc is the DKDE calculator. You type an expression (or press its keys) and press **Enter** to work it out. The calculator is on the lines of the Windows 7 calculator, GNOME Calculator, KCalc and Qalculate.
 
-Arithmetic is exact: numbers are fractions of integers of any size, so 0.1 + 0.2 is 0.3, 1/3 × 3 is 1 and 2^100 shows all 31 digits. Results that cannot be exact (sines, logarithms, square roots of numbers that are not squares) are worked out to about 16 digits and shown after **≈** instead of **=**.
+Arithmetic is exact: numbers are fractions of integers of any size, so 0.1 + 0.2 is 0.3, 1/3 × 3 is 1 and 2^100 shows all 31 digits. Results that cannot be exact (sines, logarithms, square roots of numbers that are not squares, π and e) are worked out to about 70 digits, shown to the number of decimal places chosen (up to 30) and marked **≈** instead of **=**. Gamma, error, zeta and the other special functions are worked out to about 15 digits.
 
 Besides numbers, an entry can be:
 
