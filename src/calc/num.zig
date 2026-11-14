@@ -338,6 +338,11 @@ pub fn factorial(a: std.mem.Allocator, x: Number) Error!Number {
 }
 
 /// The value as an i64 when it is a whole number that fits.
+/// Exactly 1.
+pub fn isOneNumber(x: Number) bool {
+    return x == .exact and isOne(x.exact.num) and isOne(x.exact.den);
+}
+
 pub fn intValue(x: Number) ?i64 {
     return switch (x) {
         .approx => |f| if (f == @floor(f) and @abs(f) < 9.2e18) @as(i64, @intFromFloat(f)) else null,

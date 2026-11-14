@@ -8,10 +8,12 @@
 const std = @import("std");
 const num = @import("num.zig");
 const eval = @import("eval.zig");
+const quantity = @import("quantity.zig");
 const Number = num.Number;
 const Error = eval.Error;
 const Node = eval.Node;
 const cplx = std.math.Complex(f64);
+const Big = std.math.big.int.Managed;
 
 // ---- values ---------------------------------------------------------------------
 
@@ -41,6 +43,8 @@ pub const Matrix = struct {
 pub const Value = union(enum) {
     scalar: C,
     matrix: Matrix,
+    /// A real amount with units (5 ft, 60 km/h).
+    quantity: quantity.Quantity,
 };
 
 const max_cells = 250_000;
@@ -468,12 +472,14 @@ pub fn isExact(v: Value) bool {
         .matrix => |m| for (m.items) |x| {
             if (!isExactC(x)) break false;
         } else true,
+        .quantity => |q| q.value.isExact(),
     };
 }
 
 pub fn format(a: std.mem.Allocator, v: Value, style: num.Style) Error![]u8 {
     switch (v) {
         .scalar => |c| return formatC(a, c, style),
+        .quantity => |q| return quantity.format(a, q, style) catch |e| return @errorCast(e),
         .matrix => |m| {
             var out: std.ArrayList(u8) = .empty;
             try out.append(a, '[');
@@ -520,21 +526,70 @@ fn isOneOf(name: []const u8, comptime list: anytype) bool {
     return false;
 }
 
+const Scan = struct { trigger: bool = false, unresolved: bool = false };
+
+fn isNum(n: *const Node) bool {
+    return n.* == .number or (n.* == .unary and n.unary.op == .neg and n.unary.arg.* == .number);
+}
+
+fn codepoints(s: []const u8) usize {
+    return std.unicode.utf8CountCodepoints(s) catch s.len;
+}
+
+fn scan(n: *const Node, session: *eval.Session, attached: bool, s: *Scan) void {
+    switch (n.*) {
+        .number => {},
+        .name => |nm| {
+            if (session.vars.contains(nm.text) or session.rich.contains(nm.text) or eval.isConstant(nm.text) or
+                std.mem.eql(u8, nm.text, "i") or quantity.isConstantName(nm.text)) return;
+            if (quantity.isUnitName(nm.text)) {
+                if (attached or codepoints(nm.text) > 1) s.trigger = true;
+            } else s.unresolved = true;
+        },
+        .unary => |u| scan(u.arg, session, false, s),
+        .binary => |b| {
+            const mulish = b.op == .mul or b.op == .div;
+            if (b.op == .pow) {
+                scan(b.l, session, attached, s);
+                scan(b.r, session, false, s);
+            } else {
+                scan(b.l, session, mulish and isNum(b.r), s);
+                scan(b.r, session, mulish and isNum(b.l), s);
+            }
+        },
+        .call => |c| {
+            if (std.mem.eql(u8, c.name, "to")) s.trigger = true;
+            for (c.args) |x| scan(x, session, false, s);
+        },
+    }
+}
+
+/// Units in the entry (`5 ft + 3 in`, `60 mph to km/h`) and every name known.
+fn unitRoute(n: *const Node, session: *eval.Session) bool {
+    var s: Scan = .{};
+    scan(n, session, false, &s);
+    return s.trigger and !s.unresolved;
+}
+
 /// Does the entry need this module?
 pub fn needs(n: *const Node, session: *eval.Session) bool {
+    return needsRich(n, session) or unitRoute(n, session);
+}
+
+fn needsRich(n: *const Node, session: *eval.Session) bool {
     return switch (n.*) {
         .number => false,
         .name => |nm| (std.mem.eql(u8, nm.text, "i") and !session.vars.contains("i")) or session.rich.contains(nm.text) or
             (std.mem.eql(u8, nm.text, "ans") and session.rich.contains("ans")),
-        .unary => |u| needs(u.arg, session),
-        .binary => |b| needs(b.l, session) or needs(b.r, session),
+        .unary => |u| needsRich(u.arg, session),
+        .binary => |b| needsRich(b.l, session) or needsRich(b.r, session),
         .call => |c| blk: {
             var buf: [48]u8 = undefined;
             if (c.name.len <= buf.len) {
                 const lower = std.ascii.lowerString(&buf, c.name);
                 if (isRichFunction(lower) and !session.funcs.contains(c.name) and !session.vars.contains(c.name)) break :blk true;
             }
-            for (c.args) |x| if (needs(x, session)) break :blk true;
+            for (c.args) |x| if (needsRich(x, session)) break :blk true;
             break :blk false;
         },
     };
@@ -570,12 +625,23 @@ pub const Rich = struct {
                     if (self.ev.session.rich.get("ans")) |s| return s.load(a);
                 }
                 if (std.mem.eql(u8, nm.text, "i")) return .{ .scalar = .{ .re = try zero(a), .im = try num.fromInt(a, 1) } };
+                if (!eval.isConstant(nm.text)) {
+                    if (try quantity.constant(a, nm.text)) |q| return fromQuantity(a, q);
+                    if (try quantity.resolve(a, nm.text)) |u| {
+                        const ups = try a.alloc(quantity.UPow, 1);
+                        ups[0] = .{ .unit = u, .exp = 1 };
+                        return .{ .quantity = .{ .value = try num.fromInt(a, 1), .units = ups } };
+                    }
+                }
                 return try self.real(try self.ev.eval(n, b));
             },
             .unary => |u| {
                 const x = try self.value(u.arg, b);
                 switch (u.op) {
-                    .neg => return mapValue(a, x, cneg),
+                    .neg => {
+                        if (x == .quantity) return .{ .quantity = try quantity.neg(a, x.quantity) };
+                        return mapValue(a, x, cneg);
+                    },
                     .pct, .fact, .bnot => {
                         const c = switch (x) {
                             .scalar => |s| s,
@@ -596,11 +662,64 @@ pub const Rich = struct {
         return switch (v) {
             .scalar => |c| .{ .scalar = try f(a, c) },
             .matrix => |m| .{ .matrix = try mapMatrix(a, m, f) },
+            .quantity => error.Units,
         };
+    }
+
+    fn asQuantity(v: Value) Error!quantity.Quantity {
+        return switch (v) {
+            .quantity => |q| q,
+            .scalar => |c| if (c.isReal()) .{ .value = c.re, .units = &.{} } else error.Units,
+            .matrix => error.Units,
+        };
+    }
+
+    fn fromQuantity(a: std.mem.Allocator, q: quantity.Quantity) Error!Value {
+        if (q.units.len == 0) return .{ .scalar = try C.real(q.value, a) };
+        return .{ .quantity = q };
+    }
+
+    fn quantityBinary(self: *Rich, op: eval.Op, x: Value, y: Value) Error!Value {
+        const a = self.a;
+        const qx = try asQuantity(x);
+        const qy = try asQuantity(y);
+        switch (op) {
+            .add, .sub => {
+                if (qx.units.len == 0 and qy.units.len == 0) return fromQuantity(a, .{ .value = if (op == .add) try num.add(a, qx.value, qy.value) else try num.sub(a, qx.value, qy.value), .units = &.{} });
+                return fromQuantity(a, try quantity.add(a, qx, qy, op == .sub));
+            },
+            .mul => return fromQuantity(a, try quantity.mul(a, qx, qy)),
+            .div => {
+                if (qy.value.isZero()) return error.DivisionByZero;
+                return fromQuantity(a, try quantity.div(a, qx, qy));
+            },
+            .pow => {
+                if (qy.units.len != 0) {
+                    const pure = (try quantity.dimensionless(a, qy)) orelse return error.Units;
+                    return self.quantityBinary(.pow, x, .{ .scalar = try C.real(pure, a) });
+                }
+                if (num.intValue(qy.value)) |n| {
+                    if (n < -1000 or n > 1000) return error.TooLarge;
+                    return fromQuantity(a, try quantity.powInt(a, qx, @intCast(n)));
+                }
+                // A fractional power p/q: the q-th root of the units, then the p-th power.
+                if (qy.value == .exact) {
+                    const q = num.intValue(.{ .exact = .{ .num = qy.value.exact.den, .den = try Big.initSet(a, 1) } }) orelse return error.Units;
+                    const p = num.intValue(.{ .exact = .{ .num = qy.value.exact.num, .den = try Big.initSet(a, 1) } }) orelse return error.Units;
+                    if (q < 2 or q > 12 or p < -1000 or p > 1000) return error.Units;
+                    const root_value = try num.pow(a, qx.value, try num.div(a, try num.fromInt(a, 1), try num.fromInt(a, q)));
+                    const rq = try quantity.root(a, qx, @intCast(q), root_value);
+                    return fromQuantity(a, try quantity.powInt(a, rq, @intCast(p)));
+                }
+                return error.Units;
+            },
+            else => return error.Units,
+        }
     }
 
     fn binary(self: *Rich, op: eval.Op, x: Value, y: Value) Error!Value {
         const a = self.a;
+        if (x == .quantity or y == .quantity) return self.quantityBinary(op, x, y);
         switch (op) {
             .add, .sub => {
                 const f: *const fn (std.mem.Allocator, C, C) Error!C = if (op == .add) &cadd else &csub;
@@ -740,6 +859,13 @@ pub const Rich = struct {
         const args = try a.alloc(Value, arg_nodes.len);
         for (arg_nodes, 0..) |an, i| args[i] = try self.value(an, b);
 
+        if (std.mem.eql(u8, lower, "to")) {
+            if (args.len != 2) return error.WrongArguments;
+            const target = try asQuantity(args[1]);
+            return fromQuantity(a, try quantity.convert(a, try asQuantity(args[0]), target.units));
+        }
+        for (args) |v| if (v == .quantity) return self.quantityCall(name, lower, args, pos);
+
         if (try self.richCall(lower, args, pos)) |v| return v;
 
         // An ordinary function: of reals, the plain evaluator; of a matrix, entry by entry.
@@ -759,6 +885,75 @@ pub const Rich = struct {
             return .{ .matrix = out };
         }
         return .{ .scalar = try self.scalarFunction(name, lower, args, arg_nodes, pos) };
+    }
+
+    /// A function of amounts with units: the shape-keeping ones; trigonometry of angles.
+    fn quantityCall(self: *Rich, name: []const u8, lower: []const u8, args: []Value, pos: usize) Error!Value {
+        const a = self.a;
+        const mode = self.ev.mode.angle;
+        // Dimensionless quantities (angles, ratios) are plain numbers to a function.
+        const plain = try a.alloc(Value, args.len);
+        var all_plain = true;
+        for (args, 0..) |v, i| {
+            plain[i] = v;
+            if (v != .quantity) continue;
+            const q = v.quantity;
+            if (!quantity.isDimensionless(q)) {
+                all_plain = false;
+                continue;
+            }
+            const trig = isOneOf(lower, .{ "sin", "cos", "tan", "sec", "csc", "cot" });
+            const want: []const u8 = switch (mode) {
+                .degrees => "°",
+                .radians => "rad",
+                .gradians => "grad",
+            };
+            if (trig and q.units.len == 1 and q.units[0].exp == 1 and std.mem.eql(u8, q.units[0].unit.sym, want)) {
+                plain[i] = .{ .scalar = try C.real(q.value, a) };
+                continue;
+            }
+            var rad = (try quantity.dimensionless(a, q)).?;
+            if (trig) {
+                const per: f64 = switch (mode) {
+                    .degrees => 180.0 / std.math.pi,
+                    .radians => 1.0,
+                    .gradians => 200.0 / std.math.pi,
+                };
+                rad = try num.mul(a, rad, .{ .approx = per });
+            }
+            plain[i] = .{ .scalar = try C.real(rad, a) };
+        }
+        if (all_plain) return self.call2(name, lower, plain, pos);
+        // With dimensions: a few functions keep the units.
+        if (args.len == 1 and args[0] == .quantity) {
+            const q = args[0].quantity;
+            if (isOneOf(lower, .{ "sqrt", "cbrt" })) {
+                const rv = (try self.scalarFunction(name, lower, @constCast(&[_]Value{.{ .scalar = try C.real(q.value, a) }}), &.{}, pos)).re;
+                return fromQuantity(a, try quantity.root(a, q, if (std.mem.eql(u8, lower, "sqrt")) 2 else 3, rv));
+            }
+            if (isOneOf(lower, .{ "abs", "floor", "ceil", "round", "trunc", "frac", "sign" })) {
+                const rv = (try self.scalarFunction(name, lower, @constCast(&[_]Value{.{ .scalar = try C.real(q.value, a) }}), &.{}, pos)).re;
+                if (std.mem.eql(u8, lower, "sign")) return .{ .scalar = try C.real(rv, a) };
+                return fromQuantity(a, .{ .value = rv, .units = q.units });
+            }
+        }
+        if (args.len >= 2 and isOneOf(lower, .{ "min", "max" })) {
+            var best = try asQuantity(args[0]);
+            for (args[1..]) |v| {
+                const q = try asQuantity(v);
+                const in_best = try quantity.convert(a, q, best.units);
+                const o = try num.order(a, in_best.value, best.value);
+                if ((std.mem.eql(u8, lower, "min") and o == .lt) or (std.mem.eql(u8, lower, "max") and o == .gt)) best = in_best;
+            }
+            return fromQuantity(a, best);
+        }
+        return error.Units;
+    }
+
+    /// The call once its arguments are plain values.
+    fn call2(self: *Rich, name: []const u8, lower: []const u8, args: []Value, pos: usize) Error!Value {
+        if (try self.richCall(lower, args, pos)) |v| return v;
+        return .{ .scalar = try self.scalarFunction(name, lower, args, &.{}, pos) };
     }
 
     fn scalarFunction(self: *Rich, name: []const u8, lower: []const u8, args: []Value, arg_nodes: []*Node, pos: usize) Error!C {
@@ -862,6 +1057,7 @@ pub const Rich = struct {
                     for (m.items, 0..) |x, i| out.items[i] = try complexPart(a, f, x);
                     break :blk Value{ .matrix = out };
                 },
+                .quantity => return error.Units,
             };
         }
         // ---- building matrices ----
@@ -1035,6 +1231,7 @@ pub const Rich = struct {
                 m.items[0] = c;
                 break :blk m;
             },
+            .quantity => error.Units,
         };
     }
 
@@ -1103,6 +1300,7 @@ pub const Rich = struct {
                 break :blk one;
             },
             .matrix => |m| m.items,
+            .quantity => return error.Units,
         };
         const out = try a.alloc(Number, items.len);
         for (items, 0..) |c, i| {
@@ -1331,6 +1529,7 @@ fn flatten(a: std.mem.Allocator, args: []Value) Error![]C {
     for (args) |v| switch (v) {
         .scalar => |c| try list.append(a, c),
         .matrix => |m| try list.appendSlice(a, m.items),
+        .quantity => return error.Units,
     };
     if (list.items.len == 0 or list.items.len > max_cells) return error.WrongArguments;
     return list.items;
@@ -1345,11 +1544,21 @@ pub const Stored = struct {
     is_matrix: bool,
     re: []eval.Stored,
     im: []eval.Stored,
+    /// A quantity's units (names that resolve again) and exponents.
+    unit_names: [][]u8 = &.{},
+    unit_exps: []i32 = &.{},
+    is_quantity: bool = false,
 
     pub fn of(gpa: std.mem.Allocator, v: Value) error{OutOfMemory}!Stored {
+        const zero_c: C = .{ .re = .{ .approx = 0 }, .im = .{ .approx = 0 } };
+        const q_item: C = switch (v) {
+            .quantity => |q| .{ .re = q.value, .im = .{ .approx = 0 } },
+            else => zero_c,
+        };
         const items: []const C = switch (v) {
             .scalar => |*c| @as([*]const C, @ptrCast(c))[0..1],
             .matrix => |m| m.items,
+            .quantity => @as([*]const C, @ptrCast(&q_item))[0..1],
         };
         const re = try gpa.alloc(eval.Stored, items.len);
         errdefer gpa.free(re);
@@ -1359,10 +1568,26 @@ pub const Stored = struct {
             re[i] = try eval.Stored.of(gpa, c.re);
             im[i] = try eval.Stored.of(gpa, c.im);
         }
-        return switch (v) {
-            .scalar => .{ .rows = 1, .cols = 1, .is_matrix = false, .re = re, .im = im },
-            .matrix => |m| .{ .rows = m.rows, .cols = m.cols, .is_matrix = true, .re = re, .im = im },
-        };
+        switch (v) {
+            .scalar => return .{ .rows = 1, .cols = 1, .is_matrix = false, .re = re, .im = im },
+            .matrix => |m| return .{ .rows = m.rows, .cols = m.cols, .is_matrix = true, .re = re, .im = im },
+            .quantity => |q| {
+                const names = try gpa.alloc([]u8, q.units.len);
+                const exps = try gpa.alloc(i32, q.units.len);
+                var made: usize = 0;
+                errdefer {
+                    for (names[0..made]) |n| gpa.free(n);
+                    gpa.free(names);
+                    gpa.free(exps);
+                }
+                for (q.units, 0..) |u, i| {
+                    names[i] = try gpa.dupe(u8, u.unit.sym);
+                    made += 1;
+                    exps[i] = u.exp;
+                }
+                return .{ .rows = 1, .cols = 1, .is_matrix = false, .re = re, .im = im, .unit_names = names, .unit_exps = exps, .is_quantity = true };
+            },
+        }
     }
 
     pub fn deinit(self: Stored, gpa: std.mem.Allocator) void {
@@ -1370,9 +1595,19 @@ pub const Stored = struct {
         for (self.im) |s| s.deinit(gpa);
         gpa.free(self.re);
         gpa.free(self.im);
+        for (self.unit_names) |n| gpa.free(n);
+        if (self.unit_names.len > 0) gpa.free(self.unit_names);
+        if (self.unit_exps.len > 0) gpa.free(self.unit_exps);
     }
 
     pub fn load(self: Stored, a: std.mem.Allocator) Error!Value {
+        if (self.is_quantity) {
+            const units = try a.alloc(quantity.UPow, self.unit_names.len);
+            for (units, self.unit_names, self.unit_exps) |*u, nm, e| {
+                u.* = .{ .unit = (try quantity.resolve(a, nm)) orelse return error.Domain, .exp = e };
+            }
+            return .{ .quantity = .{ .value = try self.re[0].load(a), .units = units } };
+        }
         const items = try a.alloc(C, self.re.len);
         for (items, 0..) |*c, i| c.* = .{ .re = try self.re[i].load(a), .im = try self.im[i].load(a) };
         if (!self.is_matrix) return .{ .scalar = items[0] };
@@ -1432,4 +1667,15 @@ test "statistics" {
 test "systems of equations" {
     try expectRich("multisolve([x+y=5; x-y=1],[x,y])", "[3, 2]");
     try expectRich("multisolve([x+y+z=6; x-y=0; z=3],[x,y,z])", "[1.5, 1.5, 3]");
+}
+
+test "units in entries" {
+    try expectRich("5 ft + 3 in", "5.25 ft");
+    try expectRich("60 mph to km/h", "96.56064 km/h");
+    try expectRich("5 kg * 2 m/s^2", "10 N");
+    try expectRich("10 m / 2 s", "5 m/s");
+    try expectRich("100 °C to °F", "212 °F");
+    try expectRich("3 in to cm", "7.62 cm");
+    try expectRich("sqrt(9 m^2)", "3 m");
+    try expectRich("1 GiB to MB", "1073.741824 MB");
 }

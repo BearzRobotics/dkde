@@ -64,6 +64,8 @@ pub const Error = error{
     TooManyUnknowns,
     NoSolution,
     Recursion,
+    /// Units that cannot be added or converted.
+    Units,
     OutOfMemory,
 };
 
@@ -143,11 +145,39 @@ const Parser = struct {
         return self.node(.{ .binary = .{ .op = op, .l = l, .r = r } });
     }
 
+    /// The length of a conversion word at the start of `r`: "to", "→", or "in"
+    /// when something follows that is not an operator ("5 in" is inches).
+    fn convertWord(r: []const u8) ?usize {
+        if (std.mem.startsWith(u8, r, "→")) return "→".len;
+        const is_to = std.ascii.startsWithIgnoreCase(r, "to") and (r.len == 2 or !isNameChar(r[2]));
+        if (is_to) return 2;
+        if (std.ascii.startsWithIgnoreCase(r, "in") and (r.len == 2 or !isNameChar(r[2]))) {
+            const after = std.mem.trim(u8, r[2..], " \t");
+            if (after.len == 0 or std.mem.indexOfScalar(u8, "+-*/^)=,;&|<>", after[0]) != null) return null;
+            // "3 in to cm": inches, then the conversion.
+            if (convertWord(after) != null and !std.ascii.startsWithIgnoreCase(after, "in")) return null;
+            return 2;
+        }
+        return null;
+    }
+
+    /// "… to km/h": the amount in other units, as to(amount, units).
+    fn withConversion(self: *Parser, l: *Node) Error!*Node {
+        self.skipSpace();
+        const skip = convertWord(self.rest()) orelse return l;
+        self.pos += skip;
+        const target = try self.expr();
+        const args = try self.a.alloc(*Node, 2);
+        args[0] = l;
+        args[1] = target;
+        return self.node(.{ .call = .{ .name = "to", .args = args, .pos = self.pos } });
+    }
+
     fn statement(self: *Parser) Error!Statement {
-        const l = try self.expr();
+        const l = try self.withConversion(try self.expr());
         self.skipSpace();
         if (self.eat("=")) {
-            const r = try self.expr();
+            const r = try self.withConversion(try self.expr());
             self.skipSpace();
             if (self.pos != self.text.len) return self.fail(error.Syntax);
             return .{ .equation = .{ .l = l, .r = r } };
@@ -210,10 +240,28 @@ const Parser = struct {
     fn product(self: *Parser) Error!*Node {
         var l = try self.unary();
         while (true) {
+            const loop_start = self.pos;
             if (self.eat("*") or self.eat("×") or self.eat("·") or self.eat("⋅")) {
                 l = try self.binary(.mul, l, try self.unary());
             } else if (self.eat("/") or self.eat("÷")) {
-                l = try self.binary(.div, l, try self.unary());
+                // As Qalculate reads it: after " / " the divisor is everything
+                // juxtaposed (10 m / 2 s); after "/" only what touches it (1/2π is 1/(2π),
+                // 1/2 π is π/2).
+                const spaced_slash = loop_start < self.text.len and (self.text[loop_start] == ' ' or self.text[loop_start] == '\t');
+                var r = try self.unary();
+                while (true) {
+                    const here = self.pos;
+                    self.skipSpace();
+                    const spaced = self.pos > here;
+                    // Brackets keep the written order (the guide's 6 ÷ 2(1 + 2) is 9).
+                    if ((spaced_slash or !spaced) and self.pos < self.text.len and self.text[self.pos] != '(' and self.text[self.pos] != '[' and self.implicitNext()) {
+                        r = try self.binary(.mul, r, try self.power());
+                    } else {
+                        self.pos = here;
+                        break;
+                    }
+                }
+                l = try self.binary(.div, l, r);
             } else if (self.eatWord("mod")) {
                 l = try self.binary(.mod, l, try self.unary());
             } else if (self.implicitNext()) {
@@ -232,9 +280,10 @@ const Parser = struct {
         if (std.mem.startsWith(u8, r, "√") or std.mem.startsWith(u8, r, "∛")) return true;
         if (isNameStart(r)) {
             // Not a word operator.
-            inline for (.{ "mod", "and", "or", "xor", "not", "in", "to" }) |w| {
+            inline for (.{ "mod", "and", "or", "xor", "not" }) |w| {
                 if (std.ascii.startsWithIgnoreCase(r, w) and (r.len == w.len or !isNameChar(r[w.len]))) return false;
             }
+            if (convertWord(r) != null) return false;
             return true;
         }
         // A number right after ")".
@@ -443,7 +492,14 @@ fn greekAt(r: []const u8) ?usize {
 fn isNameStart(r: []const u8) bool {
     if (r.len == 0) return false;
     if (std.ascii.isAlphabetic(r[0]) or r[0] == '_') return true;
+    if (unitMarkAt(r) != null) return true;
     return greekAt(r) != null;
+}
+
+/// ° and µ (micro sign) begin unit names: °F, µm.
+fn unitMarkAt(r: []const u8) ?usize {
+    if (std.mem.startsWith(u8, r, "°") or std.mem.startsWith(u8, r, "µ")) return 2;
+    return null;
 }
 
 fn isNameChar(c: u8) bool {
@@ -458,6 +514,7 @@ fn nameLength(r: []const u8) usize {
         return n;
     }
     var n: usize = 0;
+    if (unitMarkAt(r)) |m| n = m;
     while (n < r.len and isNameChar(r[n])) n += 1;
     return n;
 }

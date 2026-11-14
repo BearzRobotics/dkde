@@ -922,6 +922,7 @@ const Calc = struct {
             error.TooManyUnknowns => std.fmt.bufPrintSentinel(&buf, "More than one unknown (also {s}): give the others values first", .{p.name}, 0) catch "More than one unknown",
             error.NoSolution => t("No real solution was found"),
             error.Recursion => t("A function uses itself without end"),
+            error.Units => t("These units do not match: they measure different things"),
             error.OutOfMemory => t("Not enough memory"),
         };
         self.preview.setText(message);
@@ -2397,4 +2398,5 @@ test {
     _ = @import("functions.zig");
     _ = @import("convert.zig");
     _ = @import("rich.zig");
+    _ = @import("quantity.zig");
 }
