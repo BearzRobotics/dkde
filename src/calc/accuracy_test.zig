@@ -16,6 +16,7 @@ fn show(a: std.mem.Allocator, o: eval.Outcome) ![]const u8 {
         .truth => |t| if (t) "true" else "false",
         .simplified => |x| x,
         .rich => |v| try rich.format(a, v, .{ .decimals = 12 }),
+        .system => |sy| try std.fmt.allocPrint(a, "{d} unknowns", .{sy.names.len}),
         .rich_assigned => |s| try rich.format(a, s.value, .{ .decimals = 12 }),
         .complex => |cx| try std.fmt.allocPrint(a, "{d} complex", .{cx.re.len}),
         .solved => |s| blk: {

@@ -781,6 +781,16 @@ const Calc = struct {
                 }
             },
             .truth => |yes| self.finishResult(expr_copy, if (yes) t("true") else t("false"), null, a),
+            .system => |sy| {
+                var parts: std.ArrayList(u8) = .empty;
+                for (sy.names, sy.values, 0..) |nm, v, i| {
+                    const shown = num.format(a, v, self.style) catch return;
+                    parts.print(a, "{s}{s} {s} {s}", .{ if (i > 0) ";  " else "", nm, if (v.isExact()) "=" else "≈", shown }) catch return;
+                }
+                self.finishResultAs(expr_copy, parts.items, null, a, false);
+                if (self.plain) |pl| self.gpa.free(pl);
+                self.plain = null;
+            },
             .rich => |v| self.finishRich(expr_copy, v, null, a),
             .rich_assigned => |s| {
                 self.finishRich(expr_copy, s.value, s.name, a);

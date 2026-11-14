@@ -293,6 +293,17 @@ const Parser = struct {
         return self.fail(error.Syntax);
     }
 
+    /// An entry of a bracket list may be an equation: [x + y = 5; x - y = 1].
+    fn exprOrEquation(self: *Parser) Error!*Node {
+        const l = try self.expr();
+        if (!self.eat("=")) return l;
+        const r = try self.expr();
+        const args = try self.a.alloc(*Node, 2);
+        args[0] = l;
+        args[1] = r;
+        return self.node(.{ .call = .{ .name = "eq", .args = args, .pos = self.pos } });
+    }
+
     /// [1, 2; 3, 4]: rows end with ";", entries with ",". Read as
     /// matrix(rows, cols, entries…).
     fn matrixLiteral(self: *Parser) Error!*Node {
@@ -306,7 +317,7 @@ const Parser = struct {
         defer self.depth -= 1;
         if (self.depth > 200) return self.fail(error.Syntax);
         while (true) {
-            try items.append(self.a, try self.expr());
+            try items.append(self.a, try self.exprOrEquation());
             cur += 1;
             const end = !self.eat(",");
             if (!end) continue;
@@ -1244,12 +1255,15 @@ pub const Outcome = union(enum) {
     truth: bool,
     /// A complex number or a matrix.
     rich: rich.Value,
+    /// x + y = 5; x - y = 1: each unknown and its value.
+    system: struct { names: [][]const u8, values: []Number },
     /// M = [1, 2; 3, 4]: a stored matrix or complex number.
     rich_assigned: struct { name: []const u8, value: rich.Value },
 };
 
 /// Works out one entry. Everything returned lives in `a`.
 pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode, problem: *Problem) Error!Outcome {
+    if (!mode.programmer and !mode.solve_only) if (try systemOf(a, session, text, mode, problem)) |o| return o;
     const st = try parse(a, text, mode, problem);
     var ev: Eval = .{ .a = a, .session = session, .mode = mode, .problem = problem };
     switch (st) {
@@ -1313,6 +1327,56 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
             return solve(a, &ev, eq.l, eq.r);
         },
     }
+}
+
+/// "x + y = 5; x - y = 1": equations side by side, solved together (linear).
+fn systemOf(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode, problem: *Problem) Error!?Outcome {
+    var parts: std.ArrayList([]const u8) = .empty;
+    var depth: usize = 0;
+    var start: usize = 0;
+    for (text, 0..) |c, i| switch (c) {
+        '(', '[' => depth += 1,
+        ')', ']' => depth -|= 1,
+        ';' => if (depth == 0) {
+            try parts.append(a, text[start..i]);
+            start = i + 1;
+        },
+        else => {},
+    };
+    if (parts.items.len == 0) return null;
+    try parts.append(a, text[start..]);
+    var names: std.ArrayList([]const u8) = .empty;
+    for (parts.items) |part| {
+        if (std.mem.indexOfScalar(u8, part, '=') == null) return null;
+        const st = parse(a, part, mode, problem) catch return null;
+        if (st != .equation) return null;
+        try unknowns(a, st.equation.l, session, &names);
+        try unknowns(a, st.equation.r, session, &names);
+    }
+    if (names.items.len != parts.items.len) return error.TooManyUnknowns;
+    var src: std.ArrayList(u8) = .empty;
+    try src.appendSlice(a, "multisolve([");
+    for (parts.items, 0..) |part, i| {
+        if (i > 0) try src.appendSlice(a, "; ");
+        try src.appendSlice(a, part);
+    }
+    try src.appendSlice(a, "], [");
+    for (names.items, 0..) |nm, i| {
+        if (i > 0) try src.appendSlice(a, ", ");
+        try src.appendSlice(a, nm);
+    }
+    try src.appendSlice(a, "])");
+    const node = try parseExpr(a, src.items, mode, problem);
+    var ev: Eval = .{ .a = a, .session = session, .mode = mode, .problem = problem };
+    var rr = rich.Rich.init(&ev);
+    const v = try rr.value(node, null);
+    if (v != .matrix or v.matrix.items.len != names.items.len) return error.Domain;
+    const values = try a.alloc(Number, names.items.len);
+    for (v.matrix.items, 0..) |c, i| {
+        if (!c.isReal()) return error.Domain;
+        values[i] = c.re;
+    }
+    return .{ .system = .{ .names = names.items, .values = values } };
 }
 
 /// An entry worked out as a complex number or matrix; a plain real answer stays a plain value.
@@ -1584,6 +1648,11 @@ const Tester = struct {
             .truth => |t| if (t) "true" else "false",
             .simplified => |x| x,
             .rich => |v| try rich.format(a, v, .{}),
+            .system => |sy| blk: {
+                var parts: std.ArrayList(u8) = .empty;
+                for (sy.names, sy.values, 0..) |nm, v, i| try parts.print(a, "{s}{s} = {s}", .{ if (i > 0) "; " else "", nm, try num.format(a, v, .{}) });
+                break :blk parts.items;
+            },
             .rich_assigned => |s| try rich.format(a, s.value, .{}),
             .complex => |cx| try std.fmt.allocPrint(a, "{d} complex", .{cx.re.len}),
             .solved => |s| blk: {

@@ -506,7 +506,7 @@ const rich_only = [_][]const u8{
     "mode",       "range",    "number",   "harmmean",  "geomean", "rms",      "stdevp",  "varp",    "stderr", "meandev",
     "cov",        "covar",    "pearson",  "spearman",  "weighmean", "trimmean", "winsormean", "poolvar", "re",   "im",
     "arg",        "conj",     "polar",    "cis",       "flip",    "reverse",  "cumsum",  "mad",     "skew",   "kurtosis",
-    "zscore",     "sumsq",
+    "zscore",     "sumsq",    "multisolve", "eq",
 };
 
 /// Names only this module knows (so the plain evaluator does not take them for a product).
@@ -662,6 +662,68 @@ pub const Rich = struct {
         }
     }
 
+    // ---- systems of equations --------------------------------------------------------
+
+    /// The entries of a matrix literal node (matrix(rows, cols, e…)).
+    fn literalItems(n: *const Node) ?[]*Node {
+        if (n.* != .call or !std.mem.eql(u8, n.call.name, "matrix") or n.call.args.len < 3) return null;
+        return n.call.args[2..];
+    }
+
+    /// multisolve([x + y = 5; x - y = 1], [x, y]): a linear system, as a vector.
+    fn multisolve(self: *Rich, arg_nodes: []*Node, b: ?*const eval.Binding) Error!Value {
+        const a = self.a;
+        if (arg_nodes.len != 2) return error.WrongArguments;
+        const eqs = literalItems(arg_nodes[0]) orelse return error.Domain;
+        const vars = literalItems(arg_nodes[1]) orelse return error.Domain;
+        const n = vars.len;
+        if (eqs.len != n) return error.Domain;
+        for (vars) |v| if (v.* != .name) return error.Domain;
+        // Residuals of every equation at a point.
+        const Probe = struct {
+            fn at(rr: *Rich, eq_nodes: []*Node, var_nodes: []*Node, point: []const Number, outer: ?*const eval.Binding) Error![]Number {
+                var chain = outer;
+                for (var_nodes, point) |v, x| {
+                    const bind = try rr.a.create(eval.Binding);
+                    bind.* = .{ .name = v.name.text, .value = x, .next = chain };
+                    chain = bind;
+                }
+                const res = try rr.a.alloc(Number, eq_nodes.len);
+                for (eq_nodes, 0..) |e, i| {
+                    if (e.* == .call and std.mem.eql(u8, e.call.name, "eq") and e.call.args.len == 2) {
+                        res[i] = try num.sub(rr.a, try rr.ev.eval(e.call.args[0], chain), try rr.ev.eval(e.call.args[1], chain));
+                    } else res[i] = try rr.ev.eval(e, chain);
+                }
+                return res;
+            }
+        };
+        const point = try a.alloc(Number, n);
+        for (point) |*p| p.* = try zero(a);
+        const f0 = try Probe.at(self, eqs, vars, point, b);
+        const aug = try newMatrix(a, n, n + 1);
+        for (0..n) |j| {
+            point[j] = try num.fromInt(a, 1);
+            const fj = try Probe.at(self, eqs, vars, point, b);
+            point[j] = try zero(a);
+            for (0..n) |i| aug.items[i * (n + 1) + j] = try C.real(try num.sub(a, fj[i], f0[i]), a);
+        }
+        for (0..n) |i| aug.items[i * (n + 1) + n] = try C.real(try num.neg(a, f0[i]), a);
+        // Linear? Check at another point.
+        for (point, 0..) |*p, j| p.* = try num.fromInt(a, @as(i64, @intCast(j + 2)));
+        const fp = try Probe.at(self, eqs, vars, point, b);
+        for (0..n) |i| {
+            var want = f0[i];
+            for (0..n) |j| want = try num.add(a, want, try num.mul(a, aug.items[i * (n + 1) + j].re, point[j]));
+            const d = try num.sub(a, fp[i], want);
+            if (!(d.isZero() or @abs(d.toFloat()) <= 1e-9 * @max(1.0, @abs(want.toFloat())))) return error.Domain;
+        }
+        const e = try eliminate(a, aug, n, true);
+        if (e.rank < n) return error.NoSolution;
+        const out = try newMatrix(a, 1, n);
+        for (0..n) |i| out.items[i] = e.m.items[i * (n + 1) + n];
+        return .{ .matrix = out };
+    }
+
     // ---- calls ---------------------------------------------------------------------
 
     fn call(self: *Rich, name: []const u8, arg_nodes: []*Node, pos: usize, b: ?*const eval.Binding) Error!Value {
@@ -673,6 +735,8 @@ pub const Rich = struct {
             (isOneOf(lower, .{"sum"}) and arg_nodes.len == 4);
         if (plain) return try self.real(try self.ev.callPlain(name, arg_nodes, pos, b));
 
+        if (std.mem.eql(u8, lower, "multisolve")) return self.multisolve(arg_nodes, b);
+        if (std.mem.eql(u8, lower, "eq")) return error.Domain;
         const args = try a.alloc(Value, arg_nodes.len);
         for (arg_nodes, 0..) |an, i| args[i] = try self.value(an, b);
 
@@ -1363,4 +1427,9 @@ test "statistics" {
     try expectRich("median([5,3,1,4])", "3.5");
     try expectRich("stdev([2,4,4,4,5,5,7,9])", "2.1380899353");
     try expectRich("quartile([1,2,3,4,5,6,7,8],1)", "2.75");
+}
+
+test "systems of equations" {
+    try expectRich("multisolve([x+y=5; x-y=1],[x,y])", "[3, 2]");
+    try expectRich("multisolve([x+y+z=6; x-y=0; z=3],[x,y,z])", "[1.5, 1.5, 3]");
 }
