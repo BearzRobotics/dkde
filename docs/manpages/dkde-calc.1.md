@@ -26,7 +26,7 @@ Besides numbers, an entry can be:
 - a list statistic: **mean(3, 5, 10)**, **stdev(…)**, **percentile(…)**;
 - a system of equations: **x + y = 5; x − y = 1** gives **x = 3; y = 2**;
 - the answer shown another way: **255 to hex**, **0.75 to fraction**, **2024 to roman**, **360 to factors**;
-- calculus: **diff(x³, x)** is **3x²**, **integral(x², x, 0, 3)** is **9**, **limit(sin(x)/x, x, 0)** is **1**, **sum(k², k, 1, 10)** is **385**.
+- calculus: **diff(x³, x)** is **3x²**, **integral(x², x, 0, 3)** is **9**, **limit(sin(x)/x, x, 0)** is **1**, **sum(k², k, 1, 10)** is **385**, **taylor(sin(x), x, 0, 3)** is **x − x³/6 + O(x⁴)**, **dsolve(y' = 2y)** is **y = C·e^(2x)**, **laplace(sin(3t), t)** is **3/(s² + 9)**.
 
 An entry that starts with an operator goes on from the last answer, as on a TI: **+ 3** is **ans + 3**. (A leading **−** stays a minus sign.)
 
@@ -261,7 +261,7 @@ Programmer mode works with whole numbers
 : A fraction in programmer mode.
 
 # LIMITATIONS
-Equations are solved numerically for one unknown. Linear systems are solved exactly; nonlinear systems by Newton's method, which returns one root even when there are several. Complex solutions are given only for polynomial equations without real ones. Simplification combines numbers, like terms and powers; it does not expand products of sums or factor. There is no symbolic integration: **integral** gives a number. **log** is base 10 (Qalculate's is natural); use **ln** for natural logarithms. Exchange rates are as old as the last update, and the ECB's are daily, not live. Graphs are drawn in radians.
+Equations are solved numerically for one unknown. Linear systems are solved exactly; nonlinear systems by Newton's method, which returns one root even when there are several. Complex solutions are given only for polynomial equations without real ones. Simplification combines numbers, like terms and powers; it does not expand products of sums or factor. **integral(f, x)** gives an antiderivative; **dsolve**, **taylor**, **laplace** and **ilaplace** cover the first differential equations, series and transforms (see dkde-calc-guide(7)). **log** is base 10 (Qalculate's is natural); use **ln** for natural logarithms. Exchange rates are as old as the last update, and the ECB's are daily, not live. Graphs are drawn in radians.
 
 # SEE ALSO
 dkde-calc-guide(7), dkde-calendar(1), dkde-help(1)
