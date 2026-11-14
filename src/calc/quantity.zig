@@ -520,7 +520,7 @@ pub const date_names = [_][]const u8{ "today", "tomorrow", "yesterday" };
 
 pub const date_functions = [_][]const u8{
     "date",     "weekday", "dayofyear", "weeknumber", "year", "month", "day",
-    "addmonths", "addyears", "adddays", "days",       "daysinmonth", "isleapyear",
+    "addmonths", "addyears", "adddays", "days",       "daysinmonth", "isleapyear", "week", "yearday",
 };
 
 pub fn isDateName(name: []const u8) bool {

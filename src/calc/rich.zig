@@ -512,7 +512,7 @@ const rich_only = [_][]const u8{
     "mode",       "range",    "number",   "harmmean",  "geomean", "rms",      "stdevp",  "varp",    "stderr", "meandev",
     "cov",        "covar",    "pearson",  "spearman",  "weighmean", "trimmean", "winsormean", "poolvar", "re",   "im",
     "arg",        "conj",     "polar",    "cis",       "flip",    "reverse",  "cumsum",  "mad",     "skew",   "kurtosis",
-    "zscore",     "sumsq",    "multisolve", "eq",
+    "zscore",     "sumsq",    "multisolve", "eq",      "divisors", "primes",
 };
 
 /// Names only this module knows (so the plain evaluator does not take them for a product).
@@ -1004,9 +1004,11 @@ pub const Rich = struct {
     }
 
     /// date(y, m, d), weekday(d), addmonths(d, n), days(a, b) and the rest of the date functions.
-    fn dateCall(self: *Rich, f: []const u8, args: []Value) Error!Value {
+    fn dateCall(self: *Rich, f_in: []const u8, args: []Value) Error!Value {
         const a = self.a;
         const eq = std.mem.eql;
+        // Qalculate's names for the same things.
+        const f: []const u8 = if (eq(u8, f_in, "week")) "weeknumber" else if (eq(u8, f_in, "yearday")) "dayofyear" else f_in;
         const need: usize = if (eq(u8, f, "date")) 3 else if (isOneOf(f, .{ "addmonths", "addyears", "adddays", "days", "daysinmonth" })) 2 else 1;
         if (args.len != need) return error.WrongArguments;
         if (eq(u8, f, "date")) {
@@ -1217,6 +1219,30 @@ pub const Rich = struct {
             const items = try flatten(a, args);
             const m = try newMatrix(a, 1, items.len);
             @memcpy(m.items, items);
+            return .{ .matrix = m };
+        }
+        if (isOneOf(f, .{ "divisors", "primes" })) {
+            if (args.len != 1) return error.WrongArguments;
+            const n = try self.smallInt(args[0]);
+            if (n < 1 or n > 2_000_000) return error.Domain;
+            var items: std.ArrayList(C) = .empty;
+            if (std.mem.eql(u8, f, "divisors")) {
+                var d: i64 = 1;
+                while (d <= n) : (d += 1) if (@rem(n, d) == 0) try items.append(a, try C.real(try num.fromInt(a, d), a));
+            } else {
+                const sieve = try a.alloc(bool, @intCast(n + 1));
+                @memset(sieve, true);
+                var i: usize = 2;
+                while (i <= @as(usize, @intCast(n))) : (i += 1) {
+                    if (!sieve[i]) continue;
+                    try items.append(a, try C.real(try num.fromInt(a, @as(i64, @intCast(i))), a));
+                    var j = i * i;
+                    while (j <= @as(usize, @intCast(n))) : (j += i) sieve[j] = false;
+                }
+            }
+            if (items.items.len == 0) return error.Domain;
+            const m = try newMatrix(a, 1, items.items.len);
+            @memcpy(m.items, items.items);
             return .{ .matrix = m };
         }
         if (std.mem.eql(u8, f, "identity")) {

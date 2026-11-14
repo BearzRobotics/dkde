@@ -198,3 +198,19 @@ test "algebra from the entry" {
     try runShows(&s, "-1.414213562373; 1.414213562373", "solve(x^2 = 2)");
     try runShows(&s, "4", "2x + 3 = 11");
 }
+
+test "more of Qalculate's functions" {
+    var s: eval.Session = .{ .gpa = std.testing.allocator };
+    defer s.deinit();
+    try runShows(&s, "1", "if(2 > 1, 1, 0)");
+    try runShows(&s, "0", "if(1 > 2, 1, 0)");
+    try runShows(&s, "1", "xor(1, 0)");
+    try runShows(&s, "0", "xor(1, 1)");
+    try runShows(&s, "1.2", "parallel(2, 3)");
+    try runShows(&s, "105", "multifactorial(7, 2)");
+    try runShows(&s, "20", "shift(5, 2)");
+    try runShows(&s, "[1, 2, 3, 4, 6, 12]", "divisors(12)");
+    try runShows(&s, "[2, 3, 5, 7, 11]", "primes(12)");
+    try runShows(&s, "46", "week(2026-11-14)");
+    try runShows(&s, "318", "yearday(2026-11-14)");
+}

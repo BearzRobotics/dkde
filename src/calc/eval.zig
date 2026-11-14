@@ -811,6 +811,8 @@ const builtin_functions = [_][]const u8{
     "trunc", "frac", "sign", "fact",  "gcd",   "lcm",   "ncr",  "npr",   "min",   "max",   "sum",    "mean",
     "avg",  "median", "stdev", "var", "mod",   "pow",   "atan2", "hypot", "rand",  "rol",  "ror",    "sec",
     "csc",  "cot",  "diff", "derivative", "integral", "integrate", "limit", "prod",
+    "if",   "xor",  "parallel", "multifactorial", "shift", "randuniform", "randbetween", "randnorm", "randexp",
+    "randrayleigh", "randpoisson",
 };
 
 /// lt, le, gt, ge, ne: what a comparison in an entry is read as.
@@ -1024,6 +1026,11 @@ pub const Eval = struct {
     fn calculusCall(self: *Eval, name: []const u8, args: []const *Node, pos: usize, b: ?*const Binding) Error!?Number {
         const a = self.a;
         const is = std.ascii.eqlIgnoreCase;
+        // if(condition, then, else): only the branch that is taken is worked out.
+        if (is(name, "if") and args.len == 3) {
+            const cond = try self.eval(args[0], b);
+            return try self.eval(if (!cond.isZero()) args[1] else args[2], b);
+        }
         if (is(name, "diff") or is(name, "derivative")) {
             const expanded = try calculus.expand(a, self, @constCast(&Node{ .call = .{ .name = name, .args = @constCast(args), .pos = pos } }));
             return try self.eval(expanded, b);
@@ -1104,6 +1111,79 @@ pub const Eval = struct {
     }
 
     /// sin, cos and tan of whole multiples of 30° (and 45°) exactly.
+    /// xor, parallel, multifactorial, shift and the random-number functions.
+    fn extraFunction(self: *Eval, f: []const u8, args: []const Number) Error!?Number {
+        const a = self.a;
+        const eql = std.mem.eql;
+        const n = args.len;
+        if (eql(u8, f, "xor")) {
+            if (n != 2) return error.WrongArguments;
+            return try num.fromInt(a, @as(i64, if (args[0].isZero() != args[1].isZero()) 1 else 0));
+        }
+        if (eql(u8, f, "parallel")) {
+            if (n == 0) return error.WrongArguments;
+            var total = try num.fromInt(a, 0);
+            for (args) |x| total = try num.add(a, total, try num.div(a, try num.fromInt(a, 1), x));
+            return try num.div(a, try num.fromInt(a, 1), total);
+        }
+        if (eql(u8, f, "multifactorial")) {
+            if (n != 2) return error.WrongArguments;
+            const top = num.intValue(args[0]) orelse return error.Domain;
+            const step = num.intValue(args[1]) orelse return error.Domain;
+            if (top < 0 or step < 1 or top > 5000) return error.Domain;
+            var acc = try num.fromInt(a, 1);
+            var k = top;
+            while (k > 1) : (k -= step) acc = try num.mul(a, acc, try num.fromInt(a, k));
+            return acc;
+        }
+        if (eql(u8, f, "shift")) {
+            if (n != 2) return error.WrongArguments;
+            const v = try self.int(args[0]);
+            const sh = num.intValue(args[1]) orelse return error.Domain;
+            if (sh > 120 or sh < -120) return error.TooLarge;
+            return try num.fromI128(a, if (sh >= 0) v << @intCast(sh) else v >> @intCast(-sh));
+        }
+        const rng = self.session.rng.random();
+        if (eql(u8, f, "randuniform") or eql(u8, f, "randbetween")) {
+            if (n != 2) return error.WrongArguments;
+            const lo = args[0].toFloat();
+            const hi = args[1].toFloat();
+            const r = rng.float(f64);
+            if (eql(u8, f, "randbetween")) return try num.fromInt(a, @as(i64, @intFromFloat(@floor(lo + r * (hi - lo + 1)))));
+            return try num.fromFloat(lo + r * (hi - lo));
+        }
+        if (eql(u8, f, "randnorm")) {
+            if (n > 2) return error.WrongArguments;
+            const mu = if (n >= 1) args[0].toFloat() else 0;
+            const sigma = if (n == 2) args[1].toFloat() else 1;
+            const ra = 1 - rng.float(f64);
+            const rb = rng.float(f64);
+            return try num.fromFloat(mu + sigma * @sqrt(-2 * @log(ra)) * @cos(2 * std.math.pi * rb));
+        }
+        if (eql(u8, f, "randexp") or eql(u8, f, "randrayleigh")) {
+            if (n != 1) return error.WrongArguments;
+            const p = args[0].toFloat();
+            if (p <= 0) return error.Domain;
+            const l = -@log(1 - rng.float(f64));
+            return try num.fromFloat(if (eql(u8, f, "randexp")) l / p else p * @sqrt(2 * l));
+        }
+        if (eql(u8, f, "randpoisson")) {
+            if (n != 1) return error.WrongArguments;
+            const lam = args[0].toFloat();
+            if (lam <= 0 or lam > 700) return error.Domain;
+            const limit = @exp(-lam);
+            var k: i64 = 0;
+            var prod: f64 = 1;
+            while (true) {
+                prod *= rng.float(f64);
+                if (prod <= limit) break;
+                k += 1;
+            }
+            return try num.fromInt(a, k);
+        }
+        return null;
+    }
+
     /// An angle as radians, to full precision.
     fn bigRad(self: *Eval, x: Number) Error!bigreal.Real {
         const a = self.a;
@@ -1287,6 +1367,7 @@ pub const Eval = struct {
             return num.div(a, scaled, scale);
         }
         if (args.len == 1) if (try self.highFunction(f, args[0])) |v| return v;
+        if (try self.extraFunction(f, args)) |v| return v;
         if (functions.find(f)) |def| {
             if (args.len < def.min or args.len > def.max) return error.WrongArguments;
             const fctx: functions.Ctx = .{ .a = a, .rad_per_unit = self.toRad(1) };
