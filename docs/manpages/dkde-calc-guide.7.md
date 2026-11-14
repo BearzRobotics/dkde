@@ -328,6 +328,8 @@ Years and months are counted in the chosen calendar, so "one year later" in the 
 In hexadecimal, **A**–**F** are digits: **FF + 1** is 100. Results that do not fit the word wrap around, as in a processor: in a byte, **255** is −1.
 
 # THE GRAPH
+A row of the graph may also be a polar or a parametric curve, drawn for t from 0 to 2π (with the angle unit radians). **r = 1 + cos(t)** is a polar curve (the angle may be called **t**, **θ** or **theta**; **r(θ) = θ** works too); **(cos(3t), sin(2t))** is a parametric one, x and y each a function of **t**. The view is fitted to the curve with the same scale on both axes, so circles look round. They can be typed into the entry while the Graph pane is open, like functions of x.
+
 With the Graph pane open, an entry that is a function of x is drawn instead of worked out: **sin(x)**, **y = 2x + 1**, **f** (a function of your own with one argument), or several separated by **;**: **sin(x); cos(x); x²/10**. Each goes in the next free row (six at most); one already drawn is not added twice.
 
 Each row of the Graph pane is a function of x: **x²/4 − 1**, **sin(x)**, **f** (a function of your own), **diff(x³, x)** (a derivative). Up to six are drawn together. Points where a curve crosses zero, and where two curves cross, are marked; point at one to read it. Graphs use radians.

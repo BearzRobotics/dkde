@@ -215,3 +215,17 @@ test "more of Qalculate's functions" {
     try runShows(&s, "46", "week(2026-11-14)");
     try runShows(&s, "318", "yearday(2026-11-14)");
 }
+
+test "polar and parametric curves are graphable" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var s: eval.Session = .{ .gpa = std.testing.allocator };
+    defer s.deinit();
+    const m: eval.Mode = .{};
+    try std.testing.expectEqualStrings("r = 1 + cos(t)", eval.graphable(a, &s, "r = 1 + cos(t)", m).?);
+    try std.testing.expectEqualStrings("(cos(t), sin(t))", eval.graphable(a, &s, "(cos(t), sin(t))", m).?);
+    try std.testing.expect(eval.graphable(a, &s, "r = 5", m) == null);
+    try std.testing.expect(eval.graphable(a, &s, "(1, 2)", m) == null);
+    try std.testing.expect(eval.graphable(a, &s, "(cos(q), sin(q))", m) == null);
+}

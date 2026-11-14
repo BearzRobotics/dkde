@@ -1757,10 +1757,53 @@ pub fn splitTop(a: std.mem.Allocator, text: []const u8, sep: u8) Error![][]const
     return parts.items;
 }
 
+/// "r = 1 + cos(t)" or "(cos(t), sin(t))": a polar or parametric curve, when the only letter without a
+/// value is the angle or parameter (t, θ or theta).
+fn polarOrParametric(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode) ?[]const u8 {
+    const t = std.mem.trim(u8, text, " ");
+    var pieces: [2][]const u8 = undefined;
+    var count: usize = 0;
+    if (t.len > 4 and t[0] == '(' and t[t.len - 1] == ')') {
+        var depth: usize = 0;
+        var comma: ?usize = null;
+        for (t, 0..) |c, i| {
+            if (c == '(' or c == '[') depth += 1;
+            if (c == ')' or c == ']') {
+                depth -|= 1;
+                if (depth == 0 and i != t.len - 1) return null;
+            }
+            if (c == ',' and depth == 1 and comma == null) comma = i;
+        }
+        const cm = comma orelse return null;
+        pieces[0] = t[1..cm];
+        pieces[1] = t[cm + 1 .. t.len - 1];
+        count = 2;
+    } else if (std.mem.indexOfScalar(u8, t, '=')) |eq| {
+        const left = std.mem.trim(u8, t[0..eq], " ");
+        const is_r = std.mem.eql(u8, left, "r") or std.mem.eql(u8, left, "ρ") or
+            ((std.mem.startsWith(u8, left, "r(") or std.mem.startsWith(u8, left, "ρ(")) and std.mem.endsWith(u8, left, ")"));
+        if (!is_r) return null;
+        pieces[0] = std.mem.trim(u8, t[eq + 1 ..], " ");
+        count = 1;
+    } else return null;
+    for (pieces[0..count]) |piece| {
+        var p: Problem = .{};
+        const n = parseExpr(a, piece, mode, &p) catch return null;
+        var names: std.ArrayList([]const u8) = .empty;
+        unknowns(a, n, session, &names) catch return null;
+        for (names.items) |nm| {
+            if (!(std.mem.eql(u8, nm, "t") or std.mem.eql(u8, nm, "θ") or std.mem.eql(u8, nm, "theta"))) return null;
+        }
+        if (names.items.len == 0 and count == 1) return null;
+    }
+    return t;
+}
+
 /// Could this entry be drawn as a graph of x? "sin(x)", "x^2 - 2", "y = 2x + 1" (the letters
 /// besides x all have values), or the name of a function of your own with one argument.
 /// Returns the expression to draw.
 pub fn graphable(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode) ?[]const u8 {
+    if (polarOrParametric(a, session, text, mode)) |whole| return whole;
     var t = std.mem.trim(u8, text, " ");
     // y = …: the right side.
     if (t.len > 1 and (t[0] == 'y' or t[0] == 'Y')) {

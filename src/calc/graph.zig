@@ -357,6 +357,7 @@ pub const Graph = struct {
         var problem: eval.Problem = .{};
         var ev: eval.Eval = .{ .a = a, .session = self.session, .mode = .{ .angle = .radians }, .problem = &problem };
         const parsed = self.parseCurves(a, &ev) catch return;
+        if (parsed[curve.index].kind != .cartesian) return self.fitParam(&ev, parsed[curve.index]);
         const n = parsed[curve.index].node orelse return;
         var lo: f64 = -10;
         const hi: f64 = 10;
@@ -591,7 +592,70 @@ pub const Graph = struct {
 
     // ---- drawing -----------------------------------------------------------------------
 
-    const Parsed = struct { node: ?*eval.Node, index: usize };
+    const Kind = enum { cartesian, polar, parametric };
+
+    /// A row: y = f(x) in `node`; a polar curve r = f(t) has f in `fx`, a parametric one (x(t), y(t))
+    /// has both; `var_name` is the letter that runs along the curve.
+    const Parsed = struct {
+        node: ?*eval.Node,
+        index: usize,
+        kind: Kind = .cartesian,
+        fx: ?*eval.Node = null,
+        fy: ?*eval.Node = null,
+        var_name: []const u8 = "t",
+    };
+
+    /// "r = 1 + cos(t)", "r(θ) = θ" or "(cos(t), sin(t))": a polar or parametric curve, else null.
+    fn parseSpecial(self: *Graph, a: std.mem.Allocator, ev: *eval.Eval, text: []const u8, c: *Curve, index: usize) !?Parsed {
+        _ = self;
+        const trimmed = std.mem.trim(u8, text, " ");
+        var parts: [2][]const u8 = undefined;
+        var kind: Kind = .cartesian;
+        // (x(t), y(t))
+        if (trimmed.len > 4 and trimmed[0] == '(' and trimmed[trimmed.len - 1] == ')') {
+            var depth: usize = 0;
+            var comma: ?usize = null;
+            var closes_early = false;
+            for (trimmed, 0..) |ch, i| {
+                if (ch == '(' or ch == '[') depth += 1;
+                if (ch == ')' or ch == ']') {
+                    depth -|= 1;
+                    if (depth == 0 and i != trimmed.len - 1) closes_early = true;
+                }
+                if (ch == ',' and depth == 1 and comma == null) comma = i;
+            }
+            if (comma != null and !closes_early) {
+                parts[0] = trimmed[1..comma.?];
+                parts[1] = trimmed[comma.? + 1 .. trimmed.len - 1];
+                kind = .parametric;
+            }
+        }
+        // r = f(t)
+        if (kind == .cartesian) {
+            if (std.mem.indexOfScalar(u8, trimmed, '=')) |eq| {
+                const left = std.mem.trim(u8, trimmed[0..eq], " ");
+                const is_r = std.mem.eql(u8, left, "r") or std.mem.eql(u8, left, "ρ") or
+                    ((std.mem.startsWith(u8, left, "r(") or std.mem.startsWith(u8, left, "ρ(")) and std.mem.endsWith(u8, left, ")"));
+                if (is_r) {
+                    parts[0] = std.mem.trim(u8, trimmed[eq + 1 ..], " ");
+                    kind = .polar;
+                }
+            }
+        }
+        if (kind == .cartesian) return null;
+        var name: []const u8 = "t";
+        if (std.mem.indexOf(u8, trimmed, "θ") != null) name = "θ" else if (std.mem.indexOf(u8, trimmed, "theta") != null) name = "theta";
+        var p: eval.Problem = .{};
+        const count: usize = if (kind == .polar) 1 else 2;
+        var nodes: [2]?*eval.Node = .{ null, null };
+        for (0..count) |i| {
+            nodes[i] = eval.parseExpr(a, parts[i], ev.mode, &p) catch {
+                setProblem(c, "not understood");
+                return Parsed{ .node = null, .index = index };
+            };
+        }
+        return Parsed{ .node = null, .index = index, .kind = kind, .fx = nodes[0], .fy = nodes[1], .var_name = name };
+    }
 
     /// Each row's expression, parsed ("y = ..." and "f(x) = ..." are accepted;
     /// a bare function name plots f(x)).
@@ -601,6 +665,20 @@ pub const Graph = struct {
             var text = std.mem.trim(u8, std.mem.span(c.entry.as(gtk.Editable).getText()), " ");
             if (std.mem.indexOfScalar(u8, text, '=')) |eq| text = std.mem.trim(u8, text[eq + 1 ..], " ");
             c.problem = @splat(0);
+            // Polar and parametric rows are read from the whole text, before an "=" is cut off.
+            const whole = std.mem.trim(u8, std.mem.span(c.entry.as(gtk.Editable).getText()), " ");
+            if (try self.parseSpecial(a, ev, whole, c, i)) |special| {
+                if (special.kind != .cartesian) {
+                    const bad = (if (special.fx) |f| self.unknownNameWith(f, special.var_name) else null) orelse
+                        (if (special.fy) |f| self.unknownNameWith(f, special.var_name) else null);
+                    if (bad) |name| {
+                        var buf: [96]u8 = undefined;
+                        setProblem(c, std.fmt.bufPrint(&buf, "unknown: {s}", .{name}) catch "unknown name");
+                        try out.append(a, .{ .node = null, .index = i });
+                    } else try out.append(a, special);
+                } else try out.append(a, special);
+                continue;
+            }
             if (text.len == 0) {
                 try out.append(a, .{ .node = null, .index = i });
                 continue;
@@ -637,20 +715,102 @@ pub const Graph = struct {
     }
 
     fn unknownName(self: *Graph, n: *const eval.Node) ?[]const u8 {
+        return self.unknownNameWith(n, "x");
+    }
+
+    /// A name with no value, other than the letter that runs along the curve.
+    fn unknownNameWith(self: *Graph, n: *const eval.Node, letter: []const u8) ?[]const u8 {
         switch (n.*) {
             .number => return null,
             .name => |nm| {
-                if (std.mem.eql(u8, nm.text, "x") or eval.isConstant(nm.text) or self.session.vars.contains(nm.text)) return null;
+                if (std.mem.eql(u8, nm.text, letter) or eval.isConstant(nm.text) or self.session.vars.contains(nm.text)) return null;
                 return nm.text;
             },
-            .unary => |u| return self.unknownName(u.arg),
-            .binary => |b| return self.unknownName(b.l) orelse self.unknownName(b.r),
+            .unary => |u| return self.unknownNameWith(u.arg, letter),
+            .binary => |b| return self.unknownNameWith(b.l, letter) orelse self.unknownNameWith(b.r, letter),
             .call => |c| {
                 if (!eval.isBuiltin(c.name) and !self.session.funcs.contains(c.name)) return c.name;
-                for (c.args) |x| if (self.unknownName(x)) |name| return name;
+                for (c.args) |x| if (self.unknownNameWith(x, letter)) |name| return name;
                 return null;
             },
         }
+    }
+
+    const param_samples = 2400;
+
+    /// The point of a polar or parametric curve at t.
+    fn paramPoint(ev: *eval.Eval, p: Parsed, angle: f64) ?[2]f64 {
+        const fx = p.fx orelse return null;
+        if (p.kind == .polar) {
+            const r = ev.float(fx, p.var_name, angle);
+            if (!std.math.isFinite(r)) return null;
+            return .{ r * @cos(angle), r * @sin(angle) };
+        }
+        const fy = p.fy orelse return null;
+        const x = ev.float(fx, p.var_name, angle);
+        const y = ev.float(fy, p.var_name, angle);
+        if (!std.math.isFinite(x) or !std.math.isFinite(y)) return null;
+        return .{ x, y };
+    }
+
+    /// A polar or parametric curve over t = 0 … 2π.
+    fn drawParam(self: *Graph, cr: *cairo.Context, ev: *eval.Eval, p: Parsed, w: f64, h: f64) void {
+        const col = colours[p.index];
+        cr.setSourceRgb(col[0], col[1], col[2]);
+        cr.setLineWidth(2);
+        var pen = false;
+        var last: [2]f64 = .{ 0, 0 };
+        var i: usize = 0;
+        while (i <= param_samples) : (i += 1) {
+            const angle = 2 * std.math.pi * @as(f64, @floatFromInt(i)) / param_samples;
+            const pt = paramPoint(ev, p, angle) orelse {
+                pen = false;
+                continue;
+            };
+            const px = self.toPx(pt[0]);
+            const py = self.toPy(pt[1]);
+            if (!std.math.isFinite(px) or !std.math.isFinite(py)) {
+                pen = false;
+                continue;
+            }
+            const jump = pen and (@abs(px - last[0]) > w or @abs(py - last[1]) > h);
+            const cx = std.math.clamp(px, -2 * w, 3 * w);
+            const cy = std.math.clamp(py, -2 * h, 3 * h);
+            if (!pen or jump) cr.moveTo(cx, cy) else cr.lineTo(cx, cy);
+            pen = true;
+            last = .{ px, py };
+        }
+        cr.stroke();
+    }
+
+    /// Fits the view to a polar or parametric curve, with the same scale on both axes.
+    fn fitParam(self: *Graph, ev: *eval.Eval, p: Parsed) void {
+        var xmin = std.math.inf(f64);
+        var xmax = -std.math.inf(f64);
+        var ymin = std.math.inf(f64);
+        var ymax = -std.math.inf(f64);
+        var i: usize = 0;
+        while (i <= 800) : (i += 1) {
+            const angle = 2 * std.math.pi * @as(f64, @floatFromInt(i)) / 800;
+            const pt = paramPoint(ev, p, angle) orelse continue;
+            if (@abs(pt[0]) > 1e9 or @abs(pt[1]) > 1e9) continue;
+            xmin = @min(xmin, pt[0]);
+            xmax = @max(xmax, pt[0]);
+            ymin = @min(ymin, pt[1]);
+            ymax = @max(ymax, pt[1]);
+        }
+        if (!std.math.isFinite(xmin) or !std.math.isFinite(ymin)) return self.refresh();
+        const sz = self.size();
+        var span_x = xmax - xmin;
+        var span_y = ymax - ymin;
+        if (span_x < 1e-9) span_x = 2;
+        if (span_y < 1e-9) span_y = 2;
+        const per_pixel = @max(span_x * 1.25 / sz[0], span_y * 1.25 / sz[1]);
+        self.sx = per_pixel;
+        self.sy = per_pixel;
+        self.cx = (xmin + xmax) / 2;
+        self.cy = (ymin + ymax) / 2;
+        self.refresh();
     }
 
     fn onDraw(_: *gtk.DrawingArea, cr: *cairo.Context, w: c_int, h: c_int, data: ?*anyopaque) callconv(.c) void {
@@ -702,6 +862,8 @@ pub const Graph = struct {
             const roots = eval.findRootsIn(a, &ev, n, "x", lo, hi, @intFromFloat(@max(100, w))) catch &.{};
             for (roots) |r| self.marks.append(self.gpa, .{ .x = r, .y = 0, .curve = p.index }) catch {};
         }
+        // Polar and parametric curves.
+        for (parsed) |p| if (p.kind != .cartesian) self.drawParam(cr, &ev, p, w, h);
         // Where two curves cross.
         for (parsed, 0..) |p, i| for (parsed[i + 1 ..]) |q| {
             const f = p.node orelse continue;
