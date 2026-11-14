@@ -150,6 +150,7 @@ const Calc = struct {
     tape_list: *gtk.ListBox = undefined,
     /// The tape is at the newest line (set when it changes; scrolling up is free until the next change).
     tape_stick: bool = true,
+    tape_timer: c_uint = 0,
     angle: eval.Angle = .degrees,
     base: u8 = 10,
     word: u8 = 64,
@@ -1430,11 +1431,13 @@ const Calc = struct {
         self.tape_stick = true;
         onTapeSized(self.tape_scroll.getVadjustment(), self);
         // Layout settles after this call: once more a moment later.
-        _ = glib.timeoutAdd(60, onTapeLater, self);
+        if (self.tape_timer != 0) _ = glib.Source.remove(self.tape_timer);
+        self.tape_timer = glib.timeoutAdd(60, onTapeLater, self);
     }
 
     fn onTapeLater(data: ?*anyopaque) callconv(.c) c_int {
         const self: *Calc = @ptrCast(@alignCast(data.?));
+        self.tape_timer = 0;
         if (!self.tape_stick) return 0;
         // A value set while the view is being laid out is not drawn; set it again from here.
         const adj = self.tape_scroll.getVadjustment();
@@ -3254,6 +3257,15 @@ const Calc = struct {
         for (self.formula_fields.items) |f| self.gpa.free(f.name);
         self.formula_fields.deinit(self.gpa);
         self.graph.destroy();
+        // The exchange rates: the table in use, the arena behind it, and the rates typed in by hand.
+        quantity.setCurrencies(&.{});
+        if (self.rate_arena) |*arena| arena.deinit();
+        for (self.manual.items) |c| {
+            self.gpa.free(c.usd);
+            self.gpa.free(c.date);
+        }
+        self.manual.deinit(self.gpa);
+        if (self.tape_timer != 0) _ = glib.Source.remove(self.tape_timer);
         self.session.deinit();
         self.config.deinit();
         self.gpa.destroy(self);

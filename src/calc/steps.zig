@@ -530,9 +530,17 @@ const max_steps = 60;
 /// The steps of an expression with no letters.
 fn arithmetic(ctx: Ctx, root_node: *const eval.Node) Error!?[]Step {
     const a = ctx.a;
-    var tree = (try fromNode(a, root_node)) orelse return null;
+    const tree = (try fromNode(a, root_node)) orelse return null;
     var steps: std.ArrayList(Step) = .empty;
     try steps.append(a, .{ .note = "Start", .math = try write(a, tree) });
+    try arithmeticLoop(ctx, tree, "", &steps);
+    return steps.items;
+}
+
+/// One operation at a time until a number is left; each line starts with `prefix` ("A = ").
+fn arithmeticLoop(ctx: Ctx, tree0: *N, prefix: []const u8, steps: *std.ArrayList(Step)) Error!void {
+    const a = ctx.a;
+    var tree = tree0;
     var guard: usize = 0;
     while (tree.* != .num and guard < max_steps) : (guard += 1) {
         var best: ?Pick = null;
@@ -540,7 +548,7 @@ fn arithmetic(ctx: Ctx, root_node: *const eval.Node) Error!?[]Step {
         const pick = best orelse break;
         const done = try work(ctx, pick.node);
         const value = done.value orelse {
-            try steps.append(a, .{ .note = done.note, .math = try write(a, tree) });
+            try steps.append(a, .{ .note = done.note, .math = try std.fmt.allocPrint(a, "{s}{s}", .{ prefix, try write(a, tree) }) });
             break;
         };
         const bracketed = pick.rank >= 10;
@@ -548,12 +556,62 @@ fn arithmetic(ctx: Ctx, root_node: *const eval.Node) Error!?[]Step {
         // Intermediate forms of the same operation (common denominators), then the result.
         for (done.between) |line| {
             const raw = try mk(a, .{ .raw = .{ .text = line.text, .prec = precOf(pick.node) } });
-            try steps.append(a, .{ .note = line.note, .math = try write(a, try replace(a, tree, pick.node, raw)) });
+            try steps.append(a, .{ .note = line.note, .math = try std.fmt.allocPrint(a, "{s}{s}", .{ prefix, try write(a, try replace(a, tree, pick.node, raw)) }) });
         }
         const result = try mk(a, .{ .num = value });
         tree = try replace(a, tree, pick.node, result);
-        try steps.append(a, .{ .note = note, .math = try write(a, tree) });
+        try steps.append(a, .{ .note = note, .math = try std.fmt.allocPrint(a, "{s}{s}", .{ prefix, try write(a, tree) }) });
     }
+}
+
+/// The values of the letters that have one put into the expression (V = l × w × h with l, w and h known).
+fn substituteKnown(ctx: Ctx, n: *const N) Error!*N {
+    const a = ctx.a;
+    switch (n.*) {
+        .raw => |r| {
+            if (r.prec == 7 and ctx.session.vars.get(r.text) != null) {
+                const v = try ctx.session.vars.get(r.text).?.load(a);
+                if (v.isExact()) return mk(a, .{ .num = v });
+            }
+            return @constCast(n);
+        },
+        .bin => |b| return mk(a, .{ .bin = .{ .op = b.op, .l = try substituteKnown(ctx, b.l), .r = try substituteKnown(ctx, b.r) } }),
+        .neg => |x| return mk(a, .{ .neg = try substituteKnown(ctx, x) }),
+        .fact => |x| return mk(a, .{ .fact = try substituteKnown(ctx, x) }),
+        .pct => |x| return mk(a, .{ .pct = try substituteKnown(ctx, x) }),
+        .call => |c| return mk(a, .{ .call = .{ .name = c.name, .arg = try substituteKnown(ctx, c.arg) } }),
+        else => return @constCast(n),
+    }
+}
+
+/// A formula with its numbers put in: "A = 2(2·5 + 2·25 + 5·25)". The letter alone on one side is
+/// not solved for: the other side is worked out by hand, line by line.
+fn formulaSteps(ctx: Ctx, l: *const eval.Node, r: *const eval.Node) Error!?[]Step {
+    const a = ctx.a;
+    var target: []const u8 = "";
+    var rhs: *const eval.Node = r;
+    var reversed = false;
+    if (l.* == .name and ctx.session.vars.get(l.name.text) == null and !eval.isConstant(l.name.text)) {
+        target = l.name.text;
+    } else if (r.* == .name and ctx.session.vars.get(r.name.text) == null and !eval.isConstant(r.name.text)) {
+        target = r.name.text;
+        rhs = l;
+        reversed = true;
+    } else return null;
+    allow_letters = true;
+    defer allow_letters = false;
+    const tree0 = (try fromNode(a, rhs)) orelse return null;
+    const tree = try substituteKnown(ctx, tree0);
+    if (hasLetters(tree)) return null;
+    if (tree.* == .num) return null;
+    var steps: std.ArrayList(Step) = .empty;
+    const prefix = try std.fmt.allocPrint(a, "{s} = ", .{target});
+    const shown0 = try write(a, tree0);
+    try steps.append(a, .{ .note = "Start", .math = if (reversed) try std.fmt.allocPrint(a, "{s} = {s}", .{ shown0, target }) else try std.fmt.allocPrint(a, "{s}{s}", .{ prefix, shown0 }) });
+    const shown1 = try write(a, tree);
+    if (!std.mem.eql(u8, shown0, shown1)) try steps.append(a, .{ .note = "Put in the values", .math = try std.fmt.allocPrint(a, "{s}{s}", .{ prefix, shown1 }) });
+    try arithmeticLoop(ctx, tree, prefix, &steps);
+    if (steps.items.len <= 1) return null;
     return steps.items;
 }
 
@@ -906,6 +964,8 @@ fn termStr(a: std.mem.Allocator, v: i64, power: u8, name: []const u8, first: boo
 /// Equations in one letter: linear and quadratic.
 fn equation(ctx: Ctx, l: *const eval.Node, r: *const eval.Node) Error!?[]Step {
     const a = ctx.a;
+    // A formula with the numbers put in is worked out, not solved.
+    if (try formulaSteps(ctx, l, r)) |f| return f;
     const actx: algebra.Ctx = .{ .a = a, .session = ctx.session };
     const pl = (try algebra.fromNode(actx, l)) orelse return null;
     const pr = (try algebra.fromNode(actx, r)) orelse return null;
@@ -1707,6 +1767,18 @@ test "derivatives" {
     }, "diff(3x^2 + 2x + 1, x)");
 }
 
+test "a formula with numbers in it is worked out by hand" {
+    try lines(&.{
+        "A = 2(2 × 5 + 2 × 25 + 5 × 25)",
+        "A = 2(10 + 2 × 25 + 5 × 25)",
+        "A = 2(10 + 50 + 5 × 25)",
+        "A = 2(10 + 50 + 125)",
+        "A = 2(60 + 125)",
+        "A = 2 × 185",
+        "A = 370",
+    }, "A = 2(2·5 + 2·25 + 5·25)");
+}
+
 test "zz print" {
     if (std.c.getenv("STEPS_PRINT") == null) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -1714,7 +1786,7 @@ test "zz print" {
     const a = arena.allocator();
     var session: eval.Session = .{ .gpa = std.testing.allocator };
     defer session.deinit();
-    const list = [_][]const u8{ "x + y = 5; x - y = 1", "2x + 3y = 12; x - y = 1", "x + 2y = 5; 3x - 2y = 3", "diff(3x^2 + 2x + 1, x)", "diff(x*sin(x), x)", "diff(sin(2x), x)", "diff((x+1)/(x-1), x)", "diff(x^3 - 4x, x)", "diff(sqrt(x), x)", "factor(x^3-5x^2+3x+9)", "factor(x^2-9)", "factor(4x^2-25)", "factor(x^2+6x+9)", "factor(2x^2+4x)", "factor(6x^2-7x-3)", "factor(x^3-x)", "factor(x^2+1)", "factor(x^3-6x^2+11x-6)", "(x+2)(x+3)", "(x+1)^3", "(2x-1)(x+4)", "2(x+3) + 4", "(x+y)^2", "(x-1)(x+1)", "3x + 2x - 5 + 1", "(x+1)(x+2)(x+3)", "6x^2 - 7x - 3 = 0", "x^2 = 2", "x^2 = 72", "x^2 - x - 1 = 0", "x^2 + x + 1 = 0", "2x^2 - 2x - 12 = 0", "x^2 + 4x = 0", "x^2 = -9", "x^2 - 6x + 9 = 0", "(x+1)^2 = 4", "x/2 + 1/3 = 5/6", "2x + 3 = 2x + 5", "3x - 1 = 3x - 1" };
+    const list = [_][]const u8{ "A = 2(2·5 + 2·25 + 5·25)", "V = 3*4*5", "x + y = 5; x - y = 1", "2x + 3y = 12; x - y = 1", "x + 2y = 5; 3x - 2y = 3", "diff(3x^2 + 2x + 1, x)", "diff(x*sin(x), x)", "diff(sin(2x), x)", "diff((x+1)/(x-1), x)", "diff(x^3 - 4x, x)", "diff(sqrt(x), x)", "factor(x^3-5x^2+3x+9)", "factor(x^2-9)", "factor(4x^2-25)", "factor(x^2+6x+9)", "factor(2x^2+4x)", "factor(6x^2-7x-3)", "factor(x^3-x)", "factor(x^2+1)", "factor(x^3-6x^2+11x-6)", "(x+2)(x+3)", "(x+1)^3", "(2x-1)(x+4)", "2(x+3) + 4", "(x+y)^2", "(x-1)(x+1)", "3x + 2x - 5 + 1", "(x+1)(x+2)(x+3)", "6x^2 - 7x - 3 = 0", "x^2 = 2", "x^2 = 72", "x^2 - x - 1 = 0", "x^2 + x + 1 = 0", "2x^2 - 2x - 12 = 0", "x^2 + 4x = 0", "x^2 = -9", "x^2 - 6x + 9 = 0", "(x+1)^2 = 4", "x/2 + 1/3 = 5/6", "2x + 3 = 2x + 5", "3x - 1 = 3x - 1" };
     for (list) |src| {
         std.debug.print("\n=== {s}\n", .{src});
         const steps = (try explain(.{ .a = a, .session = &session, .mode = .{} }, src)) orelse {
