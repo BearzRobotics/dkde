@@ -749,8 +749,24 @@ const Calc = struct {
         return std.mem.replaceOwned(u8, a, text, group_sep, "");
     }
 
+    /// An entry that starts with an operator goes on from the last answer, as on a TI:
+    /// "+ 3" is "ans + 3". (A leading "-" stays a minus sign: "-3" is negative three.)
+    fn withAns(self: *Calc, a: std.mem.Allocator, raw: []const u8) []const u8 {
+        if (self.formula != null) return raw;
+        const t0 = std.mem.trimStart(u8, raw, " ");
+        if (t0.len == 0) return raw;
+        const starts = [_][]const u8{ "+", "*", "/", "^", "×", "÷", "·", "²", "³" };
+        for (starts) |lead| if (std.mem.startsWith(u8, t0, lead)) {
+            if (self.session.ans == null and !self.session.rich.contains("ans")) return raw;
+            return std.fmt.allocPrint(a, "ans {s}", .{t0}) catch raw;
+        };
+        return raw;
+    }
+
     fn calculate(self: *Calc) void {
-        const raw = self.entryText();
+        var arena0 = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena0.deinit();
+        const raw = self.withAns(arena0.allocator(), self.entryText());
         if (std.mem.trim(u8, raw, " ").len == 0) return;
         if (self.fresh) return; // the result of the last calculation: nothing new
         var arena = std.heap.ArenaAllocator.init(self.gpa);
@@ -1066,7 +1082,7 @@ const Calc = struct {
         var arena = std.heap.ArenaAllocator.init(self.gpa);
         defer arena.deinit();
         const a = arena.allocator();
-        const text = cleaned(a, raw) catch return;
+        const text = cleaned(a, self.withAns(a, raw)) catch return;
         if (self.mode != .programmer) if (convert.request(text)) |req| {
             var p: eval.Problem = .{};
             const st = eval.parse(a, req.expr, self.evalMode(), &p) catch return self.preview.setText("");
