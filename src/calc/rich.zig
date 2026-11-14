@@ -834,13 +834,104 @@ pub const Rich = struct {
             var want = f0[i];
             for (0..n) |j| want = try num.add(a, want, try num.mul(a, aug.items[i * (n + 1) + j].re, point[j]));
             const d = try num.sub(a, fp[i], want);
-            if (!(d.isZero() or @abs(d.toFloat()) <= 1e-9 * @max(1.0, @abs(want.toFloat())))) return error.Domain;
+            if (!(d.isZero() or @abs(d.toFloat()) <= 1e-9 * @max(1.0, @abs(want.toFloat())))) return self.newtonSystem(eqs, vars, b);
         }
         const e = try eliminate(a, aug, n, true);
         if (e.rank < n) return error.NoSolution;
         const out = try newMatrix(a, 1, n);
         for (0..n) |i| out.items[i] = e.m.items[i * (n + 1) + n];
         return .{ .matrix = out };
+    }
+
+    /// A system that is not linear: Newton's method from several starting points,
+    /// the first solution found (it is approximate).
+    fn newtonSystem(self: *Rich, eqs: []*Node, vars: []*Node, b: ?*const eval.Binding) Error!Value {
+        const a = self.a;
+        const n = vars.len;
+        if (n > 8) return error.TooLarge;
+        const F = struct {
+            fn at(rr: *Rich, eq_nodes: []*Node, var_nodes: []*Node, x: []const f64, outer: ?*const eval.Binding, out: []f64) bool {
+                var chain = outer;
+                for (var_nodes, x) |v, xi| {
+                    const bind = rr.a.create(eval.Binding) catch return false;
+                    bind.* = .{ .name = v.name.text, .value = .{ .approx = xi }, .next = chain };
+                    chain = bind;
+                }
+                for (eq_nodes, 0..) |e, i| {
+                    const lhs_rhs: [2]*Node = if (e.* == .call and std.mem.eql(u8, e.call.name, "eq") and e.call.args.len == 2) .{ e.call.args[0], e.call.args[1] } else .{ e, e };
+                    const l = (rr.ev.eval(lhs_rhs[0], chain) catch return false).toFloat();
+                    const r2 = if (lhs_rhs[0] == lhs_rhs[1]) 0.0 else (rr.ev.eval(lhs_rhs[1], chain) catch return false).toFloat();
+                    out[i] = l - r2;
+                    if (!std.math.isFinite(out[i])) return false;
+                }
+                return true;
+            }
+        };
+        const x = try a.alloc(f64, n);
+        const fx = try a.alloc(f64, n);
+        const fh = try a.alloc(f64, n);
+        const jac = try a.alloc(f64, n * (n + 1));
+        const starts = [_]f64{ 0.5, -0.5, 1.5, -1.5, 3, -3, 7, -7, 20, -20 };
+        for (starts) |s0| {
+            for (x, 0..) |*xi, i| xi.* = s0 * (1.0 + 0.37 * @as(f64, @floatFromInt(i)));
+            var iter: usize = 0;
+            while (iter < 80) : (iter += 1) {
+                if (!F.at(self, eqs, vars, x, b, fx)) break;
+                var norm: f64 = 0;
+                for (fx) |v| norm = @max(norm, @abs(v));
+                if (norm < 1e-12) {
+                    const out = try newMatrix(a, 1, n);
+                    for (0..n) |i| {
+                        const v = if (@abs(x[i]) < 1e-14) 0.0 else x[i];
+                        out.items[i] = try C.real(.{ .approx = v }, a);
+                    }
+                    return .{ .matrix = out };
+                }
+                // Jacobian by central differences.
+                for (0..n) |j| {
+                    const h = 1e-6 * @max(1.0, @abs(x[j]));
+                    const keep = x[j];
+                    x[j] = keep + h;
+                    if (!F.at(self, eqs, vars, x, b, fh)) break;
+                    const plus = try a.dupe(f64, fh);
+                    x[j] = keep - h;
+                    if (!F.at(self, eqs, vars, x, b, fh)) break;
+                    x[j] = keep;
+                    for (0..n) |i| jac[i * (n + 1) + j] = (plus[i] - fh[i]) / (2 * h);
+                } else {
+                    for (0..n) |i| jac[i * (n + 1) + n] = -fx[i];
+                    // Gauss elimination with partial pivoting.
+                    var ok = true;
+                    for (0..n) |c| {
+                        var piv = c;
+                        for (c + 1..n) |r| if (@abs(jac[r * (n + 1) + c]) > @abs(jac[piv * (n + 1) + c])) {
+                            piv = r;
+                        };
+                        if (@abs(jac[piv * (n + 1) + c]) < 1e-14) {
+                            ok = false;
+                            break;
+                        }
+                        if (piv != c) for (0..n + 1) |k| std.mem.swap(f64, &jac[piv * (n + 1) + k], &jac[c * (n + 1) + k]);
+                        for (c + 1..n) |r| {
+                            const f = jac[r * (n + 1) + c] / jac[c * (n + 1) + c];
+                            for (c..n + 1) |k| jac[r * (n + 1) + k] -= f * jac[c * (n + 1) + k];
+                        }
+                    }
+                    if (!ok) break;
+                    var i: usize = n;
+                    while (i > 0) {
+                        i -= 1;
+                        var s: f64 = jac[i * (n + 1) + n];
+                        for (i + 1..n) |k| s -= jac[i * (n + 1) + k] * fh[k];
+                        fh[i] = s / jac[i * (n + 1) + i];
+                    }
+                    for (0..n) |k| x[k] += fh[k];
+                    continue;
+                }
+                break;
+            }
+        }
+        return error.NoSolution;
     }
 
     // ---- calls ---------------------------------------------------------------------
@@ -1590,6 +1681,79 @@ pub const Stored = struct {
         }
     }
 
+    /// One line for the state file: kind|rows|cols|re,im;re,im…|unit^exp unit^exp
+    pub fn text(self: Stored, a: std.mem.Allocator) ![]u8 {
+        var out: std.ArrayList(u8) = .empty;
+        try out.print(a, "{c}|{d}|{d}|", .{ @as(u8, if (self.is_quantity) 'q' else if (self.is_matrix) 'm' else 's'), self.rows, self.cols });
+        for (self.re, self.im, 0..) |re, im, i| {
+            if (i > 0) try out.append(a, ';');
+            try out.print(a, "{s},{s}", .{ try re.text(a), try im.text(a) });
+        }
+        try out.append(a, '|');
+        for (self.unit_names, self.unit_exps, 0..) |nm, e, i| {
+            if (i > 0) try out.append(a, ' ');
+            try out.print(a, "{s}^{d}", .{ nm, e });
+        }
+        return out.toOwnedSlice(a);
+    }
+
+    pub fn fromText(gpa: std.mem.Allocator, t: []const u8) !Stored {
+        var f = std.mem.splitScalar(u8, t, '|');
+        const kind = f.next() orelse return error.Domain;
+        const rows = std.fmt.parseInt(usize, f.next() orelse return error.Domain, 10) catch return error.Domain;
+        const cols = std.fmt.parseInt(usize, f.next() orelse return error.Domain, 10) catch return error.Domain;
+        const items = f.next() orelse return error.Domain;
+        const units = f.next() orelse "";
+        if (kind.len != 1 or rows == 0 or cols == 0 or rows * cols > max_cells) return error.Domain;
+        const n = rows * cols;
+        const re = try gpa.alloc(eval.Stored, n);
+        var made: usize = 0;
+        errdefer {
+            for (re[0..made]) |s| s.deinit(gpa);
+            gpa.free(re);
+        }
+        const im = try gpa.alloc(eval.Stored, n);
+        var made_im: usize = 0;
+        errdefer {
+            for (im[0..made_im]) |s| s.deinit(gpa);
+            gpa.free(im);
+        }
+        var it = std.mem.splitScalar(u8, items, ';');
+        while (it.next()) |pair| {
+            if (made == n) return error.Domain;
+            const comma = std.mem.indexOfScalar(u8, pair, ',') orelse return error.Domain;
+            re[made] = try eval.Stored.fromText(gpa, pair[0..comma]);
+            made += 1;
+            im[made_im] = try eval.Stored.fromText(gpa, pair[comma + 1 ..]);
+            made_im += 1;
+        }
+        if (made != n) return error.Domain;
+        var names: std.ArrayList([]u8) = .empty;
+        var exps: std.ArrayList(i32) = .empty;
+        errdefer {
+            for (names.items) |x| gpa.free(x);
+            names.deinit(gpa);
+            exps.deinit(gpa);
+        }
+        var ut = std.mem.tokenizeScalar(u8, units, ' ');
+        while (ut.next()) |tok| {
+            const caret = std.mem.lastIndexOfScalar(u8, tok, '^') orelse return error.Domain;
+            const e = std.fmt.parseInt(i32, tok[caret + 1 ..], 10) catch return error.Domain;
+            try names.append(gpa, try gpa.dupe(u8, tok[0..caret]));
+            try exps.append(gpa, e);
+        }
+        return .{
+            .rows = rows,
+            .cols = cols,
+            .is_matrix = kind[0] == 'm',
+            .re = re,
+            .im = im,
+            .unit_names = try names.toOwnedSlice(gpa),
+            .unit_exps = try exps.toOwnedSlice(gpa),
+            .is_quantity = kind[0] == 'q',
+        };
+    }
+
     pub fn deinit(self: Stored, gpa: std.mem.Allocator) void {
         for (self.re) |s| s.deinit(gpa);
         for (self.im) |s| s.deinit(gpa);
@@ -1678,4 +1842,33 @@ test "units in entries" {
     try expectRich("3 in to cm", "7.62 cm");
     try expectRich("sqrt(9 m^2)", "3 m");
     try expectRich("1 GiB to MB", "1073.741824 MB");
+}
+
+test "matrices and quantities survive being stored as text" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var session: eval.Session = .{ .gpa = std.testing.allocator };
+    defer session.deinit();
+    var p: eval.Problem = .{};
+    _ = try eval.run(a, &session, "M = [1,2;3,4]", .{}, &p);
+    _ = try eval.run(a, &session, "v = 5 km/h", .{}, &p);
+    const t1 = try session.rich.get("M").?.text(a);
+    const t2 = try session.rich.get("v").?.text(a);
+    const s1 = try Stored.fromText(std.testing.allocator, t1);
+    defer s1.deinit(std.testing.allocator);
+    const s2 = try Stored.fromText(std.testing.allocator, t2);
+    defer s2.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("[1, 2; 3, 4]", try format(a, try s1.load(a), .{}));
+    try std.testing.expectEqualStrings("5 km/h", try format(a, try s2.load(a), .{}));
+}
+
+test "a nonlinear system is solved approximately" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var session: eval.Session = .{ .gpa = std.testing.allocator };
+    defer session.deinit();
+    const got = try runText(arena.allocator(), &session, "multisolve([x^2+y=3; x-y=1],[x,y])");
+    // x² + x − 4 = 0 → x = (−1 ± √17)/2; either root is an answer.
+    try std.testing.expect(std.mem.startsWith(u8, got, "[1.56155281") or std.mem.startsWith(u8, got, "[-2.56155281"));
 }

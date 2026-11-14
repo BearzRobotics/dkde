@@ -349,6 +349,9 @@ const Calc = struct {
         const mb = common.menubar;
         const menus = [_]mb.Menu{
             .{ .label = "_File", .entries = &.{
+                mb.item("_Open Session…", "open-session", "<Control>o"),
+                mb.item("_Save Session…", "save-session", "<Control>s"),
+                .separator,
                 mb.item("_Close", "close", "<Control>w"),
             } },
             .{ .label = "_Edit", .entries = &.{
@@ -2121,6 +2124,8 @@ const Calc = struct {
     fn onMenuAction(self: *Calc, action: []const u8) void {
         const eql = std.mem.eql;
         if (eql(u8, action, "close")) return self.window.as(gtk.Window).close();
+        if (eql(u8, action, "save-session")) return self.sessionDialog(true);
+        if (eql(u8, action, "open-session")) return self.sessionDialog(false);
         if (eql(u8, action, "copy")) return self.copyResult();
         if (eql(u8, action, "paste")) {
             _ = self.entry.as(gtk.Widget).activateAction("clipboard.paste", null);
@@ -2243,6 +2248,63 @@ const Calc = struct {
 
     // ---- what is kept ----------------------------------------------------------------------
 
+    // ---- sessions saved to a file ---------------------------------------------------------
+
+    fn sessionDialog(self: *Calc, saving: bool) void {
+        const dialog = gtk.FileDialog.new();
+        defer dialog.as(gobject.Object).unref();
+        const filters = gio.ListStore.new(gtk.FileFilter.getGObjectType());
+        defer filters.as(gobject.Object).unref();
+        const filter = gtk.FileFilter.new();
+        filter.setName(t("Calculator sessions"));
+        filter.addPattern("*.dkcalc");
+        filters.append(filter.as(gobject.Object));
+        filter.as(gobject.Object).unref();
+        dialog.setFilters(filters.as(gio.ListModel));
+        const parent = self.window.as(gtk.Window);
+        if (saving) {
+            dialog.setInitialName("session.dkcalc");
+            dialog.save(parent, null, onSessionSaved, self);
+        } else {
+            dialog.open(parent, null, onSessionOpened, self);
+        }
+    }
+
+    fn onSessionSaved(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *Calc = @ptrCast(@alignCast(data.?));
+        const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
+        const file = dialog.saveFinish(result, null) orelse return;
+        defer file.as(gobject.Object).unref();
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const text = self.stateText(arena.allocator()) orelse return self.preview.setText(t("The session could not be saved."));
+        var full = std.mem.span(path);
+        const named = if (std.ascii.endsWithIgnoreCase(full, ".dkcalc")) full else (std.fmt.allocPrint(arena.allocator(), "{s}.dkcalc", .{full}) catch return);
+        full = named;
+        common.fsio.writeFileAtomic(full, text) catch return self.preview.setText(t("The session could not be saved."));
+        self.preview.setText(t("Session saved."));
+    }
+
+    fn onSessionOpened(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *Calc = @ptrCast(@alignCast(data.?));
+        const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
+        const file = dialog.openFinish(result, null) orelse return;
+        defer file.as(gobject.Object).unref();
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        const text = (common.fsio.readFile(self.gpa, std.mem.span(path), 4 << 20) catch null) orelse return self.preview.setText(t("The session could not be read."));
+        defer self.gpa.free(text);
+        self.resetState();
+        self.applyState(text);
+        self.fillHistory();
+        self.fillVars();
+        self.graph.refresh();
+        self.saveState();
+        self.preview.setText(t("Session opened."));
+    }
+
     fn statePath(self: *Calc, name: []const u8) ?[:0]u8 {
         return common.paths.userStateFile(self.gpa, name) catch null;
     }
@@ -2254,21 +2316,31 @@ const Calc = struct {
         defer self.gpa.free(path);
         var arena = std.heap.ArenaAllocator.init(self.gpa);
         defer arena.deinit();
-        const a = arena.allocator();
+        const text = self.stateText(arena.allocator()) orelse return;
+        if (std.fs.path.dirname(path)) |dir| common.fsio.makePath(dir) catch {};
+        common.fsio.writeFileAtomic(path, text) catch {};
+    }
+
+    /// The whole session as text (the state file's records).
+    fn stateText(self: *Calc, a: std.mem.Allocator) ?[]const u8 {
         var out: std.ArrayList(u8) = .empty;
-        for (self.history.items) |h| out.print(a, "h\t{s}\t{s}\n", .{ oneLine(a, h.expr), oneLine(a, h.result) }) catch return;
+        for (self.history.items) |h| out.print(a, "h\t{s}\t{s}\n", .{ oneLine(a, h.expr), oneLine(a, h.result) }) catch return null;
         var it = self.session.vars.iterator();
-        while (it.next()) |e| out.print(a, "v\t{s}\t{s}\n", .{ e.key_ptr.*, e.value_ptr.text(a) catch continue }) catch return;
+        while (it.next()) |e| out.print(a, "v\t{s}\t{s}\n", .{ e.key_ptr.*, e.value_ptr.text(a) catch continue }) catch return null;
+        var rit = self.session.rich.iterator();
+        while (rit.next()) |e| {
+            if (std.mem.eql(u8, e.key_ptr.*, "ans")) continue;
+            out.print(a, "r\t{s}\t{s}\n", .{ e.key_ptr.*, e.value_ptr.text(a) catch continue }) catch return null;
+        }
         var fit = self.session.funcs.iterator();
         while (fit.next()) |e| {
             const params = std.mem.join(a, ",", @ptrCast(e.value_ptr.params)) catch continue;
-            out.print(a, "f\t{s}\t{s}\t{s}\n", .{ e.key_ptr.*, params, oneLine(a, e.value_ptr.body) }) catch return;
+            out.print(a, "f\t{s}\t{s}\t{s}\n", .{ e.key_ptr.*, params, oneLine(a, e.value_ptr.body) }) catch return null;
         }
-        if (self.session.ans) |s| out.print(a, "a\t{s}\n", .{s.text(a) catch ""}) catch return;
-        if (self.memory) |m| out.print(a, "m\t{s}\n", .{m.text(a) catch ""}) catch return;
-        for (self.own_formulas.items) |f| out.print(a, "u\t{s}\n", .{oneLine(a, f)}) catch return;
-        if (std.fs.path.dirname(path)) |dir| common.fsio.makePath(dir) catch {};
-        common.fsio.writeFileAtomic(path, out.items) catch {};
+        if (self.session.ans) |s| out.print(a, "a\t{s}\n", .{s.text(a) catch ""}) catch return null;
+        if (self.memory) |m| out.print(a, "m\t{s}\n", .{m.text(a) catch ""}) catch return null;
+        for (self.own_formulas.items) |f| out.print(a, "u\t{s}\n", .{oneLine(a, f)}) catch return null;
+        return out.items;
     }
 
     fn oneLine(a: std.mem.Allocator, s: []const u8) []const u8 {
@@ -2281,6 +2353,28 @@ const Calc = struct {
         defer self.gpa.free(path);
         const text = (common.fsio.readFile(self.gpa, path, 4 << 20) catch null) orelse return;
         defer self.gpa.free(text);
+        self.applyState(text);
+    }
+
+    /// Forgets the history, variables, functions, answer, memory and own formulas.
+    fn resetState(self: *Calc) void {
+        for (self.history.items) |h| {
+            self.gpa.free(h.expr);
+            self.gpa.free(h.result);
+        }
+        self.history.clearRetainingCapacity();
+        while (self.session.vars.count() > 0) _ = self.session.remove(self.session.vars.keys()[0]);
+        while (self.session.rich.count() > 0) _ = self.session.remove(self.session.rich.keys()[0]);
+        while (self.session.funcs.count() > 0) _ = self.session.remove(self.session.funcs.keys()[0]);
+        if (self.session.ans) |s| s.deinit(self.gpa);
+        self.session.ans = null;
+        if (self.memory) |mm| mm.deinit(self.gpa);
+        self.memory = null;
+        for (self.own_formulas.items) |f| self.gpa.free(f);
+        self.own_formulas.clearRetainingCapacity();
+    }
+
+    fn applyState(self: *Calc, text: []const u8) void {
         var lines = std.mem.splitScalar(u8, text, '\n');
         while (lines.next()) |line| {
             var f = std.mem.splitScalar(u8, line, '\t');
@@ -2305,6 +2399,17 @@ const Calc = struct {
                     continue;
                 };
                 self.session.vars.put(self.gpa, key, stored) catch {
+                    self.gpa.free(key);
+                    stored.deinit(self.gpa);
+                };
+            } else if (std.mem.eql(u8, kind, "r")) {
+                const name = f.next() orelse continue;
+                const stored = rich.Stored.fromText(self.gpa, f.next() orelse continue) catch continue;
+                const key = self.gpa.dupe(u8, name) catch {
+                    stored.deinit(self.gpa);
+                    continue;
+                };
+                self.session.rich.put(self.gpa, key, stored) catch {
                     self.gpa.free(key);
                     stored.deinit(self.gpa);
                 };
