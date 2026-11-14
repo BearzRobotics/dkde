@@ -783,6 +783,9 @@ const Calc = struct {
         const text = cleaned(a, raw) catch return;
         const expr_copy = a.dupe(u8, raw) catch return;
 
+        // With the Graph pane open, functions of x are drawn: "sin(x)", "y = x^2", "sin(x); cos(x)".
+        if (self.pane == .graph and self.formula == null and self.mode != .programmer and self.plotFunctions(a, text)) return;
+
         // "255 to hex", "0.75 to fraction", "360 to factors".
         if (self.mode != .programmer) if (convert.request(text)) |req| {
             var p: eval.Problem = .{};
@@ -1309,6 +1312,10 @@ const Calc = struct {
         hint.setXalign(0);
         hint.as(gtk.Widget).addCssClass("dim-label");
         box.append(hint.as(gtk.Widget));
+        const clear_button = gtk.Button.newWithLabel(t("Clear History"));
+        clear_button.as(gtk.Widget).setTooltipText(t("Forget every calculation (variables and functions are kept)"));
+        _ = gtk.Button.signals.clicked.connect(clear_button, *Calc, &onClearHistory, self, .{});
+        box.append(clear_button.as(gtk.Widget));
 
         const vtitle = gtk.Label.new(t("Variables and Functions"));
         vtitle.setXalign(0);
@@ -1350,6 +1357,10 @@ const Calc = struct {
             self.gpa.free(old.result);
         }
         self.fillHistory();
+    }
+
+    fn onClearHistory(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        self.onMenuAction("clear-history");
     }
 
     fn historyRow(h: HistoryItem) *gtk.Widget {
@@ -2650,6 +2661,39 @@ const Calc = struct {
 
     // ---- graph ----------------------------------------------------------------------------
 
+    /// Draws each ;-separated part of the entry that is a function of x, if all of them are.
+    fn plotFunctions(self: *Calc, a: std.mem.Allocator, text: []const u8) bool {
+        const parts = eval.splitTop(a, text, ';') catch return false;
+        var found: std.ArrayList([]const u8) = .empty;
+        for (parts) |part| {
+            if (std.mem.trim(u8, part, " ").len == 0) continue;
+            const g = eval.graphable(a, &self.session, part, self.evalMode()) orelse return false;
+            found.append(a, g) catch return false;
+        }
+        if (found.items.len == 0) return false;
+        var added: usize = 0;
+        var skipped: usize = 0;
+        for (found.items) |g| {
+            if (self.graph.has(g)) continue;
+            if (self.graph.room() == 0) {
+                skipped += 1;
+                continue;
+            }
+            self.graph.plot(g, null);
+            added += 1;
+        }
+        var buf: [200]u8 = undefined;
+        const msg = if (skipped > 0)
+            std.fmt.bufPrintSentinel(&buf, "The graph holds six functions: {d} not added. Remove one first.", .{skipped}, 0) catch ""
+        else if (added == 0)
+            std.fmt.bufPrintSentinel(&buf, "Already in the graph.", .{}, 0) catch ""
+        else
+            std.fmt.bufPrintSentinel(&buf, "Added {d} function{s} to the graph.", .{ added, if (added == 1) "" else "s" }, 0) catch "";
+        self.preview.as(gtk.Widget).removeCssClass("error");
+        self.preview.setText(msg);
+        return true;
+    }
+
     fn plotEntry(self: *Calc) void {
         const text = if (self.fresh) "" else self.entryText();
         self.showPane(.graph);
@@ -3139,4 +3183,5 @@ test {
     _ = @import("quantity.zig");
     _ = @import("highlight.zig");
     _ = @import("export.zig");
+    _ = @import("bigreal.zig");
 }

@@ -320,6 +320,23 @@ pub const Graph = struct {
         self.fit(curve);
     }
 
+    /// Is this expression already in one of the rows?
+    pub fn has(self: *Graph, text: []const u8) bool {
+        for (self.curves.items) |c| {
+            if (std.mem.eql(u8, std.mem.trim(u8, std.mem.span(c.entry.as(gtk.Editable).getText()), " "), text)) return true;
+        }
+        return false;
+    }
+
+    /// Rows still free (empty or not yet added).
+    pub fn room(self: *Graph) usize {
+        var free: usize = max_curves - self.curves.items.len;
+        for (self.curves.items) |c| {
+            if (std.mem.span(c.entry.as(gtk.Editable).getText()).len == 0) free += 1;
+        }
+        return free;
+    }
+
     fn setTitle(dst: *[24]u8, text: []const u8) void {
         dst.* = @splat(0);
         const n = @min(text.len, dst.len - 1);

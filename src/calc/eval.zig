@@ -1437,7 +1437,7 @@ fn unwrapCall(text: []const u8, name: []const u8) ?[]const u8 {
 }
 
 /// Splits at the separators outside brackets.
-fn splitTop(a: std.mem.Allocator, text: []const u8, sep: u8) Error![][]const u8 {
+pub fn splitTop(a: std.mem.Allocator, text: []const u8, sep: u8) Error![][]const u8 {
     var parts: std.ArrayList([]const u8) = .empty;
     var depth: usize = 0;
     var start: usize = 0;
@@ -1451,6 +1451,27 @@ fn splitTop(a: std.mem.Allocator, text: []const u8, sep: u8) Error![][]const u8 
     };
     try parts.append(a, text[start..]);
     return parts.items;
+}
+
+/// Could this entry be drawn as a graph of x? "sin(x)", "x^2 - 2", "y = 2x + 1" (the letters
+/// besides x all have values), or the name of a function of your own with one argument.
+/// Returns the expression to draw.
+pub fn graphable(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode) ?[]const u8 {
+    var t = std.mem.trim(u8, text, " ");
+    // y = …: the right side.
+    if (t.len > 1 and (t[0] == 'y' or t[0] == 'Y')) {
+        const after = std.mem.trimStart(u8, t[1..], " ");
+        if (after.len > 0 and after[0] == '=') t = std.mem.trim(u8, after[1..], " ");
+    }
+    if (t.len == 0 or std.mem.indexOfScalar(u8, t, '=') != null) return null;
+    if (session.funcs.get(t)) |f| return if (f.params.len == 1) t else null;
+    var p: Problem = .{};
+    const st = parse(a, t, mode, &p) catch return null;
+    if (st != .expr) return null;
+    var names: std.ArrayList([]const u8) = .empty;
+    unknowns(a, st.expr, session, &names) catch return null;
+    if (names.items.len == 1 and std.mem.eql(u8, names.items[0], "x")) return t;
+    return null;
 }
 
 pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode, problem: *Problem) Error!Outcome {

@@ -164,3 +164,21 @@ test "statements in a row, solve and simplify" {
     try runShows(&t, "-2; 2", "solve(x^2 - 4)");
     try runShows(&t, "5x", "simplify(2x + 3x)");
 }
+
+test "which entries can be drawn as graphs" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var s: eval.Session = .{ .gpa = std.testing.allocator };
+    defer s.deinit();
+    const m: eval.Mode = .{};
+    try std.testing.expectEqualStrings("sin(x)", eval.graphable(a, &s, "sin(x)", m).?);
+    try std.testing.expectEqualStrings("2x+1", eval.graphable(a, &s, "y = 2x+1", m).?);
+    try std.testing.expect(eval.graphable(a, &s, "2+2", m) == null);
+    try std.testing.expect(eval.graphable(a, &s, "x^2 = 4", m) == null);
+    try std.testing.expect(eval.graphable(a, &s, "a*x", m) == null);
+    var p: eval.Problem = .{};
+    _ = try eval.run(a, &s, "f(x) = x^3", m, &p);
+    try std.testing.expectEqualStrings("f", eval.graphable(a, &s, "f", m).?);
+    try std.testing.expect(eval.graphable(a, &s, "g", m) == null);
+}

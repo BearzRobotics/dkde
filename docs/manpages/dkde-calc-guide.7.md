@@ -295,6 +295,8 @@ Years and months are counted in the chosen calendar, so "one year later" in the 
 In hexadecimal, **A**–**F** are digits: **FF + 1** is 100. Results that do not fit the word wrap around, as in a processor: in a byte, **255** is −1.
 
 # THE GRAPH
+With the Graph pane open, an entry that is a function of x is drawn instead of worked out: **sin(x)**, **y = 2x + 1**, **f** (a function of your own with one argument), or several separated by **;**: **sin(x); cos(x); x²/10**. Each goes in the next free row (six at most); one already drawn is not added twice.
+
 Each row of the Graph pane is a function of x: **x²/4 − 1**, **sin(x)**, **f** (a function of your own), **diff(x³, x)** (a derivative). Up to six are drawn together. Points where a curve crosses zero, and where two curves cross, are marked; point at one to read it. Graphs use radians.
 
 **Plot** (scientific keypad) draws the entry; a formula's **Graph** button draws it with the formula's letters on the axes. Either fits the view to the curve. **Scale…** sets the ranges by hand (x from, to; y from, to), fits the vertical range to all the curves, or puts both axes on the same scale so that circles look round.
