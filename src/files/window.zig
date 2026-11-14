@@ -2502,7 +2502,9 @@ pub const FilesWindow = struct {
         const dir = std.fmt.allocPrint(self.allocator, "{s}/{x}", .{ cache, hash.final() }) catch return;
         defer self.allocator.free(dir);
         const contents = std.fmt.allocPrintSentinel(self.allocator, "{s}/contents", .{dir}, 0) catch return;
-        errdefer self.allocator.free(contents);
+        // Ownership passes to `self.opening` once the unpack starts.
+        var handed_over = false;
+        defer if (!handed_over) self.allocator.free(contents);
 
         if (glib.fileTest(contents, .{ .is_dir = true }) != 0) return self.showArchive(contents, mode);
 
@@ -2515,6 +2517,7 @@ pub const FilesWindow = struct {
         const exe = self.selfExe() orelse return;
         defer self.allocator.free(exe);
         self.opening = .{ .dest = contents, .mode = mode };
+        handed_over = true;
         self.status.setText(common.tr("Opening the archive\u{2026}"));
         common.proc.run(FilesWindow, self.proc_guard, &.{ exe, "--archive-extract", path, contents }, onArchiveOpened);
     }
