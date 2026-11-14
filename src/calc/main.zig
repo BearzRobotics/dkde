@@ -3206,4 +3206,5 @@ test {
     _ = @import("bigreal.zig");
     _ = @import("symbolic.zig");
     _ = @import("algebra.zig");
+    _ = @import("steps.zig");
 }
