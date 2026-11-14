@@ -1519,6 +1519,7 @@ pub const FilesWindow = struct {
     fn onItemRightClick(gesture: *gtk.GestureClick, _: c_int, x: f64, y: f64, ctx: *ItemMenuCtx) callconv(.c) void {
         const self = ctx.window;
         const position = ctx.item.getPosition();
+        log.debug("right-click on item {d}", .{position});
         const model = self.selection.as(gtk.SelectionModel);
         if (model.isSelected(position) == 0) _ = model.selectItem(position, 1);
         self.menu_handled = true;
@@ -2117,6 +2118,7 @@ pub const FilesWindow = struct {
 
         var sel = self.describeSelection(on_item);
         defer sel.deinit(self.allocator);
+        log.debug("context menu: item={} count={d} dir={} archive={}", .{ sel.on_item, sel.count, sel.is_dir, sel.archive != null });
 
         // Quick row: emoji buttons.
         const quick = self.configuredIds("quick", context.default_quick);
@@ -2160,6 +2162,7 @@ pub const FilesWindow = struct {
             self.menuItem(box, popover, entry.label, id, entry.enabled);
             shown += 1;
         }
+        log.debug("context menu: {d} entries, popping up", .{shown});
         popover.popup();
     }
 
