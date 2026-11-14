@@ -151,6 +151,9 @@ const Calc = struct {
     /// The tape is at the newest line (set when it changes; scrolling up is free until the next change).
     tape_stick: bool = true,
     tape_timer: c_uint = 0,
+    /// The right-click menu of a history line, and which line it is for.
+    row_popover: ?*gtk.Popover = null,
+    row_index: usize = 0,
     angle: eval.Angle = .degrees,
     base: u8 = 10,
     word: u8 = 64,
@@ -268,6 +271,10 @@ const Calc = struct {
         self.tape_list.setActivateOnSingleClick(1);
         self.tape_list.as(gtk.Widget).addCssClass("dkde-calc-history");
         _ = gtk.ListBox.signals.row_activated.connect(self.tape_list, *Calc, &onTapeRow, self, .{});
+        const tape_click = gtk.GestureClick.new();
+        tape_click.as(gtk.GestureSingle).setButton(3);
+        _ = gtk.GestureClick.signals.pressed.connect(tape_click, *Calc, &onTapeRightClick, self, .{});
+        self.tape_list.as(gtk.Widget).addController(tape_click.as(gtk.EventController));
         self.tape_scroll.as(gtk.Widget).setTooltipText(t("Click a line to use its result."));
         self.tape_scroll.as(gtk.Widget).setVisible(@intFromBool(self.expanded));
         display.append(self.tape_scroll.as(gtk.Widget));
@@ -1336,6 +1343,10 @@ const Calc = struct {
         self.history_list.setActivateOnSingleClick(1);
         self.history_list.as(gtk.Widget).addCssClass("dkde-calc-history");
         _ = gtk.ListBox.signals.row_activated.connect(self.history_list, *Calc, &onHistoryRow, self, .{});
+        const history_click = gtk.GestureClick.new();
+        history_click.as(gtk.GestureSingle).setButton(3);
+        _ = gtk.GestureClick.signals.pressed.connect(history_click, *Calc, &onHistoryRightClick, self, .{});
+        self.history_list.as(gtk.Widget).addController(history_click.as(gtk.EventController));
         box.append(scroll.as(gtk.Widget));
         const hint = gtk.Label.new(t("Click a line to use its result."));
         hint.setXalign(0);
@@ -1453,6 +1464,127 @@ const Calc = struct {
     /// The tape grew or was resized: stay at the newest line.
     fn onTapeSized(adj: *gtk.Adjustment, self: *Calc) callconv(.c) void {
         if (self.tape_stick) adj.setValue(adj.getUpper() - adj.getPageSize());
+    }
+
+    fn onTapeRightClick(_: *gtk.GestureClick, _: c_int, x: f64, y: f64, self: *Calc) callconv(.c) void {
+        self.openRowMenu(self.tape_list, false, x, y);
+    }
+
+    fn onHistoryRightClick(_: *gtk.GestureClick, _: c_int, x: f64, y: f64, self: *Calc) callconv(.c) void {
+        self.openRowMenu(self.history_list, true, x, y);
+    }
+
+    /// The menu for a line of the tape or the History pane.
+    fn openRowMenu(self: *Calc, list: *gtk.ListBox, newest_first: bool, x: f64, y: f64) void {
+        const row = list.getRowAtY(@intFromFloat(y)) orelse return;
+        const index: usize = @intCast(row.getIndex());
+        if (index >= self.history.items.len) return;
+        self.row_index = if (newest_first) self.history.items.len - 1 - index else index;
+        if (self.row_popover) |old| {
+            old.as(gtk.Widget).unparent();
+            self.row_popover = null;
+        }
+        const popover = gtk.Popover.new();
+        popover.setHasArrow(0);
+        const box = gtk.Box.new(.vertical, 0);
+        const entries = .{
+            .{ "Show work", onRowShowWork },
+            .{ "Graph", onRowGraph },
+            .{ "Use the expression", onRowUseExpr },
+            .{ "Use the result", onRowUseResult },
+            .{ "Copy the expression", onRowCopyExpr },
+            .{ "Copy the result", onRowCopyResult },
+            .{ "Remove from history", onRowRemove },
+        };
+        inline for (entries) |e| {
+            const button = gtk.Button.newWithLabel(t(e[0]));
+            button.as(gtk.Widget).addCssClass("flat");
+            if (button.as(gtk.Button).getChild()) |c| c.setHalign(.start);
+            _ = gtk.Button.signals.clicked.connect(button, *Calc, e[1], self, .{});
+            box.append(button.as(gtk.Widget));
+        }
+        popover.setChild(box.as(gtk.Widget));
+        popover.as(gtk.Widget).setParent(list.as(gtk.Widget));
+        var rect: gdk.Rectangle = .{ .f_x = @intFromFloat(x), .f_y = @intFromFloat(y), .f_width = 1, .f_height = 1 };
+        popover.setPointingTo(&rect);
+        self.row_popover = popover;
+        popover.popup();
+    }
+
+    fn closeRowMenu(self: *Calc) void {
+        if (self.row_popover) |p| p.popdown();
+    }
+
+    fn rowItem(self: *Calc) ?HistoryItem {
+        if (self.row_index >= self.history.items.len) return null;
+        return self.history.items[self.row_index];
+    }
+
+    fn onRowShowWork(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        self.closeRowMenu();
+        const h = self.rowItem() orelse return;
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        self.showPane(.steps);
+        self.showSteps(a, cleaned(a, h.expr) catch return);
+    }
+
+    fn onRowGraph(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        self.closeRowMenu();
+        const h = self.rowItem() orelse return;
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const text = cleaned(a, h.expr) catch return;
+        // The entry itself, or the expression it was worked out from.
+        if (eval.graphable(a, &self.session, text, self.evalMode())) |g| {
+            self.showPane(.graph);
+            if (!self.graph.has(g)) self.graph.plot(g, null);
+        } else {
+            self.preview.as(gtk.Widget).removeCssClass("error");
+            self.preview.setText(t("That entry is not a function of x, so there is nothing to graph."));
+        }
+    }
+
+    fn onRowUseExpr(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        self.closeRowMenu();
+        const h = self.rowItem() orelse return;
+        self.fresh = false;
+        self.setEntry(h.expr);
+        _ = self.entry.as(gtk.Widget).grabFocus();
+        self.entry.as(gtk.Editable).setPosition(-1);
+    }
+
+    fn onRowUseResult(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        self.closeRowMenu();
+        if (self.rowItem()) |h| self.useHistoryResult(h);
+    }
+
+    fn copyText(self: *Calc, text: []const u8) void {
+        const z = self.gpa.dupeSentinel(u8, text, 0) catch return;
+        defer self.gpa.free(z);
+        self.window.as(gtk.Widget).getClipboard().setText(z);
+    }
+
+    fn onRowCopyExpr(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        self.closeRowMenu();
+        if (self.rowItem()) |h| self.copyText(h.expr);
+    }
+
+    fn onRowCopyResult(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        self.closeRowMenu();
+        if (self.rowItem()) |h| self.copyText(h.result);
+    }
+
+    fn onRowRemove(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        self.closeRowMenu();
+        if (self.row_index >= self.history.items.len) return;
+        const old = self.history.orderedRemove(self.row_index);
+        self.gpa.free(old.expr);
+        self.gpa.free(old.result);
+        self.fillHistory();
+        self.saveState();
     }
 
     fn onTapeRow(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Calc) callconv(.c) void {
@@ -3266,6 +3398,7 @@ const Calc = struct {
         }
         self.manual.deinit(self.gpa);
         if (self.tape_timer != 0) _ = glib.Source.remove(self.tape_timer);
+        if (self.row_popover) |p| p.as(gtk.Widget).unparent();
         self.session.deinit();
         self.config.deinit();
         self.gpa.destroy(self);
