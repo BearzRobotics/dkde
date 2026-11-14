@@ -3291,6 +3291,7 @@ const Calc = struct {
         box.append(title.as(gtk.Widget));
         const scroll = gtk.ScrolledWindow.new();
         scroll.setPolicy(.never, .automatic);
+        scroll.setMinContentWidth(600);
         scroll.as(gtk.Widget).setVexpand(1);
         self.steps_box = gtk.Box.new(.vertical, 10);
         self.steps_box.as(gtk.Widget).setMarginEnd(6);
@@ -3332,26 +3333,32 @@ const Calc = struct {
             return self.stepsMessage(t("No written-out steps for this kind of entry yet. They are written for arithmetic, fractions and roots, equations, expanding and factoring, derivatives and pairs of linear equations."));
         };
         while (self.steps_box.as(gtk.Widget).getFirstChild()) |c| self.steps_box.remove(c);
+        // Written like a page of working: the lines of mathematics in a column, each with a short
+        // note beside it saying what was done to reach it.
+        const work = gtk.Grid.new();
+        work.setColumnSpacing(18);
+        work.setRowSpacing(6);
         for (found, 0..) |st, i| {
-            const row = gtk.Box.new(.vertical, 2);
-            if (st.note.len > 0 or i == 0) {
-                const label_text = if (i == 0) t("Start") else (a.dupeSentinel(u8, st.note, 0) catch continue);
-                const note = gtk.Label.new(label_text);
-                note.setXalign(0);
-                note.setWrap(1);
-                note.setMaxWidthChars(44);
-                note.as(gtk.Widget).addCssClass("dim-label");
-                row.append(note.as(gtk.Widget));
-            }
+            const row: c_int = @intCast(i);
             const math = gtk.Label.new(a.dupeSentinel(u8, st.math, 0) catch continue);
             math.setXalign(0);
-            math.setWrap(1);
-            math.setMaxWidthChars(40);
+            math.setYalign(0);
             math.setSelectable(1);
             math.as(gtk.Widget).addCssClass("dkde-calc-step-math");
-            row.append(math.as(gtk.Widget));
-            self.steps_box.append(row.as(gtk.Widget));
+            work.attach(math.as(gtk.Widget), 0, row, 1, 1);
+            const note_text: [:0]const u8 = if (i == 0) t("Given") else (a.dupeSentinel(u8, st.note, 0) catch continue);
+            if (note_text.len > 0) {
+                const note = gtk.Label.new(note_text);
+                note.setXalign(0);
+                note.setYalign(0);
+                note.setWrap(1);
+                note.setMaxWidthChars(30);
+                note.as(gtk.Widget).setHexpand(1);
+                note.as(gtk.Widget).addCssClass("dim-label");
+                work.attach(note.as(gtk.Widget), 1, row, 1, 1);
+            }
         }
+        self.steps_box.append(work.as(gtk.Widget));
     }
 
     // ---- graph ----------------------------------------------------------------------------
