@@ -33,6 +33,7 @@ const calculus = @import("calculus.zig");
 const quantity = @import("quantity.zig");
 const rates = @import("rates.zig");
 const highlight = @import("highlight.zig");
+const export_session = @import("export.zig");
 const pango = @import("pango1");
 
 const t = common.tr;
@@ -400,6 +401,7 @@ const Calc = struct {
             .{ .label = "_File", .entries = &.{
                 mb.item("_Open Session…", "open-session", "<Control>o"),
                 mb.item("_Save Session…", "save-session", "<Control>s"),
+                mb.item("_Export Session…", "export-session", null),
                 .separator,
                 mb.item("_Close", "close", "<Control>w"),
             } },
@@ -2674,6 +2676,7 @@ const Calc = struct {
         if (eql(u8, action, "close")) return self.window.as(gtk.Window).close();
         if (eql(u8, action, "save-session")) return self.sessionDialog(true);
         if (eql(u8, action, "open-session")) return self.sessionDialog(false);
+        if (eql(u8, action, "export-session")) return self.exportDialog();
         if (eql(u8, action, "update-rates")) return self.updateRates();
         if (eql(u8, action, "copy")) return self.copyResult();
         if (eql(u8, action, "paste")) {
@@ -2826,6 +2829,78 @@ const Calc = struct {
         } else {
             dialog.open(parent, null, onSessionOpened, self);
         }
+    }
+
+    /// File > Export Session…: the history, variables and functions as plain text or HTML.
+    fn exportDialog(self: *Calc) void {
+        const dialog = gtk.FileDialog.new();
+        defer dialog.as(gobject.Object).unref();
+        const filters = gio.ListStore.new(gtk.FileFilter.getGObjectType());
+        defer filters.as(gobject.Object).unref();
+        inline for (.{ .{ "Plain text", "*.txt" }, .{ "HTML page", "*.html" } }) |f| {
+            const filter = gtk.FileFilter.new();
+            filter.setName(t(f[0]));
+            filter.addPattern(f[1]);
+            filters.append(filter.as(gobject.Object));
+            filter.as(gobject.Object).unref();
+        }
+        dialog.setFilters(filters.as(gio.ListModel));
+        dialog.setInitialName("session.txt");
+        dialog.save(self.window.as(gtk.Window), null, onExportSaved, self);
+    }
+
+    fn onExportSaved(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *Calc = @ptrCast(@alignCast(data.?));
+        const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
+        const file = dialog.saveFinish(result, null) orelse return;
+        defer file.as(gobject.Object).unref();
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const failed = t("The session could not be exported.");
+        var full: []const u8 = std.mem.span(path);
+        // No extension: plain text.
+        if (std.fs.path.extension(full).len == 0) full = std.fmt.allocPrint(a, "{s}.txt", .{full}) catch return;
+        const body = self.exportBody(a, export_session.formatOf(full)) orelse return self.preview.setText(failed);
+        common.fsio.writeFileAtomic(full, body) catch return self.preview.setText(failed);
+        self.preview.setText(t("Session exported."));
+    }
+
+    fn exportBody(self: *Calc, a: std.mem.Allocator, format: export_session.Format) ?[]const u8 {
+        var entries: std.ArrayList(export_session.Entry) = .empty;
+        for (self.history.items) |h| entries.append(a, .{ .expr = h.expr, .result = h.result }) catch return null;
+        var vars: std.ArrayList(export_session.Named) = .empty;
+        var it = self.session.vars.iterator();
+        while (it.next()) |e| {
+            const v = e.value_ptr.load(a) catch continue;
+            vars.append(a, .{ .name = e.key_ptr.*, .value = num.format(a, v, self.style) catch continue }) catch return null;
+        }
+        var rit = self.session.rich.iterator();
+        while (rit.next()) |e| {
+            if (std.mem.eql(u8, e.key_ptr.*, "ans")) continue;
+            const v = e.value_ptr.load(a) catch continue;
+            vars.append(a, .{ .name = e.key_ptr.*, .value = rich.format(a, v, self.style) catch continue }) catch return null;
+        }
+        var funcs: std.ArrayList(export_session.Named) = .empty;
+        var fit = self.session.funcs.iterator();
+        while (fit.next()) |e| {
+            const params = std.mem.join(a, ", ", @ptrCast(e.value_ptr.params)) catch continue;
+            funcs.append(a, .{ .name = std.fmt.allocPrint(a, "{s}({s})", .{ e.key_ptr.*, params }) catch continue, .value = e.value_ptr.body }) catch return null;
+        }
+        const now = glib.DateTime.newNowLocal();
+        defer if (now) |n| n.unref();
+        var when: []const u8 = "";
+        if (now) |n| if (n.format("%Y-%m-%d %H:%M")) |f| {
+            defer glib.free(f);
+            when = a.dupe(u8, std.mem.span(f)) catch "";
+        };
+        const session: export_session.Session = .{ .when = when, .entries = entries.items, .variables = vars.items, .functions = funcs.items };
+        return switch (format) {
+            .text => export_session.text(a, session) catch null,
+            .html => export_session.html(a, session) catch null,
+        };
     }
 
     fn onSessionSaved(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
@@ -3063,4 +3138,5 @@ test {
     _ = @import("rich.zig");
     _ = @import("quantity.zig");
     _ = @import("highlight.zig");
+    _ = @import("export.zig");
 }

@@ -104,6 +104,15 @@ Money
 Random
 : **rand()**: a number between 0 and 1.
 
+# COMPARISONS AND SEQUENCES
+**<**, **>**, **<=**, **>=**, **!=** (also **≤**, **≥**, **≠**) compare two values and answer **true** or **false**; **and**, **or**, **xor** and **not** combine them: **5 > 3 and 2 ≠ 3** is true. Numbers that are exact are compared exactly (**0.1 + 0.2 = 0.3** is true), others to about 12 digits.
+
+Entries can follow each other, separated by **;**: **x = 5; x × 2** is 10, **f(x) = x²; f(3)** is 9. The answer is the last one's. (Several equations in a row, **x + y = 5; x − y = 1**, are a system instead.)
+
+**solve(x² = 4, x)** (or **solve(x² − 4)**) solves an equation, and **simplify(2x + 3x)** tidies an expression: the same as typing them without the word.
+
+**round(x, n)** rounds to n decimals (**round(2.567, 2)** is 2.57; a negative n rounds tens, hundreds: **round(1234.5, −2)** is 1200). **n!!** is the double factorial (**7!!** is 105). **20% of 50** is 10.
+
 # VARIABLES
 **x = 5**
 : Stores 5 in x. Variables keep their values between runs; the History pane lists them, with a button to forget each.
@@ -243,7 +252,7 @@ The entry is coloured as you type: numbers, functions, constants, variables, uni
 
 **View ▸ Expanded Tape** (**Ctrl+T**) shows a scrollable tape of recent entries and answers above the entry. Click a line to use its result (it is inserted at the cursor if the entry is not empty).
 
-**File ▸ Save Session…** and **Open Session…** write and read a **.dkcalc** file with the history, variables, functions, matrices, amounts, last result and memory.
+**File ▸ Save Session…** and **Open Session…** write and read a **.dkcalc** file with the history, variables, functions, matrices, amounts, last result and memory. **Export Session…** writes the history, variables and functions as plain text or an HTML page, to share or print.
 
 # DATES
 A date can be typed in an entry as **yyyy-mm-dd** (four-digit year, two-digit month and day, Gregorian): **2026-12-25**. **today**, **tomorrow** and **yesterday** are dates too. A date is shown with its weekday: **2026-12-25 (Friday)**.

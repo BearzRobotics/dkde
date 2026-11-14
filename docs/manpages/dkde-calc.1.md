@@ -110,7 +110,7 @@ Fiat currencies come from the European Central Bank's daily reference rates (abo
 Typing anywhere in the window goes into the entry.
 
 # SESSIONS
-**File ▸ Save Session…** writes the history, variables, functions, matrices, amounts with units, last result and memory to a **.dkcalc** file; **File ▸ Open Session…** replaces the current session with one. Without doing either, the session is kept between runs (see FILES).
+**File ▸ Save Session…** writes the history, variables, functions, matrices, amounts with units, last result and memory to a **.dkcalc** file; **File ▸ Open Session…** replaces the current session with one. **File ▸ Export Session…** writes the history, variables and functions for reading, as plain text (**.txt**) or as a self-contained HTML page (**.html**), chosen by the file name; an exported file cannot be opened again. Without doing any of these, the session is kept between runs (see FILES).
 
 # MEMORY
 **MS** stores the result (or what the entry works out to), **MR** puts it into the entry, **M+** and **M−** add to it and subtract from it, **MC** clears it. An **M** beside the display shows that something is stored.
