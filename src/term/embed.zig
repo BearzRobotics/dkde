@@ -73,6 +73,11 @@ pub const Panel = struct {
         if (self.isVisible()) self.hide() else self.show(directory);
     }
 
+    /// Pastes the clipboard into the shell (the host's Paste command, when the terminal has the focus).
+    pub fn paste(self: *Panel) void {
+        if (self.view) |v| v.pasteClipboard(false);
+    }
+
     /// Types `cd -- '<directory>'` and Enter into the shell. Only call it when
     /// the user asked for it: a program that is running in the terminal would
     /// receive the text instead of the shell.

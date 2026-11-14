@@ -439,9 +439,9 @@ pub const CalendarApp = struct {
         const grid_scroll = gtk.ScrolledWindow.new();
         grid_scroll.setChild(self.grid.as(gtk.Widget));
         grid_scroll.setPolicy(.automatic, .automatic);
-        // Room for the seven columns of an ordinary month, so the side panel (whose long date
-        // lines would otherwise take the width) never hides Saturday. Wider layouts scroll.
-        grid_scroll.setMinContentWidth(690);
+        // The seven columns of an ordinary month want about 690 px; a narrower window scrolls the grid
+        // (the window must still shrink to half a screen to be snapped).
+        grid_scroll.setMinContentWidth(300);
         grid_scroll.as(gtk.Widget).setHexpand(1);
         grid_scroll.as(gtk.Widget).setVexpand(1);
         month_box.append(grid_scroll.as(gtk.Widget));

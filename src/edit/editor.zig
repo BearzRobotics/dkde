@@ -185,9 +185,28 @@ pub const Editor = struct {
         _ = gtk.Window.signals.close_request.connect(window.as(gtk.Window), *Editor, &onCloseRequest, self, .{});
         _ = gtk.Widget.signals.destroy.connect(window, *Editor, &onDestroy, self, .{});
         _ = gobject.Object.signals.notify.connect(window, *Editor, &onActiveChanged, self, .{ .detail = "is-active" });
+        _ = gobject.Object.signals.notify.connect(window, *Editor, &onFocusWidgetChanged, self, .{ .detail = "focus-widget" });
         if (gtk.Settings.getDefault()) |settings|
             self.dark_handler = gobject.Object.signals.notify.connect(settings, *Editor, &onDarkChanged, self, .{ .detail = "gtk-application-prefer-dark-theme" });
         self.installShortcuts();
+        if (std.c.getenv("DKDE_DEBUG_MINWIDTH") != null) {
+            const parts = [_]struct { n: []const u8, w: *gtk.Widget }{
+                .{ .n = "menu", .w = menu_bar.as(gtk.Widget) },
+                .{ .n = "search_bar", .w = self.search_bar.as(gtk.Widget) },
+                .{ .n = "horizontal", .w = horizontal.as(gtk.Widget) },
+                .{ .n = "notebook", .w = self.notebook.as(gtk.Widget) },
+                .{ .n = "file_panel", .w = self.file_panel.widget() },
+                .{ .n = "term", .w = self.term_panel.widget() },
+                .{ .n = "status", .w = status.as(gtk.Widget) },
+                .{ .n = "root", .w = root.as(gtk.Widget) },
+            };
+            for (parts) |p| {
+                var min: c_int = 0;
+                var nat: c_int = 0;
+                p.w.measure(.horizontal, -1, &min, &nat, null, null);
+                std.debug.print("minwidth {s}: {d} (natural {d})\n", .{ p.n, min, nat });
+            }
+        }
         self.loadRecent();
         self.recent_handler = gtk.RecentManager.signals.changed.connect(gtk.RecentManager.getDefault(), *Editor, &onRecentChanged, self, .{});
         self.refresh();
@@ -514,8 +533,47 @@ pub const Editor = struct {
         const shortcut: *const Shortcut = @ptrCast(@alignCast(data.?));
         const obj: *gobject.Object = @ptrCast(@alignCast(widget));
         const self: *Editor = @ptrCast(@alignCast(obj.getData("dkde-editor") orelse return 0));
+        // In the terminal these keys belong to the shell (Ctrl+Y, Ctrl+L, Ctrl+G).
+        if (self.terminalFocused() and terminalKeepsKey(shortcut.action)) return 0;
         self.perform(shortcut.action);
         return 1;
+    }
+
+    /// Does the keyboard focus sit in the terminal panel?
+    fn terminalFocused(self: *Editor) bool {
+        var w: ?*gtk.Widget = self.window.as(gtk.Window).getFocus();
+        const panel = self.term_panel.widget();
+        while (w) |x| : (w = x.getParent()) {
+            if (x == panel) return true;
+        }
+        return false;
+    }
+
+    /// Editing commands whose keys a terminal program uses itself: Ctrl+C interrupts, Ctrl+Z
+    /// suspends, Ctrl+X, Ctrl+A, Ctrl+L, Ctrl+Y, Ctrl+[ (Esc), Ctrl+H, Ctrl+J, Ctrl+I…
+    const terminal_keys = [_][]const u8{
+        "undo",     "redo",     "cut",      "copy",    "select-all", "dup-line",  "del-line", "line-up",
+        "line-down", "comment", "indent",   "unindent", "join",       "replace",   "goto",     "cursor-up",
+        "cursor-down", "find-next", "find-prev",
+    };
+
+    fn terminalKeepsKey(action: []const u8) bool {
+        for (terminal_keys) |k| if (std.mem.eql(u8, k, action)) return true;
+        return false;
+    }
+
+    /// With the terminal focused the editing actions are switched off, so that GTK hands their keys to
+    /// the terminal instead of the text (Ctrl+C reaches the shell as an interrupt).
+    fn onFocusWidgetChanged(_: *gtk.ApplicationWindow, _: *gobject.ParamSpec, self: *Editor) callconv(.c) void {
+        const in_terminal = self.terminalFocused();
+        const map = self.window.as(gio.ActionMap);
+        for (terminal_keys) |name| {
+            var buf: [32:0]u8 = undefined;
+            const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{name}, 0) catch continue;
+            const found = map.lookupAction(z) orelse continue;
+            const simple: *gio.SimpleAction = @ptrCast(@alignCast(found));
+            simple.setEnabled(@intFromBool(!in_terminal));
+        }
     }
 
     fn onMenuAction(self: *Editor, action: []const u8) void {
@@ -551,6 +609,7 @@ pub const Editor = struct {
         if (eql(u8, action, "redo")) return buffer.redo();
         if (eql(u8, action, "cut")) return buffer.cutClipboard(doc.focused.as(gtk.Widget).getClipboard(), 1);
         if (eql(u8, action, "copy")) return buffer.copyClipboard(doc.focused.as(gtk.Widget).getClipboard());
+        if (eql(u8, action, "paste") and self.terminalFocused()) return self.term_panel.paste();
         if (eql(u8, action, "paste")) {
             if (doc.hasCursors()) return doc.pasteAtCursors();
             return buffer.pasteClipboard(doc.focused.as(gtk.Widget).getClipboard(), null, 1);
@@ -1707,7 +1766,13 @@ pub const Editor = struct {
         const rows = gtk.Box.new(.vertical, 4);
         rows.append(find_row.as(gtk.Widget));
         rows.append(self.replace_row.as(gtk.Widget));
-        self.search_bar.setChild(rows.as(gtk.Widget));
+        // The bar scrolls sideways when the window is narrow: its entries must not set the window's
+        // least width (a window wider than half the screen cannot be snapped to a half).
+        const bar_scroll = gtk.ScrolledWindow.new();
+        bar_scroll.setPolicy(.automatic, .never);
+        bar_scroll.setPropagateNaturalHeight(1);
+        bar_scroll.setChild(rows.as(gtk.Widget));
+        self.search_bar.setChild(bar_scroll.as(gtk.Widget));
         self.search_bar.connectEntry(self.find_entry.as(gtk.Editable));
         self.search_bar.setShowCloseButton(1);
         _ = gtk.SearchEntry.signals.search_changed.connect(self.find_entry, *Editor, &onFindChanged, self, .{});

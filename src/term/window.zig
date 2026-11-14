@@ -274,7 +274,13 @@ pub const TermWindow = struct {
         row.append(self.search_case.as(gtk.Widget));
         row.append(self.search_word.as(gtk.Widget));
         row.append(self.search_regex.as(gtk.Widget));
-        self.search_bar.setChild(row.as(gtk.Widget));
+        // The bar scrolls sideways in a narrow window: its entries must not set the window's least
+        // width (a window wider than half the screen cannot be snapped to a half).
+        const bar_scroll = gtk.ScrolledWindow.new();
+        bar_scroll.setPolicy(.automatic, .never);
+        bar_scroll.setPropagateNaturalHeight(1);
+        bar_scroll.setChild(row.as(gtk.Widget));
+        self.search_bar.setChild(bar_scroll.as(gtk.Widget));
         self.search_bar.connectEntry(self.search_entry.as(gtk.Editable));
         self.search_bar.setShowCloseButton(1);
         _ = gtk.SearchEntry.signals.search_changed.connect(self.search_entry, *TermWindow, &onSearchChanged, self, .{});

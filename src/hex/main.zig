@@ -406,7 +406,7 @@ const HexEditor = struct {
 
         // Data inspector on the right.
         self.inspector.as(gtk.Widget).addCssClass("dkde-hex-inspector");
-        self.inspector.as(gtk.Widget).setSizeRequest(230, -1);
+        self.inspector.as(gtk.Widget).setSizeRequest(160, -1);
         self.inspector.as(gtk.Widget).setHexpand(0);
         self.inspector.as(gtk.Widget).setMarginStart(8);
         self.inspector.as(gtk.Widget).setMarginEnd(8);

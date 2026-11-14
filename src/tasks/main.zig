@@ -159,7 +159,7 @@ pub const TaskManager = struct {
         // The header: icon, title, and the search for processes.
         const header = common.header.create(window, "utilities-system-monitor", true);
         self.search.setPlaceholderText(t("Type a name, publisher or PID to search"));
-        self.search.as(gtk.Widget).setSizeRequest(360, -1);
+        self.search.as(gtk.Widget).setSizeRequest(160, -1);
         _ = gtk.SearchEntry.signals.search_changed.connect(self.search, *TaskManager, &onSearchChanged, self, .{});
         header.setTitleWidget(self.search.as(gtk.Widget));
 

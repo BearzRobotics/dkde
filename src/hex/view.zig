@@ -166,10 +166,12 @@ pub const View = struct {
         self.ascent = ascent + 1;
     }
 
-    /// The widest row, so the view never gets narrower than one whole row.
+    /// A whole row is the natural width, but the window must still shrink to half a screen (snapping),
+    /// so the least width is capped: a narrow view shows the start of each row.
     fn updateMinWidth(self: *View) void {
         const chars = self.textStart() + @as(f64, @floatFromInt(self.bytes_per_row));
-        self.area.setContentWidth(@intFromFloat(@ceil(chars * self.cell_w + 2 * pad)));
+        const natural: f64 = @ceil(chars * self.cell_w + 2 * pad);
+        self.area.setContentWidth(@intFromFloat(@min(natural, 360)));
     }
 
     pub fn widget(self: *View) *gtk.Widget {
