@@ -66,11 +66,11 @@ fn isCaseWord(name: []const u8, word: []const u8) bool {
 fn nameKind(session: ?*const eval.Session, name: []const u8, call: bool) ?Kind {
     if (isCaseWord(name, "to") or isCaseWord(name, "in") or isCaseWord(name, "mod") or isCaseWord(name, "and") or isCaseWord(name, "or") or isCaseWord(name, "xor")) return .operator;
     if (call) {
-        if (eval.isBuiltin(name) or functions.isKnown(name)) return .function;
+        if (eval.isBuiltin(name) or functions.isKnown(name) or quantity.isDateFunction(name)) return .function;
         if (session) |s| if (s.funcs.contains(name)) return .function;
     }
     if (session) |s| if (s.vars.contains(name) or s.rich.contains(name)) return .variable;
-    if (eval.isConstant(name)) return .constant;
+    if (eval.isConstant(name) or quantity.isDateName(name)) return .constant;
     if (functions.isKnown(name) and call) return .function;
     if (quantity.isUnitName(name) or units.find(name) != null) return .unit;
     return null;
@@ -86,6 +86,9 @@ pub fn spans(a: std.mem.Allocator, text: []const u8, cursor: usize, session: ?*c
         const c = text[i];
         if (c == ' ' or c == '\t') {
             i += 1;
+        } else if (eval.dateLiteral(text[i..])) {
+            try out.append(a, .{ .start = i, .end = i + 10, .kind = .number });
+            i += 10;
         } else if (std.ascii.isDigit(c) or (c == '.' and i + 1 < text.len and std.ascii.isDigit(text[i + 1]))) {
             var j = i;
             if (c == '0' and i + 1 < text.len and (text[i + 1] == 'x' or text[i + 1] == 'X' or text[i + 1] == 'b' or text[i + 1] == 'B' or text[i + 1] == 'o' or text[i + 1] == 'O')) {

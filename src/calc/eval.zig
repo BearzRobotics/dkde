@@ -421,6 +421,15 @@ const Parser = struct {
             self.pos += end;
             return try self.node(.{ .number = num.parseInteger(self.a, r[0..end], self.mode.base) catch return self.fail(error.Syntax) });
         }
+        if (!self.mode.programmer) if (dateLiteral(r)) {
+            // 2026-12-25 is the date: date(2026, 12, 25).
+            const args = try self.a.alloc(*Node, 3);
+            args[0] = try self.node(.{ .number = try num.fromInt(self.a, std.fmt.parseInt(i64, r[0..4], 10) catch return self.fail(error.Syntax)) });
+            args[1] = try self.node(.{ .number = try num.fromInt(self.a, std.fmt.parseInt(i64, r[5..7], 10) catch return self.fail(error.Syntax)) });
+            args[2] = try self.node(.{ .number = try num.fromInt(self.a, std.fmt.parseInt(i64, r[8..10], 10) catch return self.fail(error.Syntax)) });
+            self.pos += 10;
+            return try self.node(.{ .call = .{ .name = "date", .args = args, .pos = start } });
+        };
         if (!(std.ascii.isDigit(r[0]) or (r[0] == '.' and r.len > 1 and std.ascii.isDigit(r[1])))) return null;
         var end: usize = 0;
         while (end < r.len and (std.ascii.isDigit(r[end]) or r[end] == '.')) end += 1;
@@ -1296,6 +1305,17 @@ pub const Eval = struct {
 };
 
 // ---- whole entries ----------------------------------------------------------------------
+
+/// yyyy-mm-dd, as a date (four-digit year, two-digit month and day, not part of a longer number or name).
+pub fn dateLiteral(r: []const u8) bool {
+    if (r.len < 10) return false;
+    for ([_]usize{ 0, 1, 2, 3, 5, 6, 8, 9 }) |i| if (!std.ascii.isDigit(r[i])) return false;
+    if (r[4] != '-' or r[7] != '-') return false;
+    if (r.len > 10 and (std.ascii.isDigit(r[10]) or std.ascii.isAlphabetic(r[10]) or r[10] == '.')) return false;
+    const m = (r[5] - '0') * 10 + (r[6] - '0');
+    const d = (r[8] - '0') * 10 + (r[9] - '0');
+    return m >= 1 and m <= 12 and d >= 1 and d <= 31;
+}
 
 pub const Outcome = union(enum) {
     value: Number,

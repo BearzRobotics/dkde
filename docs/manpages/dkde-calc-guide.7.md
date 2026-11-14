@@ -236,6 +236,8 @@ Money is one more kind of unit: **100 USD to EUR**, **0.5 BTC in USD**, **3 gold
 
 The program never uses the network by itself. Choose **View ▸ Update Exchange Rates** (or **Update exchange rates** in the Currency pane, **Ctrl+K**) to fetch new rates: fiat from the European Central Bank (one rate each working day), crypto from CoinGecko, Goldbacks from goldback.com. The last rates are kept in a cache file and used offline, and an answer that used them shows where they came from and when. Before the first update, a currency conversion says that there are no rates yet. If goldback.com's page feed ever changes, the Goldback keeps its last rate and the other sources keep working.
 
+A rate can also be set by hand. In the Currency pane choose the two currencies, type how many of the second one of the first is worth in **Manual rate**, and press **Set**: **1 EUR = 1.2 USD**. The manual rate is used instead of the fetched one, survives updates, and is marked **manual** under answers that use it. **Clear** removes the manual rate of the first currency. The dollar itself cannot be set; every other rate is stated in dollars.
+
 # THE ENTRY
 The entry is coloured as you type: numbers, functions, constants, variables, units and currencies, and operators each have their own colour; the bracket next to the cursor and its partner are bold, and a bracket without a partner is red and underlined. When an entry cannot be worked out, the part where the problem is gets selected.
 
@@ -244,6 +246,23 @@ The entry is coloured as you type: numbers, functions, constants, variables, uni
 **File ▸ Save Session…** and **Open Session…** write and read a **.dkcalc** file with the history, variables, functions, matrices, amounts, last result and memory.
 
 # DATES
+A date can be typed in an entry as **yyyy-mm-dd** (four-digit year, two-digit month and day, Gregorian): **2026-12-25**. **today**, **tomorrow** and **yesterday** are dates too. A date is shown with its weekday: **2026-12-25 (Friday)**.
+
+| Typed | Result |
+|---|---|
+| **today + 30 days**, **today − 2 weeks** | a date |
+| **2026-11-14 + 3 months**, **today + 1 year** | a date; whole months and years are calendar months and years |
+| **2026-12-25 − today** | a number of days (**41 d**) |
+| **weekday(d)** | 1 (Monday) to 7 (Sunday) |
+| **dayofyear(d)**, **weeknumber(d)** | day of the year; ISO 8601 week |
+| **year(d)**, **month(d)**, **day(d)** | the parts of a date |
+| **date(y, m, d)** | the date, or an error if it does not exist |
+| **addmonths(d, n)**, **addyears(d, n)**, **adddays(d, n)** | a date moved by n |
+| **days(a, b)** | the days from a to b |
+| **daysinmonth(y, m)**, **isleapyear(y)** | the length of a month; 1 or 0 |
+
+A day past the end of the month reached becomes its last day: **2026-01-31 + 1 month** is **2026-02-28** (Qalculate carries over into March instead). Two dates cannot be added, and a date cannot be multiplied. Dates in entries are Gregorian; the Date Calculation pane works in every calendar.
+
 The Date Calculation pane (**Ctrl+E**) gives the time between two dates in years, months and days (and in days and weeks), or the date a number of years, months and days before or after another.
 
 It works in any calendar dkde-calendar(1) shows: Julian, Gregorian, Fixed (13 months of 28 days), Rosquin (as 28 weeks, as 7 months of 4 weeks, or as 4 quarters of 7 weeks), Chinese, Hebrew, Coptic and Ethiopian. Choose the calendar at the top of the pane; dates are then written year-month-day in its own numbering (**5787-3-1** is Kislev 1, 5787 in the Hebrew calendar), and each date is described under its field, with its Gregorian date. The calendar button picks a Gregorian day and writes it in the chosen calendar. Changing the calendar rewrites the dates in it, keeping the same days.

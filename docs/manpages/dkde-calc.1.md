@@ -18,6 +18,7 @@ Besides numbers, an entry can be:
 - an equation with one unknown: **2y + 3 = 11** gives **y = 4**; **x² = 2** gives both roots;
 - an expression with letters that have no value: **2a + 3a** is simplified to **5a**;
 - an amount with units: **5 ft + 3 in**, **5 kg × 2 m/s²** (= 10 N), **100 °F to °C**, **5 km in mi**;
+- a date: **today + 30 days**, **2026-12-25 − today** (41 d), **weekday(2026-12-25)**;
 - an amount of money: **100 USD to EUR**, **0.5 BTC in USD**, **3 goldback to USD**;
 - a complex number or matrix: **(1 + i)²**, **[1, 2; 3, 4]^2**, **det([1, 2; 3, 4])**;
 - a list statistic: **mean(3, 5, 10)**, **stdev(…)**, **percentile(…)**;
@@ -57,7 +58,7 @@ Unit Conversion (**Ctrl+U**)
 : Converts between units of length, area, volume, mass, temperature, time, speed, pressure, energy, power, data, angle and fuel economy. The amount may be an expression.
 
 Currency (**Ctrl+K**)
-: Converts an amount between about 30 national currencies, 20 crypto coins and Goldbacks, with the date of the rates under it. **Update exchange rates** fetches new ones (see CURRENCIES). Entries such as **100 USD to EUR** use the same rates.
+: Converts an amount between about 30 national currencies, 20 crypto coins and Goldbacks, with the date of the rates under it. **Update exchange rates** fetches new ones (see CURRENCIES); **Manual rate** with **Set** and **Clear** replaces the rate of a currency by one you type. Entries such as **100 USD to EUR** use the same rates.
 
 Date Calculation (**Ctrl+E**)
 : The time between two dates (in years, months and days, and in days and weeks), or a date plus or minus a number of years, months and days. It works in every calendar dkde-calendar(1) shows: Julian, Gregorian, the International Fixed calendar, the Rosquin calendar in its three layouts, Chinese, Hebrew, Coptic and Ethiopian. Dates are typed year-month-day in the chosen calendar's own numbering (or picked on a Gregorian calendar and converted), each is described under its field with its Gregorian date, and changing the calendar keeps the same days. Years and months are counted in the chosen calendar: a Hebrew year from Kislev 1 is Kislev 1 the next year.
@@ -143,6 +144,9 @@ $XDG_DATA_DIRS/dkde/calc.toml
 
 ~/.local/state/dkde/calc-state
 : The history, variables, functions, matrices, amounts with units, last result, memory and your own formulas: one tab-separated record per line. Delete it to start afresh.
+
+~/.local/state/dkde/calc-rates-manual
+: The exchange rates set by hand, in the same format.
 
 ~/.cache/dkde/calc-rates
 : The last exchange rates, one currency a line: code, kind, dollars per unit, date, source. Delete it to forget them.

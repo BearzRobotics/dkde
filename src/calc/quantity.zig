@@ -11,9 +11,9 @@ const std = @import("std");
 const num = @import("num.zig");
 const Number = num.Number;
 
-pub const ndim = 9;
+pub const ndim = 10;
 pub const Dims = [ndim]i8;
-const base_names = [ndim][]const u8{ "m", "kg", "s", "A", "K", "mol", "cd", "bit", "cur" };
+const base_names = [ndim][]const u8{ "m", "kg", "s", "A", "K", "mol", "cd", "bit", "cur", "date" };
 
 pub const Error = error{ OutOfMemory, TooLarge, DivisionByZero, Domain, Units, NoRates };
 
@@ -82,6 +82,19 @@ pub const fiat_codes = [_][]const u8{
     "USD", "EUR", "JPY", "BGN", "CZK", "DKK", "GBP", "HUF", "PLN", "RON", "SEK", "CHF", "ISK", "NOK", "TRY", "AUD",
     "BRL", "CAD", "CNY", "HKD", "IDR", "ILS", "INR", "KRW", "MXN", "MYR", "NZD", "PHP", "SGD", "THB", "ZAR",
 };
+
+/// The English names of fiat_codes, in the same order.
+pub const fiat_names = [_][]const u8{
+    "US Dollar",         "Euro",              "Japanese Yen",   "Bulgarian Lev",    "Czech Koruna",    "Danish Krone",
+    "British Pound",     "Hungarian Forint",  "Polish Zloty",   "Romanian Leu",     "Swedish Krona",   "Swiss Franc",
+    "Icelandic Krona",   "Norwegian Krone",   "Turkish Lira",   "Australian Dollar", "Brazilian Real",  "Canadian Dollar",
+    "Chinese Yuan",      "Hong Kong Dollar",  "Indonesian Rupiah", "Israeli Shekel",  "Indian Rupee",    "South Korean Won",
+    "Mexican Peso",      "Malaysian Ringgit", "New Zealand Dollar", "Philippine Peso", "Singapore Dollar", "Thai Baht",
+    "South African Rand",
+};
+comptime {
+    if (fiat_names.len != fiat_codes.len) @compileError("fiat_names must match fiat_codes");
+}
 
 const Alias = struct { name: []const u8, code: []const u8 };
 const aliases = [_]Alias{
@@ -212,6 +225,9 @@ const defs = [_]Def{
     d("d", "day", "s", "86400", .none),
     d("wk", "week", "s", "604800", .none),
     d("yr", "year", "s", "31557600", .none),
+    d("mo", "month", "s", "2629800", .none),
+    // A date: days since 1970-01-01 (its name cannot be typed).
+    d("@date", "", "date", "1", .none),
     d("rpm", "rpm", "s-1", "1/60", .none),
     // Length.
     d("in", "inch|inches", "m", "0.0254", .none),
@@ -466,6 +482,7 @@ const constants = [_]Constant{
 };
 
 pub fn constant(a: std.mem.Allocator, name: []const u8) Error!?Quantity {
+    if (try dateConstant(a, name)) |q| return q;
     for (constants) |k| {
         if (!hasWord(k.names, name, false)) continue;
         const dims = parseDims(k.dims);
@@ -475,6 +492,7 @@ pub fn constant(a: std.mem.Allocator, name: []const u8) Error!?Quantity {
 }
 
 pub fn isConstantName(name: []const u8) bool {
+    if (isDateName(name)) return true;
     for (constants) |k| if (hasWord(k.names, name, false)) return true;
     return false;
 }
@@ -489,6 +507,189 @@ fn fromDims(a: std.mem.Allocator, value: Number, dims: Dims) Error!Quantity {
     }
     const q: Quantity = .{ .value = value, .units = list.items };
     return try derive(a, q);
+}
+
+// ---- dates ------------------------------------------------------------------------------
+//
+// A date is a quantity of the "date" dimension: its value is the number of days
+// since 1970-01-01 (Gregorian), its unit "@date". A date plus or minus a time is a
+// date, a date minus a date is a number of days, and nothing else is allowed.
+// Months and years added to a date are calendar months and years.
+
+pub const date_names = [_][]const u8{ "today", "tomorrow", "yesterday" };
+
+pub const date_functions = [_][]const u8{
+    "date",     "weekday", "dayofyear", "weeknumber", "year", "month", "day",
+    "addmonths", "addyears", "adddays", "days",       "daysinmonth", "isleapyear",
+};
+
+pub fn isDateName(name: []const u8) bool {
+    for (date_names) |n| if (std.ascii.eqlIgnoreCase(n, name)) return true;
+    return false;
+}
+
+pub fn isDateFunction(name: []const u8) bool {
+    for (date_functions) |n| if (std.ascii.eqlIgnoreCase(n, name)) return true;
+    return false;
+}
+
+/// Today, as days since 1970-01-01 (the program sets this from the clock).
+pub var today_fn: *const fn () i64 = zeroDay;
+
+fn zeroDay() i64 {
+    return 0;
+}
+
+fn dateDims() Dims {
+    var d_ = @as(Dims, @splat(0));
+    d_[9] = 1;
+    return d_;
+}
+
+pub fn isDate(q: Quantity) bool {
+    return q.units.len == 1 and q.units[0].exp == 1 and dimsEqual(q.units[0].unit.dims, dateDims());
+}
+
+pub fn dateQuantity(a: std.mem.Allocator, days_since_epoch: i64) Error!Quantity {
+    const unit = (try resolve(a, "@date")) orelse return error.Domain;
+    const ups = try a.alloc(UPow, 1);
+    ups[0] = .{ .unit = unit, .exp = 1 };
+    return .{ .value = try num.fromInt(a, days_since_epoch), .units = ups };
+}
+
+pub const Civil = struct { y: i64, m: u8, d: u8 };
+
+/// Days since 1970-01-01 of a Gregorian date (proleptic; years may be negative).
+pub fn civilToDays(y_in: i64, m: u8, d_: u8) i64 {
+    const y = if (m <= 2) y_in - 1 else y_in;
+    const era = @divFloor(y, 400);
+    const yoe = y - era * 400;
+    const mp: i64 = if (m > 2) @as(i64, m) - 3 else @as(i64, m) + 9;
+    const doy = @divFloor(153 * mp + 2, 5) + @as(i64, d_) - 1;
+    const doe = yoe * 365 + @divFloor(yoe, 4) - @divFloor(yoe, 100) + doy;
+    return era * 146097 + doe - 719468;
+}
+
+pub fn daysToCivil(days: i64) Civil {
+    const z = days + 719468;
+    const era = @divFloor(z, 146097);
+    const doe = z - era * 146097;
+    const yoe = @divFloor(doe - @divFloor(doe, 1460) + @divFloor(doe, 36524) - @divFloor(doe, 146096), 365);
+    const doy = doe - (365 * yoe + @divFloor(yoe, 4) - @divFloor(yoe, 100));
+    const mp = @divFloor(5 * doy + 2, 153);
+    const d_: i64 = doy - @divFloor(153 * mp + 2, 5) + 1;
+    const m: i64 = if (mp < 10) mp + 3 else mp - 9;
+    const y = yoe + era * 400 + @as(i64, if (m <= 2) 1 else 0);
+    return .{ .y = y, .m = @intCast(m), .d = @intCast(d_) };
+}
+
+pub fn isLeapYear(y: i64) bool {
+    return (@mod(y, 4) == 0 and @mod(y, 100) != 0) or @mod(y, 400) == 0;
+}
+
+pub fn daysInMonth(y: i64, m: u8) u8 {
+    return switch (m) {
+        1, 3, 5, 7, 8, 10, 12 => 31,
+        4, 6, 9, 11 => 30,
+        else => if (isLeapYear(y)) 29 else 28,
+    };
+}
+
+/// 1 = Monday … 7 = Sunday (1970-01-01 was a Thursday).
+pub fn weekdayOf(days: i64) u8 {
+    return @intCast(@mod(days + 3, 7) + 1);
+}
+
+pub fn dayOfYear(days: i64) u16 {
+    const c = daysToCivil(days);
+    return @intCast(days - civilToDays(c.y, 1, 1) + 1);
+}
+
+fn isoWeeksInYear(y: i64) i64 {
+    const p = struct {
+        fn f(yy: i64) i64 {
+            return @mod(yy + @divFloor(yy, 4) - @divFloor(yy, 100) + @divFloor(yy, 400), 7);
+        }
+    }.f;
+    return if (p(y) == 4 or p(y - 1) == 3) 53 else 52;
+}
+
+/// The ISO 8601 week number.
+pub fn isoWeek(days: i64) i64 {
+    const c = daysToCivil(days);
+    const w = @divFloor(@as(i64, dayOfYear(days)) - @as(i64, weekdayOf(days)) + 10, 7);
+    if (w < 1) return isoWeeksInYear(c.y - 1);
+    if (w > isoWeeksInYear(c.y)) return 1;
+    return w;
+}
+
+/// A date moved by whole months; a day past the end of the month becomes its last day.
+pub fn addMonths(days: i64, months: i64) i64 {
+    const c = daysToCivil(days);
+    const total = c.y * 12 + (@as(i64, c.m) - 1) + months;
+    const y = @divFloor(total, 12);
+    const m: u8 = @intCast(@mod(total, 12) + 1);
+    return civilToDays(y, m, @min(c.d, daysInMonth(y, m)));
+}
+
+const weekday_names = [_][]const u8{ "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" };
+
+fn dateText(a: std.mem.Allocator, q: Quantity) Error![]u8 {
+    const whole = try num.floor(a, q.value);
+    const days = num.intValue(whole) orelse return error.TooLarge;
+    const c = daysToCivil(days);
+    const year: u64 = @intCast(if (c.y < 0) -c.y else c.y);
+    return std.fmt.allocPrint(a, "{s}{d:0>4}-{d:0>2}-{d:0>2} ({s})", .{ if (c.y < 0) "−" else "", year, c.m, c.d, weekday_names[weekdayOf(days) - 1] });
+}
+
+fn timeDims() Dims {
+    var d_ = @as(Dims, @splat(0));
+    d_[2] = 1;
+    return d_;
+}
+
+/// Calendar months in a duration of exactly whole months or years ("3 months", "2 yr").
+fn calendarMonths(y: Quantity) ?i64 {
+    if (y.units.len != 1 or y.units[0].exp != 1) return null;
+    const n = num.intValue(y.value) orelse return null;
+    if (std.mem.eql(u8, y.units[0].unit.sym, "mo")) return n;
+    if (std.mem.eql(u8, y.units[0].unit.sym, "yr")) return n * 12;
+    return null;
+}
+
+fn dateAdd(a: std.mem.Allocator, x: Quantity, y: Quantity, subtract: bool) Error!Quantity {
+    const xd = isDate(x);
+    const yd = isDate(y);
+    if (xd and yd) {
+        if (!subtract) return error.Units;
+        const day = (try resolve(a, "d")) orelse return error.Domain;
+        const ups = try a.alloc(UPow, 1);
+        ups[0] = .{ .unit = day, .exp = 1 };
+        return .{ .value = try num.sub(a, x.value, y.value), .units = ups };
+    }
+    // A duration plus a date is the date plus the duration; a duration minus a date is nonsense.
+    if (yd) {
+        if (subtract) return error.Units;
+        return dateAdd(a, y, x, false);
+    }
+    if (!dimsEqual(dimsOf(y.units), timeDims())) return error.Units;
+    const sign: i64 = if (subtract) -1 else 1;
+    if (calendarMonths(y)) |months| {
+        const days = num.intValue(try num.floor(a, x.value)) orelse return error.TooLarge;
+        return dateQuantity(a, addMonths(days, sign * months));
+    }
+    const secs = try num.mul(a, y.value, try factorOf(a, y.units));
+    const days_added = try num.div(a, secs, try num.fromInt(a, 86400));
+    const v = if (subtract) try num.sub(a, x.value, days_added) else try num.add(a, x.value, days_added);
+    return .{ .value = v, .units = x.units };
+}
+
+/// today, tomorrow, yesterday.
+pub fn dateConstant(a: std.mem.Allocator, name: []const u8) Error!?Quantity {
+    if (std.ascii.eqlIgnoreCase(name, "today")) return try dateQuantity(a, today_fn());
+    if (std.ascii.eqlIgnoreCase(name, "tomorrow")) return try dateQuantity(a, today_fn() + 1);
+    if (std.ascii.eqlIgnoreCase(name, "yesterday")) return try dateQuantity(a, today_fn() - 1);
+    return null;
 }
 
 // ---- arithmetic -----------------------------------------------------------------------
@@ -585,6 +786,7 @@ fn derive(a: std.mem.Allocator, q: Quantity) Error!Quantity {
 }
 
 pub fn mul(a: std.mem.Allocator, x: Quantity, y: Quantity) Error!Quantity {
+    if (isDate(x) or isDate(y)) return error.Units;
     var list: std.ArrayList(UPow) = .empty;
     try list.appendSlice(a, x.units);
     try list.appendSlice(a, y.units);
@@ -623,6 +825,7 @@ pub fn neg(a: std.mem.Allocator, x: Quantity) Error!Quantity {
 
 /// x ± y, in the unit of x.
 pub fn add(a: std.mem.Allocator, x: Quantity, y: Quantity, subtract: bool) Error!Quantity {
+    if (isDate(x) or isDate(y)) return dateAdd(a, x, y, subtract);
     if (!dimsEqual(dimsOf(x.units), dimsOf(y.units))) return error.Units;
     const yv = try inUnitsOf(a, y, x.units);
     const v = if (subtract) try num.sub(a, x.value, yv) else try num.add(a, x.value, yv);
@@ -704,6 +907,7 @@ pub fn unitText(a: std.mem.Allocator, units: []const UPow) ![]u8 {
 }
 
 pub fn format(a: std.mem.Allocator, q: Quantity, style: num.Style) Error![]u8 {
+    if (isDate(q)) return dateText(a, q);
     const v = try num.format(a, q.value, style);
     if (q.units.len == 0) return v;
     return std.fmt.allocPrint(a, "{s} {s}", .{ v, try unitText(a, q.units) });
@@ -769,4 +973,39 @@ test "currencies convert through dollars" {
     try std.testing.expectEqualStrings("31 USD", try format(a, gb, .{}));
     try std.testing.expectEqual(@as(usize, 3), usedRates().len);
     try std.testing.expectError(error.NoRates, resolve(a, "BTC"));
+}
+
+fn fixedToday() i64 {
+    return civilToDays(2026, 11, 14);
+}
+
+test "civil dates and weekdays" {
+    try std.testing.expectEqual(@as(i64, 0), civilToDays(1970, 1, 1));
+    try std.testing.expectEqual(@as(i64, 10957), civilToDays(2000, 1, 1));
+    const c = daysToCivil(civilToDays(2024, 2, 29));
+    try std.testing.expect(c.y == 2024 and c.m == 2 and c.d == 29);
+    try std.testing.expectEqual(@as(u8, 4), weekdayOf(0));
+    try std.testing.expectEqual(@as(u8, 6), weekdayOf(civilToDays(2026, 11, 14)));
+    try std.testing.expectEqual(@as(i64, 1), isoWeek(civilToDays(2026, 1, 1)));
+    try std.testing.expectEqual(@as(i64, 53), isoWeek(civilToDays(2021, 1, 1)));
+    try std.testing.expectEqual(civilToDays(2025, 2, 28), addMonths(civilToDays(2024, 12, 31), 2));
+}
+
+test "date arithmetic" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    today_fn = fixedToday;
+    defer today_fn = zeroDay;
+    const today = (try dateConstant(a, "today")).?;
+    try std.testing.expectEqualStrings("2026-11-14 (Saturday)", try format(a, today, .{}));
+    const thirty: Quantity = .{ .value = try num.fromInt(a, 30), .units = try parseUnits(a, &.{"days"}, &.{1}) };
+    try std.testing.expectEqualStrings("2026-12-14 (Monday)", try format(a, try add(a, today, thirty, false), .{}));
+    try std.testing.expectEqualStrings("2026-12-14 (Monday)", try format(a, try add(a, thirty, today, false), .{}));
+    const three_months: Quantity = .{ .value = try num.fromInt(a, 3), .units = try parseUnits(a, &.{"months"}, &.{1}) };
+    try std.testing.expectEqualStrings("2027-02-14 (Sunday)", try format(a, try add(a, today, three_months, false), .{}));
+    const xmas = try dateQuantity(a, civilToDays(2026, 12, 25));
+    try std.testing.expectEqualStrings("41 d", try format(a, try add(a, xmas, today, true), .{}));
+    try std.testing.expectError(error.Units, add(a, today, xmas, false));
+    try std.testing.expectError(error.Units, mul(a, today, thirty));
 }

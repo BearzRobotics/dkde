@@ -517,6 +517,7 @@ const rich_only = [_][]const u8{
 
 /// Names only this module knows (so the plain evaluator does not take them for a product).
 pub fn isRichFunction(name: []const u8) bool {
+    if (quantity.isDateFunction(name)) return true;
     for (rich_only) |f| if (std.ascii.eqlIgnoreCase(f, name)) return true;
     return false;
 }
@@ -540,6 +541,10 @@ fn scan(n: *const Node, session: *eval.Session, attached: bool, s: *Scan) void {
     switch (n.*) {
         .number => {},
         .name => |nm| {
+            if (quantity.isDateName(nm.text) and !session.vars.contains(nm.text)) {
+                s.trigger = true;
+                return;
+            }
             if (session.vars.contains(nm.text) or session.rich.contains(nm.text) or eval.isConstant(nm.text) or
                 std.mem.eql(u8, nm.text, "i") or quantity.isConstantName(nm.text)) return;
             if (quantity.isUnitName(nm.text)) {
@@ -955,6 +960,7 @@ pub const Rich = struct {
             const target = try asQuantity(args[1]);
             return fromQuantity(a, try quantity.convert(a, try asQuantity(args[0]), target.units));
         }
+        if (quantity.isDateFunction(lower)) return self.dateCall(lower, args);
         for (args) |v| if (v == .quantity) return self.quantityCall(name, lower, args, pos);
 
         if (try self.richCall(lower, args, pos)) |v| return v;
@@ -979,6 +985,60 @@ pub const Rich = struct {
     }
 
     /// A function of amounts with units: the shape-keeping ones; trigonometry of angles.
+    fn dateArg(v: Value) Error!i64 {
+        const q = switch (v) {
+            .quantity => |q| q,
+            else => return error.Domain,
+        };
+        if (!quantity.isDate(q)) return error.Units;
+        return num.intValue(try num.floor(std.heap.page_allocator, q.value)) orelse error.TooLarge;
+    }
+
+    fn intArg(v: Value) Error!i64 {
+        const q = try asQuantity(v);
+        if (q.units.len != 0) {
+            // "3 months" or "5 days" as a count is its number.
+            return num.intValue(q.value) orelse error.Domain;
+        }
+        return num.intValue(q.value) orelse error.Domain;
+    }
+
+    /// date(y, m, d), weekday(d), addmonths(d, n), days(a, b) and the rest of the date functions.
+    fn dateCall(self: *Rich, f: []const u8, args: []Value) Error!Value {
+        const a = self.a;
+        const eq = std.mem.eql;
+        const need: usize = if (eq(u8, f, "date")) 3 else if (isOneOf(f, .{ "addmonths", "addyears", "adddays", "days", "daysinmonth" })) 2 else 1;
+        if (args.len != need) return error.WrongArguments;
+        if (eq(u8, f, "date")) {
+            const y = try intArg(args[0]);
+            const m = try intArg(args[1]);
+            const d = try intArg(args[2]);
+            if (m < 1 or m > 12 or d < 1 or y < -9999 or y > 9999) return error.Domain;
+            if (d > quantity.daysInMonth(y, @intCast(m))) return error.Domain;
+            return .{ .quantity = try quantity.dateQuantity(a, quantity.civilToDays(y, @intCast(m), @intCast(d))) };
+        }
+        if (eq(u8, f, "isleapyear")) return self.real(try num.fromInt(a, @as(i64, if (quantity.isLeapYear(try intArg(args[0]))) 1 else 0)));
+        if (eq(u8, f, "daysinmonth")) {
+            const m = try intArg(args[1]);
+            if (m < 1 or m > 12) return error.Domain;
+            return self.real(try num.fromInt(a, @as(i64, quantity.daysInMonth(try intArg(args[0]), @intCast(m)))));
+        }
+        const days = try dateArg(args[0]);
+        const c = quantity.daysToCivil(days);
+        if (eq(u8, f, "weekday")) return self.real(try num.fromInt(a, @as(i64, quantity.weekdayOf(days))));
+        if (eq(u8, f, "dayofyear")) return self.real(try num.fromInt(a, @as(i64, quantity.dayOfYear(days))));
+        if (eq(u8, f, "weeknumber")) return self.real(try num.fromInt(a, quantity.isoWeek(days)));
+        if (eq(u8, f, "year")) return self.real(try num.fromInt(a, c.y));
+        if (eq(u8, f, "month")) return self.real(try num.fromInt(a, @as(i64, c.m)));
+        if (eq(u8, f, "day")) return self.real(try num.fromInt(a, @as(i64, c.d)));
+        if (eq(u8, f, "days")) return self.real(try num.fromInt(a, try dateArg(args[1]) - days));
+        const n = try intArg(args[1]);
+        if (eq(u8, f, "adddays")) return .{ .quantity = try quantity.dateQuantity(a, days + n) };
+        if (eq(u8, f, "addmonths")) return .{ .quantity = try quantity.dateQuantity(a, quantity.addMonths(days, n)) };
+        if (eq(u8, f, "addyears")) return .{ .quantity = try quantity.dateQuantity(a, quantity.addMonths(days, n * 12)) };
+        return error.Domain;
+    }
+
     fn quantityCall(self: *Rich, name: []const u8, lower: []const u8, args: []Value, pos: usize) Error!Value {
         const a = self.a;
         const mode = self.ev.mode.angle;

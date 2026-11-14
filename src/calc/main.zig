@@ -183,6 +183,10 @@ const Calc = struct {
     cur_button: *gtk.Button = undefined,
     /// The rates in use, in their own arena (quantity.zig points into it).
     rate_arena: ?std.heap.ArenaAllocator = null,
+    /// The fetched rates (in rate_arena) and the ones typed in by hand (strings owned by gpa).
+    fetched: []const quantity.Currency = &.{},
+    manual: std.ArrayList(quantity.Currency) = .empty,
+    cur_manual: *gtk.Entry = undefined,
     updating: bool = false,
     /// The Currency pane exists (rates can load before it is built).
     cur_ready: bool = false,
@@ -228,7 +232,9 @@ const Calc = struct {
         self.graph = try graph_mod.Graph.create(gpa, &self.session);
         self.readSettings();
         self.loadState();
+        self.loadManualRates();
         self.loadRates();
+        quantity.today_fn = &todayDays;
 
         const win = self.window.as(gtk.Window);
         win.setTitle(t("Calculator"));
@@ -1628,20 +1634,136 @@ const Calc = struct {
     // Rates come from rates.zig's sources only when View > Update Exchange Rates is
     // chosen; otherwise the last copy in the cache directory is used.
 
+    /// Today (local), as days since 1970-01-01, for `today`.
+    fn todayDays() i64 {
+        const now = glib.DateTime.newNowLocal() orelse return 0;
+        defer now.unref();
+        return quantity.civilToDays(now.getYear(), @intCast(now.getMonth()), @intCast(now.getDayOfMonth()));
+    }
+
     fn ratesPath(self: *Calc) ?[]u8 {
         return std.fmt.allocPrint(self.gpa, "{s}/dkde/calc-rates", .{std.mem.span(glib.getUserCacheDir())}) catch null;
     }
 
-    /// Takes a copy of `list` as the rates in use.
-    fn setRates(self: *Calc, list: []const quantity.Currency) void {
+    /// Makes `fetched` (copied) plus the manual rates the rates in use.
+    fn setRates(self: *Calc, fetched: []const quantity.Currency) void {
         var arena = std.heap.ArenaAllocator.init(self.gpa);
         const a = arena.allocator();
-        const text = rates.serialize(a, list) catch return arena.deinit();
+        const text = rates.serialize(a, fetched) catch return arena.deinit();
         const copy = rates.deserialize(a, text) catch return arena.deinit();
-        quantity.setCurrencies(copy);
+        const merged = rates.merge(a, copy, self.manual.items) catch return arena.deinit();
+        const text2 = rates.serialize(a, merged) catch return arena.deinit();
+        const table = rates.deserialize(a, text2) catch return arena.deinit();
+        quantity.setCurrencies(table);
+        self.fetched = copy;
         if (self.rate_arena) |*old| old.deinit();
         self.rate_arena = arena;
         self.showRateStatus();
+    }
+
+    fn manualPath(self: *Calc) ?[:0]u8 {
+        return self.statePath("calc-rates-manual");
+    }
+
+    fn loadManualRates(self: *Calc) void {
+        const path = self.manualPath() orelse return;
+        defer self.gpa.free(path);
+        const text = (common.fsio.readFile(self.gpa, path, 1 << 20) catch null) orelse return;
+        defer self.gpa.free(text);
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const list = rates.deserialize(arena.allocator(), text) catch return;
+        for (list) |c| self.putManual(c.code, c.usd, c.date) catch {};
+    }
+
+    fn saveManualRates(self: *Calc) void {
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const text = rates.serialize(arena.allocator(), self.manual.items) catch return;
+        const path = self.manualPath() orelse return;
+        defer self.gpa.free(path);
+        if (std.fs.path.dirname(path)) |dir| common.fsio.makePath(dir) catch {};
+        common.fsio.writeFileAtomic(path, text) catch {};
+    }
+
+    fn dropManual(self: *Calc, code: []const u8) bool {
+        for (self.manual.items, 0..) |c, i| if (std.mem.eql(u8, c.code, code)) {
+            const old = self.manual.orderedRemove(i);
+            self.gpa.free(old.usd);
+            self.gpa.free(old.date);
+            return true;
+        };
+        return false;
+    }
+
+    /// A rate typed in by hand for `code` (dollars per unit), replacing an earlier one.
+    fn putManual(self: *Calc, code: []const u8, usd: []const u8, date: []const u8) !void {
+        const canon = quantity.canonicalCode(code) orelse return error.Domain;
+        _ = self.dropManual(canon);
+        const u = try self.gpa.dupe(u8, usd);
+        errdefer self.gpa.free(u);
+        const d = try self.gpa.dupe(u8, date);
+        errdefer self.gpa.free(d);
+        const kind: quantity.Kind = if (std.mem.eql(u8, canon, "GBK")) .goldback else for (quantity.fiat_codes) |f| {
+            if (std.mem.eql(u8, f, canon)) break .fiat;
+        } else .crypto;
+        try self.manual.append(self.gpa, .{ .code = canon, .kind = kind, .usd = u, .date = d, .source = "manual" });
+    }
+
+    /// Dollars per unit of `code` in the rates in use, as a number.
+    fn usdOf(code: []const u8) ?f64 {
+        for (quantity.currencies()) |c| if (std.mem.eql(u8, c.code, code)) {
+            if (std.mem.indexOfScalar(u8, c.usd, '/')) |i| {
+                const n = std.fmt.parseFloat(f64, c.usd[0..i]) catch return null;
+                const dn = std.fmt.parseFloat(f64, c.usd[i + 1 ..]) catch return null;
+                return n / dn;
+            }
+            return std.fmt.parseFloat(f64, c.usd) catch null;
+        };
+        return null;
+    }
+
+    /// "1 FROM = x TO", typed by hand: used instead of the fetched rate of FROM.
+    fn setManualRate(self: *Calc) void {
+        const from = currencyCode(self.cur_from.getSelected());
+        const to = currencyCode(self.cur_to.getSelected());
+        var buf: [200]u8 = undefined;
+        if (std.mem.eql(u8, from, "USD")) return self.cur_status.setText(t("The dollar is the base of every rate; choose another currency to set."));
+        if (std.mem.eql(u8, from, to)) return self.cur_status.setText(t("Choose two different currencies."));
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const typed = cleaned(a, std.mem.trim(u8, std.mem.span(self.cur_manual.as(gtk.Editable).getText()), " ")) catch return;
+        const x = std.fmt.parseFloat(f64, typed) catch return self.cur_status.setText(t("Type the rate as a number, for example 1.0842."));
+        if (!(x > 0) or !std.math.isFinite(x)) return self.cur_status.setText(t("The rate must be a number above zero."));
+        const to_usd = usdOf(to) orelse return self.cur_status.setText(std.fmt.bufPrintSentinel(&buf, "No rate for {s} yet: update the rates, or set {s} by hand first.", .{ to, to }, 0) catch "");
+        const usd = std.fmt.allocPrint(a, "{d}", .{x * to_usd}) catch return;
+        const when = rates.dateText(a, @divFloor(glib.getRealTime(), std.time.us_per_s)) catch "";
+        self.putManual(from, usd, when) catch return;
+        self.saveManualRates();
+        self.setRates(self.fetched);
+        self.cur_status.setText(std.fmt.bufPrintSentinel(&buf, "Manual rate set: 1 {s} = {s} {s}. The fetched rate is not used while it stays.", .{ from, typed, to }, 0) catch "");
+        self.convertCurrency();
+        self.refreshPreview();
+    }
+
+    fn clearManualRate(self: *Calc) void {
+        const from = currencyCode(self.cur_from.getSelected());
+        var buf: [160]u8 = undefined;
+        if (!self.dropManual(from)) return self.cur_status.setText(std.fmt.bufPrintSentinel(&buf, "{s} has no manual rate.", .{from}, 0) catch "");
+        self.saveManualRates();
+        self.setRates(self.fetched);
+        self.cur_status.setText(std.fmt.bufPrintSentinel(&buf, "Manual rate of {s} removed.", .{from}, 0) catch "");
+        self.convertCurrency();
+        self.refreshPreview();
+    }
+
+    fn onManualSet(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        self.setManualRate();
+    }
+
+    fn onManualClear(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        self.clearManualRate();
     }
 
     fn loadRates(self: *Calc) void {
@@ -1674,7 +1796,7 @@ const Calc = struct {
         const msg: [:0]const u8 = if (list.len == 0)
             t("No rates yet. Update them from View ▸ Update Exchange Rates.")
         else
-            std.fmt.bufPrintSentinel(&buf, "{d} currencies. Newest rate: {s}.", .{ list.len, newest }, 0) catch "";
+            std.fmt.bufPrintSentinel(&buf, "{d} currencies{s}. Newest rate: {s}.", .{ list.len, if (self.manual.items.len > 0) " (some set by hand)" else "", newest }, 0) catch "";
         self.cur_status.setText(msg);
     }
 
@@ -1751,7 +1873,7 @@ const Calc = struct {
         self.cur_button.as(gtk.Widget).setSensitive(1);
         if (job.got.items.len > 0) {
             const a = job.arena.allocator();
-            if (rates.merge(a, quantity.currencies(), job.got.items)) |merged| {
+            if (rates.merge(a, self.fetched, job.got.items)) |merged| {
                 self.setRates(merged);
                 self.saveRates(a, merged);
             } else |_| {}
@@ -1775,15 +1897,15 @@ const Calc = struct {
 
         var names: [quantity.fiat_codes.len + quantity.crypto_list.len + 2:null]?[*:0]const u8 = @splat(null);
         var n: usize = 0;
-        inline for (quantity.fiat_codes) |c| {
-            names[n] = @ptrCast((c ++ "\x00").ptr);
+        inline for (quantity.fiat_codes, quantity.fiat_names) |c, nm| {
+            names[n] = @ptrCast((c ++ " (" ++ nm ++ ")\x00").ptr);
             n += 1;
         }
         inline for (quantity.crypto_list) |c| {
-            names[n] = @ptrCast((c.code ++ "\x00").ptr);
+            names[n] = @ptrCast((c.code ++ " (" ++ c.name ++ ")\x00").ptr);
             n += 1;
         }
-        names[n] = "GBK";
+        names[n] = "GBK (Goldback)";
         self.cur_value = gtk.Entry.new();
         self.cur_value.as(gtk.Editable).setText("1");
         _ = gtk.Editable.signals.changed.connect(self.cur_value.as(gtk.Editable), *Calc, &onCurrencyChanged, self, .{});
@@ -1800,6 +1922,24 @@ const Calc = struct {
         self.cur_result.setSelectable(1);
         self.cur_result.setWrap(1);
         box.append(self.cur_result.as(gtk.Widget));
+        const manual_label = gtk.Label.new(t("Manual rate: 1 of the first currency equals this many of the second"));
+        manual_label.setXalign(0);
+        manual_label.setWrap(1);
+        manual_label.setMaxWidthChars(40);
+        box.append(manual_label.as(gtk.Widget));
+        const manual_row = gtk.Box.new(.horizontal, 6);
+        self.cur_manual = gtk.Entry.new();
+        self.cur_manual.setPlaceholderText(t("rate"));
+        self.cur_manual.as(gtk.Widget).setHexpand(1);
+        manual_row.append(self.cur_manual.as(gtk.Widget));
+        const set_button = gtk.Button.newWithLabel(t("Set"));
+        _ = gtk.Button.signals.clicked.connect(set_button, *Calc, &onManualSet, self, .{});
+        manual_row.append(set_button.as(gtk.Widget));
+        const clear_button = gtk.Button.newWithLabel(t("Clear"));
+        clear_button.as(gtk.Widget).setTooltipText(t("Remove the manual rate of the first currency"));
+        _ = gtk.Button.signals.clicked.connect(clear_button, *Calc, &onManualClear, self, .{});
+        manual_row.append(clear_button.as(gtk.Widget));
+        box.append(manual_row.as(gtk.Widget));
         self.cur_button = gtk.Button.newWithLabel(t("Update exchange rates"));
         _ = gtk.Button.signals.clicked.connect(self.cur_button, *Calc, &onCurrencyUpdate, self, .{});
         box.append(self.cur_button.as(gtk.Widget));
