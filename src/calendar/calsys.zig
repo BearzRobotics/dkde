@@ -297,7 +297,73 @@ pub fn describe(buf: []u8, sys: System, date: Date) []const u8 {
     return std.fmt.bufPrint(buf, "{s}, {d}", .{ specialName(v), v.year }) catch "";
 }
 
+/// Replaces the date tokens of the panel clock's format with the date in `sys`, leaving the
+/// strftime codes for the caller. The Rosquin systems have all the tokens (see
+/// common/rosquin.zig); the others have
+///
+///   @Y year   @n month name   @m month number   @d day of the month
+///   @N weekday name   @e weekday 1-7 (Sunday is 1)   @@ a literal @
+///
+/// @D (day code), @y (day of the Rosquin year) and @w (Rosquin week) are Rosquin's: in another
+/// system they still give the Rosquin values. On Fixed Calendar's Leap Day and Year Day, which are
+/// in no month or week, @d and @N are the day's name and the others are empty.
+pub fn expandTokens(allocator: std.mem.Allocator, format: []const u8, date: Date, sys: System) ![]u8 {
+    if (sys.layout()) |layout| return rosquin.expand(allocator, format, date, layout);
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    const v = fromCivil(sys, date);
+    const special = isSpecial(sys, v);
+    const weekday = weekdayOf(sys, date);
+    var month_buf: [48]u8 = undefined;
+    var year_buf: [64]u8 = undefined;
+    var i: usize = 0;
+    while (i < format.len) : (i += 1) {
+        if (format[i] != '@' or i + 1 >= format.len) {
+            try out.append(allocator, format[i]);
+            continue;
+        }
+        i += 1;
+        switch (format[i]) {
+            '@' => try out.append(allocator, '@'),
+            'Y' => try out.appendSlice(allocator, yearLabel(&year_buf, sys, v.year)),
+            'n' => if (!special) try out.appendSlice(allocator, monthLabel(&month_buf, sys, v.year, v.month)),
+            'm' => if (!special) try out.print(allocator, "{d}", .{v.month}),
+            'd' => if (special) try out.appendSlice(allocator, specialName(v)) else try out.print(allocator, "{d}", .{v.day}),
+            'N' => if (weekday) |w| try out.appendSlice(allocator, weekday_names[w]) else try out.appendSlice(allocator, specialName(v)),
+            'e' => if (weekday) |w| try out.print(allocator, "{d}", .{w + 1}),
+            'D' => try out.print(allocator, "{d}", .{rosquin.dayCode(date)}),
+            'y' => try out.print(allocator, "{d}", .{rosquin.dayOfYear(date)}),
+            'w' => if (rosquin.weekOfYear(date)) |w| try out.print(allocator, "{d}", .{w}),
+            else => {
+                try out.append(allocator, '@');
+                try out.append(allocator, format[i]);
+            },
+        }
+    }
+    return out.toOwnedSlice(allocator);
+}
+
 // ---- tests -------------------------------------------------------------------------------------
+
+test "clock tokens in the other calendars" {
+    const a = std.testing.allocator;
+    const d: Date = .{ .year = 2026, .month = 11, .day = 13 };
+    const g = try expandTokens(a, "%H:%M @N, @n @d, @Y @@ @q @D|", d, .gregorian);
+    defer a.free(g);
+    try std.testing.expectEqualStrings("%H:%M Friday, November 13, 2026 @ @q 18316|", g);
+    // The Julian date is 13 days behind: October 31.
+    const j = try expandTokens(a, "@n @d @m @e", d, .julian);
+    defer a.free(j);
+    try std.testing.expectEqualStrings("October 31 10 6", j);
+    // Fixed Calendar: Year Day is in no month or week.
+    const y = try expandTokens(a, "[@n][@N][@d]", .{ .year = 2026, .month = 12, .day = 31 }, .fixed);
+    defer a.free(y);
+    try std.testing.expectEqualStrings("[][Year Day][Year Day]", y);
+    // Rosquin goes to its own tokens.
+    const r = try expandTokens(a, "@D", d, .rosquin_months);
+    defer a.free(r);
+    try std.testing.expectEqualStrings("18316", r);
+}
 
 test "Julian is 13 days behind now" {
     const d: Date = .{ .year = 2026, .month = 10, .day = 31 };

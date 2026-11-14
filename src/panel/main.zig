@@ -8,6 +8,7 @@ const glib = @import("glib2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const common = @import("common");
+const calsys = @import("calsys");
 
 const Bar = @import("bar.zig").Bar;
 const taskbar_mod = @import("taskbar.zig");
@@ -365,6 +366,23 @@ const App = struct {
         }
     }
 
+    /// The calendar the clock's date tokens count in (`clock-calendar`). Older configs had only
+    /// the Rosquin calendar, chosen by `clock-rosquin-layout`: a format that uses the Rosquin day
+    /// code (@D) with the default Gregorian calendar still counts in that layout.
+    fn clockCalendar(self: *App, format: []const u8) calsys.System {
+        const name = self.config.getString(self.allocator, "panel", "clock-calendar", "gregorian") catch return .gregorian;
+        defer self.allocator.free(name);
+        const system = calsys.System.parse(name);
+        if (system != .gregorian or std.mem.indexOf(u8, format, "@D") == null) return system;
+        const layout_name = self.config.getString(self.allocator, "panel", "clock-rosquin-layout", "months") catch return .rosquin_months;
+        defer self.allocator.free(layout_name);
+        return switch (common.rosquin.Layout.parse(layout_name) orelse .months) {
+            .weeks => .rosquin_weeks,
+            .months => .rosquin_months,
+            .quarters => .rosquin_quarters,
+        };
+    }
+
     /// Redraws the clock and re-arms the timer for the next minute boundary,
     /// so the panel wakes once a minute rather than polling.
     fn updateClock(self: *App) void {
@@ -375,12 +393,11 @@ const App = struct {
 
         const format = self.config.getString(self.allocator, "panel", "clock-format", default_clock_format) catch return;
         defer self.allocator.free(format);
-        // @D, @Y, @n ... are Rosquin calendar tokens (common/rosquin.zig); the
-        // calendar they count in is `clock-rosquin-layout`.
-        const layout_name = self.config.getString(self.allocator, "panel", "clock-rosquin-layout", "months") catch return;
-        defer self.allocator.free(layout_name);
+        // @Y, @n, @d ... are date tokens in the calendar chosen in Settings (`clock-calendar`);
+        // the Rosquin ones are in common/rosquin.zig, the rest in the calendar's calsys.zig.
+        const system = self.clockCalendar(format);
         const today: common.civil.Date = .{ .year = now.getYear(), .month = @intCast(now.getMonth()), .day = @intCast(now.getDayOfMonth()) };
-        const expanded = common.rosquin.expand(self.allocator, format, today, common.rosquin.Layout.parse(layout_name) orelse .months) catch return;
+        const expanded = calsys.expandTokens(self.allocator, format, today, system) catch return;
         defer self.allocator.free(expanded);
         const formatz = self.allocator.dupeSentinel(u8, expanded, 0) catch return;
         defer self.allocator.free(formatz);

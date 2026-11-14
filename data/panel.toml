@@ -8,13 +8,20 @@ position = "bottom"
 autohide = false
 # strftime codes; \n starts a new line. 12-hour time over the date by default.
 clock-format = "%-I:%M %p\n%-m/%-d/%Y"
-# The Rosquin calendar can be shown in the clock with these codes in
-# clock-format: @D day code, @y day of the year (starts over at 1 on
-# September 21), @Y year, @n month (or quarter) name, @m its number,
-# @d day of it, @w week of the year, @e day of the 13-day week, @N day name,
-# @@ for a literal @. For example "%-I:%M %p\n@D/@y  Yr @Y  @n @d".
-# Which grouping @n, @m and @d count in: weeks (28 weeks, no months), months
-# (7 months of 4 weeks) or quarters (4 quarters of 7 weeks).
+# Dates in other calendars can be shown in the clock with these codes in
+# clock-format (the % codes are always Gregorian): @Y year, @n month name,
+# @m its number, @d day of the month, @N weekday name, @e weekday number,
+# @@ for a literal @. @D day code, @y day of the year (starts over at 1 on
+# September 21) and @w week of the year are Rosquin codes and give the
+# Rosquin values in any calendar (the Rosquin calendars also count @Y, @n, @m
+# and @d in their layout). For example "%-I:%M %p\n@N, @n @d, @Y".
+# Which calendar they count in: gregorian, julian, fixed (13 months),
+# rosquin_weeks (28 weeks, no months), rosquin_months (7 months of 4 weeks),
+# rosquin_quarters (4 quarters of 7 weeks), chinese, hebrew, coptic or
+# ethiopian.
+clock-calendar = "gregorian"
+# Older setting: a format with @D and clock-calendar = "gregorian" counts in
+# this Rosquin layout: weeks, months or quarters.
 clock-rosquin-layout = "months"
 # One button per app (with a count) instead of one per window.
 group-windows = true

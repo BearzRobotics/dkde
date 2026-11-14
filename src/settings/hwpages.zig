@@ -11,6 +11,7 @@ const glib = @import("glib2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const common = @import("common");
+const calsys = @import("calsys");
 
 const hw = @import("hardware.zig");
 const np = @import("netparse.zig");
@@ -1292,6 +1293,7 @@ pub const DateTimePage = struct {
         .{ .label = "24-hour, time and date", .format = "%H:%M\n%Y-%m-%d" },
         .{ .label = "24-hour, time only", .format = "%H:%M" },
         .{ .label = "Weekday, 12-hour time", .format = "%a %-I:%M %p" },
+        .{ .label = "Chosen calendar: weekday and date", .format = "%-I:%M %p\n@N, @n @d, @Y" },
         .{ .label = "Rosquin: day code and date", .format = "%-I:%M %p\n@D/@y  Yr @Y  @n @d" },
         .{ .label = "Rosquin: day code only", .format = "@D" },
         .{ .label = "Custom", .format = "" },
@@ -1323,15 +1325,15 @@ pub const DateTimePage = struct {
         st.dropdown = dropdownOf(&names);
         st.dropdown.setSelected(selected);
         win.SettingsWindow.addRowDesc(page, common.tr("Clock style"), common.tr("What the taskbar clock shows."), st.dropdown.as(gtk.Widget));
-        // The calendar the Rosquin codes (@D, @n, ...) count in.
-        const layouts = [_][]const u8{ "weeks", "months", "quarters" };
-        const layout_now = window.panel.getString(gpa, "panel", "clock-rosquin-layout", "months") catch null;
-        defer if (layout_now) |l| gpa.free(l);
-        var layout_names = [_][]const u8{ "Rɛ°Cᴀʟ—28.wѻ", "Rɛ°Cᴀʟ—7ᴍọ/4.wѻ", "Rɛ°Cᴀʟ—4ᴍọ/7.wѻ" };
-        const layout_drop = dropdownOf(&layout_names);
-        for (layouts, 0..) |l, i| if (layout_now != null and std.mem.eql(u8, l, layout_now.?)) layout_drop.setSelected(@intCast(i));
-        _ = gobject.Object.signals.notify.connect(layout_drop, *State, &onLayout, st, .{ .detail = "selected" });
-        win.SettingsWindow.addRowDesc(page, common.tr("Rosquin calendar"), common.tr("How the Rosquin codes in the format count: @D day code, @y day of the year, @Y year, @n month name, @m month number, @d day, @w week, @e day of week, @N day name."), layout_drop.as(gtk.Widget));
+        // The calendar the date codes (@Y, @n, @d, ...) count in: every system dkde-calendar has.
+        const systems = comptime std.enums.values(calsys.System);
+        var calendar_names: [systems.len][]const u8 = undefined;
+        inline for (systems, 0..) |sys, i| calendar_names[i] = sys.label();
+        const calendar_now = currentCalendar(window);
+        const calendar_drop = dropdownOf(&calendar_names);
+        inline for (systems, 0..) |sys, i| if (sys == calendar_now) calendar_drop.setSelected(@intCast(i));
+        _ = gobject.Object.signals.notify.connect(calendar_drop, *State, &onCalendar, st, .{ .detail = "selected" });
+        win.SettingsWindow.addRowDesc(page, common.tr("Calendar"), common.tr("The calendar the date codes in the clock format count in: @Y year, @n month name, @m month number, @d day, @N weekday name, @e weekday number. The Rosquin calendars add @D day code, @y day of the year and @w week. The % codes (strftime) are always Gregorian."), calendar_drop.as(gtk.Widget));
         // The format can hold a line break; the box shows it as \\n and writes the real one.
         st.entry = gtk.Entry.new();
         st.entry.as(gtk.Widget).setHexpand(1);
@@ -1379,10 +1381,17 @@ pub const DateTimePage = struct {
         st.entry.as(gtk.Editable).setText(shown);
     }
 
-    fn onLayout(dd: *gtk.DropDown, _: *gobject.ParamSpec, st: *State) callconv(.c) void {
-        const names = [_][:0]const u8{ "weeks", "months", "quarters" };
+    /// The calendar the clock uses now.
+    fn currentCalendar(window: *SettingsWindow) calsys.System {
+        const name = window.panel.getString(gpa, "panel", "clock-calendar", "gregorian") catch return .gregorian;
+        defer gpa.free(name);
+        return calsys.System.parse(name);
+    }
+
+    fn onCalendar(dd: *gtk.DropDown, _: *gobject.ParamSpec, st: *State) callconv(.c) void {
+        const systems = comptime std.enums.values(calsys.System);
         const i = dd.getSelected();
-        if (i < names.len) st.window.panel.setString("panel", "clock-rosquin-layout", names[i]) catch {};
+        if (i < systems.len) st.window.panel.setString("panel", "clock-calendar", systems[i].name()) catch {};
     }
 
     fn onFormatEdited(entry: *gtk.Editable, st: *State) callconv(.c) void {

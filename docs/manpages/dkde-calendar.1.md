@@ -200,7 +200,7 @@ Russian Orthodox
 The fixed days of each calendar are in tables built into the program (liturgy-no.txt, liturgy-1962.txt, liturgy-ru.txt). A file of the same name in the user's configuration directory replaces the built-in table.
 
 PANEL CLOCK
-The taskbar clock in dkde-panel takes a format of strftime codes (panel.clock-format). The calendar tokens below are replaced before strftime sees the format, so they can be mixed with it. Choose "Rosquin: day code and date" or "Rosquin: day code only" under Settings, Date & time, Clock style, or write the tokens in the custom format.
+The taskbar clock in dkde-panel takes a format of strftime codes (panel.clock-format). The calendar tokens below are replaced before strftime sees the format, so they can be mixed with it. Under Settings, Date & time, pick the Calendar (any of the systems this program has) and a Clock style such as "Chosen calendar: weekday and date", "Rosquin: day code and date" or "Rosquin: day code only", or write the tokens in the custom format. The table is for the Rosquin calendars; the other calendars have @Y, @n, @m, @d, @N and @e.
 
 Token	Meaning
 @D	day code (18309)
@@ -214,7 +214,7 @@ Token	Meaning
 @N	name of the day (Harrow)
 @@	a literal @
 
-panel.clock-rosquin-layout (weeks, months or quarters) says what @n, @m and @d count in; Settings has it as "Rosquin calendar". Example: clock-format = "%-I:%M %p\n@D/@y  Yr @Y  @n @d" shows "9:30 AM" over "18309/47  Yr 50  Gleaning 47". The clock redraws every minute and follows the local date.
+panel.clock-calendar names the calendar the tokens count in (gregorian, julian, fixed, rosquin_weeks, rosquin_months, rosquin_quarters, chinese, hebrew, coptic or ethiopian); Settings has it as "Calendar" on the Date & time page. In the other calendars only @Y, @n, @m, @d, @N (weekday name) and @e (weekday number, Sunday 1) apply, and @D, @y and @w keep their Rosquin values; the % codes are always Gregorian. A format that uses @D while clock-calendar is gregorian is counted in the Rosquin layout named by the older panel.clock-rosquin-layout (weeks, months or quarters), as before. Example: clock-format = "%-I:%M %p\n@D/@y  Yr @Y  @n @d" shows "9:30 AM" over "18309/47  Yr 50  Gleaning 47". The clock redraws every minute and follows the local date.
 
 EVENTS AND NOTES
 The lunar-events table that accompanied the workbook (16965 Lunar Eventz.pdf) was made by hand and its author says it may contain errors, so the program does not use it; moon phases are computed.
