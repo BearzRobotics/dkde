@@ -1,0 +1,13 @@
+# dkde-hex: the hex editor. Copy a setting into ~/.config/dkde/hex.toml to
+# change it; the editor also writes the folders chosen from its menus.
+
+[hex]
+# Folder of Kaitai Struct .ksy files, for example a clone of
+# https://github.com/kaitai-io/kaitai_struct_formats . Empty: ~/.local/share/dkde/formats
+formats-dir = ""
+# Folder of ImHex patterns: a clone of https://github.com/WerWolv/ImHex-Patterns
+# (with patterns/ and includes/ inside). Empty: ~/.local/share/dkde/patterns
+patterns-dir = ""
+# How much of a disk or device is held in memory at once, in MiB (1 to 512).
+# Lower it on a computer with little memory.
+disk-window-mib = 4

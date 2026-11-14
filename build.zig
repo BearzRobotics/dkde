@@ -33,6 +33,7 @@ const programs = .{
     .{ "idle", @import("src/idle/build.zig") },
     .{ "pdf", @import("src/pdf/build.zig") },
     .{ "parted", @import("src/parted/build.zig") },
+    .{ "hex", @import("src/hex/build.zig") },
     .{ "notify", @import("src/notify/build.zig") },
     .{ "polkit", @import("src/polkit/build.zig") },
     .{ "polkit-ui", @import("src/polkit-ui/build.zig") },
@@ -156,7 +157,7 @@ pub fn build(b: *std.Build) void {
     core.linkSystemLibrary("gio-2.0", .{});
     inline for (.{ "glib2", "gobject2", "gio2", "giounix2" }) |name| core.addImport(name, gobject.module(name));
     // The shipped defaults, so core's tests can check that they parse.
-    inline for (.{ "dkde", "panel", "term", "files", "edit", "calendar", "view" }) |name| {
+    inline for (.{ "dkde", "panel", "term", "files", "edit", "calendar", "view", "hex" }) |name| {
         core.addAnonymousImport("data-" ++ name ++ ".toml", .{ .root_source_file = b.path("data/" ++ name ++ ".toml") });
     }
     core.addImport("toml", b.dependency("toml", .{ .target = target, .optimize = optimize }).module("toml"));

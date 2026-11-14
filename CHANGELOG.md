@@ -2,6 +2,11 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
+## Unreleased
+
+### Added
+- **dkde-hex** is back: the hex editor (disk mode, data inspector, Kaitai Struct and ImHex structure views), restored from before the restructure and moved to `hex.toml`, `--help`/`--version` and the per-program build.
+
 ## 0.2.0 (2026-11-13), first alpha
 
 ### Added

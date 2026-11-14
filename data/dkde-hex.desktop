@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hex Editor
+Comment=View and edit the bytes of a file
+Exec=dkde-hex %f
+Icon=accessories-text-editor
+Terminal=false
+Categories=Utility;Development;
+MimeType=application/octet-stream;
