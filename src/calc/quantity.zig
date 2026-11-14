@@ -15,7 +15,7 @@ pub const ndim = 9;
 pub const Dims = [ndim]i8;
 const base_names = [ndim][]const u8{ "m", "kg", "s", "A", "K", "mol", "cd", "bit", "cur" };
 
-pub const Error = error{ OutOfMemory, TooLarge, DivisionByZero, Domain, Units };
+pub const Error = error{ OutOfMemory, TooLarge, DivisionByZero, Domain, Units, NoRates };
 
 /// A unit as used in an entry (prefix applied).
 pub const Unit = struct {
@@ -32,6 +32,121 @@ pub const Quantity = struct {
     value: Number,
     units: []const UPow,
 };
+
+// ---- currencies -------------------------------------------------------------------------
+//
+// Money is one more dimension ("cur"); every currency is a unit whose factor is
+// its value in US dollars, set from the rates in rates.zig. The names are known
+// without rates (so "100 USD to EUR" says that rates are missing, not that USD is
+// unknown); the rates themselves are filled in by the program.
+
+pub const Kind = enum { fiat, crypto, goldback };
+
+pub const Currency = struct {
+    code: []const u8,
+    kind: Kind,
+    /// Dollars per unit: a decimal ("7.75"), a ratio of decimals ("1.1052/176.83") or "1".
+    usd: []const u8,
+    date: []const u8,
+    source: []const u8,
+};
+
+pub const CryptoInfo = struct { id: []const u8, code: []const u8, name: []const u8 };
+
+/// CoinGecko ids of the coins offered (the list is short on purpose).
+pub const crypto_list = [_]CryptoInfo{
+    .{ .id = "bitcoin", .code = "BTC", .name = "Bitcoin" },
+    .{ .id = "ethereum", .code = "ETH", .name = "Ether" },
+    .{ .id = "tether", .code = "USDT", .name = "Tether" },
+    .{ .id = "binancecoin", .code = "BNB", .name = "BNB" },
+    .{ .id = "ripple", .code = "XRP", .name = "XRP" },
+    .{ .id = "usd-coin", .code = "USDC", .name = "USD Coin" },
+    .{ .id = "solana", .code = "SOL", .name = "Solana" },
+    .{ .id = "cardano", .code = "ADA", .name = "Cardano" },
+    .{ .id = "dogecoin", .code = "DOGE", .name = "Dogecoin" },
+    .{ .id = "tron", .code = "TRX", .name = "TRON" },
+    .{ .id = "chainlink", .code = "LINK", .name = "Chainlink" },
+    .{ .id = "avalanche-2", .code = "AVAX", .name = "Avalanche" },
+    .{ .id = "polkadot", .code = "DOT", .name = "Polkadot" },
+    .{ .id = "litecoin", .code = "LTC", .name = "Litecoin" },
+    .{ .id = "bitcoin-cash", .code = "BCH", .name = "Bitcoin Cash" },
+    .{ .id = "monero", .code = "XMR", .name = "Monero" },
+    .{ .id = "stellar", .code = "XLM", .name = "Stellar" },
+    .{ .id = "cosmos", .code = "ATOM", .name = "Cosmos" },
+    .{ .id = "ethereum-classic", .code = "ETC", .name = "Ethereum Classic" },
+    .{ .id = "pax-gold", .code = "PAXG", .name = "PAX Gold (1 troy ounce of gold)" },
+};
+
+/// The currencies of the European Central Bank's list, and the dollar.
+pub const fiat_codes = [_][]const u8{
+    "USD", "EUR", "JPY", "BGN", "CZK", "DKK", "GBP", "HUF", "PLN", "RON", "SEK", "CHF", "ISK", "NOK", "TRY", "AUD",
+    "BRL", "CAD", "CNY", "HKD", "IDR", "ILS", "INR", "KRW", "MXN", "MYR", "NZD", "PHP", "SGD", "THB", "ZAR",
+};
+
+const Alias = struct { name: []const u8, code: []const u8 };
+const aliases = [_]Alias{
+    .{ .name = "dollar", .code = "USD" },  .{ .name = "dollars", .code = "USD" },
+    .{ .name = "euro", .code = "EUR" },    .{ .name = "euros", .code = "EUR" },
+    .{ .name = "yen", .code = "JPY" },     .{ .name = "sterling", .code = "GBP" },
+    .{ .name = "bitcoin", .code = "BTC" }, .{ .name = "bitcoins", .code = "BTC" },
+    .{ .name = "ether", .code = "ETH" },   .{ .name = "goldback", .code = "GBK" },
+    .{ .name = "goldbacks", .code = "GBK" },
+};
+
+/// The upper-case code for a currency name ("usd", "dollars", "BTC", "goldback"), else null.
+pub fn canonicalCode(name: []const u8) ?[]const u8 {
+    for (fiat_codes) |c| if (std.ascii.eqlIgnoreCase(c, name)) return c;
+    for (crypto_list) |c| if (std.ascii.eqlIgnoreCase(c.code, name)) return c.code;
+    if (std.ascii.eqlIgnoreCase(name, "GBK")) return "GBK";
+    for (aliases) |al| if (al.code.len > 0 and std.ascii.eqlIgnoreCase(al.name, name)) return al.code;
+    return null;
+}
+
+pub fn currencyKnown(name: []const u8) bool {
+    return canonicalCode(name) != null;
+}
+
+var rate_table: []const Currency = &.{};
+
+/// The rates in use. The slice must outlive its use (the program keeps it).
+pub fn setCurrencies(list: []const Currency) void {
+    rate_table = list;
+}
+
+pub fn currencies() []const Currency {
+    return rate_table;
+}
+
+/// The rates an entry used (for showing their source and date).
+var used_buf: [16]Currency = undefined;
+var used_n: usize = 0;
+
+pub fn resetUsed() void {
+    used_n = 0;
+}
+
+pub fn usedRates() []const Currency {
+    return used_buf[0..used_n];
+}
+
+fn noteUsed(c: Currency) void {
+    for (used_buf[0..used_n]) |u| if (std.mem.eql(u8, u.code, c.code)) return;
+    if (used_n < used_buf.len) {
+        used_buf[used_n] = c;
+        used_n += 1;
+    }
+}
+
+fn currencyUnit(a: std.mem.Allocator, name: []const u8) Error!?Unit {
+    const code = canonicalCode(name) orelse return null;
+    for (rate_table) |c| if (std.mem.eql(u8, c.code, code)) {
+        noteUsed(c);
+        var dims = @as(Dims, @splat(0));
+        dims[8] = 1;
+        return .{ .sym = code, .dims = dims, .factor = try parseFactor(a, c.usd) };
+    };
+    return error.NoRates;
+}
 
 // ---- the table ---------------------------------------------------------------------
 
@@ -272,7 +387,7 @@ fn find(name: []const u8) ?Found {
 
 /// Is `name` a unit? (No allocation; for deciding how to read an entry.)
 pub fn isUnitName(name: []const u8) bool {
-    return find(name) != null;
+    return find(name) != null or currencyKnown(name);
 }
 
 // ---- building units ---------------------------------------------------------------------
@@ -308,7 +423,7 @@ fn tenPow(a: std.mem.Allocator, e: i32) Error!Number {
 }
 
 pub fn resolve(a: std.mem.Allocator, name: []const u8) Error!?Unit {
-    const f = find(name) orelse return null;
+    const f = find(name) orelse return currencyUnit(a, name);
     var factor = try parseFactor(a, f.def.factor);
     var sym: []const u8 = std.mem.sliceTo(f.def.sym, '|');
     if (f.prefix) |p| {
@@ -633,4 +748,25 @@ test "products take derived names" {
     const x: Quantity = .{ .value = try num.fromInt(a, 3), .units = try parseUnits(a, &.{"m"}, &.{1}) };
     const y: Quantity = .{ .value = try num.fromInt(a, 2), .units = try parseUnits(a, &.{"ft"}, &.{1}) };
     try std.testing.expectEqualStrings("1.8288 m²", try format(a, try mul(a, x, y), .{ .decimals = 6 }));
+}
+
+test "currencies convert through dollars" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const table = [_]Currency{
+        .{ .code = "USD", .kind = .fiat, .usd = "1", .date = "d", .source = "s" },
+        .{ .code = "EUR", .kind = .fiat, .usd = "1.1052", .date = "d", .source = "s" },
+        .{ .code = "GBK", .kind = .goldback, .usd = "7.75", .date = "d", .source = "s" },
+    };
+    setCurrencies(&table);
+    defer setCurrencies(&.{});
+    resetUsed();
+    const hundred_usd: Quantity = .{ .value = try num.fromInt(a, 100), .units = try parseUnits(a, &.{"usd"}, &.{1}) };
+    const eur = try convert(a, hundred_usd, try parseUnits(a, &.{"EUR"}, &.{1}));
+    try std.testing.expectEqualStrings("90.4813608397 EUR", try format(a, eur, .{ .decimals = 10 }));
+    const gb = try convert(a, .{ .value = try num.fromInt(a, 4), .units = try parseUnits(a, &.{"goldbacks"}, &.{1}) }, try parseUnits(a, &.{"USD"}, &.{1}));
+    try std.testing.expectEqualStrings("31 USD", try format(a, gb, .{}));
+    try std.testing.expectEqual(@as(usize, 3), usedRates().len);
+    try std.testing.expectError(error.NoRates, resolve(a, "BTC"));
 }

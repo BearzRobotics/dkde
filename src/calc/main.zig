@@ -30,6 +30,8 @@ const graph_mod = @import("graph.zig");
 const simplify = @import("simplify.zig");
 const formulas = @import("formulas.zig");
 const calculus = @import("calculus.zig");
+const quantity = @import("quantity.zig");
+const rates = @import("rates.zig");
 
 const t = common.tr;
 /// Thousands are grouped with a narrow no-break space, which can never be
@@ -37,7 +39,7 @@ const t = common.tr;
 const group_sep = "\u{202F}";
 
 const Mode = enum { standard, scientific, programmer };
-const Pane = enum { none, history, units, dates, graph, formulas };
+const Pane = enum { none, history, units, currency, dates, graph, formulas };
 
 const Cmd = enum { insert, enter, clear, back, negate, reciprocal, mc, mr, ms, mplus, mminus, plot };
 
@@ -164,6 +166,18 @@ const Calc = struct {
     unit_to: *gtk.DropDown = undefined,
     unit_value: *gtk.Entry = undefined,
     unit_result: *gtk.Label = undefined,
+    // Currency.
+    cur_from: *gtk.DropDown = undefined,
+    cur_to: *gtk.DropDown = undefined,
+    cur_value: *gtk.Entry = undefined,
+    cur_result: *gtk.Label = undefined,
+    cur_status: *gtk.Label = undefined,
+    cur_button: *gtk.Button = undefined,
+    /// The rates in use, in their own arena (quantity.zig points into it).
+    rate_arena: ?std.heap.ArenaAllocator = null,
+    updating: bool = false,
+    /// The Currency pane exists (rates can load before it is built).
+    cur_ready: bool = false,
     // Date Calculation.
     date_kind: *gtk.DropDown = undefined,
     date_system: *gtk.DropDown = undefined,
@@ -206,6 +220,7 @@ const Calc = struct {
         self.graph = try graph_mod.Graph.create(gpa, &self.session);
         self.readSettings();
         self.loadState();
+        self.loadRates();
 
         const win = self.window.as(gtk.Window);
         win.setTitle(t("Calculator"));
@@ -278,6 +293,7 @@ const Calc = struct {
         self.side.as(gtk.Widget).setHexpand(1);
         _ = self.side.addNamed(self.buildHistory(), "history");
         _ = self.side.addNamed(self.buildUnits(), "units");
+        _ = self.side.addNamed(self.buildCurrency(), "currency");
         _ = self.side.addNamed(self.buildDates(), "dates");
         _ = self.side.addNamed(self.graph.widget(), "graph");
         _ = self.side.addNamed(self.buildFormulas(), "formulas");
@@ -369,9 +385,11 @@ const Calc = struct {
                 .separator,
                 mb.checkKey("_History", "pane-history", self.pane == .history, "<Control>h"),
                 mb.checkKey("_Unit Conversion", "pane-units", self.pane == .units, "<Control>u"),
+                mb.checkKey("_Currency", "pane-currency", self.pane == .currency, "<Control>k"),
                 mb.checkKey("_Date Calculation", "pane-dates", self.pane == .dates, "<Control>e"),
                 mb.checkKey("_Graph", "pane-graph", self.pane == .graph, "<Control>g"),
                 mb.checkKey("_Formulas", "pane-formulas", self.pane == .formulas, "<Control><Shift>f"),
+                mb.item("Update E_xchange Rates", "update-rates", null),
                 .separator,
                 mb.check("_Degrees", "angle-degrees", self.angle == .degrees),
                 mb.check("_Radians", "angle-radians", self.angle == .radians),
@@ -740,11 +758,13 @@ const Calc = struct {
         };
 
         var p: eval.Problem = .{};
+        quantity.resetUsed();
         const outcome = eval.run(a, &self.session, text, self.evalMode(), &p) catch |e| return self.showError(e, p, text);
         switch (outcome) {
             .value => |v| {
                 const shown = self.displayText(a, v) catch return;
                 self.finishResult(expr_copy, shown, v, a);
+                self.noteRatesUsed(a);
             },
             .assigned => |s| {
                 const shown = self.displayText(a, s.value) catch return;
@@ -794,7 +814,10 @@ const Calc = struct {
                 if (self.plain) |pl| self.gpa.free(pl);
                 self.plain = null;
             },
-            .rich => |v| self.finishRich(expr_copy, v, null, a),
+            .rich => |v| {
+                self.finishRich(expr_copy, v, null, a);
+                self.noteRatesUsed(a);
+            },
             .rich_assigned => |s| {
                 self.finishRich(expr_copy, s.value, s.name, a);
                 self.fillVars();
@@ -926,6 +949,7 @@ const Calc = struct {
             error.NoSolution => t("No real solution was found"),
             error.Recursion => t("A function uses itself without end"),
             error.Units => t("These units do not match: they measure different things"),
+            error.NoRates => t("No exchange rates yet: choose View ▸ Update Exchange Rates"),
             error.OutOfMemory => t("Not enough memory"),
         };
         self.preview.setText(message);
@@ -1455,6 +1479,248 @@ const Calc = struct {
         const shown = num.format(a, num.fromFloat(r) catch return self.unit_result.setText("—"), self.style) catch return;
         var buf: [256]u8 = undefined;
         self.unit_result.setText(std.fmt.bufPrintSentinel(&buf, "= {s} {s}", .{ shown, c.units[to].names[0] }, 0) catch "");
+    }
+
+    // ---- currencies -------------------------------------------------------------------------
+    //
+    // Rates come from rates.zig's sources only when View > Update Exchange Rates is
+    // chosen; otherwise the last copy in the cache directory is used.
+
+    fn ratesPath(self: *Calc) ?[]u8 {
+        return std.fmt.allocPrint(self.gpa, "{s}/dkde/calc-rates", .{std.mem.span(glib.getUserCacheDir())}) catch null;
+    }
+
+    /// Takes a copy of `list` as the rates in use.
+    fn setRates(self: *Calc, list: []const quantity.Currency) void {
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        const a = arena.allocator();
+        const text = rates.serialize(a, list) catch return arena.deinit();
+        const copy = rates.deserialize(a, text) catch return arena.deinit();
+        quantity.setCurrencies(copy);
+        if (self.rate_arena) |*old| old.deinit();
+        self.rate_arena = arena;
+        self.showRateStatus();
+    }
+
+    fn loadRates(self: *Calc) void {
+        const path = self.ratesPath() orelse return;
+        defer self.gpa.free(path);
+        const text = (common.fsio.readFile(self.gpa, path, 1 << 20) catch null) orelse return;
+        defer self.gpa.free(text);
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const list = rates.deserialize(arena.allocator(), text) catch return;
+        self.setRates(list);
+    }
+
+    fn saveRates(self: *Calc, a: std.mem.Allocator, list: []const quantity.Currency) void {
+        const text = rates.serialize(a, list) catch return;
+        const path = self.ratesPath() orelse return;
+        defer self.gpa.free(path);
+        if (std.fs.path.dirname(path)) |dir| common.fsio.makePath(dir) catch {};
+        common.fsio.writeFileAtomic(path, text) catch {};
+    }
+
+    fn showRateStatus(self: *Calc) void {
+        if (!self.cur_ready) return;
+        const list = quantity.currencies();
+        var buf: [320]u8 = undefined;
+        var newest: []const u8 = "";
+        for (list) |c| if (std.mem.order(u8, c.date, newest) == .gt) {
+            newest = c.date;
+        };
+        const msg: [:0]const u8 = if (list.len == 0)
+            t("No rates yet. Update them from View ▸ Update Exchange Rates.")
+        else
+            std.fmt.bufPrintSentinel(&buf, "{d} currencies. Newest rate: {s}.", .{ list.len, newest }, 0) catch "";
+        self.cur_status.setText(msg);
+    }
+
+    /// Under a result that used currencies: where the rates came from and when.
+    fn noteRatesUsed(self: *Calc, a: std.mem.Allocator) void {
+        const used = quantity.usedRates();
+        if (used.len == 0) return;
+        var line: std.ArrayList(u8) = .empty;
+        line.appendSlice(a, "Rates: ") catch return;
+        for (used, 0..) |c, i| {
+            line.print(a, "{s}{s} {s} ({s})", .{ if (i > 0) "; " else "", c.code, c.date, c.source }) catch return;
+        }
+        const z = a.dupeSentinel(u8, line.items, 0) catch return;
+        self.preview.setText(z);
+    }
+
+    const RateJob = struct {
+        calc: *Calc,
+        got: std.ArrayList(quantity.Currency) = .empty,
+        errors: u8 = 0,
+        arena: std.heap.ArenaAllocator,
+    };
+
+    fn updateRates(self: *Calc) void {
+        if (self.updating) return;
+        const job = self.gpa.create(RateJob) catch return;
+        job.* = .{ .calc = self, .arena = std.heap.ArenaAllocator.init(self.gpa) };
+        const thread = std.Thread.spawn(.{}, rateWorker, .{job}) catch {
+            job.arena.deinit();
+            self.gpa.destroy(job);
+            return self.cur_status.setText(t("Could not start the update."));
+        };
+        thread.detach();
+        self.updating = true;
+        self.cur_button.as(gtk.Widget).setSensitive(0);
+        self.cur_status.setText(t("Updating exchange rates…"));
+    }
+
+    fn rateWorker(job: *RateJob) void {
+        const a = job.arena.allocator();
+        const now = rates.dateText(a, @divFloor(glib.getRealTime(), std.time.us_per_s)) catch "";
+        const Src = struct { url: []const u8, kind: u8 };
+        const sources = [_]Src{
+            .{ .url = rates.ecb_url, .kind = 0 },
+            .{ .url = rates.coingecko_url, .kind = 1 },
+            .{ .url = rates.goldback_url, .kind = 2 },
+        };
+        for (sources) |src| {
+            const body = common.feeds.fetchWith(a, src.url, null, "*/*") catch {
+                job.errors += 1;
+                continue;
+            };
+            const list = switch (src.kind) {
+                0 => rates.parseEcb(a, body),
+                1 => rates.parseCoingecko(a, body, now),
+                else => rates.parseGoldback(a, body),
+            } catch {
+                job.errors += 1;
+                continue;
+            };
+            job.got.appendSlice(a, list) catch {};
+        }
+        _ = glib.idleAdd(rateDone, job);
+    }
+
+    fn rateDone(data: ?*anyopaque) callconv(.c) c_int {
+        const job: *RateJob = @ptrCast(@alignCast(data.?));
+        const self = job.calc;
+        defer {
+            job.arena.deinit();
+            self.gpa.destroy(job);
+        }
+        self.updating = false;
+        self.cur_button.as(gtk.Widget).setSensitive(1);
+        if (job.got.items.len > 0) {
+            const a = job.arena.allocator();
+            if (rates.merge(a, quantity.currencies(), job.got.items)) |merged| {
+                self.setRates(merged);
+                self.saveRates(a, merged);
+            } else |_| {}
+        }
+        if (job.errors > 0) {
+            var buf: [160]u8 = undefined;
+            const msg = std.fmt.bufPrintSentinel(&buf, "{d} of 3 sources could not be read; the last rates are kept for those.", .{job.errors}, 0) catch "";
+            self.cur_status.setText(msg);
+        }
+        self.convertCurrency();
+        self.refreshPreview();
+        return 0;
+    }
+
+    fn buildCurrency(self: *Calc) *gtk.Widget {
+        const box = gtk.Box.new(.vertical, 8);
+        const title = gtk.Label.new(t("Currency"));
+        title.setXalign(0);
+        title.as(gtk.Widget).addCssClass("heading");
+        box.append(title.as(gtk.Widget));
+
+        var names: [quantity.fiat_codes.len + quantity.crypto_list.len + 2:null]?[*:0]const u8 = @splat(null);
+        var n: usize = 0;
+        inline for (quantity.fiat_codes) |c| {
+            names[n] = @ptrCast((c ++ "\x00").ptr);
+            n += 1;
+        }
+        inline for (quantity.crypto_list) |c| {
+            names[n] = @ptrCast((c.code ++ "\x00").ptr);
+            n += 1;
+        }
+        names[n] = "GBK";
+        self.cur_value = gtk.Entry.new();
+        self.cur_value.as(gtk.Editable).setText("1");
+        _ = gtk.Editable.signals.changed.connect(self.cur_value.as(gtk.Editable), *Calc, &onCurrencyChanged, self, .{});
+        box.append(self.cur_value.as(gtk.Widget));
+        self.cur_from = gtk.DropDown.newFromStrings(@ptrCast(&names));
+        self.cur_to = gtk.DropDown.newFromStrings(@ptrCast(&names));
+        self.cur_to.setSelected(1);
+        _ = gobject.Object.signals.notify.connect(self.cur_from, *Calc, &onCurrencyPick, self, .{ .detail = "selected" });
+        _ = gobject.Object.signals.notify.connect(self.cur_to, *Calc, &onCurrencyPick, self, .{ .detail = "selected" });
+        box.append(self.cur_from.as(gtk.Widget));
+        box.append(self.cur_to.as(gtk.Widget));
+        self.cur_result = gtk.Label.new("");
+        self.cur_result.setXalign(0);
+        self.cur_result.setSelectable(1);
+        self.cur_result.setWrap(1);
+        box.append(self.cur_result.as(gtk.Widget));
+        self.cur_button = gtk.Button.newWithLabel(t("Update exchange rates"));
+        _ = gtk.Button.signals.clicked.connect(self.cur_button, *Calc, &onCurrencyUpdate, self, .{});
+        box.append(self.cur_button.as(gtk.Widget));
+        self.cur_status = gtk.Label.new("");
+        self.cur_status.setXalign(0);
+        self.cur_status.setWrap(1);
+        self.cur_status.setMaxWidthChars(40);
+        self.cur_status.as(gtk.Widget).addCssClass("dim-label");
+        box.append(self.cur_status.as(gtk.Widget));
+        const hint = gtk.Label.new(t("In the calculator, type for example 100 USD to EUR, 0.5 BTC in USD or 3 goldback to USD. Rates are fetched only when you update them."));
+        hint.setXalign(0);
+        hint.setWrap(1);
+        hint.setMaxWidthChars(40);
+        hint.as(gtk.Widget).addCssClass("dim-label");
+        hint.as(gtk.Widget).setVexpand(1);
+        hint.as(gtk.Widget).setValign(.end);
+        box.append(hint.as(gtk.Widget));
+        self.cur_ready = true;
+        self.showRateStatus();
+        self.convertCurrency();
+        return box.as(gtk.Widget);
+    }
+
+    fn onCurrencyChanged(_: *gtk.Editable, self: *Calc) callconv(.c) void {
+        self.convertCurrency();
+    }
+    fn onCurrencyPick(_: *gtk.DropDown, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        self.convertCurrency();
+    }
+    fn onCurrencyUpdate(_: *gtk.Button, self: *Calc) callconv(.c) void {
+        self.updateRates();
+    }
+
+    fn currencyCode(i: u32) []const u8 {
+        if (i < quantity.fiat_codes.len) return quantity.fiat_codes[i];
+        const j = i - quantity.fiat_codes.len;
+        if (j < quantity.crypto_list.len) return quantity.crypto_list[j].code;
+        return "GBK";
+    }
+
+    fn convertCurrency(self: *Calc) void {
+        if (!self.cur_ready) return;
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const amount = cleaned(a, std.mem.span(self.cur_value.as(gtk.Editable).getText())) catch return;
+        if (amount.len == 0) return self.cur_result.setText("");
+        const text = std.fmt.allocPrint(a, "({s}) {s} to {s}", .{ amount, currencyCode(self.cur_from.getSelected()), currencyCode(self.cur_to.getSelected()) }) catch return;
+        var p: eval.Problem = .{};
+        const out = eval.run(a, &self.session, text, self.evalMode(), &p) catch |e| {
+            return self.cur_result.setText(if (e == error.NoRates) t("No exchange rates yet.") else "");
+        };
+        switch (out) {
+            .value => |v| {
+                const shown = self.displayText(a, v) catch return;
+                self.cur_result.setText(a.dupeSentinel(u8, shown, 0) catch return);
+            },
+            .rich => |v| {
+                const shown = rich.format(a, v, self.style) catch return;
+                self.cur_result.setText(a.dupeSentinel(u8, shown, 0) catch return);
+            },
+            else => self.cur_result.setText(""),
+        }
     }
 
     // ---- date calculation -------------------------------------------------------------------
@@ -2113,7 +2379,7 @@ const Calc = struct {
         const w = self.side.as(gtk.Widget);
         w.setVisible(@intFromBool(pane != .none));
         if (pane != .none) self.side.setVisibleChildName(@tagName(pane));
-        inline for (.{ "history", "units", "dates", "graph", "formulas" }) |name| {
+        inline for (.{ "history", "units", "currency", "dates", "graph", "formulas" }) |name| {
             common.menubar.setChecked(self.window, "pane-" ++ name, std.mem.eql(u8, @tagName(pane), name));
         }
         self.config.setString("calc", "pane", @tagName(pane)) catch {};
@@ -2126,6 +2392,7 @@ const Calc = struct {
         if (eql(u8, action, "close")) return self.window.as(gtk.Window).close();
         if (eql(u8, action, "save-session")) return self.sessionDialog(true);
         if (eql(u8, action, "open-session")) return self.sessionDialog(false);
+        if (eql(u8, action, "update-rates")) return self.updateRates();
         if (eql(u8, action, "copy")) return self.copyResult();
         if (eql(u8, action, "paste")) {
             _ = self.entry.as(gtk.Widget).activateAction("clipboard.paste", null);
@@ -2280,7 +2547,7 @@ const Calc = struct {
         var arena = std.heap.ArenaAllocator.init(self.gpa);
         defer arena.deinit();
         const text = self.stateText(arena.allocator()) orelse return self.preview.setText(t("The session could not be saved."));
-        var full = std.mem.span(path);
+        var full: []const u8 = std.mem.span(path);
         const named = if (std.ascii.endsWithIgnoreCase(full, ".dkcalc")) full else (std.fmt.allocPrint(arena.allocator(), "{s}.dkcalc", .{full}) catch return);
         full = named;
         common.fsio.writeFileAtomic(full, text) catch return self.preview.setText(t("The session could not be saved."));

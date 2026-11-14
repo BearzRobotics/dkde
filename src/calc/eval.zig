@@ -66,6 +66,8 @@ pub const Error = error{
     Recursion,
     /// Units that cannot be added or converted.
     Units,
+    /// A currency without an exchange rate yet.
+    NoRates,
     OutOfMemory,
 };
 
