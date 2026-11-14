@@ -179,6 +179,9 @@ fn stamp(path: []const u8) ?struct { mtime: i64, size: u64 } {
 
 const max_entries = 4000;
 
+/// Pattern files installed with the program, in the data folder.
+const bundled_patterns = [_][]const u8{"pdf.hexpat"};
+
 pub const Library = struct {
     allocator: std.mem.Allocator,
     dir: []u8,
@@ -212,6 +215,13 @@ pub const Library = struct {
             const z = try allocator.dupeSentinel(u8, inner, 0);
             defer allocator.free(z);
             try self.walk(if (glib.fileTest(z, .{ .is_dir = true }) != 0) inner else self.pattern_dir, 0);
+        }
+        // Patterns that ship with DKDE (the ImHex collection has none for these).
+        for (bundled_patterns) |file| {
+            const found = common.paths.systemDataFile(allocator, file) catch null orelse continue;
+            defer allocator.free(found);
+            if (self.reuse(found)) continue;
+            if (self.addPattern(found, file)) |_| self.reparsed += 1 else |_| {}
         }
         std.mem.sort(Entry, self.entries.items, {}, entryLess);
         // Rewrite the index when a file was parsed, or one it listed is gone.

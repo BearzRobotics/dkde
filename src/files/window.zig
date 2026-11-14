@@ -1964,7 +1964,7 @@ pub const FilesWindow = struct {
             argv.deinit(a);
         }
         common.appinfo.displayEnvArgs(a, &argv) catch return;
-        argv.append(a, a.dupe(u8, "dkde-files") catch return) catch return;
+        argv.append(a, common.appinfo.programCommand(a, "dkde-files") catch return) catch return;
         argv.append(a, a.dupe(u8, std.mem.span(path_c)) catch return) catch return;
         const view = a.alloc([]const u8, argv.items.len) catch return;
         defer a.free(view);

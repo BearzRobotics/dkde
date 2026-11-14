@@ -185,11 +185,17 @@ const Interp = struct {
         };
     }
 
+    /// A float as a whole number, refusing NaN, infinities and what does not fit.
+    fn floatToInt(self: *Interp, obj: *Obj, f: f64) Error!i64 {
+        if (std.math.isNan(f) or f >= 9.2e18 or f <= -9.2e18) return self.fail(obj, obj.io.abs(), "a number is out of range", .{});
+        return @intFromFloat(f);
+    }
+
     fn asInt(self: *Interp, obj: *Obj, v: Val) Error!i64 {
         return switch (v) {
             .int => |i| i,
             .boolean => |b| @intFromBool(b),
-            .float => |f| @intFromFloat(f),
+            .float => |f| self.floatToInt(obj, f),
             else => self.fail(obj, obj.io.abs(), "expected a number", .{}),
         };
     }
@@ -338,8 +344,8 @@ const Interp = struct {
             .add => .{ .int = a +% b },
             .sub => .{ .int = a -% b },
             .mul => .{ .int = a *% b },
-            .div => if (b == 0) self.fail(obj, obj.io.abs(), "division by zero", .{}) else .{ .int = @divTrunc(a, b) },
-            .mod => if (b == 0) self.fail(obj, obj.io.abs(), "division by zero", .{}) else .{ .int = @mod(a, b) },
+            .div => if (b == 0) self.fail(obj, obj.io.abs(), "division by zero", .{}) else if (b == -1) .{ .int = 0 -% a } else .{ .int = @divTrunc(a, b) },
+            .mod => if (b <= 0) self.fail(obj, obj.io.abs(), "the divisor of % must be positive", .{}) else .{ .int = @mod(a, b) },
             .shl => .{ .int = if (b < 0 or b > 63) 0 else a << @intCast(b) },
             .shr => .{ .int = if (b < 0 or b > 63) 0 else @bitCast(@as(u64, @bitCast(a)) >> @intCast(b)) },
             .lt => .{ .boolean = a < b },
@@ -398,7 +404,9 @@ const Interp = struct {
                     return .{ .bytes = out };
                 }
                 if (eq(u8, name, "to_i")) {
-                    const base: u8 = if (args.len > 0) @intCast(try self.asInt(obj, try self.eval(obj, args[0]))) else 10;
+                    const base_i = if (args.len > 0) try self.asInt(obj, try self.eval(obj, args[0])) else 10;
+                    if (base_i < 2 or base_i > 36) return self.fail(obj, obj.io.abs(), "to_i needs a base from 2 to 36", .{});
+                    const base: u8 = @intCast(base_i);
                     return .{ .int = std.fmt.parseInt(i64, std.mem.trim(u8, b, " \x00"), base) catch 0 };
                 }
                 if (eq(u8, name, "substring") and args.len == 2) {
@@ -413,7 +421,7 @@ const Interp = struct {
                 if (eq(u8, name, "to_s")) return .{ .bytes = try std.fmt.allocPrint(self.arena, "{d}", .{i}) };
             },
             .float => |f| {
-                if (eq(u8, name, "to_i")) return .{ .int = @intFromFloat(f) };
+                if (eq(u8, name, "to_i")) return .{ .int = try self.floatToInt(obj, f) };
                 if (eq(u8, name, "to_s")) return .{ .bytes = try std.fmt.allocPrint(self.arena, "{d}", .{f}) };
             },
             .boolean => |b| {

@@ -129,3 +129,34 @@ test "unterminated quotes are an error, not a crash" {
         if (ksy_model.load(a, src, null)) |f| f.deinit() else |_| {}
     }
 }
+
+test "hostile values in patterns are refused, not crashed on" {
+    const a = std.testing.allocator;
+    const patterns = [_][]const u8{
+        "str s = std::mem::read_string(0, -1);",
+        "u8 x = std::mem::read_unsigned(0, -5);",
+        "u8 x = std::mem::read_unsigned(0, 99);",
+        "str s = std::mem::read_string(5, 0x7fffffffffffffffffffffffffffffff);",
+        "str s = std::string::substr(\"abc\", 0x7fffffffffffffffffffffffffffffff, 5);",
+        "fn f() { return 1.0e300; }; u8 x = f();",
+        "u8 y = 5 / -1; u8 z = 5 % -1;",
+        "s128 big = -170141183460469231731687303715884105728; s128 q = big / -1; s128 r = big % -1;",
+        "bitfield B { a : -3; }; B b @ 0;",
+        "bitfield B { a : 100; b : 100; c : 100; }; B b @ 0;",
+        "u8 p = std::string::parse_int(\"12\", 1);",
+        "u8 p = std::string::parse_int(\"12\", 1000);",
+        "u8 d[-1] @ 0;",
+        "$ = -4;",
+        "u128 idx = std::mem::find_sequence_in_range(0, -5, 0x7fffffffffffffffffffffffffffffff, 0x45);",
+    };
+    for (patterns) |src| {
+        var failure: ?hexpat.LoadFailure = null;
+        const p = (try hexpat.load(a, src, null, &failure)) orelse {
+            if (failure) |f| a.free(f.message);
+            continue;
+        };
+        defer p.deinit();
+        const r = try hexpat.run(a, p, sample_data);
+        r.deinit();
+    }
+}

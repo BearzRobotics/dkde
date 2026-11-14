@@ -545,3 +545,46 @@ test "bytes of this process can be read through /proc/PID/mem" {
     try std.testing.expectEqual(@as(usize, 8), try mem.readAt(@intFromPtr(&marker), &got));
     try std.testing.expectEqualSlices(u8, &marker, &got);
 }
+
+/// What to tell someone about to write to a disk holding a filesystem that
+/// checksums its own metadata: the checksum is not recomputed by this editor,
+/// so the filesystem will call the change damage until its own tool is run.
+/// Null for other contents (FAT, NTFS, unknown, ...).
+pub fn checksumAdvice(h: *const Handle, origin: u64) ?[]const u8 {
+    var buf: [0x10048]u8 = undefined;
+    const got = h.readAt(origin, &buf) catch return null;
+    return checksumAdviceOf(buf[0..got]);
+}
+
+pub fn checksumAdviceOf(b: []const u8) ?[]const u8 {
+    if (b.len >= 0x438 and b[0x438] == 0x53 and b[0x439] == 0xEF) {
+        return "This is an ext2/3/4 filesystem. With metadata checksums on, an edited superblock or group descriptor fails its checksum; use tune2fs, e2label or debugfs -w to change it (they update the checksums), or repair afterwards with e2fsck -f.";
+    }
+    if (b.len >= 4 and std.mem.eql(u8, b[0..4], "XFSB")) {
+        return "This is an XFS filesystem, which checksums its metadata. Use xfs_admin to change it; after a raw edit run xfs_repair.";
+    }
+    if (b.len >= 0x10048 and std.mem.eql(u8, b[0x10040..0x10048], "_BHRfS_M")) {
+        return "This is a btrfs filesystem, which checksums its metadata. Use btrfs property or btrfstune; a raw edit will fail the checksum and btrfs check may not repair it.";
+    }
+    if (b.len >= 11 and std.mem.eql(u8, b[3..11], "EXFAT   ")) {
+        return "This is an exFAT filesystem, which checksums its boot area. After a raw edit the checksum sector must be rewritten; fsck.exfat reports and can repair it.";
+    }
+    if (b.len >= 0x404 and b[0x400] == 0x10 and b[0x401] == 0x20 and b[0x402] == 0xF5 and b[0x403] == 0xF2) {
+        return "This is an F2FS filesystem, which checksums its superblock. After a raw edit run fsck.f2fs.";
+    }
+    return null;
+}
+
+test "filesystems that checksum are recognised" {
+    var b = std.mem.zeroes([0x10048]u8);
+    try std.testing.expect(checksumAdviceOf(&b) == null);
+    b[0x438] = 0x53;
+    b[0x439] = 0xEF;
+    try std.testing.expect(checksumAdviceOf(&b) != null);
+    @memset(&b, 0);
+    @memcpy(b[0..4], "XFSB");
+    try std.testing.expect(checksumAdviceOf(&b) != null);
+    @memset(&b, 0);
+    @memcpy(b[3..11], "EXFAT   ");
+    try std.testing.expect(checksumAdviceOf(&b) != null);
+}

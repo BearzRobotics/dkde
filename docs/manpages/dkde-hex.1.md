@@ -44,6 +44,9 @@ FILE
 ~/.config/dkde/hex.toml
 : Settings: formats-dir, patterns-dir, disk-window-mib (how much of a disk is held in memory, 1 to 512), inspector, and the window's size. $XDG_DATA_DIRS/dkde/hex.toml has the defaults, with every key.
 
+$XDG_DATA_DIRS/dkde/pdf.hexpat
+: A structure pattern for PDF files that ships with DKDE.
+
 ~/.cache/dkde/hex-formats.index
 : What was learned from each format file, so the folders are not read again at every start. A file is read again only when it is new or its size or modification time changed. Deleting the index makes the next start scan everything.
 

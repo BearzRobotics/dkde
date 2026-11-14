@@ -352,8 +352,9 @@ const Interp = struct {
         switch (t) {
             .align_to => |n| {
                 if (n > 0) {
-                    const rem = self.cursor % @as(usize, @intCast(n));
-                    if (rem != 0) self.cursor += @as(usize, @intCast(n)) - rem;
+                    const unit = std.math.cast(usize, n) orelse return self.fail(ctx.obj, "an alignment of {d} is too large", .{n});
+                    const rem = self.cursor % unit;
+                    if (rem != 0) self.cursor += unit - rem;
                 }
                 return .{ .val = .none, .start = start, .size = self.cursor - start };
             },
@@ -507,7 +508,11 @@ const Interp = struct {
 
         var total: usize = 0;
         for (def.entries) |en| {
-            if (en.bits) |be| total += @intCast(try self.asInt(obj, try self.eval(&inner, be)));
+            if (en.bits) |be| {
+                const w = try self.asInt(obj, try self.eval(&inner, be));
+                if (w < 0 or w > 1 << 20) return self.fail(obj, "a bitfield member of {d} bits", .{w});
+                total += @intCast(w);
+            }
         }
         const nbytes = (total + 7) / 8;
         if (nbytes > 16) return self.fail(ctx.obj, "bitfield {s} is wider than 128 bits", .{def.name});
@@ -528,10 +533,12 @@ const Interp = struct {
                 try obj.fields.put(self.arena, en.name, .{ .val = v, .start = start, .size = nbytes, .local = true });
                 continue;
             }
-            const width: usize = @intCast(try self.asInt(obj, try self.eval(&inner, en.bits.?)));
+            const width_i = try self.asInt(obj, try self.eval(&inner, en.bits.?));
+            if (width_i < 0 or width_i > 1 << 20) return self.fail(obj, "a bitfield member of {d} bits", .{width_i});
+            const width: usize = @intCast(width_i);
             defer bit += width;
             if (en.is_padding) continue;
-            const part: u128 = if (width >= 128) raw else (raw >> @intCast(bit)) & ((@as(u128, 1) << @intCast(width)) - 1);
+            const part: u128 = if (width >= 128) raw else if (bit >= 128) 0 else (raw >> @intCast(bit)) & ((@as(u128, 1) << @intCast(width)) - 1);
             var val: Val = .{ .int = @intCast(part) };
             if (width == 1 and en.ty == null) val = .{ .int = @intCast(part) };
             // Which bytes hold these bits.
@@ -915,7 +922,7 @@ const Interp = struct {
         return switch (v) {
             .int => |i| i,
             .boolean => |b| @intFromBool(b),
-            .float => |f| @intFromFloat(f),
+            .float => |f| if (std.math.isNan(f) or f >= 1.0e38 or f <= -1.0e38) self.fail(obj, "a number is out of range", .{}) else @intFromFloat(f),
             .str => |s| if (s.len == 1) s[0] else self.fail(obj, "expected a number but found text", .{}),
             else => self.fail(obj, "expected a number", .{}),
         };
@@ -1142,8 +1149,8 @@ const Interp = struct {
             .add => .{ .int = a +% b },
             .sub => .{ .int = a -% b },
             .mul => .{ .int = a *% b },
-            .div => if (b == 0) self.fail(ctx.obj, "division by zero", .{}) else .{ .int = @divTrunc(a, b) },
-            .mod => if (b == 0) self.fail(ctx.obj, "division by zero", .{}) else .{ .int = @rem(a, b) },
+            .div => if (b == 0) self.fail(ctx.obj, "division by zero", .{}) else if (b == -1) .{ .int = 0 -% a } else .{ .int = @divTrunc(a, b) },
+            .mod => if (b == 0) self.fail(ctx.obj, "division by zero", .{}) else if (b == -1) .{ .int = 0 } else .{ .int = @rem(a, b) },
             .shl => .{ .int = if (b < 0 or b > 127) 0 else a << @intCast(b) },
             .shr => .{ .int = if (b < 0 or b > 127) 0 else a >> @intCast(b) },
             .lt => .{ .boolean = a < b },
@@ -1333,7 +1340,9 @@ const Interp = struct {
         if (eql(u8, name, "std::mem::eof")) return .{ .boolean = self.cursor >= self.data.len };
         if (eql(u8, name, "std::mem::read_unsigned") or eql(u8, name, "std::mem::read_signed")) {
             const off = try self.intArg(ctx, args, 0);
-            const size: usize = @intCast(try self.intArg(ctx, args, 1));
+            const size_i = try self.intArg(ctx, args, 1);
+            if (size_i < 0 or size_i > 16) return self.fail(ctx.obj, "read outside the data", .{});
+            const size: usize = @intCast(size_i);
             var little = ctx.little;
             if (args.len > 2) little = (try self.intArg(ctx, args, 2)) == 0;
             if (off < 0 or size > 16 or @as(usize, @intCast(off)) + size > self.data.len) return self.fail(ctx.obj, "read outside the data", .{});
@@ -1347,8 +1356,9 @@ const Interp = struct {
         }
         if (eql(u8, name, "std::mem::read_string")) {
             const off = try self.intArg(ctx, args, 0);
-            const size: usize = @intCast(try self.intArg(ctx, args, 1));
-            if (off < 0 or @as(usize, @intCast(off)) + size > self.data.len) return self.fail(ctx.obj, "read outside the data", .{});
+            const size_i = try self.intArg(ctx, args, 1);
+            if (off < 0 or size_i < 0 or off > self.data.len or size_i > self.data.len - @as(usize, @intCast(off))) return self.fail(ctx.obj, "read outside the data", .{});
+            const size: usize = @intCast(size_i);
             return .{ .str = self.data[@intCast(off)..][0..size] };
         }
         if (eql(u8, name, "std::mem::find_sequence_in_range") or eql(u8, name, "std::mem::find_sequence")) {
@@ -1413,9 +1423,8 @@ const Interp = struct {
         if (eql(u8, name, "std::string::length")) return .{ .int = @intCast((try self.strArg(ctx, args, 0)).len) };
         if (eql(u8, name, "std::string::substr")) {
             const s = try self.strArg(ctx, args, 0);
-            const pos: usize = @intCast(@max(0, try self.intArg(ctx, args, 1)));
-            const len: usize = @intCast(@max(0, try self.intArg(ctx, args, 2)));
-            if (pos > s.len) return .{ .str = "" };
+            const pos: usize = @intCast(std.math.clamp(try self.intArg(ctx, args, 1), 0, @as(i128, s.len)));
+            const len: usize = @intCast(std.math.clamp(try self.intArg(ctx, args, 2), 0, @as(i128, s.len)));
             return .{ .str = s[pos..@min(s.len, pos + len)] };
         }
         if (eql(u8, name, "std::string::starts_with")) return .{ .boolean = std.mem.startsWith(u8, try self.strArg(ctx, args, 0), try self.strArg(ctx, args, 1)) };
@@ -1423,7 +1432,9 @@ const Interp = struct {
         if (eql(u8, name, "std::string::contains")) return .{ .boolean = std.mem.indexOf(u8, try self.strArg(ctx, args, 0), try self.strArg(ctx, args, 1)) != null };
         if (eql(u8, name, "std::string::to_string")) return .{ .str = try self.toText(args[0]) };
         if (eql(u8, name, "std::string::parse_int")) {
-            const base: u8 = if (args.len > 1) @intCast(try self.intArg(ctx, args, 1)) else 10;
+            const base_i = if (args.len > 1) try self.intArg(ctx, args, 1) else 10;
+            if (base_i < 2 or base_i > 36) return self.fail(ctx.obj, "parse_int needs a base from 2 to 36", .{});
+            const base: u8 = @intCast(base_i);
             return .{ .int = std.fmt.parseInt(i128, std.mem.trim(u8, try self.strArg(ctx, args, 0), " \x00"), base) catch 0 };
         }
         if (eql(u8, name, "std::math::pow")) {

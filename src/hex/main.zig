@@ -1812,7 +1812,7 @@ const HexEditor = struct {
             argv.deinit(a);
         }
         common.appinfo.displayEnvArgs(a, &argv) catch return;
-        argv.append(a, a.dupe(u8, "dkde-hex") catch return) catch return;
+        argv.append(a, common.appinfo.programCommand(a, "dkde-hex") catch return) catch return;
         argv.append(a, a.dupe(u8, "--device") catch return) catch return;
         argv.append(a, a.dupe(u8, path) catch return) catch return;
         const view = a.alloc([]const u8, argv.items.len) catch return;
@@ -1940,15 +1940,18 @@ const HexEditor = struct {
             defer disk_mod.freeInfos(self.allocator, infos);
             mounted = disk_mod.anyMounted(infos, d.path);
         } else |_| {}
+        const advice = disk_mod.checksumAdvice(&d.handle, d.origin);
         const first = (d.window_start / d.sector) + changed[0] * (@as(u64, d.sector) / d.sector);
-        var detail: [640]u8 = undefined;
-        const text = std.fmt.bufPrintSentinel(&detail, "{d} sector{s} of {s} will be overwritten (first: sector {d}, {d} bytes each).{s}", .{
+        var detail: [1280]u8 = undefined;
+        const text = std.fmt.bufPrintSentinel(&detail, "{d} sector{s} of {s} will be overwritten (first: sector {d}, {d} bytes each).{s}{s}{s}", .{
             changed.len,
             if (changed.len == 1) "" else "s",
             d.path,
             first,
             d.sector,
             if (mounted) " WARNING: this disk or one of its partitions is mounted. Writing under a mounted filesystem can corrupt it." else "",
+            if (advice != null) "\n\nNote: " else "",
+            advice orelse "",
         }, 0) catch return;
         common.dialogs.choose(self.window.as(gtk.Window), common.tr("Write changes to the disk?"), text, &.{ "Cancel", "Write" }, 0, HexEditor, onWriteAnswer, self);
     }

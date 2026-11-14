@@ -211,6 +211,18 @@ fn siblingBinary(allocator: std.mem.Allocator, name: []const u8) ?[:0]u8 {
     return path;
 }
 
+/// The command to run program `name` (e.g. "dkde-hex") as the same build as
+/// the running one: its absolute path when it sits next to this executable
+/// (which also works when the tree is not in PATH, as `env` and `sudo` look
+/// names up in PATH), else the bare name. Owned by the caller.
+pub fn programCommand(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    if (siblingBinary(allocator, name)) |path| {
+        defer allocator.free(path);
+        return allocator.dupe(u8, path);
+    }
+    return allocator.dupe(u8, name);
+}
+
 /// The command line of a desktop entry as separate arguments, with the
 /// `%U`-style field codes dropped. Each argument is owned by the caller
 /// (free with `freeArgv`).
