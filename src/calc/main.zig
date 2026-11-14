@@ -35,6 +35,7 @@ const rates = @import("rates.zig");
 const highlight = @import("highlight.zig");
 const export_session = @import("export.zig");
 const steps_mod = @import("steps.zig");
+const function_info = @import("function_info.zig");
 const pango = @import("pango1");
 
 const t = common.tr;
@@ -43,7 +44,7 @@ const t = common.tr;
 const group_sep = "\u{202F}";
 
 const Mode = enum { standard, scientific, programmer };
-const Pane = enum { none, history, units, currency, dates, graph, formulas, steps };
+const Pane = enum { none, history, units, currency, dates, graph, formulas, steps, functions };
 
 const Cmd = enum { insert, enter, clear, back, negate, reciprocal, mc, mr, ms, mplus, mminus, plot };
 
@@ -142,6 +143,7 @@ const Calc = struct {
 
     mode: Mode = .standard,
     pane: Pane = .none,
+    fn_text_buf: [160]u8 = undefined,
     /// The exact form (2√2) of the result being shown, for the line above the entry.
     exact_tail: ?[]const u8 = null,
     /// The tape of recent entries above the entry (View > Expanded).
@@ -182,6 +184,13 @@ const Calc = struct {
     unit_to: *gtk.DropDown = undefined,
     unit_value: *gtk.Entry = undefined,
     unit_result: *gtk.Label = undefined,
+    // Functions.
+    fn_search: *gtk.SearchEntry = undefined,
+    fn_category: *gtk.DropDown = undefined,
+    fn_list: *gtk.ListBox = undefined,
+    fn_detail: *gtk.Label = undefined,
+    /// The function_info entries the list shows now, in order.
+    fn_shown: std.ArrayList(usize) = .empty,
     // Show Work.
     steps_box: *gtk.Box = undefined,
     // Currency.
@@ -344,6 +353,7 @@ const Calc = struct {
         _ = self.side.addNamed(self.graph.widget(), "graph");
         _ = self.side.addNamed(self.buildFormulas(), "formulas");
         _ = self.side.addNamed(self.buildSteps(), "steps");
+        _ = self.side.addNamed(self.buildFunctions(), "functions");
 
         const body = gtk.Box.new(.horizontal, 0);
         body.append(left.as(gtk.Widget));
@@ -440,6 +450,7 @@ const Calc = struct {
                 mb.checkKey("_Graph", "pane-graph", self.pane == .graph, "<Control>g"),
                 mb.checkKey("_Formulas", "pane-formulas", self.pane == .formulas, "<Control><Shift>f"),
                 mb.checkKey("Show _Work", "pane-steps", self.pane == .steps, "<Control>l"),
+                mb.checkKey("Fu_nctions", "pane-functions", self.pane == .functions, "<Control><Shift>y"),
                 mb.item("Update E_xchange Rates", "update-rates", null),
                 .separator,
                 mb.check("_Degrees", "angle-degrees", self.angle == .degrees),
@@ -2826,6 +2837,180 @@ const Calc = struct {
         return 0;
     }
 
+    // ---- the function browser --------------------------------------------------------------------
+
+    const fn_categories = blk: {
+        @setEvalBranchQuota(200_000);
+        var list: [24][]const u8 = undefined;
+        var n: usize = 0;
+        for (function_info.all) |info| {
+            var seen = false;
+            for (list[0..n]) |c| if (std.mem.eql(u8, c, info.category)) {
+                seen = true;
+            };
+            if (!seen) {
+                list[n] = info.category;
+                n += 1;
+            }
+        }
+        std.mem.sort([]const u8, list[0..n], {}, struct {
+            fn lt(_: void, x: []const u8, y: []const u8) bool {
+                return std.mem.lessThan(u8, x, y);
+            }
+        }.lt);
+        const out = list[0..n].*;
+        break :blk out;
+    };
+
+    fn buildFunctions(self: *Calc) *gtk.Widget {
+        const box = gtk.Box.new(.vertical, 6);
+        const title = gtk.Label.new(t("Functions"));
+        title.setXalign(0);
+        title.as(gtk.Widget).addCssClass("heading");
+        box.append(title.as(gtk.Widget));
+        self.fn_search = gtk.SearchEntry.new();
+        self.fn_search.as(gtk.Widget).setTooltipText(t("Search by name or what it does"));
+        _ = gtk.SearchEntry.signals.search_changed.connect(self.fn_search, *Calc, &onFunctionsFilter, self, .{});
+        box.append(self.fn_search.as(gtk.Widget));
+        var names: [fn_categories.len + 2:null]?[*:0]const u8 = @splat(null);
+        names[0] = "All";
+        inline for (fn_categories, 0..) |c, i| names[i + 1] = @ptrCast((c ++ "\x00").ptr);
+        self.fn_category = gtk.DropDown.newFromStrings(@ptrCast(&names));
+        _ = gobject.Object.signals.notify.connect(self.fn_category, *Calc, &onFunctionsCategory, self, .{ .detail = "selected" });
+        box.append(self.fn_category.as(gtk.Widget));
+        self.fn_list = gtk.ListBox.new();
+        self.fn_list.setSelectionMode(.single);
+        self.fn_list.setActivateOnSingleClick(1);
+        _ = gtk.ListBox.signals.row_activated.connect(self.fn_list, *Calc, &onFunctionRow, self, .{});
+        _ = gtk.ListBox.signals.row_selected.connect(self.fn_list, *Calc, &onFunctionSelected, self, .{});
+        const scroll = gtk.ScrolledWindow.new();
+        scroll.setPolicy(.never, .automatic);
+        scroll.as(gtk.Widget).setVexpand(1);
+        scroll.setChild(self.fn_list.as(gtk.Widget));
+        box.append(scroll.as(gtk.Widget));
+        self.fn_detail = gtk.Label.new(t("Click a function to put it in the entry."));
+        self.fn_detail.setXalign(0);
+        self.fn_detail.setWrap(1);
+        self.fn_detail.setMaxWidthChars(44);
+        self.fn_detail.as(gtk.Widget).addCssClass("dim-label");
+        box.append(self.fn_detail.as(gtk.Widget));
+        self.fillFunctions();
+        return box.as(gtk.Widget);
+    }
+
+    /// Does `hay` have `needle` in it, ignoring case (ASCII)?
+    fn containsFold(hay: []const u8, needle: []const u8) bool {
+        if (needle.len == 0) return true;
+        if (hay.len < needle.len) return false;
+        var i: usize = 0;
+        while (i + needle.len <= hay.len) : (i += 1) {
+            if (std.ascii.eqlIgnoreCase(hay[i .. i + needle.len], needle)) return true;
+        }
+        return false;
+    }
+
+    fn onFunctionsFilter(_: *gtk.SearchEntry, self: *Calc) callconv(.c) void {
+        self.fillFunctions();
+    }
+
+    fn onFunctionsCategory(_: *gtk.DropDown, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        self.fillFunctions();
+    }
+
+    fn fillFunctions(self: *Calc) void {
+        self.fn_list.removeAll();
+        self.fn_shown.clearRetainingCapacity();
+        const wanted = std.mem.span(self.fn_search.as(gtk.Editable).getText());
+        const cat_index = self.fn_category.getSelected();
+        for (function_info.all, 0..) |info, i| {
+            if (cat_index > 0 and cat_index - 1 < fn_categories.len and !std.mem.eql(u8, info.category, fn_categories[cat_index - 1])) continue;
+            if (wanted.len > 0) {
+                var hit = containsFold(info.title, wanted) or containsFold(info.description, wanted);
+                for (info.names) |n| if (containsFold(n, wanted)) {
+                    hit = true;
+                };
+                if (!hit) continue;
+            }
+            self.fn_shown.append(self.gpa, i) catch return;
+            var buf: [256]u8 = undefined;
+            const row = gtk.Box.new(.vertical, 0);
+            row.as(gtk.Widget).setMarginTop(3);
+            row.as(gtk.Widget).setMarginBottom(3);
+            const sig = gtk.Label.new(self.functionSignature(&buf, info));
+            sig.setXalign(0);
+            sig.setEllipsize(.end);
+            sig.setMaxWidthChars(30);
+            sig.as(gtk.Widget).addCssClass("dkde-calc-step-math");
+            const what = gtk.Label.new(self.zText(info.title));
+            what.setXalign(0);
+            what.setEllipsize(.end);
+            what.setMaxWidthChars(30);
+            what.as(gtk.Widget).addCssClass("dim-label");
+            row.append(sig.as(gtk.Widget));
+            row.append(what.as(gtk.Widget));
+            self.fn_list.append(row.as(gtk.Widget));
+        }
+    }
+
+    /// A text as a C string that stays valid for the label that copies it right away.
+    fn zText(self: *Calc, text: []const u8) [:0]const u8 {
+        const slot = &self.fn_text_buf;
+        const n = @min(text.len, slot.len - 1);
+        @memcpy(slot[0..n], text[0..n]);
+        slot[n] = 0;
+        return slot[0..n :0];
+    }
+
+    /// "circle(radius)": the name and its arguments.
+    fn functionSignature(_: *Calc, buf: []u8, info: function_info.Info) [:0]const u8 {
+        var out: std.ArrayList(u8) = .initBuffer(buf[0 .. buf.len - 1]);
+        out.appendSliceBounded(info.names[0]) catch {};
+        out.appendSliceBounded("(") catch {};
+        for (info.args, 0..) |arg, i| {
+            if (i > 0) out.appendSliceBounded(", ") catch {};
+            out.appendSliceBounded(arg) catch {};
+        }
+        out.appendSliceBounded(")") catch {};
+        buf[out.items.len] = 0;
+        return buf[0..out.items.len :0];
+    }
+
+    fn onFunctionRow(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Calc) callconv(.c) void {
+        const index: usize = @intCast(row.getIndex());
+        if (index >= self.fn_shown.items.len) return;
+        const info = function_info.all[self.fn_shown.items[index]];
+        var buf: [96]u8 = undefined;
+        const text = std.fmt.bufPrint(&buf, "{s}(", .{info.names[0]}) catch return;
+        if (self.fresh) {
+            self.fresh = false;
+            self.setEntry("");
+        }
+        self.insert(text);
+        _ = self.entry.as(gtk.Widget).grabFocus();
+        self.entry.as(gtk.Editable).setPosition(-1);
+    }
+
+    fn onFunctionSelected(_: *gtk.ListBox, row: ?*gtk.ListBoxRow, self: *Calc) callconv(.c) void {
+        const r = row orelse return;
+        const index: usize = @intCast(r.getIndex());
+        if (index >= self.fn_shown.items.len) return;
+        const info = function_info.all[self.fn_shown.items[index]];
+        var buf: [600]u8 = undefined;
+        var alias: [160]u8 = undefined;
+        var alias_text: []const u8 = "";
+        if (info.names.len > 1) {
+            var out: std.ArrayList(u8) = .initBuffer(&alias);
+            out.appendSliceBounded("  Also: ") catch {};
+            for (info.names[1..], 0..) |n, i| {
+                if (i > 0) out.appendSliceBounded(", ") catch {};
+                out.appendSliceBounded(n) catch {};
+            }
+            alias_text = out.items;
+        }
+        const msg = std.fmt.bufPrintSentinel(&buf, "{s}{s}", .{ info.description, alias_text }, 0) catch return;
+        self.fn_detail.setText(msg);
+    }
+
     // ---- show your work ------------------------------------------------------------------------
 
     fn buildSteps(self: *Calc) *gtk.Widget {
@@ -2947,7 +3132,7 @@ const Calc = struct {
         const w = self.side.as(gtk.Widget);
         w.setVisible(@intFromBool(pane != .none));
         if (pane != .none) self.side.setVisibleChildName(@tagName(pane));
-        inline for (.{ "history", "units", "currency", "dates", "graph", "formulas", "steps" }) |name| {
+        inline for (.{ "history", "units", "currency", "dates", "graph", "formulas", "steps", "functions" }) |name| {
             common.menubar.setChecked(self.window, "pane-" ++ name, std.mem.eql(u8, @tagName(pane), name));
         }
         self.config.setString("calc", "pane", @tagName(pane)) catch {};
@@ -3401,6 +3586,7 @@ const Calc = struct {
             self.gpa.free(c.date);
         }
         self.manual.deinit(self.gpa);
+        self.fn_shown.deinit(self.gpa);
         if (self.tape_timer != 0) _ = glib.Source.remove(self.tape_timer);
         if (self.row_popover) |p| p.as(gtk.Widget).unparent();
         self.session.deinit();
