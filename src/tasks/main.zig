@@ -369,7 +369,7 @@ pub const TaskManager = struct {
         view_button.setMenuModel(view_menu.as(gio.MenuModel));
         bar.append(view_button.as(gtk.Widget));
         root.as(gtk.Widget).insertActionGroup("table", tb.action_group.as(gio.ActionGroup));
-        root.append(bar.as(gtk.Widget));
+        root.append(services_mod.scrolled(bar));
         root.append(tb.widget);
         return root.as(gtk.Widget);
     }

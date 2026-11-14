@@ -129,7 +129,7 @@ pub const Page = struct {
         _ = gtk.Button.signals.clicked.connect(self.toggle, *Page, &onToggle, self, .{});
         _ = gtk.Button.signals.clicked.connect(self.remove, *Page, &onRemove, self, .{});
         _ = gtk.Button.signals.clicked.connect(self.location, *Page, &onLocation, self, .{});
-        root.append(bar.as(gtk.Widget));
+        root.append(services.scrolled(bar));
         root.append(self.list.widget);
         self.widget = root.as(gtk.Widget);
         self.list.sortBy(0, false);

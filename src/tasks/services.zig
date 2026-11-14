@@ -276,7 +276,7 @@ pub const Page = struct {
             self.buttons[i] = b;
             bar.append(b.as(gtk.Widget));
         }
-        root.append(bar.as(gtk.Widget));
+        root.append(scrolled(bar));
         root.append(self.list.widget);
         self.status_label.setXalign(0);
         self.status_label.setWrap(1);
@@ -738,6 +738,16 @@ pub const Page = struct {
 };
 
 /// The bar at the top of each page: its title on the left, its commands on the right.
+/// A command bar that scrolls sideways when the window is narrow, so it never holds the window wide.
+pub fn scrolled(bar: *gtk.Box) *gtk.Widget {
+    const sw = gtk.ScrolledWindow.new();
+    sw.setPolicy(.automatic, .never);
+    sw.setPropagateNaturalHeight(1);
+    sw.setMinContentWidth(120);
+    sw.setChild(bar.as(gtk.Widget));
+    return sw.as(gtk.Widget);
+}
+
 pub fn commandBar(title: [:0]const u8) *gtk.Box {
     const bar = gtk.Box.new(.horizontal, 6);
     bar.as(gtk.Widget).addCssClass("dkde-command-bar");

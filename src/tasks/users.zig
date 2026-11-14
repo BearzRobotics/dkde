@@ -115,7 +115,7 @@ pub const Page = struct {
         self.sign_out.as(gtk.Widget).setSensitive(0);
         _ = gtk.Button.signals.clicked.connect(self.sign_out, *Page, &onSignOut, self, .{});
         bar.append(self.sign_out.as(gtk.Widget));
-        root.append(bar.as(gtk.Widget));
+        root.append(services.scrolled(bar));
         root.append(self.list.widget);
         self.widget = root.as(gtk.Widget);
         self.list.sortBy(0, false);
