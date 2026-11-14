@@ -28,6 +28,7 @@ const std = @import("std");
 const num = @import("num.zig");
 const simplify = @import("simplify.zig");
 const calculus = @import("calculus.zig");
+const functions = @import("functions.zig");
 const letters = @import("letters.zig");
 const Number = num.Number;
 
@@ -602,8 +603,12 @@ const builtin_functions = [_][]const u8{
 };
 
 pub fn isBuiltin(name: []const u8) bool {
-    for (builtin_functions) |f| if (std.ascii.eqlIgnoreCase(f, name)) return true;
-    return false;
+    var buf: [48]u8 = undefined;
+    if (name.len > buf.len) return false;
+    const lower = std.ascii.lowerString(&buf, name);
+    const canon = functions.canonical(lower);
+    for (builtin_functions) |f| if (std.mem.eql(u8, f, canon)) return true;
+    return functions.isKnown(lower);
 }
 
 const constants = [_][]const u8{ "pi", "π", "e", "tau", "τ", "phi", "φ", "ans" };
@@ -857,8 +862,14 @@ pub const Eval = struct {
         return null;
     }
 
-    fn builtin(self: *Eval, f: []const u8, args: []const Number) Error!Number {
+    fn builtin(self: *Eval, f_in: []const u8, args: []const Number) Error!Number {
         const a = self.a;
+        const f = functions.canonical(f_in);
+        if (functions.find(f)) |def| {
+            if (args.len < def.min or args.len > def.max) return error.WrongArguments;
+            const fctx: functions.Ctx = .{ .a = a, .rad_per_unit = self.toRad(1) };
+            return def.run(&fctx, args);
+        }
         const eql = std.mem.eql;
         const n = args.len;
         // Any number of arguments.

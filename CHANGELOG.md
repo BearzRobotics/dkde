@@ -4,6 +4,11 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 ## Unreleased
 
+### Calculator
+- **dkde-calc: 100 more functions**, checked against Qalculate 5.9.0 (211 reference answers in the tests): hyperbolic and inverse reciprocal trig (`sech`, `asec`, `acot`…), `exp2`, `exp10`, `gamma`, `beta`, `digamma`, `erf`, `erfc`, `erfinv`, `probit`, `zeta`, `lambertw`, `sigmoid`, `logit`, `heaviside`, `ramp`, `kronecker`; number theory (`isprime`, `nextprime`, `prevprime`, `nthprime`, `primepi`, `totient`, `fibonacci`, `factorial2`, `hyperfactorial`, `superfactorial`, `derangements`, `bernoulli`, `powmod`, `div`, `rem`); probability distributions (normal, binomial, Poisson, exponential, gamma, chi-square, Weibull, beta, t, F, Cauchy, logistic, Pareto, Rayleigh, with inverses) and the spreadsheet money functions (`pv`, `fv`, `pmt`, `nper`, `rate`, `ipmt`, `ppmt`, `effect`, `nominal`, `sln`, `syd`…).
+- **dkde-calc: 48 more formulas** in the Formulas pane (investments and loans, more geometry, electronics and computers).
+- **dkde-calc fixes:** a whole number of 300 digits or more (`2^1000`, `200!`) aborted the program when shown; it now shows as scientific notation from its exact digits. A result below a billionth was shown as 0; it is now shown as d.ddd×10^-n. `nCr(7, 8)` is 0, not an error.
+
 ### Added
 - **dkde-hex: PDF structure.** A bundled `pdf.hexpat` shows the header, the last `startxref` and the table it points to.
 - **dkde-hex: checksum note.** Before writing to a disk holding ext2/3/4, XFS, btrfs, exFAT or F2FS, the confirmation says that the filesystem checksums its metadata, which this editor does not recompute, and names the tool to use (e2label/tune2fs, xfs_admin, e2fsck, fsck.exfat, fsck.f2fs).

@@ -2317,4 +2317,6 @@ test {
     _ = @import("formulas.zig");
     _ = @import("letters.zig");
     _ = @import("accuracy_test.zig");
+    _ = @import("qalc_reference_test.zig");
+    _ = @import("functions.zig");
 }
