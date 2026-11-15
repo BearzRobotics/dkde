@@ -214,9 +214,21 @@ pub fn hasDiff(n: *const Node) bool {
 pub fn integrate(ev: *eval.Eval, f: *const Node, x: []const u8, lo: f64, hi: f64) Error!f64 {
     if (lo == hi) return 0;
     if (!std.math.isFinite(lo) or !std.math.isFinite(hi)) return error.Domain;
+    // An integrand that grows like 1/x (or faster) toward an end has no finite integral.
+    if (blowsUp(ev, f, x, lo, hi) or blowsUp(ev, f, x, hi, lo)) return error.Domain;
     var budget: usize = 4000;
     const total = try gk(ev, f, x, lo, hi, 1e-13, 0, &budget);
     return total;
+}
+
+/// Does f grow at least like 1/distance as x closes in on `end` (coming from `other`)?
+fn blowsUp(ev: *eval.Eval, f: *const Node, x: []const u8, end: f64, other: f64) bool {
+    const w = other - end;
+    const near = ev.float(f, x, end + w * 1e-6);
+    const mid = ev.float(f, x, end + w * 1e-4);
+    if (!std.math.isFinite(near) and !std.math.isFinite(mid)) return false;
+    if (!std.math.isFinite(near)) return true;
+    return @abs(near) > 1e3 and @abs(near) >= 90 * @abs(mid);
 }
 
 const kronrod_x = [_]f64{ 0.991455371120812639, 0.949107912342758525, 0.864864423359769073, 0.741531185599394440, 0.586087235467691130, 0.405845151377397167, 0.207784955007898468, 0.0 };
@@ -354,6 +366,9 @@ test "integrals, limits, sums" {
     try std.testing.expectEqualStrings("2.71828183", try f.out("limit((1 + 1/n)^n, n, inf)", .radians));
     try std.testing.expectEqualStrings("0", try f.out("limit(x ln(x), x, 0)", .radians));
     try std.testing.expectEqualStrings("0", try f.out("limit(1/x, x, inf)", .radians));
+    try std.testing.expectError(error.Domain, f.out("integral(1/x, x, 0, 1)", .radians));
+    try std.testing.expectEqualStrings("1.99999997", try f.out("integral(1/sqrt(x), x, 0, 1)", .radians));
+    try std.testing.expectEqualStrings("x can be any number (both sides are always equal)", try f.out("x^2 = x^2", .radians));
     try std.testing.expectEqualStrings("385", try f.out("sum(k², k, 1, 10)", .radians));
     try std.testing.expectEqualStrings("120", try f.out("prod(k, k, 1, 5)", .radians));
     try std.testing.expectEqualStrings("0.99", try f.out("sum(1/(k(k+1)), k, 1, 99)", .radians));

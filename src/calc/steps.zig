@@ -1752,7 +1752,7 @@ fn taylorSteps(ctx_in: Ctx, inner: []const u8) Error!?[]Step {
     const node = eval.parseExpr(a, std.mem.trim(u8, args[0], " "), ctx.mode, &problem) catch return null;
     const x = std.mem.trim(u8, args[1], " ");
     const point = if (args.len >= 3) ev.eval(try eval.parseExpr(a, args[2], ctx.mode, &problem), null) catch return null else try num.fromInt(a, 0);
-    const order: usize = if (args.len == 4) @intCast(num.intValue(ev.eval(try eval.parseExpr(a, args[3], ctx.mode, &problem), null) catch return null) orelse return null) else 5;
+    const order: usize = if (args.len == 4) std.math.cast(usize, num.intValue(ev.eval(try eval.parseExpr(a, args[3], ctx.mode, &problem), null) catch return null) orelse return null) orelse return null else 5;
     if (order > 12) return null;
     const final = (try series.taylorText(&ev, node, x, point, order)) orelse return null;
     var steps: std.ArrayList(Step) = .empty;

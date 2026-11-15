@@ -1553,7 +1553,7 @@ pub const Eval = struct {
             for (args[1..]) |x| {
                 const v: i128 = @intCast(@abs(try self.int(x)));
                 if (eql(u8, f, "gcd")) {
-                    acc = @intCast(std.math.gcd(@as(u128, @intCast(acc)), @as(u128, @intCast(v))));
+                    acc = if (acc == 0 and v == 0) 0 else @intCast(std.math.gcd(@as(u128, @intCast(acc)), @as(u128, @intCast(v))));
                 } else {
                     if (acc == 0 or v == 0) {
                         acc = 0;
@@ -1867,7 +1867,7 @@ pub fn run(a: std.mem.Allocator, session: *Session, text: []const u8, mode: Mode
             var ev: Eval = .{ .a = a, .session = session, .mode = radians, .problem = problem };
             const n = try parseExpr(a, std.mem.trim(u8, args[0], " "), mode, problem);
             const point = if (args.len >= 3) try ev.eval(try parseExpr(a, args[2], mode, problem), null) else try num.fromInt(a, 0);
-            const order: usize = if (args.len == 4) @intCast(num.intValue(try ev.eval(try parseExpr(a, args[3], mode, problem), null)) orelse return error.NotInteger) else 5;
+            const order: usize = if (args.len == 4) std.math.cast(usize, num.intValue(try ev.eval(try parseExpr(a, args[3], mode, problem), null)) orelse return error.NotInteger) orelse return error.Domain else 5;
             if (order > 20) return error.TooLarge;
             if (try seriesmod.taylorText(&ev, n, std.mem.trim(u8, args[1], " "), point, order)) |found| return .{ .simplified = found };
             return error.Domain;
@@ -2104,6 +2104,18 @@ fn checkNames(n: *const Node, session: *Session, params: []const []const u8, pro
     }
 }
 
+/// Is `diff` zero at every sample point (so the equation holds for any value)?
+fn isIdentity(ev: *Eval, diff: *const Node, x: []const u8) bool {
+    var seen: usize = 0;
+    for ([_]f64{ -7.3, -1.7, -0.4, 0.3, 1.1, 2.9, 13.7 }) |point| {
+        const v = ev.float(diff, x, point);
+        if (!std.math.isFinite(v)) continue;
+        if (@abs(v) > 1e-9) return false;
+        seen += 1;
+    }
+    return seen >= 4;
+}
+
 /// Where l = r, for the one unknown in it.
 fn solve(a: std.mem.Allocator, ev: *Eval, l: *Node, r: *Node) Error!Outcome {
     var names: std.ArrayList([]const u8) = .empty;
@@ -2158,6 +2170,8 @@ fn solve(a: std.mem.Allocator, ev: *Eval, l: *Node, r: *Node) Error!Outcome {
             return .{ .complex = .{ .name = x_name, .re = re, .im = im, .exact = texts } };
         }
     };
+    // True for every value (x² = x², 0x = 0): no list of roots to give.
+    if (isIdentity(ev, diff, x_name)) return .{ .simplified = try std.fmt.allocPrint(a, "{s} can be any number (both sides are always equal)", .{x_name}) };
     const roots = try findRoots(a, ev, diff, x_name);
     if (roots.len == 0) {
         // A polynomial with no real roots still has complex ones.
