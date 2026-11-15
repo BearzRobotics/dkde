@@ -44,15 +44,16 @@ const ColorTool = struct {
         self.window.as(gtk.Widget).addCssClass("dkde");
         _ = common.header.create(window, "applications-graphics", true);
 
-        self.swatch.setContentHeight(110);
+        self.swatch.setContentHeight(36);
+        self.swatch.as(gtk.Widget).setVexpand(1);
         self.swatch.setDrawFunc(onDraw, self, null);
         self.swatch.as(gtk.Widget).addCssClass("dkde-color-swatch");
 
-        const box = gtk.Box.new(.vertical, 10);
-        box.as(gtk.Widget).setMarginTop(16);
-        box.as(gtk.Widget).setMarginBottom(16);
-        box.as(gtk.Widget).setMarginStart(16);
-        box.as(gtk.Widget).setMarginEnd(16);
+        const box = gtk.Box.new(.vertical, 6);
+        box.as(gtk.Widget).setMarginTop(10);
+        box.as(gtk.Widget).setMarginBottom(10);
+        box.as(gtk.Widget).setMarginStart(12);
+        box.as(gtk.Widget).setMarginEnd(12);
         box.append(self.swatch.as(gtk.Widget));
 
         const names = [_][:0]const u8{ "Red", "Green", "Blue" };
@@ -63,6 +64,7 @@ const ColorTool = struct {
             label.as(gtk.Widget).setSizeRequest(48, -1);
             scale.as(gtk.Widget).setHexpand(1);
             scale.setDrawValue(1);
+            scale.setValuePos(.right);
             _ = gtk.Range.signals.value_changed.connect(scale.as(gtk.Range), *ColorTool, &onSlider, self, .{});
             row.append(label.as(gtk.Widget));
             row.append(scale.as(gtk.Widget));
