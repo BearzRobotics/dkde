@@ -14,6 +14,6 @@ Xvfb :77 & DISPLAY=:77 zig-out/bin/dkde-wm &
 
 Start a whole session with `dkde-session --x11`. Manual: `docs/manpages/dkde-wm.1.md`. Status and open items: `ai/COMPOSITOR-SURVEY.md`.
 
-Monitors (RandR): each has its own work area (panels reduce only the monitor they stand on), new windows open where the pointer is, tiling, maximize, fullscreen and snap work per monitor, a dragged window changes monitor. Windows that draw their own frame (GTK) are left alone; the rest get a frame with a title bar (title, minimize, maximize, close) and resize edges, drawn with cairo and pango (`src/frame.zig`). WM_NORMAL_HINTS minimum and maximum sizes are honoured (a fixed-size window floats). `[windows] focus = "follow"` makes focus follow the mouse.
+Monitors (RandR): each has its own work area (panels reduce only the monitor they stand on), new windows open where the pointer is, tiling, maximize, fullscreen and snap work per monitor, a dragged window changes monitor. Windows that draw their own frame (GTK) are left alone; the rest get a frame with a title bar (title, minimize, maximize, close) and resize edges, drawn with cairo and pango (`src/frame.zig`) in the accent colour, dark mode and font of `~/.config/dkde/dkde.toml` (`src/look.zig`), live. WM_NORMAL_HINTS minimum and maximum sizes are honoured (a fixed-size window floats). `[windows] focus = "follow"` makes focus follow the mouse.
 
 Not done: multi-monitor testing on real hardware (only a unit test and a single screen), per-monitor workspaces.

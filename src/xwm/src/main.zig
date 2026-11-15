@@ -11,6 +11,7 @@ const std = @import("std");
 const c = @import("c");
 const shared = @import("shared");
 const deco = @import("frame.zig");
+const look_mod = @import("look.zig");
 
 const layout = shared.layout;
 const keys = shared.keys;
@@ -379,11 +380,13 @@ fn insetsOf(cl: *const Client) deco.Insets {
 }
 
 var visual: ?*c.xcb_visualtype_t = null;
+/// The accent colour, dark mode and font from dkde.toml.
+var look: look_mod.Look = .{};
 
 fn redrawFrame(cl: *Client) void {
     if (cl.frame == 0 or cl.fw <= 0) return;
     const v = visual orelse return;
-    deco.draw(conn, v, cl.frame, cl.fw, cl.fh, cl.title, focused == cl, cl.maximized);
+    deco.draw(conn, v, cl.frame, cl.fw, cl.fh, cl.title, focused == cl, cl.maximized, &look);
 }
 
 /// Puts a window at `r` (its outer rectangle, frame included), within its size limits, and tells it.
@@ -1574,6 +1577,26 @@ fn reloadConfig() void {
     focusTop();
 }
 
+/// ~/.config/dkde (or $XDG_CONFIG_HOME/dkde), where dkde.toml lives.
+fn userConfigDir(buf: []u8) ?[:0]const u8 {
+    if (std.c.getenv("XDG_CONFIG_HOME")) |d| return std.fmt.bufPrintSentinel(buf, "{s}/dkde", .{std.mem.span(d)}, 0) catch null;
+    const home = std.c.getenv("HOME") orelse return null;
+    return std.fmt.bufPrintSentinel(buf, "{s}/.config/dkde", .{std.mem.span(home)}, 0) catch null;
+}
+
+fn loadLook() void {
+    var dir_buf: [1024]u8 = undefined;
+    const dir = userConfigDir(&dir_buf) orelse return;
+    var path_buf: [1100]u8 = undefined;
+    const path = std.fmt.bufPrintSentinel(&path_buf, "{s}/dkde.toml", .{dir}, 0) catch return;
+    const text = readFile(path) orelse {
+        look = .{};
+        return;
+    };
+    defer gpa.free(text);
+    look = look_mod.parse(gpa, text);
+}
+
 fn watchConfig() void {
     var path_buf: [1024]u8 = undefined;
     const path = configPath(&path_buf) orelse return;
@@ -1593,12 +1616,19 @@ fn watchConfig() void {
         return;
     }
     config_fd = fd;
+    // dkde.toml (accent, dark mode, font) is watched too, in its own folder when that is not the same one.
+    var look_dir_buf: [1024]u8 = undefined;
+    if (userConfigDir(&look_dir_buf)) |look_dir| {
+        if (!std.mem.eql(u8, look_dir, dir)) _ = c.inotify_add_watch(fd, look_dir.ptr, c.IN_CLOSE_WRITE | c.IN_MOVED_TO);
+    }
 }
 
-/// True when compositor.toml was among the files written.
-fn configFileChanged() bool {
+/// Which of our files were written: compositor.toml, dkde.toml.
+const Changed = struct { config: bool = false, look: bool = false };
+
+fn configFileChanged() Changed {
     var buf: [4096]u8 align(@alignOf(c.struct_inotify_event)) = undefined;
-    var changed = false;
+    var changed: Changed = .{};
     while (true) {
         const n = c.read(config_fd, &buf, buf.len);
         if (n <= 0) break;
@@ -1606,7 +1636,11 @@ fn configFileChanged() bool {
         while (off < @as(usize, @intCast(n))) {
             const ev: *const c.struct_inotify_event = @ptrCast(@alignCast(&buf[off]));
             const name_ptr: [*]const u8 = @ptrCast(&buf[off + @sizeOf(c.struct_inotify_event)]);
-            if (ev.len > 0 and std.mem.eql(u8, std.mem.sliceTo(name_ptr[0..ev.len], 0), config_name)) changed = true;
+            if (ev.len > 0) {
+                const name = std.mem.sliceTo(name_ptr[0..ev.len], 0);
+                if (std.mem.eql(u8, name, config_name)) changed.config = true;
+                if (std.mem.eql(u8, name, "dkde.toml")) changed.look = true;
+            }
             off += @sizeOf(c.struct_inotify_event) + ev.len;
         }
     }
@@ -1769,6 +1803,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     setCursor();
     selectScreenChanges();
     updateMonitors();
+    loadLook();
     watchConfig();
     applyInput();
     publishSupport();
@@ -1806,7 +1841,15 @@ pub fn main(init: std.process.Init.Minimal) !void {
         if (c.xcb_connection_has_error(conn) != 0) break;
         _ = c.xcb_flush(conn);
         _ = c.poll(&fds, if (config_fd >= 0) 2 else 1, -1);
-        if (config_fd >= 0 and fds[1].revents & c.POLLIN != 0 and configFileChanged()) reloadConfig();
+        if (config_fd >= 0 and fds[1].revents & c.POLLIN != 0) {
+            const changed = configFileChanged();
+            if (changed.config) reloadConfig();
+            if (changed.look) {
+                loadLook();
+                paintBorders();
+                _ = c.xcb_flush(conn);
+            }
+        }
     }
     clearBindings();
     _ = c.xcb_flush(conn);
@@ -1815,4 +1858,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
 test {
     _ = layout;
+    _ = look_mod;
+    _ = deco;
 }

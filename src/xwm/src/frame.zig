@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const c = @import("c");
+const look_mod = @import("look.zig");
 
 pub const title_h: i32 = 30;
 /// The resize border at the sides and the bottom.
@@ -67,15 +68,6 @@ test "insets" {
     try std.testing.expectEqual(title_h, insets(false, false).t);
 }
 
-pub const Colors = struct {
-    bar: [3]f64,
-    text: [3]f64,
-    edge: [3]f64,
-};
-
-pub const focused_colors: Colors = .{ .bar = .{ 0.208, 0.518, 0.894 }, .text = .{ 1, 1, 1 }, .edge = .{ 0.208, 0.518, 0.894 } };
-pub const idle_colors: Colors = .{ .bar = .{ 0.84, 0.84, 0.84 }, .text = .{ 0.15, 0.15, 0.15 }, .edge = .{ 0.6, 0.6, 0.6 } };
-
 /// The visual of the root window, which cairo needs to draw on a window.
 pub fn rootVisual(screen: *c.xcb_screen_t) ?*c.xcb_visualtype_t {
     var depth_it = c.xcb_screen_allowed_depths_iterator(screen);
@@ -89,12 +81,12 @@ pub fn rootVisual(screen: *c.xcb_screen_t) ?*c.xcb_visualtype_t {
 }
 
 /// Draws the whole frame: edge, title bar, title, and the three buttons.
-pub fn draw(conn: *c.xcb_connection_t, visual: *c.xcb_visualtype_t, win: c.xcb_window_t, w: i32, h: i32, title: []const u8, focused: bool, maximized: bool) void {
+pub fn draw(conn: *c.xcb_connection_t, visual: *c.xcb_visualtype_t, win: c.xcb_window_t, w: i32, h: i32, title: []const u8, focused: bool, maximized: bool, look: *const look_mod.Look) void {
     const surface = c.cairo_xcb_surface_create(conn, win, visual, w, h) orelse return;
     defer c.cairo_surface_destroy(surface);
     const cr = c.cairo_create(surface) orelse return;
     defer c.cairo_destroy(cr);
-    const col = if (focused) focused_colors else idle_colors;
+    const col = look_mod.colors(look, focused);
 
     // The edge colour everywhere, then the title bar over the top part.
     c.cairo_set_source_rgb(cr, col.edge[0], col.edge[1], col.edge[2]);
@@ -106,8 +98,13 @@ pub fn draw(conn: *c.xcb_connection_t, visual: *c.xcb_visualtype_t, win: c.xcb_w
     // The title, left aligned, cut with an ellipsis before the buttons.
     const layout = c.pango_cairo_create_layout(cr) orelse return;
     defer c.g_object_unref(layout);
-    const font = c.pango_font_description_from_string("Sans Bold 10");
+    // The interface font from the shared look, in bold; Sans 10 when none is set.
+    var font_name: [112]u8 = undefined;
+    const wanted = if (look.font().len > 0) look.font() else "Sans 10";
+    const font_z = std.fmt.bufPrintSentinel(&font_name, "{s}", .{wanted}, 0) catch "Sans 10";
+    const font = c.pango_font_description_from_string(font_z.ptr);
     defer c.pango_font_description_free(font);
+    c.pango_font_description_set_weight(font, c.PANGO_WEIGHT_BOLD);
     c.pango_layout_set_font_description(layout, font);
     c.pango_layout_set_text(layout, title.ptr, @intCast(title.len));
     c.pango_layout_set_ellipsize(layout, c.PANGO_ELLIPSIZE_END);

@@ -33,6 +33,7 @@ pub fn build(b: *std.Build) void {
     const root = b.createModule(.{ .root_source_file = b.path("src/main.zig"), .target = target, .optimize = optimize, .link_libc = true });
     root.addImport("c", translate_c.createModule());
     root.addImport("shared", shared);
+    root.addImport("toml", toml);
     root.linkSystemLibrary("xcb", .{});
     if (randr_prefix) |prefix| root.addLibraryPath(.{ .cwd_relative = b.fmt("{s}/lib", .{prefix}) });
     root.linkSystemLibrary("xcb-randr", .{});
@@ -47,6 +48,7 @@ pub fn build(b: *std.Build) void {
     const test_mod = b.createModule(.{ .root_source_file = b.path("src/main.zig"), .target = target, .optimize = optimize, .link_libc = true });
     test_mod.addImport("c", translate_c.createModule());
     test_mod.addImport("shared", shared);
+    test_mod.addImport("toml", toml);
     test_mod.linkSystemLibrary("xcb", .{});
     if (randr_prefix) |prefix| test_mod.addLibraryPath(.{ .cwd_relative = b.fmt("{s}/lib", .{prefix}) });
     test_mod.linkSystemLibrary("xcb-randr", .{});
