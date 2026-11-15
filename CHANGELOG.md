@@ -2,6 +2,19 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
+## Unreleased (branch `compositor`)
+
+### Desktop on our own display servers (experimental, separate packages)
+- **dkde-compositor** (`src/compositor`, wlroots): a Wayland compositor with floating and tiling windows, workspaces, configurable shortcuts, layer-shell, taskbar and workspace protocols, output management, screen lock, idle, Xwayland and screen capture. See `src/compositor/README.md` and `dkde-compositor(1)`.
+- **dkde-wm** (`src/xwm`, XCB): an X11 window manager with ICCCM/EWMH, workspaces, floating and tiling, Alt-drag, and the same shortcuts and settings file as the compositor. See `dkde-wm(1)`.
+- **`dkde-session --x11`** (or `type=x11` in `~/.config/dkde/session.conf`) starts an X11 session: dkde-wm, the panel, polkit. `data/dkde-x11.desktop` is the xsessions entry.
+- **dkde-panel runs on X11**: bars are dock windows with struts, the wallpaper a desktop window, the Start menu a window beside the bar.
+
+### Shared desktop API
+- **`common.desktop`**: one interface for windows, workspaces, outputs and screenshots, with capability discovery; programs no longer touch Wayland or X11 directly. Backends: `src/wldesktop` (Wayland protocols) and `src/x11desktop` (EWMH over XCB). The panel's taskbar and workspace switcher, dkde-snip's capture and dkde-idle's screen off/on use it.
+- dkde-idle no longer needs `wlr-randr` (it uses wlr-output-management itself); Settings > Display still does.
+- Building dkde-panel now needs the XCB development files (`libxcb1-dev`).
+
 ## 0.3.0 (2026-11-15)
 
 ### Window snapping

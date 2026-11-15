@@ -66,7 +66,7 @@ folders shown are whatever was on that machine.
 Ubuntu 26.04 package names:
 
 ```
-sudo apt install libgtk-4-dev libgtk4-layer-shell-dev libwayland-dev \
+sudo apt install libgtk-4-dev libgtk4-layer-shell-dev libwayland-dev libxcb1-dev \
     libarchive-dev wayland-protocols pkg-config git curl
 ```
 
@@ -165,7 +165,7 @@ sudo apt install \
 | Airplane mode | `rfkill` | tile hidden |
 | Brightness | `brightnessctl` (otherwise dkde writes the backlight in sysfs, which needs permission) | slider hidden on machines with no backlight |
 | Lock screen | `swaylock` (or `gtklock`, `waylock`); dkde runs one you install, it has no lock screen of its own | no Lock item and no idle lock |
-| Idle screen off | `wlr-randr` | screen-off timeout does nothing |
+| Idle screen off | a compositor with `wlr-output-management` (labwc and dkde-compositor have it) | screen-off timeout does nothing |
 | Display settings | `wlr-randr` 0.4 or newer | Display page says what to install |
 | Printers | `cups`, `cups-client`, `cups-filters` | Printers page says what to install |
 | Phones and cameras in Files (Android MTP, PTP, iOS) | `gvfs-backends`, `libmtp-common` (udev rules), `gvfs-fuse` for other programs | The Phones and cameras sidebar section is hidden. The phone must be unlocked and set to File transfer |

@@ -49,5 +49,8 @@ $XDG_DATA_DIRS/dkde/style.css
 ~/.config/dkde/dkde.toml
 : Shared appearance (dark mode, accent colour, font).
 
+# X11
+The panel also runs on X11 under an EWMH window manager (**dkde-wm**(1) is the one DKDE ships). The bars are dock windows with struts, the wallpaper is a desktop window and the Start menu opens beside the bar. Start that session with **dkde-session --x11**.
+
 # SEE ALSO
 dkde-settings(1), dkde-idle(1), dkde-notify(1), dkde-help(1)

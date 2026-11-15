@@ -7,7 +7,7 @@ dkde-idle [-h | --help] [-V | --version]
 dkde-idle
 
 # DESCRIPTION
-dkde-idle runs the lock, screen-off and sleep actions after the keyboard and pointer have been quiet for the configured time. It uses the ext-idle-notify-v1 protocol and reads the power and menu settings of panel.toml, which it watches, so changes made in dkde-settings apply at once. It opens no window and takes no operands.
+dkde-idle runs the lock, screen-off and sleep actions after the keyboard and pointer have been quiet for the configured time. It uses the ext-idle-notify-v1 protocol and reads the power and menu settings of panel.toml, which it watches, so changes made in dkde-settings apply at once. Switching the screens off and on uses wlr-output-management (through the shared desktop API), so it needs a compositor that offers it; it no longer runs wlr-randr. It speaks a Wayland protocol, so it is not started in the X11 session. It opens no window and takes no operands.
 
 # CONVENTIONS
 Bold represents literal commands, options, and keywords.

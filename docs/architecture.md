@@ -55,7 +55,15 @@ No program imports another program's source. They start each other only as optio
 
 ## Session
 
-`dkde-session` (shell) starts a session D-Bus if it can, then labwc; labwc's autostart starts `dkde-panel`. Compositor features used: layer-shell (panel), `wlr-foreign-toplevel-management` (task list), `wlr-screencopy` (snip), `ext-workspace`, `ext-idle-notify`, virtual pointer/keyboard. Each degrades with a log line when its protocol is missing.
+`dkde-session` (shell) starts a session D-Bus if it can, then labwc; labwc's autostart starts `dkde-panel`. Compositor features used: layer-shell (panel), `wlr-foreign-toplevel-management` (task list), `wlr-screencopy` (snip), `ext-workspace`, `ext-idle-notify`, virtual pointer/keyboard. Each degrades with a log line when its protocol is missing. With `--x11` it starts `dkde-wm` and the panel instead (see below).
+
+### Shared desktop API
+
+Programs reach windows, workspaces, outputs and screenshots through `common.desktop` (`src/common/desktop.zig`): types, a capability set and a `Desktop` that turns anything unsupported into a no-op. Backends fill it in: `src/wldesktop` (foreign-toplevel, ext-workspace, output management, screencopy; takes a `wl_display`, no toolkit) and `src/x11desktop` (EWMH client messages and properties over XCB; watched from the GLib loop). The panel picks the backend from the GDK display type; `panel/surface.zig` does the same for its own windows (layer-shell on Wayland, `x11_surface.zig` on X11: docks with struts, desktop and menu windows placed over XCB). A `Fake` backend in `desktop.zig` covers the API in tests; `DKDE_X11_TEST=1 zig build test -Dapp=panel` runs the X11 backend against a live server.
+
+### Own compositor and window manager (experimental)
+
+`src/compositor` (wlroots) and `src/xwm` (XCB) are separate packages with their own `zig build`, so the main build needs neither wlroots nor X11 development files. The window manager imports the compositor's `layout.zig`, `keys.zig` and `config.zig` (no display code in them) through `src/compositor/src/shared.zig`, so both read `~/.config/dkde/compositor.toml` and share layout policy and shortcuts. `dkde-session` can start either (`DKDE_COMPOSITOR`, `--x11`, `session.conf`). Progress and open items: `ai/COMPOSITOR-SURVEY.md`.
 
 ## Privilege
 
