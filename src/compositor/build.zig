@@ -29,6 +29,10 @@ pub fn build(b: *std.Build) void {
     toplevel_scan.addFileArg(b.path("../../protocols/wlr-foreign-toplevel-management-unstable-v1.xml"));
     const toplevel_header = toplevel_scan.addOutputFileArg("wlr-foreign-toplevel-management-unstable-v1-protocol.h");
 
+    const output_scan = b.addSystemCommand(&.{ "wayland-scanner", "server-header" });
+    output_scan.addFileArg(b.path("protocols/wlr-output-management-unstable-v1.xml"));
+    const output_header = output_scan.addOutputFileArg("wlr-output-management-unstable-v1-protocol.h");
+
     // ext-workspace-v1 is not in wlroots 0.19: the compositor serves it itself, from wayland-scanner's
     // header (for the C interop) and glue code (the protocol's wl_interface tables).
     const ws_xml = b.fmt("{s}/staging/ext-workspace/ext-workspace-v1.xml", .{protocols});
@@ -71,6 +75,7 @@ pub fn build(b: *std.Build) void {
     translate_c.addIncludePath(xdg_header.dirname());
     translate_c.addIncludePath(layer_header.dirname());
     translate_c.addIncludePath(toplevel_header.dirname());
+    translate_c.addIncludePath(output_header.dirname());
     translate_c.addIncludePath(ws_header.dirname());
     for (more_headers) |h| translate_c.addIncludePath(h.dirname());
     for (repo_headers) |h| translate_c.addIncludePath(h.dirname());

@@ -37,6 +37,8 @@ const Server = struct {
     /// What the layer surfaces (panels) leave free for windows.
     usable: ?layout.Rect = null,
     idle: *c.wlr_idle_notifier_v1,
+    output_manager: *c.wlr_output_manager_v1,
+    outputs: std.ArrayList(*Output) = .empty,
     cursor: *c.wlr_cursor,
     cursor_mgr: *c.wlr_xcursor_manager,
     seat: *c.wlr_seat,
@@ -64,6 +66,8 @@ const Server = struct {
     new_xdg_toplevel: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_xdg_popup: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_layer_surface: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    output_apply: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    output_test: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_decoration: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_virtual_keyboard: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_virtual_pointer: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -117,6 +121,12 @@ const Output = struct {
 
     fn onDestroy(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Output = @fieldParentPtr("destroy", listener.?);
+        for (server.outputs.items, 0..) |o, i| {
+            if (o == self) {
+                _ = server.outputs.orderedRemove(i);
+                break;
+            }
+        }
         unlisten(&self.frame);
         unlisten(&self.request_state);
         unlisten(&self.destroy);
@@ -141,9 +151,67 @@ fn onNewOutput(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     listen(&output.events.request_state, &out.request_state, Output.onRequestState);
     listen(&output.events.destroy, &out.destroy, Output.onDestroy);
 
+    server.outputs.append(gpa, out) catch {};
     const layout_output = c.wlr_output_layout_add_auto(server.output_layout, output);
     const scene_output = c.wlr_scene_output_create(server.scene, output);
     c.wlr_scene_output_layout_add_output(server.scene_layout, layout_output, scene_output);
+    publishOutputs();
+}
+
+// ---- output management (wlr-randr, Settings > Display, screen off) ---------------------------------------------
+
+/// Tells output-management clients how the outputs are set up now.
+fn publishOutputs() void {
+    const cfg = c.wlr_output_configuration_v1_create() orelse return;
+    for (server.outputs.items) |o| {
+        const head = c.wlr_output_configuration_head_v1_create(cfg, o.output) orelse continue;
+        if (c.wlr_output_layout_get(server.output_layout, o.output)) |l| {
+            head.*.state.x = l.*.x;
+            head.*.state.y = l.*.y;
+        }
+    }
+    c.wlr_output_manager_v1_set_configuration(server.output_manager, cfg);
+}
+
+/// Applies (or only tests) what a client asked for. True when every output accepted it.
+fn applyOutputConfig(cfg: *c.wlr_output_configuration_v1, test_only: bool) bool {
+    var ok = true;
+    var node: *c.struct_wl_list = @ptrCast(cfg.heads.next);
+    while (node != &cfg.heads) : (node = @ptrCast(node.next)) {
+        const head: *c.wlr_output_configuration_head_v1 = @fieldParentPtr("link", node);
+        const output = head.state.output;
+        var state: c.wlr_output_state = undefined;
+        c.wlr_output_state_init(&state);
+        c.wlr_output_head_v1_state_apply(&head.state, &state);
+        const accepted = if (test_only) c.wlr_output_test_state(output, &state) else c.wlr_output_commit_state(output, &state);
+        c.wlr_output_state_finish(&state);
+        if (!accepted) ok = false;
+    }
+    if (ok and !test_only) {
+        node = @ptrCast(cfg.heads.next);
+        while (node != &cfg.heads) : (node = @ptrCast(node.next)) {
+            const head: *c.wlr_output_configuration_head_v1 = @fieldParentPtr("link", node);
+            if (head.state.enabled) {
+                _ = c.wlr_output_layout_add(server.output_layout, head.state.output, head.state.x, head.state.y);
+            } else {
+                c.wlr_output_layout_remove(server.output_layout, head.state.output);
+            }
+        }
+    }
+    return ok;
+}
+
+fn onOutputApply(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const cfg: *c.wlr_output_configuration_v1 = @ptrCast(@alignCast(data));
+    if (applyOutputConfig(cfg, false)) c.wlr_output_configuration_v1_send_succeeded(cfg) else c.wlr_output_configuration_v1_send_failed(cfg);
+    c.wlr_output_configuration_v1_destroy(cfg);
+    publishOutputs();
+}
+
+fn onOutputTest(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const cfg: *c.wlr_output_configuration_v1 = @ptrCast(@alignCast(data));
+    if (applyOutputConfig(cfg, true)) c.wlr_output_configuration_v1_send_succeeded(cfg) else c.wlr_output_configuration_v1_send_failed(cfg);
+    c.wlr_output_configuration_v1_destroy(cfg);
 }
 
 // ---- windows -------------------------------------------------------------------------------------------------
@@ -524,6 +592,7 @@ fn toggleWindowFloating() void {
 
 fn onLayoutChange(_: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
     arrange();
+    publishOutputs();
 }
 
 fn onNewToplevel(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
@@ -1329,6 +1398,7 @@ pub fn main() !void {
     _ = c.wlr_fractional_scale_manager_v1_create(display, 1);
     const shape_manager = c.wlr_cursor_shape_manager_v1_create(display, 1) orelse return error.NoProtocol;
     const idle = c.wlr_idle_notifier_v1_create(display) orelse return error.NoProtocol;
+    const output_manager = c.wlr_output_manager_v1_create(display) orelse return error.NoProtocol;
     const cursor = c.wlr_cursor_create() orelse return error.NoCursor;
     c.wlr_cursor_attach_output_layout(cursor, output_layout);
     const cursor_mgr = c.wlr_xcursor_manager_create(null, 24) orelse return error.NoCursor;
@@ -1347,6 +1417,7 @@ pub fn main() !void {
         .foreign = foreign,
         .trees = trees,
         .idle = idle,
+        .output_manager = output_manager,
         .cursor = cursor,
         .cursor_mgr = cursor_mgr,
         .seat = seat,
@@ -1366,6 +1437,8 @@ pub fn main() !void {
     listen(&cursor.*.events.axis, &server.cursor_axis, onCursorAxis);
     listen(&cursor.*.events.frame, &server.cursor_frame, onCursorFrame);
     listen(&backend.*.events.new_input, &server.new_input, onNewInput);
+    listen(&output_manager.*.events.apply, &server.output_apply, onOutputApply);
+    listen(&output_manager.*.events.@"test", &server.output_test, onOutputTest);
     listen(&decoration_manager.*.events.new_toplevel_decoration, &server.new_decoration, onNewDecoration);
     listen(&virtual_keyboard.*.events.new_virtual_keyboard, &server.new_virtual_keyboard, onNewVirtualKeyboard);
     listen(&virtual_pointer.*.events.new_virtual_pointer, &server.new_virtual_pointer, onNewVirtualPointer);
@@ -1395,6 +1468,8 @@ pub fn main() !void {
     unlisten(&server.cursor_axis);
     unlisten(&server.cursor_frame);
     unlisten(&server.new_input);
+    unlisten(&server.output_apply);
+    unlisten(&server.output_test);
     unlisten(&server.new_decoration);
     unlisten(&server.new_virtual_keyboard);
     unlisten(&server.new_virtual_pointer);
