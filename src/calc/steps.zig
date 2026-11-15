@@ -1474,6 +1474,30 @@ fn isPowerTerm(ctx: Ctx, n: *const eval.Node, x: []const u8) bool {
     return p.terms.len == 1;
 }
 
+/// "∫ 3x² dx = 3·∫ x² dx = 3·x³/3 = x³": the power rule shown in its pieces.
+fn powerRuleLine(ctx: Ctx, n: *const eval.Node, x: []const u8, tt: []const u8, result: []const u8) Error!?[]const u8 {
+    const a = ctx.a;
+    const p = (algebra.fromNode(.{ .a = a, .session = ctx.session }, n) catch return null) orelse return null;
+    if (p.terms.len != 1) return null;
+    const t = p.terms[0];
+    var e: ?u32 = null;
+    for (t.exps, 0..) |ex, i| {
+        if (ex == 0) continue;
+        if (!std.mem.eql(u8, p.vars[i], x) or e != null) return null;
+        e = @intCast(ex);
+    }
+    const power = e orelse return null;
+    if (power == 1 and num.isOneNumber(t.c)) return null;
+    const up = try std.fmt.allocPrint(a, "{s}{s}", .{ x, if (power == 1) "" else try sup(a, power) });
+    const next = try std.fmt.allocPrint(a, "{s}{s}", .{ x, try sup(a, power + 1) });
+    const ctext = try numText(a, t.c);
+    const one = num.isOneNumber(t.c);
+    const m1 = std.mem.eql(u8, ctext, "-1") or std.mem.eql(u8, ctext, "−1");
+    if (one) return try std.fmt.allocPrint(a, "∫ {s} d{s} = {s}/{d} = {s}", .{ up, x, next, power + 1, result });
+    if (m1) return try std.fmt.allocPrint(a, "∫ {s} d{s} = −∫ {s} d{s} = −{s}/{d} = {s}", .{ tt, x, up, x, next, power + 1, result });
+    return try std.fmt.allocPrint(a, "∫ {s} d{s} = {s}·∫ {s} d{s} = {s}·{s}/{d} = {s}", .{ tt, x, ctext, up, x, ctext, next, power + 1, result });
+}
+
 fn integralSteps(ctx_in: Ctx, expr: []const u8, x: []const u8) Error!?[]Step {
     var ctx = ctx_in;
     ctx.mode.angle = .radians;
@@ -1509,7 +1533,9 @@ fn integralSteps(ctx_in: Ctx, expr: []const u8, x: []const u8) Error!?[]Step {
         }
         if (isPowerTerm(ctx, t.node, x)) {
             if (simple.items.len > 0) try simple.appendSlice(a, ",   ");
-            try simple.print(a, "∫ {s} d{s} = {s}", .{ tt, x, result });
+            if (try powerRuleLine(ctx, t.node, x, tt, result)) |line| {
+                try simple.appendSlice(a, line);
+            } else try simple.print(a, "∫ {s} d{s} = {s}", .{ tt, x, result });
             continue;
         }
         // A product with a polynomial: integration by parts.
