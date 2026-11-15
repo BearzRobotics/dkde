@@ -51,3 +51,11 @@ panel, and adds `~/bin` to PATH. Mount the disk (`sudo mount -o ro /dev/vda /mnt
 labwc and `dkde-session`; the tty1 autologin restarts the session with our compositor. (The first
 attempt can time out waiting for the seat while the old session lets go of the VT; the restart works.)
 Run apps from the serial shell with `XDG_RUNTIME_DIR=/tmp/dkde-runtime-1000 WAYLAND_DISPLAY=wayland-0`.
+
+## Shortcut: `vm.sh`
+
+`qemu/vm.sh` does steps 2 and 3 and drives the guest: `VM=/stuff/tmp/vmw BIN=.../musl-out/bin/dkde-compositor qemu/vm.sh up`
+(keep `VM` short: unix socket paths over 107 characters fail), then `shot NAME`, `key alt t`, `click X Y [alt]`,
+`drag X1 Y1 X2 Y2 [alt] [left|right]`, `run 'COMMAND'`, `push` (copy a new build over the 9p share and restart
+the session, about 20 s) and `down`. The program folder is shared with the guest over 9p, so no reboot is needed
+between builds. The VM has a virtio tablet, so clicks and drags are absolute (1280x800).

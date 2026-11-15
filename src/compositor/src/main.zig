@@ -771,8 +771,47 @@ fn onCursorMotionAbsolute(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) vo
     processCursorMotion(event.time_msec);
 }
 
+/// Is Alt down on any keyboard? (A machine can have several; the seat tracks only the last one used.)
+fn altHeld() bool {
+    for (server.keyboards.items) |k| {
+        if (c.wlr_keyboard_get_modifiers(k.keyboard) & c.WLR_MODIFIER_ALT != 0) return true;
+    }
+    return false;
+}
+
 fn onCursorButton(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     const event: *c.wlr_pointer_button_event = @ptrCast(@alignCast(data));
+    c._wlr_log(c.WLR_DEBUG, "button %u state %d alt=%d keyboards=%d", event.button, @as(c_int, @intCast(event.state)), @as(c_int, @intFromBool(altHeld())), @as(c_int, @intCast(server.keyboards.items.len)));
+    // Alt + left button drags the window under the pointer, Alt + right button resizes it from the nearest corner;
+    // the client never sees these clicks.
+    if (event.state == c.WL_POINTER_BUTTON_STATE_PRESSED and altHeld()) {
+        const BTN_LEFT = 0x110;
+        const BTN_RIGHT = 0x111;
+        if (windowAt(server.cursor.*.x, server.cursor.*.y)) |hit| {
+            if (hit.toplevel) |t| {
+                if (event.button == BTN_LEFT or event.button == BTN_RIGHT) {
+                    focus(t);
+                    // Moving or resizing a tiled window takes it out of the tiling.
+                    if (server.policy == .tiling and !t.floating) {
+                        t.floating = true;
+                        restore(t);
+                        arrange();
+                    }
+                    if (event.button == BTN_LEFT) {
+                        beginGrab(t, .move, 0);
+                    } else {
+                        const box = geometryOf(t);
+                        const mid_x = @as(f64, @floatFromInt(box.x)) + @as(f64, @floatFromInt(box.w)) / 2;
+                        const mid_y = @as(f64, @floatFromInt(box.y)) + @as(f64, @floatFromInt(box.h)) / 2;
+                        var edges: u32 = if (server.cursor.*.x < mid_x) c.WLR_EDGE_LEFT else c.WLR_EDGE_RIGHT;
+                        edges |= if (server.cursor.*.y < mid_y) c.WLR_EDGE_TOP else c.WLR_EDGE_BOTTOM;
+                        beginGrab(t, .resize, edges);
+                    }
+                    if (server.cursor_mode != .passthrough) return;
+                }
+            }
+        }
+    }
     _ = c.wlr_seat_pointer_notify_button(server.seat, event.time_msec, event.button, event.state);
     if (event.state == c.WL_POINTER_BUTTON_STATE_RELEASED) {
         resetCursorMode();

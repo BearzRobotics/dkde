@@ -4,15 +4,15 @@ mkdir -p ~/bin && cat > ~/bin/labwc <<'EOF'
 export DKDE_COMPOSITOR_CONFIG=/mnt/compositor.toml DKDE_DEBUG=1 WLR_RENDERER=pixman
 /mnt/dkde-compositor > $HOME/comp.log 2>&1 &
 C=$!
-n=0
-while [ $n -lt 30 ]; do
-    sock=$(sed -n 's/.*WAYLAND_DISPLAY=\([a-z0-9-]*\).*/\1/p' $HOME/comp.log | head -1)
-    [ -n "$sock" ] && break
-    sleep 1; n=$((n+1))
-done
-export WAYLAND_DISPLAY=$sock
-dkde-idle > $HOME/idle.log 2>&1 &
-dkde-panel > $HOME/panel.log 2>&1 &
+# libwayland picks the first free socket: wayland-0 on a fresh session.
+sleep 3
+export WAYLAND_DISPLAY=wayland-0
+# Only if the compositor really started (a failed start must not leave a panel behind).
+if kill -0 $C 2>/dev/null; then
+    dkde-idle > $HOME/idle.log 2>&1 &
+    dkde-panel > $HOME/panel.log 2>&1 &
+fi
 wait $C
+kill $(jobs -p) 2>/dev/null
 EOF
 chmod +x ~/bin/labwc; echo 'export PATH=$HOME/bin:$PATH' >> ~/.profile; tail -2 ~/.profile
