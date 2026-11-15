@@ -314,6 +314,15 @@ fn updateMonitors() void {
         }
     }.less);
     refreshWorkAreas();
+    logMonitors();
+}
+
+/// One line per monitor, for bug reports: dkde-wm writes this at start and whenever the layout changes.
+fn logMonitors() void {
+    warn("screen {d}x{d}, {d} monitor(s){s}", .{ screen_w, screen_h, monitor_count, if (randr_event_base == null) " (no RandR)" else "" });
+    for (monitors[0..monitor_count], 0..) |m, i| {
+        warn("  monitor {d}: {d}x{d}+{d}+{d}, work area {d}x{d}+{d}+{d}", .{ i, m.rect.w, m.rect.h, m.rect.x, m.rect.y, m.work.w, m.work.h, m.work.x, m.work.y });
+    }
 }
 
 fn refreshWorkAreas() void {
@@ -1615,7 +1624,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
         std.process.exit(1);
     }
 
-    _ = c.signal(c.SIGCHLD, c.SIG_IGN);
+    // SIG_IGN is (handler)1; musl's header form does not translate, so it is written out.
+    const sig_ign: *align(1) const fn (c_int) callconv(.c) void = @ptrFromInt(1);
+    _ = c.signal(c.SIGCHLD, sig_ign);
     // SIGTERM ends the session (Settings' "Log Off"). No SA_RESTART, so the poll below wakes up.
     _ = c.signal(c.SIGTERM, onSignal);
     _ = c.signal(c.SIGINT, onSignal);
