@@ -93,9 +93,10 @@ const Output = struct {
         const self: *Output = @fieldParentPtr("frame", listener.?);
         const scene_output = c.wlr_scene_get_scene_output(server.scene, self.output) orelse return;
         _ = c.wlr_scene_output_commit(scene_output, null);
-        var now: c.timespec = undefined;
-        _ = c.clock_gettime(c.CLOCK_MONOTONIC, &now);
-        c.wlr_scene_output_send_frame_done(scene_output, &now);
+        // std's timespec rather than the C one: musl's is an opaque type to translate-c.
+        var now: std.c.timespec = undefined;
+        _ = std.c.clock_gettime(.MONOTONIC, &now);
+        c.wlr_scene_output_send_frame_done(scene_output, @ptrCast(&now));
     }
 
     fn onRequestState(listener: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {

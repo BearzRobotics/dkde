@@ -1,0 +1,18 @@
+mkdir -p ~/bin && cat > ~/bin/labwc <<'EOF'
+#!/bin/sh
+# Test wrapper: dkde-session runs "labwc"; this runs dkde-compositor (and the panel) instead.
+export DKDE_COMPOSITOR_CONFIG=/mnt/compositor.toml DKDE_DEBUG=1 WLR_RENDERER=pixman
+/mnt/dkde-compositor > $HOME/comp.log 2>&1 &
+C=$!
+n=0
+while [ $n -lt 30 ]; do
+    sock=$(sed -n 's/.*WAYLAND_DISPLAY=\([a-z0-9-]*\).*/\1/p' $HOME/comp.log | head -1)
+    [ -n "$sock" ] && break
+    sleep 1; n=$((n+1))
+done
+export WAYLAND_DISPLAY=$sock
+dkde-idle > $HOME/idle.log 2>&1 &
+dkde-panel > $HOME/panel.log 2>&1 &
+wait $C
+EOF
+chmod +x ~/bin/labwc; echo 'export PATH=$HOME/bin:$PATH' >> ~/.profile; tail -2 ~/.profile

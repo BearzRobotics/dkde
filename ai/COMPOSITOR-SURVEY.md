@@ -61,3 +61,7 @@ Testing caveat: `wtype` builds its own keymap, so its keycodes do not match a us
 ## Workspaces (ext-workspace-v1)
 
 wlroots 0.19 has no helper for `ext-workspace-v1`, so `src/workspaces.zig` serves it on libwayland: `build.zig` runs `wayland-scanner server-header` (for the C interop) and `private-code` (the protocol's `wl_interface` tables, compiled with `addCSourceFile`). One group holds N workspaces (`[workspaces] count`, 1 to 9, default 4); a client's `activate` is applied at `commit`. The compositor switches with Alt+1…9 and moves the focused window with Alt+Shift+1…9; windows on other workspaces are hidden (the taskbar still lists them, and activating one switches to its workspace first); tiling lays out only the current workspace. Verified nested with dkde-panel: its workspace indicator follows the switch, a window opened on workspace 2 is not drawn on workspace 1.
+
+## On a real display: QEMU (2026-11-15)
+
+`src/compositor/qemu/README.md` has the procedure. Built for the dkbuild image (musl, wlroots 0.20.2; the only source change from the 0.19 build was musl's opaque `timespec`) and booted in QEMU with KVM: the compositor runs on the DRM/KMS backend through libseat/seatd on virtio-gpu, `dkde-panel` shows the taskbar and workspace indicator, dkde-calc and dkde-term open, and keys sent through QEMU's keyboard (Alt+T tiling, Alt+2 / Alt+1 workspaces) are handled. Not tried there: the pointer, and the greeter login path (the test replaces `labwc` through a wrapper on the live user's PATH).

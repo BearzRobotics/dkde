@@ -13,6 +13,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const wlroots = b.fmt("wlroots-{s}", .{b.option([]const u8, "wlroots", "wlroots version (pkg-config name wlroots-<version>)") orelse "0.19"});
     const protocols = b.option([]const u8, "wayland-protocols", "Folder with the wayland-protocols XML files") orelse "/usr/share/wayland-protocols";
 
     // The C header of xdg-shell, which wlroots' headers include.
@@ -46,7 +47,7 @@ pub fn build(b: *std.Build) void {
     translate_c.addIncludePath(layer_header.dirname());
     translate_c.addIncludePath(toplevel_header.dirname());
     translate_c.addIncludePath(ws_header.dirname());
-    translate_c.linkSystemLibrary("wlroots-0.19", .{});
+    translate_c.linkSystemLibrary(wlroots, .{});
     translate_c.linkSystemLibrary("wayland-server", .{});
     translate_c.linkSystemLibrary("xkbcommon", .{});
     translate_c.linkSystemLibrary("pixman-1", .{});
@@ -61,7 +62,7 @@ pub fn build(b: *std.Build) void {
     root.addCSourceFile(.{ .file = ws_code });
     const toml = b.dependency("toml", .{ .target = target, .optimize = optimize }).module("toml");
     root.addImport("toml", toml);
-    root.linkSystemLibrary("wlroots-0.19", .{});
+    root.linkSystemLibrary(wlroots, .{});
     root.linkSystemLibrary("wayland-server", .{});
     root.linkSystemLibrary("xkbcommon", .{});
     root.linkSystemLibrary("pixman-1", .{});
