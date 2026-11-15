@@ -10,3 +10,6 @@
 #include <sys/inotify.h>
 #include <sys/stat.h>
 #include <xcb/randr.h>
+#include <cairo/cairo.h>
+#include <cairo/cairo-xcb.h>
+#include <pango/pangocairo.h>

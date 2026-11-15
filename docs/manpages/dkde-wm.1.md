@@ -31,13 +31,13 @@ It speaks ICCCM (delete and take-focus protocols, WM_STATE) and EWMH (supporting
 : Watched: a change (from dkde-settings or an editor) applies at once, including the desktops, the shortcuts and the keyboard layout (**[input]** layout, variant, options and key repeat, through **setxkbmap** and **xset**). Settings: **[windows]**, **[workspaces]**, **[keys]** (see **dkde-compositor**(1)). **[input]** does not apply; X11 input is set with **setxkbmap** and **xinput**.
 
 # MONITORS AND FRAMES
-With RandR each monitor has its own work area (a panel reduces only the monitor it stands on), new windows open on the monitor the pointer is on, and tiling, maximize, fullscreen and snap act per monitor. Dragging a window onto another monitor moves it there. A window that draws its own frame (GTK's) gets no border; any other gets a 2 px one, blue when it has the focus. A window's minimum and maximum size (WM_NORMAL_HINTS) are kept, and one that cannot change size floats. **[windows] focus = "follow"** in compositor.toml makes the focus follow the mouse (without raising).
+With RandR each monitor has its own work area (a panel reduces only the monitor it stands on), new windows open on the monitor the pointer is on, and tiling, maximize, fullscreen and snap act per monitor. Dragging a window onto another monitor moves it there. A window that draws its own frame (GTK's client-side decorations, or Motif hints asking for none) is left alone. Any other gets a frame from dkde-wm: a title bar with the window's title and the minimize, maximize and close buttons, and a 4 px edge to resize from. The title bar is blue while the window has the focus; dragging it moves the window, a double click maximizes or restores it, and the edges and corners resize. Frames are drawn with cairo and pango. A window's minimum and maximum size (WM_NORMAL_HINTS) are kept, and one that cannot change size floats. **[windows] focus = "follow"** in compositor.toml makes the focus follow the mouse (without raising).
 
 # LOGS
 At start, and whenever RandR reports a change, dkde-wm writes the screen size and one line per monitor (size, position, work area) to standard error; under **dkde-session --x11** that is **~/.local/state/dkde/session.log**. Send that file with the output of **xrandr --verbose** when a multi-monitor layout misbehaves.
 
 # LIMITS
-No title bars for programs that draw none (they get a border only). The screen follows XRandR changes: windows are laid out again and floating windows pulled back onto their monitor. Workspaces are shared by all monitors. Several monitors are covered by a unit test, not yet by a test on real hardware. dkde-panel needs a Wayland layer shell, so on X11 it does not run until its X11 backend exists.
+The screen follows XRandR changes: windows are laid out again and floating windows pulled back onto their monitor. Workspaces are shared by all monitors. Several monitors are covered by a unit test, not yet by a test on real hardware. dkde-panel needs a Wayland layer shell, so on X11 it does not run until its X11 backend exists.
 
 # SEE ALSO
 **dkde-compositor**(1)

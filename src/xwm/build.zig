@@ -19,6 +19,8 @@ pub fn build(b: *std.Build) void {
     const translate_c = b.addTranslateC(.{ .root_source_file = b.path("src/c.h"), .target = target, .optimize = optimize });
     translate_c.linkSystemLibrary("xcb", .{});
     translate_c.linkSystemLibrary("xkbcommon", .{});
+    translate_c.linkSystemLibrary("pangocairo", .{});
+    translate_c.linkSystemLibrary("cairo", .{});
     if (randr_prefix) |prefix| {
         translate_c.addIncludePath(.{ .cwd_relative = b.fmt("{s}/include", .{prefix}) });
         translate_c.addIncludePath(.{ .cwd_relative = "/usr/include/xcb" });
@@ -35,6 +37,8 @@ pub fn build(b: *std.Build) void {
     if (randr_prefix) |prefix| root.addLibraryPath(.{ .cwd_relative = b.fmt("{s}/lib", .{prefix}) });
     root.linkSystemLibrary("xcb-randr", .{});
     root.linkSystemLibrary("xkbcommon", .{});
+    root.linkSystemLibrary("pangocairo", .{});
+    root.linkSystemLibrary("cairo", .{});
     b.installArtifact(b.addExecutable(.{ .name = "dkde-wm", .root_module = root }));
     // The login-manager entry for an X11 session (`zig build --prefix /usr`).
     b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path("../../data/dkde-x11.desktop"), .prefix, "share/xsessions/dkde-x11.desktop").step);
@@ -47,5 +51,7 @@ pub fn build(b: *std.Build) void {
     if (randr_prefix) |prefix| test_mod.addLibraryPath(.{ .cwd_relative = b.fmt("{s}/lib", .{prefix}) });
     test_mod.linkSystemLibrary("xcb-randr", .{});
     test_mod.linkSystemLibrary("xkbcommon", .{});
+    test_mod.linkSystemLibrary("pangocairo", .{});
+    test_mod.linkSystemLibrary("cairo", .{});
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = test_mod })).step);
 }

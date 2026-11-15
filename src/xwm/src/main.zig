@@ -10,6 +10,7 @@
 const std = @import("std");
 const c = @import("c");
 const shared = @import("shared");
+const deco = @import("frame.zig");
 
 const layout = shared.layout;
 const keys = shared.keys;
@@ -107,6 +108,13 @@ const Client = struct {
     min_h: i32 = 0,
     max_w: i32 = 0,
     max_h: i32 = 0,
+    /// The window drawn around it (title bar, resize edges) when it has no frame of its own; 0 = none.
+    frame: c.xcb_window_t = 0,
+    /// Outer size last given to the frame, for hit tests.
+    fw: i32 = 0,
+    fh: i32 = 0,
+    /// Time of the last click on the title bar, to spot a double click.
+    last_click: u32 = 0,
     /// Width of the border WM draws: windows that draw their own frame get none.
     border: u8 = 0,
     takes_delete: bool = false,
@@ -158,7 +166,7 @@ fn warn(comptime fmt: []const u8, args: anytype) void {
 // ---- small helpers --------------------------------------------------------------------------------------------
 
 fn findClient(win: c.xcb_window_t) ?*Client {
-    for (clients.items) |cl| if (cl.win == win) return cl;
+    for (clients.items) |cl| if (cl.win == win or (cl.frame != 0 and cl.frame == win)) return cl;
     return null;
 }
 
@@ -361,23 +369,52 @@ test "size hints limit a size both ways" {
     try std.testing.expectEqual(@as(i32, 900), big.h);
 }
 
-/// Puts a window at `r` (its outer rectangle, border included), within its size limits, and tells it.
+fn outerWin(cl: *const Client) c.xcb_window_t {
+    return if (cl.frame != 0) cl.frame else cl.win;
+}
+
+fn insetsOf(cl: *const Client) deco.Insets {
+    if (cl.frame == 0) return .{ .l = 0, .r = 0, .t = 0, .b = 0 };
+    return deco.insets(cl.maximized, cl.fullscreen);
+}
+
+var visual: ?*c.xcb_visualtype_t = null;
+
+fn redrawFrame(cl: *Client) void {
+    if (cl.frame == 0 or cl.fw <= 0) return;
+    const v = visual orelse return;
+    deco.draw(conn, v, cl.frame, cl.fw, cl.fh, cl.title, focused == cl, cl.maximized);
+}
+
+/// Puts a window at `r` (its outer rectangle, frame included), within its size limits, and tells it.
 fn place(cl: *Client, r0: layout.Rect) void {
-    const r = fit(cl, r0);
-    const b: i32 = cl.border;
-    var values = [_]u32{ @bitCast(r.x), @bitCast(r.y), clampSize(r.w - 2 * b), clampSize(r.h - 2 * b), cl.border };
+    const ins = insetsOf(cl);
+    // The size limits are the client's, so they apply inside the frame.
+    const inner = fit(cl, .{ .x = r0.x, .y = r0.y, .w = r0.w - ins.l - ins.r, .h = r0.h - ins.t - ins.b });
+    const outer: layout.Rect = .{ .x = inner.x, .y = inner.y, .w = inner.w + ins.l + ins.r, .h = inner.h + ins.t + ins.b };
+    if (cl.frame != 0) {
+        var fv = [_]u32{ @bitCast(outer.x), @bitCast(outer.y), clampSize(outer.w), clampSize(outer.h) };
+        _ = c.xcb_configure_window(conn, cl.frame, c.XCB_CONFIG_WINDOW_X | c.XCB_CONFIG_WINDOW_Y | c.XCB_CONFIG_WINDOW_WIDTH | c.XCB_CONFIG_WINDOW_HEIGHT, &fv);
+        var cv = [_]u32{ @bitCast(ins.l), @bitCast(ins.t), clampSize(inner.w), clampSize(inner.h) };
+        _ = c.xcb_configure_window(conn, cl.win, c.XCB_CONFIG_WINDOW_X | c.XCB_CONFIG_WINDOW_Y | c.XCB_CONFIG_WINDOW_WIDTH | c.XCB_CONFIG_WINDOW_HEIGHT, &cv);
+        sendConfigureNotify(cl, .{ .x = outer.x + ins.l, .y = outer.y + ins.t, .w = inner.w, .h = inner.h });
+        const changed = cl.fw != outer.w or cl.fh != outer.h;
+        cl.fw = outer.w;
+        cl.fh = outer.h;
+        if (changed) redrawFrame(cl);
+        return;
+    }
+    var values = [_]u32{ @bitCast(outer.x), @bitCast(outer.y), clampSize(outer.w), clampSize(outer.h), 0 };
     _ = c.xcb_configure_window(conn, cl.win, c.XCB_CONFIG_WINDOW_X | c.XCB_CONFIG_WINDOW_Y | c.XCB_CONFIG_WINDOW_WIDTH | c.XCB_CONFIG_WINDOW_HEIGHT | c.XCB_CONFIG_WINDOW_BORDER_WIDTH, &values);
-    sendConfigureNotify(cl, .{ .x = r.x, .y = r.y, .w = r.w - 2 * b, .h = r.h - 2 * b });
+    sendConfigureNotify(cl, outer);
 }
 
 const border_focused: u32 = 0x3584e4;
 const border_idle: u32 = 0x8a8a8a;
 
+/// The frames show who has the focus, so they are drawn again when it moves.
 fn paintBorders() void {
-    for (clients.items) |cl| {
-        if (cl.kind != .normal or cl.border == 0) continue;
-        _ = c.xcb_change_window_attributes(conn, cl.win, c.XCB_CW_BORDER_PIXEL, &[_]u32{if (focused == cl) border_focused else border_idle});
-    }
+    for (clients.items) |cl| if (cl.kind == .normal and cl.frame != 0) redrawFrame(cl);
 }
 
 /// Tells a client where it is, as ICCCM asks when we do not move it as it requested.
@@ -526,12 +563,14 @@ fn arrange() void {
                 place(cl, r);
             }
             if (!cl.mapped) {
-                _ = c.xcb_map_window(conn, cl.win);
+                if (cl.frame != 0) _ = c.xcb_map_window(conn, cl.win);
+                _ = c.xcb_map_window(conn, outerWin(cl));
                 cl.mapped = true;
             }
         } else if (cl.mapped) {
+            // Hiding a framed window unmaps the frame; its own unmap is announced for the frame, not the client.
             cl.ignore_unmap +|= 1;
-            _ = c.xcb_unmap_window(conn, cl.win);
+            _ = c.xcb_unmap_window(conn, outerWin(cl));
             cl.mapped = false;
         }
         if (cl.kind == .normal) publishClientState(cl);
@@ -552,17 +591,17 @@ fn restack() void {
         var values = [_]u32{ below, c.XCB_STACK_MODE_ABOVE };
         if (below == 0) {
             values[0] = c.XCB_STACK_MODE_ABOVE;
-            _ = c.xcb_configure_window(conn, cl.win, c.XCB_CONFIG_WINDOW_STACK_MODE, &values);
+            _ = c.xcb_configure_window(conn, outerWin(cl), c.XCB_CONFIG_WINDOW_STACK_MODE, &values);
         } else {
-            _ = c.xcb_configure_window(conn, cl.win, c.XCB_CONFIG_WINDOW_SIBLING | c.XCB_CONFIG_WINDOW_STACK_MODE, &values);
+            _ = c.xcb_configure_window(conn, outerWin(cl), c.XCB_CONFIG_WINDOW_SIBLING | c.XCB_CONFIG_WINDOW_STACK_MODE, &values);
         }
-        below = cl.win;
+        below = outerWin(cl);
     }
     // Windows that asked to stay on top (the Start menu) go above the rest.
     for (stack.items) |cl| {
         if (cl.kind == .normal and cl.above and visible(cl)) {
             const v = [_]u32{c.XCB_STACK_MODE_ABOVE};
-            _ = c.xcb_configure_window(conn, cl.win, c.XCB_CONFIG_WINDOW_STACK_MODE, &v);
+            _ = c.xcb_configure_window(conn, outerWin(cl), c.XCB_CONFIG_WINDOW_STACK_MODE, &v);
         }
     }
     for (clients.items) |cl| {
@@ -740,6 +779,17 @@ fn grabClientButtons(win: c.xcb_window_t) void {
     _ = c.xcb_grab_button(conn, 1, win, @intCast(mask), c.XCB_GRAB_MODE_SYNC, c.XCB_GRAB_MODE_ASYNC, c.XCB_NONE, c.XCB_NONE, c.XCB_BUTTON_INDEX_ANY, c.XCB_MOD_MASK_ANY);
 }
 
+fn createFrame(cl: *Client) void {
+    const f = c.xcb_generate_id(conn);
+    const ins = deco.insets(false, false);
+    const mask = c.XCB_EVENT_MASK_EXPOSURE | c.XCB_EVENT_MASK_BUTTON_PRESS | c.XCB_EVENT_MASK_BUTTON_RELEASE | c.XCB_EVENT_MASK_BUTTON_MOTION | c.XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY;
+    _ = c.xcb_create_window(conn, c.XCB_COPY_FROM_PARENT, f, root, @intCast(cl.x), @intCast(cl.y), @intCast(clampSize(cl.w + ins.l + ins.r)), @intCast(clampSize(cl.h + ins.t + ins.b)), 0, c.XCB_WINDOW_CLASS_INPUT_OUTPUT, c.XCB_COPY_FROM_PARENT, c.XCB_CW_EVENT_MASK, &[_]u32{mask});
+    _ = c.xcb_reparent_window(conn, cl.win, f, @intCast(ins.l), @intCast(ins.t));
+    cl.frame = f;
+    const extents = [_]u32{ @intCast(ins.l), @intCast(ins.r), @intCast(ins.t), @intCast(ins.b) };
+    _ = c.xcb_change_property(conn, c.XCB_PROP_MODE_REPLACE, cl.win, atom(._NET_FRAME_EXTENTS), c.XCB_ATOM_CARDINAL, 32, 4, &extents);
+}
+
 fn manage(win: c.xcb_window_t) void {
     if (findClient(win) != null) return;
     const geo_cookie = c.xcb_get_geometry(conn, win);
@@ -808,6 +858,14 @@ fn manage(win: c.xcb_window_t) void {
             }
             cl.w = @min(cl.w, area.w);
             cl.h = @min(cl.h, area.h);
+            // A program that draws no frame of its own gets one: a title bar with the three buttons.
+            if (cl.border > 0) {
+                cl.border = 0;
+                createFrame(cl);
+                const ins = deco.insets(false, false);
+                cl.w += ins.l + ins.r;
+                cl.h += ins.t + ins.b;
+            }
             cl.mon = @intCast(monitorOf(clientRect(cl)));
             // A transient window goes where its parent is.
             if (transient != 0) if (findClient(transient)) |parent| {
@@ -844,6 +902,11 @@ fn unmanage(cl: *Client) void {
     };
     const was_focused = focused == cl;
     if (was_focused) focused = null;
+    if (cl.frame != 0) {
+        // The client goes back to the root if it is still there; the frame is ours to remove.
+        _ = c.xcb_reparent_window(conn, cl.win, root, @intCast(cl.x), @intCast(cl.y));
+        _ = c.xcb_destroy_window(conn, cl.frame);
+    }
     gpa.free(cl.title);
     gpa.destroy(cl);
     arrange();
@@ -1081,14 +1144,30 @@ fn perform(action: keys.Action) void {
 
 // ---- pointer drags -----------------------------------------------------------------------------------------
 
+/// Alt + button on a window: left moves, right resizes from the nearest corner.
 fn beginDrag(ev: *const c.xcb_button_press_event_t) void {
     const cl = findClient(ev.child) orelse return;
     if (cl.kind != .normal or cl.fullscreen) return;
+    const resize = ev.detail == 3;
+    var sx: i32 = 1;
+    var sy: i32 = 1;
+    if (resize) {
+        // Pull the corner nearest the pointer.
+        const px = ev.root_x - cl.x;
+        const py = ev.root_y - cl.y;
+        sx = if (px < @divFloor(cl.w, 2)) -1 else 1;
+        sy = if (py < @divFloor(cl.h, 2)) -1 else 1;
+    }
+    startDrag(cl, ev.root_x, ev.root_y, resize, sx, sy);
+}
+
+/// Begins moving (or resizing, pulling the edges `sx` and `sy` point to) a window.
+fn startDrag(cl: *Client, root_x: i32, root_y: i32, resize: bool, sx: i32, sy: i32) void {
     focusClient(cl);
     // A window the user drags is the user's to place: it leaves the tiling.
     if (!cl.floating or cl.maximized) {
         var r: layout.Rect = .{ .x = cl.x, .y = cl.y, .w = cl.w, .h = cl.h };
-        const geo = c.xcb_get_geometry_reply(conn, c.xcb_get_geometry(conn, cl.win), null);
+        const geo = c.xcb_get_geometry_reply(conn, c.xcb_get_geometry(conn, outerWin(cl)), null);
         if (geo) |g| {
             defer std.c.free(g);
             r = .{ .x = g.*.x, .y = g.*.y, .w = g.*.width, .h = g.*.height };
@@ -1101,16 +1180,40 @@ fn beginDrag(ev: *const c.xcb_button_press_event_t) void {
         cl.maximized = false;
         arrange();
     }
-    const resize = ev.detail == 3;
-    var d: Drag = .{ .client = cl, .resize = resize, .start_x = ev.root_x, .start_y = ev.root_y, .orig = .{ .x = cl.x, .y = cl.y, .w = cl.w, .h = cl.h } };
-    if (resize) {
-        // Pull the corner nearest the pointer.
-        const px = ev.root_x - cl.x;
-        const py = ev.root_y - cl.y;
-        d.sx = if (px < @divFloor(cl.w, 2)) -1 else 1;
-        d.sy = if (py < @divFloor(cl.h, 2)) -1 else 1;
+    drag = .{ .client = cl, .resize = resize, .start_x = root_x, .start_y = root_y, .orig = .{ .x = cl.x, .y = cl.y, .w = cl.w, .h = cl.h }, .sx = sx, .sy = sy };
+}
+
+/// A click on a frame: the buttons act, the title bar moves (a double click maximizes), the edges resize.
+fn onFramePress(cl: *Client, ev: *const c.xcb_button_press_event_t) void {
+    if (ev.detail != 1) return;
+    focusClient(cl);
+    const what = deco.hit(cl.fw, cl.fh, ev.event_x, ev.event_y, cl.maximized);
+    switch (what) {
+        .close => closeClient(cl),
+        .minimize => setMinimized(cl, true),
+        .maximize => {
+            cl.maximized = !cl.maximized;
+            cl.fullscreen = false;
+            arrange();
+        },
+        .title => {
+            // Two presses within 400 ms: maximize or restore.
+            if (cl.last_click != 0 and ev.time -% cl.last_click < 400) {
+                cl.last_click = 0;
+                cl.maximized = !cl.maximized;
+                arrange();
+            } else {
+                cl.last_click = ev.time;
+                if (!cl.maximized) startDrag(cl, ev.root_x, ev.root_y, false, 0, 0);
+            }
+        },
+        .left => startDrag(cl, ev.root_x, ev.root_y, true, -1, 0),
+        .right => startDrag(cl, ev.root_x, ev.root_y, true, 1, 0),
+        .bottom => startDrag(cl, ev.root_x, ev.root_y, true, 0, 1),
+        .bottom_left => startDrag(cl, ev.root_x, ev.root_y, true, -1, 1),
+        .bottom_right => startDrag(cl, ev.root_x, ev.root_y, true, 1, 1),
+        .none => {},
     }
-    drag = d;
 }
 
 fn dragMotion(root_x: i32, root_y: i32) void {
@@ -1127,14 +1230,15 @@ fn dragMotion(root_x: i32, root_y: i32) void {
         var ny = d.orig.y;
         var nw = d.orig.w;
         var nh = d.orig.h;
+        // -1 pulls the left or top edge, 1 the right or bottom, 0 leaves that axis alone.
         if (d.sx < 0) {
             nw = @max(min, d.orig.w - dx);
             nx = d.orig.x + (d.orig.w - nw);
-        } else nw = @max(min, d.orig.w + dx);
+        } else if (d.sx > 0) nw = @max(min, d.orig.w + dx);
         if (d.sy < 0) {
             nh = @max(min, d.orig.h - dy);
             ny = d.orig.y + (d.orig.h - nh);
-        } else nh = @max(min, d.orig.h + dy);
+        } else if (d.sy > 0) nh = @max(min, d.orig.h + dy);
         cl.x = nx;
         cl.y = ny;
         cl.w = nw;
@@ -1156,14 +1260,16 @@ fn onConfigureRequest(ev: *const c.xcb_configure_request_event_t) void {
     if (findClient(ev.window)) |cl| {
         if (cl.kind == .normal) {
             const mask = ev.value_mask;
+            // What the client asks for is the size of its own area; ours includes the frame around it.
+            const ins = insetsOf(cl);
             if (cl.floating and !cl.maximized and !cl.fullscreen) {
-                if (mask & c.XCB_CONFIG_WINDOW_X != 0) cl.x = ev.x;
-                if (mask & c.XCB_CONFIG_WINDOW_Y != 0) cl.y = ev.y;
-                if (mask & c.XCB_CONFIG_WINDOW_WIDTH != 0) cl.w = ev.width;
-                if (mask & c.XCB_CONFIG_WINDOW_HEIGHT != 0) cl.h = ev.height;
+                if (mask & c.XCB_CONFIG_WINDOW_X != 0) cl.x = ev.x - ins.l;
+                if (mask & c.XCB_CONFIG_WINDOW_Y != 0) cl.y = ev.y - ins.t;
+                if (mask & c.XCB_CONFIG_WINDOW_WIDTH != 0) cl.w = ev.width + ins.l + ins.r;
+                if (mask & c.XCB_CONFIG_WINDOW_HEIGHT != 0) cl.h = ev.height + ins.t + ins.b;
             } else if (!cl.maximized and !cl.fullscreen and !tiledNow(cl)) {
-                if (mask & c.XCB_CONFIG_WINDOW_WIDTH != 0) cl.w = ev.width;
-                if (mask & c.XCB_CONFIG_WINDOW_HEIGHT != 0) cl.h = ev.height;
+                if (mask & c.XCB_CONFIG_WINDOW_WIDTH != 0) cl.w = ev.width + ins.l + ins.r;
+                if (mask & c.XCB_CONFIG_WINDOW_HEIGHT != 0) cl.h = ev.height + ins.t + ins.b;
             }
             // What the client asked for may not be what it gets; arrange() tells it either way.
             arrange();
@@ -1207,10 +1313,16 @@ fn onConfigureRequest(ev: *const c.xcb_configure_request_event_t) void {
 }
 
 fn onUnmap(ev: *const c.xcb_unmap_notify_event_t) void {
-    // Only the root's copy of the event counts (a window's own is a duplicate).
-    if (ev.event != root) return;
     const cl = findClient(ev.window) orelse return;
-    if (cl.ignore_unmap > 0) {
+    // The frame being hidden by us is not the client leaving.
+    if (cl.frame != 0 and ev.window == cl.frame) {
+        if (ev.event == root and cl.ignore_unmap > 0) cl.ignore_unmap -= 1;
+        return;
+    }
+    // The client's own unmap is reported to its frame (framed) or to the root; only one copy counts.
+    const expected = if (cl.frame != 0) cl.frame else root;
+    if (ev.event != expected) return;
+    if (cl.frame == 0 and cl.ignore_unmap > 0) {
         cl.ignore_unmap -= 1;
         return;
     }
@@ -1224,7 +1336,10 @@ fn onDestroy(ev: *const c.xcb_destroy_notify_event_t) void {
 
 fn onProperty(ev: *const c.xcb_property_notify_event_t) void {
     const cl = findClient(ev.window) orelse return;
-    if (ev.atom == atom(._NET_WM_NAME) or ev.atom == c.XCB_ATOM_WM_NAME) readTitle(cl);
+    if (ev.atom == atom(._NET_WM_NAME) or ev.atom == c.XCB_ATOM_WM_NAME) {
+        readTitle(cl);
+        redrawFrame(cl);
+    }
     if (ev.atom == atom(.WM_PROTOCOLS)) readProtocols(cl);
     if (ev.atom == c.XCB_ATOM_WM_NORMAL_HINTS) {
         readSizeHints(cl);
@@ -1314,6 +1429,12 @@ fn onButtonPress(ev: *const c.xcb_button_press_event_t) void {
         beginDrag(ev);
         return;
     }
+    if (findClient(ev.event)) |cl| {
+        if (cl.frame != 0 and ev.event == cl.frame) {
+            onFramePress(cl, ev);
+            return;
+        }
+    }
     // A plain click on a window: focus it, then let the window have the click.
     if (findClient(ev.event)) |cl| {
         if (cl.kind == .normal and focused != cl) focusClient(cl);
@@ -1334,6 +1455,10 @@ fn handle(ev: *c.xcb_generic_event_t) void {
         c.XCB_KEY_RELEASE => onKeyRelease(@ptrCast(ev)),
         c.XCB_BUTTON_PRESS => onButtonPress(@ptrCast(ev)),
         c.XCB_BUTTON_RELEASE => drag = null,
+        c.XCB_EXPOSE => {
+            const e: *const c.xcb_expose_event_t = @ptrCast(ev);
+            if (e.count == 0) if (findClient(e.window)) |cl| if (cl.frame != 0 and e.window == cl.frame) redrawFrame(cl);
+        },
         c.XCB_ENTER_NOTIFY => {
             const e: *const c.xcb_enter_notify_event_t = @ptrCast(ev);
             // Only real movement into a window (not a grab ending, not a move into a child).
@@ -1640,6 +1765,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     @memset(&ws_policy, cfg.policy);
     loadKeyboard();
     buildBindings(cfg.keys);
+    visual = deco.rootVisual(screen);
     setCursor();
     selectScreenChanges();
     updateMonitors();
