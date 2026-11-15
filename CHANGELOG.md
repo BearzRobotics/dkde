@@ -8,6 +8,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 - **dkde-compositor** (`src/compositor`, wlroots): a Wayland compositor with floating and tiling windows, workspaces, configurable shortcuts, layer-shell, taskbar and workspace protocols, output management, screen lock, idle, Xwayland and screen capture. See `src/compositor/README.md` and `dkde-compositor(1)`.
 - **dkde-wm** (`src/xwm`, XCB): an X11 window manager with ICCCM/EWMH, workspaces, floating and tiling, Alt-drag, and the same shortcuts and settings file as the compositor. See `dkde-wm(1)`.
 - **`dkde-session --x11`** (or `type=x11` in `~/.config/dkde/session.conf`) starts an X11 session: dkde-wm, the panel, polkit. `data/dkde-x11.desktop` is the xsessions entry.
+- **dkde-wm on several monitors**: a work area per monitor, windows open where the pointer is, tiling/maximize/snap per monitor; size hints honoured; borders only for windows that draw no frame of their own; `[windows] focus = "follow"`. Needs `libxcb-randr0-dev` to build.
 - **dkde-panel runs on X11**: bars are dock windows with struts, the wallpaper a desktop window, the Start menu a window beside the bar.
 
 ### Settings follow the session

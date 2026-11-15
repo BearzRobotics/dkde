@@ -9,3 +9,4 @@
 #include <poll.h>
 #include <sys/inotify.h>
 #include <sys/stat.h>
+#include <xcb/randr.h>

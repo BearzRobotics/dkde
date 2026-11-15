@@ -1629,7 +1629,7 @@ pub const PowerPage = struct {
         const lock_text = std.fmt.bufPrintSentinel(&buf, "Detected: {s}. dkde has no lock screen of its own, so it runs one you install (swaylock, gtklock or waylock).", .{lock_found orelse "none found"}, 0) catch "";
         _ = note(page, lock_text);
 
-        win.SettingsWindow.addRowDesc(page, common.tr("Lock after (minutes idle)"), common.tr("0 never locks. Needs dkde-idle running (the labwc autostart starts it)."), window.spin(&window.panel, "power", "lock-after", 0, 600, 0).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("Lock after (minutes idle)"), common.tr("0 never locks. Needs dkde-idle running (the session starts it)."), window.spin(&window.panel, "power", "lock-after", 0, 600, 0).as(gtk.Widget));
         win.SettingsWindow.addRowDesc(page, common.tr("Turn the screen off after (minutes)"), common.tr("Needs wlr-randr. 0 never."), window.spin(&window.panel, "power", "screen-off-after", 0, 600, 0).as(gtk.Widget));
         win.SettingsWindow.addRowDesc(page, common.tr("Sleep after (minutes)"), common.tr("0 never. The machine must be able to suspend without a password."), window.spin(&window.panel, "power", "sleep-after", 0, 1440, 0).as(gtk.Widget));
         win.SettingsWindow.addRowDesc(page, common.tr("Lock before sleeping"), common.tr("So the machine wakes locked."), window.toggle(&window.panel, "power", "lock-before-sleep", true).as(gtk.Widget));

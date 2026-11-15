@@ -67,6 +67,8 @@ const Atom = enum {
     _NET_WM_STRUT_PARTIAL,
     _NET_CLOSE_WINDOW,
     _NET_FRAME_EXTENTS,
+    _GTK_FRAME_EXTENTS,
+    _MOTIF_WM_HINTS,
 };
 
 var atoms: [std.enums.values(Atom).len]c.xcb_atom_t = undefined;
@@ -88,6 +90,8 @@ const Client = struct {
     w: i32 = 640,
     h: i32 = 480,
     ws: u8 = 0,
+    /// Which monitor it is on (an index into `monitors`).
+    mon: u8 = 0,
     floating: bool = false,
     maximized: bool = false,
     fullscreen: bool = false,
@@ -98,6 +102,13 @@ const Client = struct {
     mapped: bool = false,
     /// UnmapNotify events caused by our own unmap calls, which are not the client leaving.
     ignore_unmap: u8 = 0,
+    /// Size limits from WM_NORMAL_HINTS (0 = none).
+    min_w: i32 = 0,
+    min_h: i32 = 0,
+    max_w: i32 = 0,
+    max_h: i32 = 0,
+    /// Width of the border WM draws: windows that draw their own frame get none.
+    border: u8 = 0,
     takes_delete: bool = false,
     takes_focus: bool = false,
     title: []u8 = &.{},
@@ -190,30 +201,126 @@ fn screenRect() layout.Rect {
     return .{ .x = 0, .y = 0, .w = screen_w, .h = screen_h };
 }
 
-/// The screen less what panels reserve (their struts).
-fn workArea() layout.Rect {
-    var edge: [4]u32 = .{ 0, 0, 0, 0 };
+/// One monitor: its rectangle, and what is left of it after the panels on it.
+const Monitor = struct { rect: layout.Rect, work: layout.Rect };
+
+var monitors: [8]Monitor = undefined;
+var monitor_count: usize = 0;
+
+fn contains(r: layout.Rect, x: i32, y: i32) bool {
+    return x >= r.x and y >= r.y and x < r.x + r.w and y < r.y + r.h;
+}
+
+/// The monitor a rectangle is on: the one holding its centre, else the nearest to it.
+fn monitorOf(r: layout.Rect) usize {
+    const cx = r.x + @divFloor(r.w, 2);
+    const cy = r.y + @divFloor(r.h, 2);
+    var best: usize = 0;
+    var best_d: i64 = std.math.maxInt(i64);
+    for (monitors[0..monitor_count], 0..) |m, i| {
+        if (contains(m.rect, cx, cy)) return i;
+        const mx = m.rect.x + @divFloor(m.rect.w, 2);
+        const my = m.rect.y + @divFloor(m.rect.h, 2);
+        const d = @as(i64, cx - mx) * (cx - mx) + @as(i64, cy - my) * (cy - my);
+        if (d < best_d) {
+            best_d = d;
+            best = i;
+        }
+    }
+    return best;
+}
+
+fn clientRect(cl: *const Client) layout.Rect {
+    return .{ .x = cl.x, .y = cl.y, .w = cl.w, .h = cl.h };
+}
+
+/// The monitor a client lives on, always a valid index.
+fn monitorFor(cl: *const Client) usize {
+    return @min(cl.mon, monitor_count - 1);
+}
+
+/// What panels reserve on `m`: the struts of the docks standing on it. A strut is measured from the edge of
+/// the whole screen, so on a monitor that is not at that edge it only counts where it reaches into the monitor.
+fn workAreaOf(m: layout.Rect) layout.Rect {
+    var left: i32 = m.x;
+    var right: i32 = m.x + m.w;
+    var top: i32 = m.y;
+    var bottom: i32 = m.y + m.h;
     for (clients.items) |cl| {
         if (cl.kind != .dock) continue;
-        for (0..4) |i| edge[i] = @max(edge[i], cl.strut[i]);
+        const dock_mon = monitorOf(clientRect(cl));
+        if (dock_mon >= monitor_count or !std.meta.eql(monitors[dock_mon].rect, m)) continue;
+        left = @max(left, @as(i32, @intCast(cl.strut[0])));
+        right = @min(right, screen_w - @as(i32, @intCast(cl.strut[1])));
+        top = @max(top, @as(i32, @intCast(cl.strut[2])));
+        bottom = @min(bottom, screen_h - @as(i32, @intCast(cl.strut[3])));
     }
-    return areaAfterStruts(screenRect(), edge);
+    // A panel can never take more than half of a monitor.
+    left = @min(left, m.x + @divFloor(m.w, 2));
+    right = @max(right, m.x + @divFloor(m.w, 2));
+    top = @min(top, m.y + @divFloor(m.h, 2));
+    bottom = @max(bottom, m.y + @divFloor(m.h, 2));
+    return .{ .x = left, .y = top, .w = right - left, .h = bottom - top };
 }
 
-fn areaAfterStruts(screen_rect: layout.Rect, edge: [4]u32) layout.Rect {
-    const l: i32 = @intCast(@min(edge[0], @as(u32, @intCast(screen_rect.w)) / 2));
-    const r: i32 = @intCast(@min(edge[1], @as(u32, @intCast(screen_rect.w)) / 2));
-    const t: i32 = @intCast(@min(edge[2], @as(u32, @intCast(screen_rect.h)) / 2));
-    const b: i32 = @intCast(@min(edge[3], @as(u32, @intCast(screen_rect.h)) / 2));
-    return .{ .x = screen_rect.x + l, .y = screen_rect.y + t, .w = screen_rect.w - l - r, .h = screen_rect.h - t - b };
+test "a panel's strut shrinks only the monitor it stands on" {
+    monitors[0] = .{ .rect = .{ .x = 0, .y = 0, .w = 1000, .h = 600 }, .work = undefined };
+    monitors[1] = .{ .rect = .{ .x = 1000, .y = 0, .w = 800, .h = 600 }, .work = undefined };
+    monitor_count = 2;
+    screen_w = 1800;
+    screen_h = 600;
+    defer monitor_count = 0;
+    var dock: Client = .{ .win = 9, .kind = .dock, .x = 0, .y = 570, .w = 1000, .h = 30, .strut = .{ 0, 0, 0, 30 } };
+    clients.clearRetainingCapacity();
+    clients.append(gpa, &dock) catch unreachable;
+    defer clients.clearRetainingCapacity();
+    try std.testing.expectEqual(layout.Rect{ .x = 0, .y = 0, .w = 1000, .h = 570 }, workAreaOf(monitors[0].rect));
+    try std.testing.expectEqual(layout.Rect{ .x = 1000, .y = 0, .w = 800, .h = 600 }, workAreaOf(monitors[1].rect));
+    try std.testing.expectEqual(@as(usize, 1), monitorOf(.{ .x = 1200, .y = 100, .w = 100, .h = 100 }));
+    try std.testing.expectEqual(@as(usize, 0), monitorOf(.{ .x = -500, .y = 100, .w = 100, .h = 100 }));
 }
 
-test "struts shrink the work area, and never take more than half" {
-    const s = layout.Rect{ .x = 0, .y = 0, .w = 1000, .h = 600 };
-    try std.testing.expectEqual(layout.Rect{ .x = 0, .y = 0, .w = 1000, .h = 570 }, areaAfterStruts(s, .{ 0, 0, 0, 30 }));
-    try std.testing.expectEqual(layout.Rect{ .x = 40, .y = 20, .w = 940, .h = 580 }, areaAfterStruts(s, .{ 40, 20, 20, 0 }));
-    try std.testing.expectEqual(@as(i32, 0), areaAfterStruts(s, .{ 9999, 9999, 0, 0 }).w);
+/// The first monitor's work area, for the one `_NET_WORKAREA` value EWMH has.
+fn workArea() layout.Rect {
+    return monitors[0].work;
 }
+
+/// Reads the monitors from RandR (just the screen when there is none) and works out each one's work area.
+fn updateMonitors() void {
+    monitor_count = 0;
+    if (randr_event_base != null) {
+        const res = c.xcb_randr_get_screen_resources_current_reply(conn, c.xcb_randr_get_screen_resources_current(conn, root), null);
+        if (res) |r| {
+            defer std.c.free(r);
+            const crtcs = c.xcb_randr_get_screen_resources_current_crtcs(r)[0..@intCast(c.xcb_randr_get_screen_resources_current_crtcs_length(r))];
+            for (crtcs) |crtc| {
+                if (monitor_count == monitors.len) break;
+                const info = c.xcb_randr_get_crtc_info_reply(conn, c.xcb_randr_get_crtc_info(conn, crtc, r.*.config_timestamp), null) orelse continue;
+                defer std.c.free(info);
+                if (info.*.mode == 0 or info.*.width == 0) continue;
+                monitors[monitor_count] = .{ .rect = .{ .x = info.*.x, .y = info.*.y, .w = info.*.width, .h = info.*.height }, .work = undefined };
+                monitor_count += 1;
+            }
+        }
+    }
+    if (monitor_count == 0) {
+        monitors[0] = .{ .rect = .{ .x = 0, .y = 0, .w = screen_w, .h = screen_h }, .work = undefined };
+        monitor_count = 1;
+    }
+    // Left to right, so monitor 0 is the leftmost (and a panel placed by position finds it).
+    std.mem.sort(Monitor, monitors[0..monitor_count], {}, struct {
+        fn less(_: void, a: Monitor, b: Monitor) bool {
+            return if (a.rect.x != b.rect.x) a.rect.x < b.rect.x else a.rect.y < b.rect.y;
+        }
+    }.less);
+    refreshWorkAreas();
+}
+
+fn refreshWorkAreas() void {
+    for (monitors[0..monitor_count]) |*m| m.work = workAreaOf(m.rect);
+}
+
+
 
 fn clampSize(v: i32) u32 {
     return @intCast(@max(v, 1));
@@ -222,6 +329,46 @@ fn clampSize(v: i32) u32 {
 fn configure(win: c.xcb_window_t, r: layout.Rect) void {
     var values = [_]u32{ @bitCast(r.x), @bitCast(r.y), clampSize(r.w), clampSize(r.h), 0 };
     _ = c.xcb_configure_window(conn, win, c.XCB_CONFIG_WINDOW_X | c.XCB_CONFIG_WINDOW_Y | c.XCB_CONFIG_WINDOW_WIDTH | c.XCB_CONFIG_WINDOW_HEIGHT | c.XCB_CONFIG_WINDOW_BORDER_WIDTH, &values);
+}
+
+/// The size a client accepts: `r` limited by its minimum and maximum.
+fn fit(cl: *const Client, r: layout.Rect) layout.Rect {
+    var out = r;
+    if (cl.min_w > 0) out.w = @max(out.w, cl.min_w);
+    if (cl.min_h > 0) out.h = @max(out.h, cl.min_h);
+    if (cl.max_w > 0) out.w = @min(out.w, cl.max_w);
+    if (cl.max_h > 0) out.h = @min(out.h, cl.max_h);
+    return out;
+}
+
+test "size hints limit a size both ways" {
+    var cl: Client = .{ .win = 1, .min_w = 200, .min_h = 100, .max_w = 400, .max_h = 0 };
+    const small = fit(&cl, .{ .x = 5, .y = 6, .w = 50, .h = 50 });
+    try std.testing.expectEqual(@as(i32, 200), small.w);
+    try std.testing.expectEqual(@as(i32, 100), small.h);
+    try std.testing.expectEqual(@as(i32, 5), small.x);
+    const big = fit(&cl, .{ .x = 0, .y = 0, .w = 900, .h = 900 });
+    try std.testing.expectEqual(@as(i32, 400), big.w);
+    try std.testing.expectEqual(@as(i32, 900), big.h);
+}
+
+/// Puts a window at `r` (its outer rectangle, border included), within its size limits, and tells it.
+fn place(cl: *Client, r0: layout.Rect) void {
+    const r = fit(cl, r0);
+    const b: i32 = cl.border;
+    var values = [_]u32{ @bitCast(r.x), @bitCast(r.y), clampSize(r.w - 2 * b), clampSize(r.h - 2 * b), cl.border };
+    _ = c.xcb_configure_window(conn, cl.win, c.XCB_CONFIG_WINDOW_X | c.XCB_CONFIG_WINDOW_Y | c.XCB_CONFIG_WINDOW_WIDTH | c.XCB_CONFIG_WINDOW_HEIGHT | c.XCB_CONFIG_WINDOW_BORDER_WIDTH, &values);
+    sendConfigureNotify(cl, .{ .x = r.x, .y = r.y, .w = r.w - 2 * b, .h = r.h - 2 * b });
+}
+
+const border_focused: u32 = 0x3584e4;
+const border_idle: u32 = 0x8a8a8a;
+
+fn paintBorders() void {
+    for (clients.items) |cl| {
+        if (cl.kind != .normal or cl.border == 0) continue;
+        _ = c.xcb_change_window_attributes(conn, cl.win, c.XCB_CW_BORDER_PIXEL, &[_]u32{if (focused == cl) border_focused else border_idle});
+    }
 }
 
 /// Tells a client where it is, as ICCCM asks when we do not move it as it requested.
@@ -332,36 +479,42 @@ fn tiledNow(cl: *const Client) bool {
 
 /// Places every window, shows those of this workspace and hides the rest.
 fn arrange() void {
-    const area = workArea();
-    const full = screenRect();
-
-    var cells: [128]layout.Rect = undefined;
-    var tiled: [128]*Client = undefined;
-    var n: usize = 0;
-    for (clients.items) |cl| {
-        if (n < tiled.len and tiledNow(cl)) {
-            tiled[n] = cl;
-            n += 1;
+    refreshWorkAreas();
+    const gap_cells = 128;
+    var cells: [gap_cells]layout.Rect = undefined;
+    var tiled: [gap_cells]*Client = undefined;
+    // Each monitor tiles its own windows in its own work area.
+    var placed: usize = 0;
+    for (monitors[0..monitor_count], 0..) |m, mi| {
+        var n: usize = 0;
+        const start = placed;
+        for (clients.items) |cl| {
+            if (placed + n < gap_cells and monitorFor(cl) == mi and tiledNow(cl)) {
+                tiled[placed + n] = cl;
+                n += 1;
+            }
         }
+        layout.tile(m.work, n, cfg.options, cells[start..][0..@max(n, 1)]);
+        placed += n;
     }
-    layout.tile(area, n, cfg.options, &cells);
+    const n = placed;
 
     for (clients.items) |cl| {
         const show = cl.kind == .dock or cl.kind == .desktop or visible(cl);
         if (show) {
             if (cl.kind == .normal) {
                 var r: layout.Rect = .{ .x = cl.x, .y = cl.y, .w = cl.w, .h = cl.h };
+                const mon = monitors[monitorFor(cl)];
                 if (cl.fullscreen) {
-                    r = full;
+                    r = mon.rect;
                 } else if (cl.maximized) {
-                    r = area;
+                    r = mon.work;
                 } else if (tiledNow(cl)) {
                     for (tiled[0..n], 0..) |t, i| if (t == cl) {
                         r = cells[i];
                     };
                 }
-                configure(cl.win, r);
-                sendConfigureNotify(cl, r);
+                place(cl, r);
             }
             if (!cl.mapped) {
                 _ = c.xcb_map_window(conn, cl.win);
@@ -376,6 +529,7 @@ fn arrange() void {
     }
     restack();
     publishWorkArea();
+    paintBorders();
     _ = c.xcb_flush(conn);
 }
 
@@ -439,7 +593,24 @@ fn focusClient(cl: ?*Client) void {
     if (target.takes_focus) sendClientMessage(target.win, .WM_PROTOCOLS, atom(.WM_TAKE_FOCUS), c.XCB_CURRENT_TIME);
     restack();
     publishActive();
+    paintBorders();
     _ = c.xcb_flush(conn);
+}
+
+/// Focus without raising: what moving the pointer onto a window does when focus follows the mouse.
+fn focusOnly(target: *Client) void {
+    if (target.kind != .normal or focused == target) return;
+    focused = target;
+    _ = c.xcb_set_input_focus(conn, c.XCB_INPUT_FOCUS_POINTER_ROOT, target.win, c.XCB_CURRENT_TIME);
+    if (target.takes_focus) sendClientMessage(target.win, .WM_PROTOCOLS, atom(.WM_TAKE_FOCUS), c.XCB_CURRENT_TIME);
+    publishActive();
+    paintBorders();
+    _ = c.xcb_flush(conn);
+}
+
+fn clientEventMask() u32 {
+    const base: u32 = c.XCB_EVENT_MASK_PROPERTY_CHANGE;
+    return if (cfg.focus_follows_mouse) base | c.XCB_EVENT_MASK_ENTER_WINDOW else base;
 }
 
 /// The window that should have the focus on this workspace: the topmost visible one.
@@ -499,6 +670,44 @@ fn readProtocols(cl: *Client) void {
     }
 }
 
+/// WM_NORMAL_HINTS: the smallest and largest size the window allows.
+fn readSizeHints(cl: *Client) void {
+    cl.min_w = 0;
+    cl.min_h = 0;
+    cl.max_w = 0;
+    cl.max_h = 0;
+    const reply = getProp(cl.win, c.XCB_ATOM_WM_NORMAL_HINTS, c.XCB_ATOM_WM_SIZE_HINTS, 18) orelse return;
+    defer std.c.free(reply);
+    const v = propU32(reply);
+    if (v.len < 9) return;
+    const p_min_size: u32 = 1 << 4;
+    const p_max_size: u32 = 1 << 5;
+    if (v[0] & p_min_size != 0) {
+        cl.min_w = @intCast(v[5]);
+        cl.min_h = @intCast(v[6]);
+    }
+    if (v[0] & p_max_size != 0) {
+        cl.max_w = @intCast(v[7]);
+        cl.max_h = @intCast(v[8]);
+    }
+}
+
+/// Windows that draw their own frame (GTK's client-side decorations, or Motif hints asking for none) get no
+/// border from here; the rest get a thin one that shows which has the focus.
+fn readBorder(cl: *Client) void {
+    cl.border = 2;
+    if (getProp(cl.win, atom(._GTK_FRAME_EXTENTS), c.XCB_ATOM_CARDINAL, 4)) |r| {
+        defer std.c.free(r);
+        if (propU32(r).len >= 4) cl.border = 0;
+    }
+    if (cl.border != 0) if (getProp(cl.win, atom(._MOTIF_WM_HINTS), atom(._MOTIF_WM_HINTS), 5)) |r| {
+        defer std.c.free(r);
+        const v = propU32(r);
+        // flags, functions, decorations: bit 1 of the flags says the decorations field is set.
+        if (v.len >= 3 and v[0] & 2 != 0 and v[2] == 0) cl.border = 0;
+    };
+}
+
 fn readStruts(cl: *Client) void {
     cl.strut = .{ 0, 0, 0, 0 };
     if (getProp(cl.win, atom(._NET_WM_STRUT_PARTIAL), c.XCB_ATOM_CARDINAL, 12)) |r| {
@@ -555,7 +764,9 @@ fn manage(win: c.xcb_window_t) void {
         .normal => {
             readTitle(cl);
             readProtocols(cl);
-            _ = c.xcb_change_window_attributes(conn, win, c.XCB_CW_EVENT_MASK, &[_]u32{c.XCB_EVENT_MASK_PROPERTY_CHANGE});
+            readSizeHints(cl);
+            readBorder(cl);
+            _ = c.xcb_change_window_attributes(conn, win, c.XCB_CW_EVENT_MASK, &[_]u32{clientEventMask()});
             grabClientButtons(win);
             // Dialogs, and windows that belong to another window, float.
             var transient: u32 = 0;
@@ -563,12 +774,19 @@ fn manage(win: c.xcb_window_t) void {
                 defer std.c.free(r);
                 if (propU32(r).len > 0) transient = propU32(r)[0];
             }
-            cl.floating = info.float or transient != 0;
+            // A window that cannot change size is placed, not tiled.
+            cl.floating = info.float or transient != 0 or (cl.min_w > 0 and cl.min_w == cl.max_w and cl.min_h == cl.max_h);
             if (cl.w < 80 or cl.h < 40) {
                 cl.w = 640;
                 cl.h = 480;
             }
-            const area = workArea();
+            // New windows open on the monitor the pointer is on.
+            var pointer_mon: usize = 0;
+            if (c.xcb_query_pointer_reply(conn, c.xcb_query_pointer(conn, root), null)) |q| {
+                defer std.c.free(q);
+                pointer_mon = monitorOf(.{ .x = q.*.root_x, .y = q.*.root_y, .w = 1, .h = 1 });
+            }
+            const area = monitors[pointer_mon].work;
             // Where it asked to be, if it asked; otherwise cascaded.
             if (geo.*.x > 0 or geo.*.y > 0) {
                 cl.x = geo.*.x;
@@ -581,6 +799,7 @@ fn manage(win: c.xcb_window_t) void {
             }
             cl.w = @min(cl.w, area.w);
             cl.h = @min(cl.h, area.h);
+            cl.mon = @intCast(monitorOf(clientRect(cl)));
             // A transient window goes where its parent is.
             if (transient != 0) if (findClient(transient)) |parent| {
                 cl.ws = parent.ws;
@@ -837,7 +1056,7 @@ fn perform(action: keys.Action) void {
         .move_to_prev => if (focused) |f| if (f.ws > 0) moveToWorkspace(f, f.ws - 1),
         .move_to_next => if (focused) |f| moveToWorkspace(f, f.ws + 1),
         .snap => |region| if (focused) |f| {
-            const r = layout.regionRect(workArea(), region);
+            const r = layout.regionRect(monitors[monitorFor(f)].work, region);
             f.x = r.x;
             f.y = r.y;
             f.w = r.w;
@@ -912,9 +1131,9 @@ fn dragMotion(root_x: i32, root_y: i32) void {
         cl.w = nw;
         cl.h = nh;
     }
-    const r: layout.Rect = .{ .x = cl.x, .y = cl.y, .w = cl.w, .h = cl.h };
-    configure(cl.win, r);
-    sendConfigureNotify(cl, r);
+    place(cl, .{ .x = cl.x, .y = cl.y, .w = cl.w, .h = cl.h });
+    // Dragged onto another monitor: it belongs to that one now (tiling and maximizing follow).
+    cl.mon = @intCast(monitorOf(clientRect(cl)));
     _ = c.xcb_flush(conn);
 }
 
@@ -998,6 +1217,15 @@ fn onProperty(ev: *const c.xcb_property_notify_event_t) void {
     const cl = findClient(ev.window) orelse return;
     if (ev.atom == atom(._NET_WM_NAME) or ev.atom == c.XCB_ATOM_WM_NAME) readTitle(cl);
     if (ev.atom == atom(.WM_PROTOCOLS)) readProtocols(cl);
+    if (ev.atom == c.XCB_ATOM_WM_NORMAL_HINTS) {
+        readSizeHints(cl);
+        arrange();
+    }
+    // GTK announces its own frame after it has mapped the window.
+    if (cl.kind == .normal and (ev.atom == atom(._GTK_FRAME_EXTENTS) or ev.atom == atom(._MOTIF_WM_HINTS))) {
+        readBorder(cl);
+        arrange();
+    }
     if (cl.kind == .dock and (ev.atom == atom(._NET_WM_STRUT) or ev.atom == atom(._NET_WM_STRUT_PARTIAL))) {
         readStruts(cl);
         arrange();
@@ -1097,6 +1325,13 @@ fn handle(ev: *c.xcb_generic_event_t) void {
         c.XCB_KEY_RELEASE => onKeyRelease(@ptrCast(ev)),
         c.XCB_BUTTON_PRESS => onButtonPress(@ptrCast(ev)),
         c.XCB_BUTTON_RELEASE => drag = null,
+        c.XCB_ENTER_NOTIFY => {
+            const e: *const c.xcb_enter_notify_event_t = @ptrCast(ev);
+            // Only real movement into a window (not a grab ending, not a move into a child).
+            if (cfg.focus_follows_mouse and e.mode == c.XCB_NOTIFY_MODE_NORMAL and e.detail != c.XCB_NOTIFY_DETAIL_INFERIOR and drag == null) {
+                if (findClient(e.event)) |cl| focusOnly(cl);
+            }
+        },
         c.XCB_MOTION_NOTIFY => {
             const m: *const c.xcb_motion_notify_event_t = @ptrCast(ev);
             dragMotion(m.root_x, m.root_y);
@@ -1106,50 +1341,46 @@ fn handle(ev: *c.xcb_generic_event_t) void {
             buildBindings(cfg.keys);
         },
         else => if (randr_event_base) |base| {
-            if (ev.response_type & 0x7f == base) onScreenChanged();
+            const t = ev.response_type & 0x7f;
+            if (t == base or t == base + 1) onScreenChanged();
         },
     }
 }
 
 // ---- screen changes (XRandR) --------------------------------------------------------------------------------
 
-// The RandR headers are not needed for this: one request (select events on the root) and one event (the screen
-// changed) are written out by hand, so the window manager builds with XCB's core alone.
-var randr_ext: c.xcb_extension_t = .{ .name = "RANDR", .global_id = 0 };
 var randr_event_base: ?u8 = null;
 
 fn selectScreenChanges() void {
-    const data = c.xcb_get_extension_data(conn, &randr_ext) orelse return;
+    const data = c.xcb_get_extension_data(conn, &c.xcb_randr_id) orelse return;
     if (data.*.present == 0) return;
     randr_event_base = data.*.first_event;
-    // RRSelectInput (minor opcode 4): window, enable mask (ScreenChangeNotify = 1).
-    const Request = extern struct { major: u8, minor: u8, length: u16, window: u32, enable: u16, pad: u16 };
-    var req: Request = .{ .major = 0, .minor = 4, .length = 0, .window = root, .enable = 1, .pad = 0 };
-    var parts: [4]c.struct_iovec = undefined;
-    parts[2] = .{ .iov_base = &req, .iov_len = @sizeOf(Request) };
-    parts[3] = .{ .iov_base = null, .iov_len = 0 };
-    var proto: c.xcb_protocol_request_t = .{ .count = 2, .ext = &randr_ext, .opcode = 4, .isvoid = 1 };
-    _ = c.xcb_send_request(conn, 0, &parts[2], &proto);
+    // Screen, CRTC and output changes.
+    _ = c.xcb_randr_select_input(conn, root, c.XCB_RANDR_NOTIFY_MASK_SCREEN_CHANGE | c.XCB_RANDR_NOTIFY_MASK_CRTC_CHANGE | c.XCB_RANDR_NOTIFY_MASK_OUTPUT_CHANGE);
 }
 
-/// The screen got a different size (a monitor plugged in, a mode set): read it again and lay everything out anew.
+/// The screen or a monitor changed: read the layout again and put every window back within it.
 fn onScreenChanged() void {
     const geo = c.xcb_get_geometry_reply(conn, c.xcb_get_geometry(conn, root), null) orelse return;
     defer std.c.free(geo);
-    if (geo.*.width == screen_w and geo.*.height == screen_h) return;
     screen_w = geo.*.width;
     screen_h = geo.*.height;
+    updateMonitors();
     for (clients.items) |cl| {
         if (cl.kind == .desktop) {
             cl.w = screen_w;
             cl.h = screen_h;
             configure(cl.win, screenRect());
-        } else if (cl.kind == .normal and !cl.maximized and !cl.fullscreen) {
-            // A floating window that is now off the screen comes back onto it.
-            cl.w = @min(cl.w, screen_w);
-            cl.h = @min(cl.h, screen_h);
-            cl.x = std.math.clamp(cl.x, 0, @max(screen_w - cl.w, 0));
-            cl.y = std.math.clamp(cl.y, 0, @max(screen_h - cl.h, 0));
+        } else if (cl.kind == .normal) {
+            cl.mon = @intCast(monitorOf(clientRect(cl)));
+            if (!cl.maximized and !cl.fullscreen) {
+                // A floating window that is now off its monitor comes back onto it.
+                const m = monitors[monitorFor(cl)].work;
+                cl.w = @min(cl.w, m.w);
+                cl.h = @min(cl.h, m.h);
+                cl.x = std.math.clamp(cl.x, m.x, @max(m.x + m.w - cl.w, m.x));
+                cl.y = std.math.clamp(cl.y, m.y, @max(m.y + m.h - cl.h, m.y));
+            }
         }
     }
     publishDesktops();
@@ -1200,6 +1431,10 @@ fn reloadConfig() void {
     };
     buildBindings(cfg.keys);
     applyInput();
+    // Focus following the mouse can be switched on or off while running.
+    for (clients.items) |cl| if (cl.kind == .normal) {
+        _ = c.xcb_change_window_attributes(conn, cl.win, c.XCB_CW_EVENT_MASK, &[_]u32{clientEventMask()});
+    };
     publishDesktops();
     arrange();
     focusTop();
@@ -1367,6 +1602,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
     root = screen.root;
     screen_w = screen.width_in_pixels;
     screen_h = screen.height_in_pixels;
+    monitors[0] = .{ .rect = .{ .x = 0, .y = 0, .w = screen_w, .h = screen_h }, .work = .{ .x = 0, .y = 0, .w = screen_w, .h = screen_h } };
+    monitor_count = 1;
 
     // Becoming the window manager: only one client may select this on the root.
     const mask = c.XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | c.XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | c.XCB_EVENT_MASK_PROPERTY_CHANGE |
@@ -1394,6 +1631,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     buildBindings(cfg.keys);
     setCursor();
     selectScreenChanges();
+    updateMonitors();
     watchConfig();
     applyInput();
     publishSupport();

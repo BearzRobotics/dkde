@@ -30,8 +30,11 @@ It speaks ICCCM (delete and take-focus protocols, WM_STATE) and EWMH (supporting
 **~/.config/dkde/compositor.toml**
 : Watched: a change (from dkde-settings or an editor) applies at once, including the desktops, the shortcuts and the keyboard layout (**[input]** layout, variant, options and key repeat, through **setxkbmap** and **xset**). Settings: **[windows]**, **[workspaces]**, **[keys]** (see **dkde-compositor**(1)). **[input]** does not apply; X11 input is set with **setxkbmap** and **xinput**.
 
+# MONITORS AND FRAMES
+With RandR each monitor has its own work area (a panel reduces only the monitor it stands on), new windows open on the monitor the pointer is on, and tiling, maximize, fullscreen and snap act per monitor. Dragging a window onto another monitor moves it there. A window that draws its own frame (GTK's) gets no border; any other gets a 2 px one, blue when it has the focus. A window's minimum and maximum size (WM_NORMAL_HINTS) are kept, and one that cannot change size floats. **[windows] focus = "follow"** in compositor.toml makes the focus follow the mouse (without raising).
+
 # LIMITS
-No window decorations for programs that draw none. The screen size follows XRandR changes (windows are laid out again and floating windows pulled back onto the screen), but each monitor is not treated separately: the work area is the whole screen. dkde-panel needs a Wayland layer shell, so on X11 it does not run until its X11 backend exists.
+No title bars for programs that draw none (they get a border only). The screen follows XRandR changes: windows are laid out again and floating windows pulled back onto their monitor. Workspaces are shared by all monitors. Several monitors are covered by a unit test, not yet by a test on real hardware. dkde-panel needs a Wayland layer shell, so on X11 it does not run until its X11 backend exists.
 
 # SEE ALSO
 **dkde-compositor**(1)
