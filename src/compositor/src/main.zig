@@ -4,7 +4,7 @@
 //! What it does: runs nested in another Wayland session (or headless, with
 //! WLR_BACKENDS=headless), shows xdg-shell windows, gives them keyboard and
 //! pointer focus, and lets Alt+left-drag move and Alt+right-drag resize them.
-//! Alt+Escape quits; Alt+F1 raises the next window; Alt+T switches between
+//! Super+Shift+Escape quits; Alt+F1 raises the next window; Super+T switches between
 //! floating and tiling; Alt+Shift+Space floats or tiles the focused window.
 //!
 //! The window layout is a policy (see `layout.zig`): floating now, tiling next.

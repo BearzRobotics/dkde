@@ -22,7 +22,7 @@
 //!   "W-Return" = "exec dkde-term"
 //!
 //!   [workspaces]
-//!   count = 4                # virtual desktops, 1 to 9 (Alt+1…9 switches, Alt+Shift+1…9 moves a window)
+//!   count = 4                # virtual desktops, 1 to 9 (Super+1…9 switches, Super+Shift+1…9 moves a window)
 
 const std = @import("std");
 const toml = @import("toml");

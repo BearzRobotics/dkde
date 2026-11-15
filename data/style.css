@@ -1090,3 +1090,39 @@ headerbar .dkde-tabs button.dkde-tab.dkde-tab-attention {
   font-family: monospace;
   font-size: 13pt;
 }
+
+/* Menus taller than the screen scroll: no sideways scrollbar (a menu is never wider than its window),
+   and a slim vertical one with room reserved for it, so it never sits over the shortcut keys. */
+popover.menu scrolledwindow > scrollbar.horizontal {
+    min-height: 0;
+    opacity: 0;
+}
+popover.menu scrolledwindow > scrollbar.vertical {
+    min-width: 6px;
+    margin: 2px 1px;
+}
+popover.menu scrolledwindow > scrollbar.vertical slider {
+    min-width: 4px;
+}
+popover.menu modelbutton {
+    padding-right: 14px;
+}
+
+/* Programmer mode stacks the bases and the bits above a two-part keypad; tighter rows keep it all on a
+   720-pixel screen, with the tape open too. */
+window.dkde-calc-compact .dkde-calc-key {
+  min-height: 28px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+window.dkde-calc-compact .dkde-calc-key label {
+  font-size: 12pt;
+}
+window.dkde-calc-compact .dkde-calc-bases button {
+  min-height: 22px;
+  padding: 0 8px;
+}
+window.dkde-calc-compact .dkde-calc-display {
+  min-height: 40px;
+  font-size: 18pt;
+}

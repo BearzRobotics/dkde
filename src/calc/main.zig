@@ -35,6 +35,7 @@ const rates = @import("rates.zig");
 const highlight = @import("highlight.zig");
 const export_session = @import("export.zig");
 const steps_mod = @import("steps.zig");
+const progsteps = @import("progsteps.zig");
 const function_info = @import("function_info.zig");
 const pango = @import("pango1");
 
@@ -110,6 +111,18 @@ const Field = struct { calc: *Calc, name: []u8, entry: *gtk.Entry };
 
 const Key = struct { calc: *Calc, spec: *const Spec };
 
+/// The height the window can use on the primary monitor: the screen less the title bar, menu, a panel and some margin.
+fn screenRoom() c_int {
+    const display = gdk.Display.getDefault() orelse return 600;
+    const monitors = display.getMonitors();
+    const item = monitors.getItem(0) orelse return 600;
+    defer gobject.Object.unref(@ptrCast(@alignCast(item)));
+    const monitor: *gdk.Monitor = @ptrCast(@alignCast(item));
+    var rect: gdk.Rectangle = undefined;
+    monitor.getGeometry(&rect);
+    return @max(rect.f_height - 110, 300);
+}
+
 const Calc = struct {
     gpa: std.mem.Allocator,
     app: *gtk.Application,
@@ -153,6 +166,8 @@ const Calc = struct {
     /// The tape is at the newest line (set when it changes; scrolling up is free until the next change).
     tape_stick: bool = true,
     tape_timer: c_uint = 0,
+    /// The calculator column, scrolled when it is taller than the screen allows.
+    left_scroll: *gtk.ScrolledWindow = undefined,
     /// The right-click menu of a history line, and which line it is for.
     row_popover: ?*gtk.Popover = null,
     history_scroll: *gtk.ScrolledWindow = undefined,
@@ -376,7 +391,18 @@ const Calc = struct {
         _ = self.side.addNamed(self.buildFunctions(), "functions");
 
         const body = gtk.Box.new(.horizontal, 0);
-        body.append(left.as(gtk.Widget));
+        // The calculator's own column scrolls when the screen is too short for it (Programmer with the tape
+        // open is taller than 720 pixels), so the keypad is never pushed off the bottom: it scrolls into view.
+        const left_scroll = gtk.ScrolledWindow.new();
+        left_scroll.setPolicy(.never, .automatic);
+        left_scroll.setPropagateNaturalWidth(1);
+        left_scroll.setPropagateNaturalHeight(1);
+        left_scroll.setMinContentHeight(260);
+        left_scroll.setMaxContentHeight(screenRoom());
+        left_scroll.setChild(left.as(gtk.Widget));
+        self.left_scroll = left_scroll;
+        left_scroll.as(gtk.Widget).setHexpand(1);
+        body.append(left_scroll.as(gtk.Widget));
         // The panes scroll sideways when the window is narrow, so it can still be snapped to half a screen.
         const side_scroll = gtk.ScrolledWindow.new();
         side_scroll.setPolicy(.automatic, .automatic);
@@ -572,6 +598,10 @@ const Calc = struct {
         self.keypad.append(self.grid(&standard_keys).as(gtk.Widget));
         self.bases.as(gtk.Widget).setVisible(@intFromBool(mode == .programmer));
         self.bits.as(gtk.Widget).setVisible(@intFromBool(mode == .programmer));
+        // Programmer mode already has the bases and the bits above the keypad; a tall tape would push the
+        // keys off a small screen, so there it is a few lines, and the keypad keeps its room.
+        self.tape_scroll.setMinContentHeight(if (mode == .programmer) 56 else 170);
+        if (mode == .programmer) self.window.as(gtk.Widget).addCssClass("dkde-calc-compact") else self.window.as(gtk.Widget).removeCssClass("dkde-calc-compact");
         inline for (.{ "standard", "scientific", "programmer" }) |name| {
             common.menubar.setChecked(self.window, "mode-" ++ name, std.mem.eql(u8, @tagName(mode), name));
         }
@@ -3337,10 +3367,14 @@ const Calc = struct {
     fn showSteps(self: *Calc, a: std.mem.Allocator, text: []const u8) void {
         if (std.mem.trim(u8, text, " ").len == 0) return self.stepsMessage(t("Type an entry first."));
         const ctx: steps_mod.Ctx = .{ .a = a, .session = &self.session, .mode = self.evalMode() };
-        const found = steps_mod.explain(ctx, text) catch {
+        const result = if (self.mode == .programmer) progsteps.explain(ctx, text) else steps_mod.explain(ctx, text);
+        const found = result catch {
             return self.stepsMessage(t("The steps could not be worked out for this entry."));
         } orelse {
-            return self.stepsMessage(t("No written-out steps for this kind of entry yet. They are written for arithmetic, fractions and roots, equations, expanding and factoring, derivatives and pairs of linear equations."));
+            return self.stepsMessage(if (self.mode == .programmer)
+                t("No written-out steps for this entry. In Programmer mode they are written for whole-number expressions: arithmetic, AND, OR, XOR, NOT and shifts, with the answer in every base.")
+            else
+                t("No written-out steps for this kind of entry yet. They are written for arithmetic, fractions and roots, equations, expanding and factoring, derivatives and pairs of linear equations."));
         };
         while (self.steps_box.as(gtk.Widget).getFirstChild()) |c| self.steps_box.remove(c);
         // Written like a page of working: the lines of mathematics in a column, each with a short
@@ -3932,6 +3966,7 @@ test {
     _ = @import("symbolic.zig");
     _ = @import("algebra.zig");
     _ = @import("steps.zig");
+    _ = @import("progsteps.zig");
     _ = @import("library.zig");
     _ = @import("uncertain.zig");
     _ = @import("linalg.zig");

@@ -133,7 +133,7 @@ pub fn parseAction(text: []const u8) ?Action {
 
 pub const Entry = struct { key: []const u8, action: []const u8 };
 
-/// The built-in shortcuts: dkde's set (the same keys Settings > Shortcuts shows for labwc) plus Alt+digit workspaces.
+/// The built-in shortcuts: dkde's set (the same keys Settings > Shortcuts shows for labwc) plus Super+digit workspaces (not Alt: programs keep Alt+digit and Alt+letter for their own menus and modes).
 pub const defaults = [_]Entry{
     .{ .key = "Super_L", .action = "exec dkde-panel msg toggle-menu" },
     .{ .key = "C-A-t", .action = "exec dkde-term" },
@@ -175,27 +175,27 @@ pub const defaults = [_]Entry{
     .{ .key = "W-C-A-S-l", .action = "snap bottom-left" },
     .{ .key = "W-C-A-S-m", .action = "snap bottom-right" },
     // The compositor's own.
-    .{ .key = "A-t", .action = "toggle-layout" },
-    .{ .key = "A-S-space", .action = "float" },
-    .{ .key = "A-Escape", .action = "quit" },
-    .{ .key = "A-1", .action = "workspace 1" },
-    .{ .key = "A-2", .action = "workspace 2" },
-    .{ .key = "A-3", .action = "workspace 3" },
-    .{ .key = "A-4", .action = "workspace 4" },
-    .{ .key = "A-5", .action = "workspace 5" },
-    .{ .key = "A-6", .action = "workspace 6" },
-    .{ .key = "A-7", .action = "workspace 7" },
-    .{ .key = "A-8", .action = "workspace 8" },
-    .{ .key = "A-9", .action = "workspace 9" },
-    .{ .key = "A-S-1", .action = "move-to-workspace 1" },
-    .{ .key = "A-S-2", .action = "move-to-workspace 2" },
-    .{ .key = "A-S-3", .action = "move-to-workspace 3" },
-    .{ .key = "A-S-4", .action = "move-to-workspace 4" },
-    .{ .key = "A-S-5", .action = "move-to-workspace 5" },
-    .{ .key = "A-S-6", .action = "move-to-workspace 6" },
-    .{ .key = "A-S-7", .action = "move-to-workspace 7" },
-    .{ .key = "A-S-8", .action = "move-to-workspace 8" },
-    .{ .key = "A-S-9", .action = "move-to-workspace 9" },
+    .{ .key = "W-t", .action = "toggle-layout" },
+    .{ .key = "W-S-space", .action = "float" },
+    .{ .key = "W-S-Escape", .action = "quit" },
+    .{ .key = "W-1", .action = "workspace 1" },
+    .{ .key = "W-2", .action = "workspace 2" },
+    .{ .key = "W-3", .action = "workspace 3" },
+    .{ .key = "W-4", .action = "workspace 4" },
+    .{ .key = "W-5", .action = "workspace 5" },
+    .{ .key = "W-6", .action = "workspace 6" },
+    .{ .key = "W-7", .action = "workspace 7" },
+    .{ .key = "W-8", .action = "workspace 8" },
+    .{ .key = "W-9", .action = "workspace 9" },
+    .{ .key = "W-S-1", .action = "move-to-workspace 1" },
+    .{ .key = "W-S-2", .action = "move-to-workspace 2" },
+    .{ .key = "W-S-3", .action = "move-to-workspace 3" },
+    .{ .key = "W-S-4", .action = "move-to-workspace 4" },
+    .{ .key = "W-S-5", .action = "move-to-workspace 5" },
+    .{ .key = "W-S-6", .action = "move-to-workspace 6" },
+    .{ .key = "W-S-7", .action = "move-to-workspace 7" },
+    .{ .key = "W-S-8", .action = "move-to-workspace 8" },
+    .{ .key = "W-S-9", .action = "move-to-workspace 9" },
 };
 
 test "keys parse" {

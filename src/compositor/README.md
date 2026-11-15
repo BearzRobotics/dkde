@@ -50,8 +50,8 @@ Keys are written like labwc's: modifiers `S` `C` `A` `W` (Super) joined with `-`
 `snap REGION` (left-half, right-half, top-half, bottom-half, left-third, middle-third, right-third,
 left-two-thirds, right-two-thirds, top-left, top-right, bottom-left, bottom-right), `none`.
 The built-in set is `src/keys.zig` (`defaults`): dkde's shortcuts (Start menu, terminal, lock, screenshots,
-volume, snapping, dkde-snap's regions) plus Alt+digit workspaces, Alt+T (floating/tiling), Alt+Shift+Space
-(float one window) and Alt+Esc (quit).
+volume, snapping, dkde-snap's regions) plus Super+digit workspaces, Super+T (floating/tiling), Super+Shift+Space
+(float one window) and Super+Shift+Escape (quit).
 
 The session programs (panel with restart, dkde-idle, dkde-polkit) are started by the compositor from a built-in
 script; `~/.config/dkde/autostart` (a shell script) replaces it. `scripts/dkde-session` runs the compositor named by
