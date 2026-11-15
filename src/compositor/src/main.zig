@@ -14,6 +14,7 @@ const c = @import("c");
 const layout = @import("layout.zig");
 const config = @import("config.zig");
 const workspaces = @import("workspaces.zig");
+const keys = @import("keys.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -43,6 +44,9 @@ const Server = struct {
     toplevels: std.ArrayList(*Toplevel) = .empty, // focus order, back to front: the last is on top
     managed: std.ArrayList(*Toplevel) = .empty, // mapped windows in the order they appeared (tiling order)
     ws: workspaces.Workspaces = .{ .on_activate = switchWorkspace },
+    bindings: std.ArrayList(Binding) = .empty,
+    /// A Super key went down and nothing else has been pressed since (a tap opens the Start menu).
+    super_pending: bool = false,
     policy: layout.Policy = .floating,
     layout_options: layout.Options = .{},
     opened: usize = 0, // windows opened so far, for cascading
@@ -915,16 +919,36 @@ const Keyboard = struct {
         const event: *c.wlr_keyboard_key_event = @ptrCast(@alignCast(data));
         noteActivity();
 
-        // Translate the evdev keycode to an xkb one and look up what it types.
+        // Translate the evdev keycode to an xkb one and look up what the key is without Shift
+        // (level 0), so "S-1" matches the 1 key whatever the layout makes of Shift.
         const keycode: u32 = event.keycode + 8;
+        const mods = modsOf(c.wlr_keyboard_get_modifiers(self.keyboard));
+        const layout_index = c.xkb_state_key_get_layout(self.keyboard.*.xkb_state, keycode);
         var syms: [*c]const c.xkb_keysym_t = null;
-        const count = c.xkb_state_key_get_syms(self.keyboard.*.xkb_state, keycode, &syms);
+        const count = c.xkb_keymap_key_get_syms_by_level(self.keyboard.*.keymap, keycode, layout_index, 0, &syms);
         var handled = false;
-        if (c.wlr_keyboard_get_modifiers(self.keyboard) & c.WLR_MODIFIER_ALT != 0 and event.state == c.WL_KEYBOARD_KEY_STATE_PRESSED) {
-            var i: usize = 0;
-            const shift = c.wlr_keyboard_get_modifiers(self.keyboard) & c.WLR_MODIFIER_SHIFT != 0;
-            while (i < @as(usize, @intCast(count))) : (i += 1) handled = keybinding(syms[i], shift) or handled;
+        const pressed = event.state == c.WL_KEYBOARD_KEY_STATE_PRESSED;
+        var i: usize = 0;
+        while (i < @as(usize, @intCast(@max(count, 0)))) : (i += 1) {
+            const sym = syms[i];
+            if (pressed) {
+                if (isSuper(sym)) {
+                    // A bare Super tap acts when the key comes up, if nothing else was pressed meanwhile.
+                    server.super_pending = true;
+                    handled = true;
+                    continue;
+                }
+                server.super_pending = false;
+                if (runBinding(mods, sym)) handled = true;
+            } else if (isSuper(sym)) {
+                if (server.super_pending) {
+                    server.super_pending = false;
+                    _ = runBinding(0, c.XKB_KEY_Super_L);
+                }
+            }
         }
+        // The Super key itself is also sent on, so clients see a normal key press (some use it).
+        if (count > 0 and isSuper(syms[0])) handled = false;
         if (!handled) {
             c.wlr_seat_set_keyboard(server.seat, self.keyboard);
             c.wlr_seat_keyboard_notify_key(server.seat, event.time_msec, event.keycode, event.state);
@@ -946,31 +970,147 @@ const Keyboard = struct {
     }
 };
 
-/// Compositor shortcuts (with Alt held). True when the key was one of them.
-fn keybinding(sym: c.xkb_keysym_t, shift: bool) bool {
-    c._wlr_log(c.WLR_DEBUG, "Alt+key %u", sym);
-    // Alt+1…9 switches workspace; with Shift (which turns the digit into ! @ # …) it moves the window.
-    const shifted = [_]c.xkb_keysym_t{ c.XKB_KEY_exclam, c.XKB_KEY_at, c.XKB_KEY_numbersign, c.XKB_KEY_dollar, c.XKB_KEY_percent, c.XKB_KEY_asciicircum, c.XKB_KEY_ampersand, c.XKB_KEY_asterisk, c.XKB_KEY_parenleft };
-    if (sym >= c.XKB_KEY_1 and sym <= c.XKB_KEY_9) {
-        switchWorkspace(sym - c.XKB_KEY_1);
-        return true;
+// ---- shortcuts -----------------------------------------------------------------------------------------------
+
+const Binding = struct {
+    mods: u8,
+    sym: c.xkb_keysym_t,
+    action: keys.Action,
+};
+
+fn modsOf(raw: u32) u8 {
+    var m: u8 = 0;
+    if (raw & c.WLR_MODIFIER_SHIFT != 0) m |= keys.Mod.shift;
+    if (raw & c.WLR_MODIFIER_CTRL != 0) m |= keys.Mod.ctrl;
+    if (raw & c.WLR_MODIFIER_ALT != 0) m |= keys.Mod.alt;
+    if (raw & c.WLR_MODIFIER_LOGO != 0) m |= keys.Mod.logo;
+    return m;
+}
+
+fn keysymNamed(name: []const u8) ?c.xkb_keysym_t {
+    const z = gpa.dupeSentinel(u8, name, 0) catch return null;
+    defer gpa.free(z);
+    var sym = c.xkb_keysym_from_name(z.ptr, c.XKB_KEYSYM_NO_FLAGS);
+    if (sym == c.XKB_KEY_NoSymbol) sym = c.xkb_keysym_from_name(z.ptr, c.XKB_KEYSYM_CASE_INSENSITIVE);
+    return if (sym == c.XKB_KEY_NoSymbol) null else sym;
+}
+
+fn clearBindings() void {
+    for (server.bindings.items) |b| {
+        switch (b.action) {
+            .exec => |cmd| gpa.free(cmd),
+            else => {},
+        }
     }
-    for (shifted, 0..) |k, i| {
-        if (sym == k) {
-            moveWindowToWorkspace(i);
+    server.bindings.clearRetainingCapacity();
+}
+
+fn addBinding(key_text: []const u8, action_text: []const u8) void {
+    const pk = keys.parseKey(key_text) orelse return;
+    const sym = keysymNamed(pk.name) orelse {
+        c._wlr_log(c.WLR_ERROR, "unknown key name in a shortcut: %.*s", @as(c_int, @intCast(pk.name.len)), pk.name.ptr);
+        return;
+    };
+    var action = keys.parseAction(action_text) orelse return;
+    // Whatever this key did before is replaced.
+    var i: usize = 0;
+    while (i < server.bindings.items.len) {
+        const b = server.bindings.items[i];
+        if (b.mods == pk.mods and b.sym == sym) {
+            switch (b.action) {
+                .exec => |cmd| gpa.free(cmd),
+                else => {},
+            }
+            _ = server.bindings.orderedRemove(i);
+        } else i += 1;
+    }
+    if (action == .none) return;
+    if (action == .exec) action = .{ .exec = gpa.dupe(u8, action.exec) catch return };
+    server.bindings.append(gpa, .{ .mods = pk.mods, .sym = sym, .action = action }) catch {};
+}
+
+/// The built-in shortcuts, then the user's from compositor.toml on top.
+fn buildBindings(user: []const keys.Entry) void {
+    clearBindings();
+    for (keys.defaults) |d| addBinding(d.key, d.action);
+    for (user) |e| addBinding(e.key, e.action);
+}
+
+fn runBinding(mods: u8, sym: c.xkb_keysym_t) bool {
+    for (server.bindings.items) |b| {
+        if (b.mods == mods and b.sym == sym) {
+            perform(b.action);
             return true;
         }
     }
-    switch (sym) {
-        c.XKB_KEY_t, c.XKB_KEY_T => togglePolicy(),
-        c.XKB_KEY_space => if (shift) toggleWindowFloating() else return false,
-        c.XKB_KEY_Escape => c.wl_display_terminate(server.display),
-        c.XKB_KEY_F1 => {
-            if (server.toplevels.items.len >= 2) focus(server.toplevels.items[0]);
+    return false;
+}
+
+fn isSuper(sym: c.xkb_keysym_t) bool {
+    return sym == c.XKB_KEY_Super_L or sym == c.XKB_KEY_Super_R;
+}
+
+/// Runs a shell command in the background, without waiting for it.
+fn runCommand(cmd: []const u8) void {
+    const line = std.fmt.allocPrintSentinel(gpa, "{s} &", .{cmd}, 0) catch return;
+    defer gpa.free(line);
+    _ = c.system(line.ptr);
+}
+
+fn perform(action: keys.Action) void {
+    switch (action) {
+        .none => {},
+        .quit => c.wl_display_terminate(server.display),
+        .close => if (topWindow()) |t| c.wlr_xdg_toplevel_send_close(t.xdg),
+        .next_window => {
+            // The window at the bottom of this workspace comes to the top.
+            for (server.toplevels.items) |t| {
+                if (!t.minimized and t.workspace == server.ws.active) {
+                    focus(t);
+                    break;
+                }
+            }
         },
-        else => return false,
+        .prev_window => {
+            var seen: usize = 0;
+            var i = server.toplevels.items.len;
+            while (i > 0) : (i -= 1) {
+                const t = server.toplevels.items[i - 1];
+                if (t.minimized or t.workspace != server.ws.active) continue;
+                seen += 1;
+                if (seen == 2) {
+                    focus(t);
+                    break;
+                }
+            }
+        },
+        .maximize => if (topWindow()) |t| setMaximized(t, !t.maximized),
+        .fullscreen => if (topWindow()) |t| setFullscreen(t, !t.fullscreen),
+        .float => toggleWindowFloating(),
+        .toggle_layout => togglePolicy(),
+        .workspace => |n| switchWorkspace(n),
+        .workspace_prev => switchWorkspace((server.ws.active + server.ws.count - 1) % server.ws.count),
+        .workspace_next => switchWorkspace((server.ws.active + 1) % server.ws.count),
+        .move_to_workspace => |n| moveWindowToWorkspace(n),
+        .move_to_prev => moveWindowToWorkspace((server.ws.active + server.ws.count - 1) % server.ws.count),
+        .move_to_next => moveWindowToWorkspace((server.ws.active + 1) % server.ws.count),
+        .snap => |region| if (topWindow()) |t| snapTo(t, region),
+        .exec => |cmd| runCommand(cmd),
     }
-    return true;
+}
+
+/// Puts a window in a part of the screen and keeps it out of the tiling.
+fn snapTo(t: *Toplevel, region: keys.Region) void {
+    if (t.maximized) {
+        t.maximized = false;
+        _ = c.wlr_xdg_toplevel_set_maximized(t.xdg, false);
+    }
+    t.floating = true;
+    t.cell = null;
+    t.saved = null;
+    _ = c.wlr_xdg_toplevel_set_tiled(t.xdg, 0);
+    place(t, layout.regionRect(workArea(), region));
+    arrange();
 }
 
 fn addKeyboard(device: *c.wlr_input_device, set_keymap: bool) void {
@@ -1114,6 +1254,9 @@ fn loadConfig() void {
             for (warnings.items) |w| c._wlr_log(c.WLR_ERROR, "%s: %.*s", path.ptr, @as(c_int, @intCast(w.len)), w.ptr);
         }
     }
+    buildBindings(cfg.keys);
+    config.free(gpa, cfg);
+    cfg.keys = &.{};
     const was = server.policy;
     server.ws.count = cfg.workspaces;
     if (server.ws.active >= server.ws.count) switchWorkspace(server.ws.count - 1);

@@ -8,19 +8,33 @@
 //!   gap = 6                  # pixels between tiled windows and the screen edge
 //!   master_ratio = 0.55      # the master window's share of the width when tiling
 //!
+//!   [keys]                   # shortcuts, added to the built-in set (see keys.zig)
+//!   "W-Return" = "exec dkde-term"
+//!
 //!   [workspaces]
 //!   count = 4                # virtual desktops, 1 to 9 (Alt+1…9 switches, Alt+Shift+1…9 moves a window)
 
 const std = @import("std");
 const toml = @import("toml");
 const layout = @import("layout.zig");
+const keys = @import("keys.zig");
 
 pub const Config = struct {
     policy: layout.Policy = .floating,
     options: layout.Options = .{},
     /// How many virtual desktops (1 to 9).
     workspaces: usize = 4,
+    /// The user's `[keys]` entries, on top of the built-in shortcuts (owned: see `free`).
+    keys: []const keys.Entry = &.{},
 };
+
+pub fn free(gpa: std.mem.Allocator, config: Config) void {
+    for (config.keys) |e| {
+        gpa.free(e.key);
+        gpa.free(e.action);
+    }
+    gpa.free(config.keys);
+}
 
 /// Reads settings from TOML text. Problems are described in `warnings`.
 pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList([]const u8)) !Config {
@@ -31,6 +45,30 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
     };
     defer doc.deinit();
 
+    if (doc.root.getTable("keys")) |table| {
+        var list: std.ArrayList(keys.Entry) = .empty;
+        errdefer list.deinit(gpa);
+        var it = table.entries.iterator();
+        while (it.next()) |entry| {
+            const action = switch (entry.value_ptr.*) {
+                .string => |a| a,
+                else => {
+                    try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[keys] \"{s}\": expected a string; ignored", .{entry.key_ptr.*}));
+                    continue;
+                },
+            };
+            if (keys.parseKey(entry.key_ptr.*) == null) {
+                try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[keys] \"{s}\" is not a key; ignored", .{entry.key_ptr.*}));
+                continue;
+            }
+            if (keys.parseAction(action) == null) {
+                try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[keys] \"{s}\" = \"{s}\": not an action; ignored", .{ entry.key_ptr.*, action }));
+                continue;
+            }
+            try list.append(gpa, .{ .key = try gpa.dupe(u8, entry.key_ptr.*), .action = try gpa.dupe(u8, action) });
+        }
+        config.keys = try list.toOwnedSlice(gpa);
+    }
     if (doc.root.getTable("workspaces")) |w| {
         if (w.get("count")) |v| switch (v) {
             .integer => |i| {
@@ -129,4 +167,17 @@ test "text that is not TOML is reported, not fatal" {
     const config = try parse(std.testing.allocator, "[windows\nlayout =", &warnings);
     try std.testing.expectEqual(layout.Policy.floating, config.policy);
     try std.testing.expectEqual(@as(usize, 1), warnings.items.len);
+}
+
+test "shortcuts from the settings file" {
+    var warnings: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (warnings.items) |w| std.testing.allocator.free(w);
+        warnings.deinit(std.testing.allocator);
+    }
+    const config = try parse(std.testing.allocator, "[keys]\n\"W-Return\" = \"exec dkde-term\"\n\"A-F4\" = \"none\"\n\"W-q\" = \"dance\"\n\"\" = \"close\"\n", &warnings);
+    defer free(std.testing.allocator, config);
+    try std.testing.expectEqual(@as(usize, 2), config.keys.len);
+    try std.testing.expectEqualStrings("W-Return", config.keys[0].key);
+    try std.testing.expectEqual(@as(usize, 2), warnings.items.len);
 }

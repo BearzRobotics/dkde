@@ -101,3 +101,36 @@ test "policy toggles" {
     try std.testing.expectEqual(Policy.tiling, Policy.floating.toggled());
     try std.testing.expectEqual(Policy.floating, Policy.tiling.toggled());
 }
+
+/// The part of `area` a snap region covers (the same fractions labwc's regions use, thirds rounded to whole percents).
+pub fn regionRect(area: Rect, region: @import("keys.zig").Region) Rect {
+    const pct: [4]i32 = switch (region) {
+        .left_half => .{ 0, 0, 50, 100 },
+        .right_half => .{ 50, 0, 50, 100 },
+        .top_half => .{ 0, 0, 100, 50 },
+        .bottom_half => .{ 0, 50, 100, 50 },
+        .left_third => .{ 0, 0, 33, 100 },
+        .middle_third => .{ 33, 0, 34, 100 },
+        .right_third => .{ 67, 0, 33, 100 },
+        .left_two_thirds => .{ 0, 0, 67, 100 },
+        .right_two_thirds => .{ 33, 0, 67, 100 },
+        .top_left => .{ 0, 0, 50, 50 },
+        .top_right => .{ 50, 0, 50, 50 },
+        .bottom_left => .{ 0, 50, 50, 50 },
+        .bottom_right => .{ 50, 50, 50, 50 },
+    };
+    return .{
+        .x = area.x + @divFloor(area.w * pct[0], 100),
+        .y = area.y + @divFloor(area.h * pct[1], 100),
+        .w = @divFloor(area.w * pct[2], 100),
+        .h = @divFloor(area.h * pct[3], 100),
+    };
+}
+
+test "regions" {
+    const area = Rect{ .x = 0, .y = 0, .w = 1000, .h = 600 };
+    try std.testing.expectEqual(Rect{ .x = 500, .y = 0, .w = 500, .h = 600 }, regionRect(area, .right_half));
+    try std.testing.expectEqual(Rect{ .x = 500, .y = 300, .w = 500, .h = 300 }, regionRect(area, .bottom_right));
+    const mid = regionRect(area, .middle_third);
+    try std.testing.expectEqual(@as(i32, 330), mid.x);
+}
