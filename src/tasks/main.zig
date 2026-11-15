@@ -776,6 +776,7 @@ test {
     _ = @import("services.zig");
     _ = @import("users.zig");
     _ = @import("startup.zig");
+    _ = @import("unitedit.zig");
     _ = @import("initsys.zig");
     _ = @import("security.zig");
     _ = @import("securityedit.zig");

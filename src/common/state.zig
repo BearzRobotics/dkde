@@ -5,6 +5,7 @@ const std = @import("std");
 const glib = @import("glib2");
 
 const paths = @import("paths.zig");
+const fsio = @import("fsio.zig");
 
 const log = std.log.scoped(.state);
 
@@ -49,11 +50,13 @@ pub fn saveList(allocator: std.mem.Allocator, file: []const u8, group: [:0]const
     const keyfile = glib.KeyFile.new();
     defer keyfile.free();
     keyfile.setStringList(group, key, @ptrCast(z.ptr), items.len);
-    var err: ?*glib.Error = null;
-    if (keyfile.saveToFile(path, &err) == 0) {
-        log.warn("cannot save {s}: {s}", .{ path, if (err) |e| e.f_message orelse "unknown" else "unknown" });
-        if (err) |e| e.free();
-    }
+    // Not saveToFile: GLib flushes the file to the disk (fsync) before it renames it, and on a slow
+    // or busy disk that stalls the program for seconds, once for each of the several saves a window makes
+    // as it opens. This is only what the window remembers; a power cut costing the last change is fine.
+    var length: usize = 0;
+    const data = keyfile.toData(&length, null) orelse return;
+    defer glib.free(data);
+    fsio.writeFileAtomic(path, data[0..length]) catch |e| log.warn("cannot save {s}: {s}", .{ path, @errorName(e) });
 }
 
 pub fn freeList(allocator: std.mem.Allocator, list: *std.ArrayList([]u8)) void {

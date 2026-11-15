@@ -15,6 +15,7 @@ const common = @import("common");
 
 const simplelist = @import("simplelist.zig");
 const initsys = @import("initsys.zig");
+const unitedit = @import("unitedit.zig");
 const Init = initsys.Init;
 const Sampler = @import("sampler.zig").Sampler;
 
@@ -78,7 +79,7 @@ pub const Service = struct {
 };
 
 /// "UNIT LOAD ACTIVE SUB DESCRIPTION" lines of `systemctl list-units --plain`.
-pub fn parseUnits(gpa: std.mem.Allocator, out: *std.ArrayList(Service), text: []const u8, user: bool) void {
+pub fn parseUnits(gpa: std.mem.Allocator, out: *std.ArrayList(Service), text: []const u8, user: bool, suffix: []const u8) void {
     var lines = std.mem.splitScalar(u8, text, '\n');
     while (lines.next()) |raw| {
         const line = std.mem.trim(u8, raw, " ");
@@ -86,7 +87,7 @@ pub fn parseUnits(gpa: std.mem.Allocator, out: *std.ArrayList(Service), text: []
         var unit = it.next() orelse continue;
         // Failed units may be marked with a dot.
         if (std.mem.eql(u8, unit, "●") or std.mem.eql(u8, unit, "*")) unit = it.next() orelse continue;
-        if (!std.mem.endsWith(u8, unit, ".service")) continue;
+        if (!std.mem.endsWith(u8, unit, suffix)) continue;
         const load = it.next() orelse continue;
         if (std.mem.eql(u8, load, "not-found")) continue;
         const active = it.next() orelse continue;
@@ -102,15 +103,15 @@ pub fn parseUnits(gpa: std.mem.Allocator, out: *std.ArrayList(Service), text: []
 
 /// "UNIT STATE PRESET" lines of `systemctl list-unit-files`: fills in how
 /// listed services start, and adds the ones not loaded (stopped).
-pub fn parseUnitFiles(gpa: std.mem.Allocator, out: *std.ArrayList(Service), text: []const u8, user: bool) void {
+pub fn parseUnitFiles(gpa: std.mem.Allocator, out: *std.ArrayList(Service), text: []const u8, user: bool, suffix: []const u8) void {
     var lines = std.mem.splitScalar(u8, text, '\n');
     while (lines.next()) |raw| {
         var it = std.mem.tokenizeScalar(u8, raw, ' ');
         const unit = it.next() orelse continue;
         const state = it.next() orelse continue;
-        if (!std.mem.endsWith(u8, unit, ".service")) continue;
+        if (!std.mem.endsWith(u8, unit, suffix)) continue;
         // Templates ("getty@.service") are not services of their own.
-        if (std.mem.endsWith(u8, unit, "@.service")) continue;
+        if (unit.len > suffix.len and unit[unit.len - suffix.len - 1] == '@') continue;
         const found = for (out.items) |*s| {
             if (s.user == user and std.mem.eql(u8, s.nameSlice(), unit)) break s;
         } else blk: {
@@ -183,6 +184,10 @@ pub fn scanDinit(gpa: std.mem.Allocator, out: *std.ArrayList(Service), user: boo
 
 const Col = enum { name, pid, description, status, startup, kind };
 
+/// Services, timers and sockets: the unit types the page can list.
+const type_suffixes = [_][]const u8{ ".service", ".timer", ".socket" };
+const type_args = [_][:0]const u8{ "--type=service", "--type=timer", "--type=socket" };
+
 /// What one of the list commands is.
 const Job = struct { kind: enum { units, files, dinit }, user: bool };
 
@@ -217,7 +222,14 @@ pub const Page = struct {
     menu: *gio.Menu,
     /// The service whose details or log are being read.
     reading: Service = .{},
-    reading_what: enum { details, log } = .details,
+    reading_what: enum { details, log, deps, rdeps, cat } = .details,
+    /// Which unit type is listed (0 services, 1 timers, 2 sockets).
+    unit_type: usize = 0,
+    /// The unit or service file being edited, and which kind of edit it is.
+    edit_target: [260]u8 = undefined,
+    edit_len: usize = 0,
+    edit_kind: enum { override, dinit } = .override,
+    edit_user: bool = false,
 
     const specs = [_]simplelist.ColumnSpec{
         .{ .title = "Name", .width = 260 },
@@ -262,6 +274,21 @@ pub const Page = struct {
         self.search.as(gtk.Widget).setSizeRequest(220, -1);
         _ = gtk.SearchEntry.signals.search_changed.connect(self.search, *Page, &onSearch, self, .{});
         bar.append(self.search.as(gtk.Widget));
+        if (self.sys_init == .systemd or self.user_init == .systemd) {
+            // systemd also runs timers and sockets, which people look for here too.
+            const type_drop = gtk.DropDown.newFromStrings(@ptrCast(&[_]?[*:0]const u8{ "Services", "Timers", "Sockets", null }));
+            type_drop.as(gtk.Widget).setTooltipText(t("Which kind of unit to list"));
+            _ = gobject.Object.signals.notify.connect(type_drop, *Page, &onTypePicked, self, .{ .detail = "selected" });
+            bar.append(type_drop.as(gtk.Widget));
+            const reload_b = gtk.Button.newWithLabel(t("Reload units"));
+            reload_b.as(gtk.Widget).setTooltipText(t("Make systemd read the unit files again (daemon-reload), after they were changed by hand or by a package"));
+            _ = gtk.Button.signals.clicked.connect(reload_b, *Page, &onReloadUnits, self, .{});
+            bar.append(reload_b.as(gtk.Widget));
+            const reset_b = gtk.Button.newWithLabel(t("Reset failed"));
+            reset_b.as(gtk.Widget).setTooltipText(t("Clear the failed state of every unit"));
+            _ = gtk.Button.signals.clicked.connect(reset_b, *Page, &onResetAll, self, .{});
+            bar.append(reset_b.as(gtk.Widget));
+        }
         self.states_button.as(gtk.Widget).setTooltipText(t("dinit tells the state of system services only to the administrator"));
         self.states_button.as(gtk.Widget).setVisible(0);
         _ = gtk.Button.signals.clicked.connect(self.states_button, *Page, &onReadStates, self, .{});
@@ -287,7 +314,7 @@ pub const Page = struct {
         root.append(self.status_label.as(gtk.Widget));
         self.widget = root.as(gtk.Widget);
 
-        for ([_][:0]const u8{ "start", "stop", "restart", "enable", "disable", "mask", "unmask", "details", "log" }) |name| {
+        for ([_][:0]const u8{ "start", "stop", "restart", "enable", "disable", "mask", "unmask", "details", "log", "deps", "rdeps", "cat", "edit", "revert", "resetfailed" }) |name| {
             const action = gio.SimpleAction.new(name, null);
             _ = gio.SimpleAction.signals.activate.connect(action, *Page, &onAction, self, .{});
             self.action_group.as(gio.ActionMap).addAction(action.as(gio.Action));
@@ -302,6 +329,12 @@ pub const Page = struct {
         self.menu.append(t("Unmask"), "svc.unmask");
         self.menu.append(t("Details…"), "svc.details");
         self.menu.append(t("Logs…"), "svc.log");
+        self.menu.append(t("Dependencies…"), "svc.deps");
+        self.menu.append(t("Needed by…"), "svc.rdeps");
+        self.menu.append(t("Show definition…"), "svc.cat");
+        self.menu.append(t("Edit (override)…"), "svc.edit");
+        self.menu.append(t("Revert to the packaged definition"), "svc.revert");
+        self.menu.append(t("Reset failed state"), "svc.resetfailed");
         self.list.view.as(gtk.Widget).insertActionGroup("svc", self.action_group.as(gio.ActionGroup));
         return self;
     }
@@ -333,16 +366,16 @@ pub const Page = struct {
         self.job_count = 0;
         switch (self.sys_init) {
             .systemd => {
-                self.addJob(.{ .kind = .units, .user = false }, &.{ "systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain", "--no-pager" });
-                self.addJob(.{ .kind = .files, .user = false }, &.{ "systemctl", "list-unit-files", "--type=service", "--no-legend", "--no-pager" });
+                self.addJob(.{ .kind = .units, .user = false }, &.{ "systemctl", "list-units", type_args[self.unit_type], "--all", "--no-legend", "--plain", "--no-pager" });
+                self.addJob(.{ .kind = .files, .user = false }, &.{ "systemctl", "list-unit-files", type_args[self.unit_type], "--no-legend", "--no-pager" });
             },
             .dinit => self.addJob(.{ .kind = .dinit, .user = false }, &.{ "dinitctl", "--system", "list" }),
             .none => {},
         }
         switch (self.user_init) {
             .systemd => {
-                self.addJob(.{ .kind = .units, .user = true }, &.{ "systemctl", "--user", "list-units", "--type=service", "--all", "--no-legend", "--plain", "--no-pager" });
-                self.addJob(.{ .kind = .files, .user = true }, &.{ "systemctl", "--user", "list-unit-files", "--type=service", "--no-legend", "--no-pager" });
+                self.addJob(.{ .kind = .units, .user = true }, &.{ "systemctl", "--user", "list-units", type_args[self.unit_type], "--all", "--no-legend", "--plain", "--no-pager" });
+                self.addJob(.{ .kind = .files, .user = true }, &.{ "systemctl", "--user", "list-unit-files", type_args[self.unit_type], "--no-legend", "--no-pager" });
             },
             .dinit => self.addJob(.{ .kind = .dinit, .user = true }, &.{ "dinitctl", "--user", "list" }),
             .none => {},
@@ -380,8 +413,8 @@ pub const Page = struct {
         for (self.jobs[0..self.job_count], 0..) |job, i| {
             const o = self.outputs[i];
             switch (job.kind) {
-                .units => if (o) |x| parseUnits(a, &self.incoming, x, job.user),
-                .files => if (o) |x| parseUnitFiles(a, &self.incoming, x, job.user),
+                .units => if (o) |x| parseUnits(a, &self.incoming, x, job.user, type_suffixes[self.unit_type]),
+                .files => if (o) |x| parseUnitFiles(a, &self.incoming, x, job.user, type_suffixes[self.unit_type]),
                 .dinit => {
                     // The system socket is root's: the states read with the
                     // password stand in until the next reading works.
@@ -562,6 +595,12 @@ pub const Page = struct {
         const name = std.mem.span(action.as(gio.Action).getName());
         if (std.mem.eql(u8, name, "details")) return self.read(.details);
         if (std.mem.eql(u8, name, "log")) return self.read(.log);
+        if (std.mem.eql(u8, name, "deps")) return self.read(.deps);
+        if (std.mem.eql(u8, name, "rdeps")) return self.read(.rdeps);
+        if (std.mem.eql(u8, name, "cat")) return self.read(.cat);
+        if (std.mem.eql(u8, name, "edit")) return self.beginEdit();
+        if (std.mem.eql(u8, name, "revert")) return self.revert();
+        if (std.mem.eql(u8, name, "resetfailed")) return self.resetFailed();
         self.control(name);
     }
 
@@ -622,9 +661,23 @@ pub const Page = struct {
                     common.proc.run(Page, self.guard, &.{ "journalctl", "--user-unit", name, "-n", "500", "--no-pager", "-o", "short-iso" }, onRead)
                 else
                     common.proc.run(Page, self.guard, &.{ "journalctl", "-u", name, "-n", "500", "--no-pager", "-o", "short-iso" }, onRead),
+                .deps, .rdeps => {
+                    const reverse: []const u8 = if (what == .rdeps) "--reverse" else "--plain";
+                    if (s.user)
+                        common.proc.run(Page, self.guard, &.{ "systemctl", "--user", "list-dependencies", "--plain", reverse, "--no-pager", name }, onRead)
+                    else
+                        common.proc.run(Page, self.guard, &.{ "systemctl", "list-dependencies", "--plain", reverse, "--no-pager", name }, onRead);
+                },
+                .cat => if (s.user)
+                    common.proc.run(Page, self.guard, &.{ "systemctl", "--user", "cat", "--no-pager", name }, onRead)
+                else
+                    common.proc.run(Page, self.guard, &.{ "systemctl", "cat", "--no-pager", name }, onRead),
             }
             return;
         }
+        // dinit has no dependency tree to list; its definition is the service file.
+        if (what == .deps or what == .rdeps) return self.showText("dinit does not list dependencies; they are the depends-on and depends-ms lines of the service's definition (Show definition…).", false);
+        if (what == .cat) return self.readDinitFile(name);
         if (what == .log and Service.get(&s.logfile).len > 0) return self.readLogfile();
         const verb: []const u8 = if (what == .log) "catlog" else "status";
         if (s.user) {
@@ -677,7 +730,13 @@ pub const Page = struct {
     fn showText(self: *Page, out: []const u8, maybe_hidden: bool) void {
         const win = gtk.Window.new();
         var tb: [200]u8 = undefined;
-        win.setTitle(std.fmt.bufPrintSentinel(&tb, "{s}: {s}", .{ if (self.reading_what == .log) "Log" else "Details", self.reading.nameSlice() }, 0) catch "Service");
+        win.setTitle(std.fmt.bufPrintSentinel(&tb, "{s}: {s}", .{ switch (self.reading_what) {
+            .log => "Log",
+            .details => "Details",
+            .deps => "Dependencies",
+            .rdeps => "Needed by",
+            .cat => "Definition",
+        }, self.reading.nameSlice() }, 0) catch "Service");
         win.setTransientFor(self.window);
         win.setDefaultSize(860, 540);
         win.as(gtk.Widget).addCssClass("dkde");
@@ -730,6 +789,210 @@ pub const Page = struct {
         win.destroy();
     }
 
+    // ---- changing a service's definition, reloading, resetting --------------------------------------
+
+    fn dinitPath(self: *Page, buf: []u8, name: []const u8, user: bool) ?[]const u8 {
+        _ = self;
+        if (!user) return std.fmt.bufPrint(buf, "/etc/dinit.d/{s}", .{name}) catch null;
+        return std.fmt.bufPrint(buf, "{s}/dinit.d/{s}", .{ std.mem.span(glib.getUserConfigDir()), name }) catch null;
+    }
+
+    fn readDinitFile(self: *Page, name: []const u8) void {
+        if (!unitedit.validDinit(name)) return self.showText("This service's name cannot be used safely.", false);
+        var pb: [400]u8 = undefined;
+        const path = self.dinitPath(&pb, name, self.reading.user) orelse return;
+        if (self.reading.user) {
+            common.proc.run(Page, self.guard, &.{ "cat", path }, onRead);
+        } else common.elevate.runCapture(self.window, "Read a system service's definition", &.{ "cat", path }, Page, onReadElevated, self);
+    }
+
+    fn setEditTarget(self: *Page, text_in: []const u8) void {
+        const n = @min(text_in.len, self.edit_target.len);
+        @memcpy(self.edit_target[0..n], text_in[0..n]);
+        self.edit_len = n;
+    }
+
+    /// "Edit…": a systemd override (a drop-in file, as `systemctl edit` makes), or dinit's service file.
+    fn beginEdit(self: *Page) void {
+        const s = self.selected() orelse return;
+        const name = s.nameSlice();
+        self.reading = s.*;
+        self.edit_user = s.user;
+        self.setEditTarget(name);
+        if (s.dinit) {
+            if (!unitedit.validDinit(name)) return;
+            self.edit_kind = .dinit;
+            self.reading_what = .cat;
+            return self.readDinitFileForEdit(name);
+        }
+        if (!unitedit.validUnit(name)) return common.dialogs.showError(self.window, t("This unit's name cannot be edited safely"), null);
+        self.edit_kind = .override;
+        if (s.user) {
+            var pb: [400]u8 = undefined;
+            const path = std.fmt.bufPrintSentinel(&pb, "{s}/systemd/user/{s}.d/override.conf", .{ std.mem.span(glib.getUserConfigDir()), name }, 0) catch return;
+            var contents: [*]u8 = undefined;
+            var length: usize = 0;
+            if (glib.fileGetContents(path, &contents, &length, null) != 0) {
+                defer glib.free(contents);
+                return self.editDialog(contents[0..length]);
+            }
+            return self.editDialog(unitedit.template);
+        }
+        common.elevate.runCapture(self.window, "Read a service's override", &.{ "sh", "-c", unitedit.read_system_script, "sh", name }, Page, onOverrideRead, self);
+    }
+
+    fn onOverrideRead(self: *Page, outcome: common.elevate.Outcome, out: []const u8) void {
+        if (outcome != .ok) return;
+        self.editDialog(if (unitedit.hasContent(out)) out else unitedit.template);
+    }
+
+    fn readDinitFileForEdit(self: *Page, name: []const u8) void {
+        var pb: [400]u8 = undefined;
+        const path = self.dinitPath(&pb, name, self.edit_user) orelse return;
+        if (self.edit_user) {
+            common.proc.run(Page, self.guard, &.{ "cat", path }, onDinitFileRead);
+        } else common.elevate.runCapture(self.window, "Read a system service's definition", &.{ "cat", path }, Page, onDinitFileReadElevated, self);
+    }
+
+    fn onDinitFileRead(self: *Page, ok: bool, out: []const u8) void {
+        if (!ok) return common.dialogs.showError(self.window, t("The service's file could not be read"), null);
+        self.editDialog(out);
+    }
+
+    fn onDinitFileReadElevated(self: *Page, outcome: common.elevate.Outcome, out: []const u8) void {
+        if (outcome == .ok) self.editDialog(out);
+    }
+
+    const EditDialog = struct { page: *Page, window: *gtk.Window, view: *gtk.TextView };
+
+    fn editDialog(self: *Page, body: []const u8) void {
+        const d = std.heap.c_allocator.create(EditDialog) catch return;
+        const win = gtk.Window.new();
+        var tb: [300]u8 = undefined;
+        win.setTitle(std.fmt.bufPrintSentinel(&tb, "{s}: {s}", .{ if (self.edit_kind == .dinit) "Service file" else "Override", self.edit_target[0..self.edit_len] }, 0) catch "Edit");
+        win.setTransientFor(self.window);
+        win.setModal(1);
+        common.dialogs.closeOnEscape(win);
+        win.setDefaultSize(720, 480);
+        win.as(gtk.Widget).addCssClass("dkde");
+        const box = gtk.Box.new(.vertical, 8);
+        inline for (.{ "setMarginStart", "setMarginEnd", "setMarginTop", "setMarginBottom" }) |m| @field(gtk.Widget, m)(box.as(gtk.Widget), 12);
+        const intro = gtk.Label.new(if (self.edit_kind == .dinit)
+            t("The service's definition file. A copy of the original is kept once (.dkde-backup). Restart the service for changes to take effect.")
+        else
+            t("An override changes this unit without touching the package's file. Saving reloads systemd; an empty override is removed. Restart the unit for changes to take effect."));
+        intro.setWrap(1);
+        intro.setXalign(0);
+        box.append(intro.as(gtk.Widget));
+        const view = gtk.TextView.new();
+        view.setMonospace(1);
+        const z = self.gpa.dupeSentinel(u8, body, 0) catch return;
+        defer self.gpa.free(z);
+        view.getBuffer().setText(z, -1);
+        const scroller = gtk.ScrolledWindow.new();
+        scroller.setChild(view.as(gtk.Widget));
+        scroller.as(gtk.Widget).setVexpand(1);
+        box.append(scroller.as(gtk.Widget));
+        const save = gtk.Button.newWithLabel(t("Save"));
+        save.as(gtk.Widget).addCssClass("suggested-action");
+        save.as(gtk.Widget).setHalign(.end);
+        d.* = .{ .page = self, .window = win, .view = view };
+        _ = gtk.Button.signals.clicked.connect(save, *EditDialog, &onEditSave, d, .{});
+        box.append(save.as(gtk.Widget));
+        _ = gtk.Widget.signals.destroy.connect(win, *EditDialog, &onEditDestroy, d, .{});
+        win.setChild(box.as(gtk.Widget));
+        win.present();
+    }
+
+    fn onEditDestroy(_: *gtk.Window, d: *EditDialog) callconv(.c) void {
+        std.heap.c_allocator.destroy(d);
+    }
+
+    fn onEditSave(_: *gtk.Button, d: *EditDialog) callconv(.c) void {
+        const self = d.page;
+        const buffer = d.view.getBuffer();
+        var start: gtk.TextIter = undefined;
+        var end: gtk.TextIter = undefined;
+        buffer.getBounds(&start, &end);
+        const text_z = buffer.getText(&start, &end, 0);
+        defer glib.free(@ptrCast(text_z));
+        const body = self.gpa.dupe(u8, std.mem.span(text_z)) catch return;
+        defer self.gpa.free(body);
+        d.window.destroy();
+        self.saveEdit(body);
+    }
+
+    fn saveEdit(self: *Page, body: []const u8) void {
+        const name = self.edit_target[0..self.edit_len];
+        if (self.edit_kind == .dinit) {
+            var pb: [400]u8 = undefined;
+            const path = self.dinitPath(&pb, name, self.edit_user) orelse return;
+            if (self.edit_user) {
+                _ = glib.fileSetContents(@ptrCast((self.gpa.dupeSentinel(u8, path, 0) catch return).ptr), body.ptr, @intCast(body.len), null);
+                return self.reload();
+            }
+            const owned = self.gpa.dupe(u8, path) catch return;
+            defer self.gpa.free(owned);
+            return common.elevate.run(self.window, "Change a service's definition", &.{ "sh", "-c", unitedit.write_dinit_script, "sh", owned }, body, Page, onElevated, self);
+        }
+        if (self.edit_user) {
+            // Your own unit: a file under your config folder, then a reload.
+            var dir: [400]u8 = undefined;
+            const d = std.fmt.bufPrintSentinel(&dir, "{s}/systemd/user/{s}.d", .{ std.mem.span(glib.getUserConfigDir()), name }, 0) catch return;
+            var file: [420]u8 = undefined;
+            const f = std.fmt.bufPrintSentinel(&file, "{s}/override.conf", .{d}, 0) catch return;
+            if (unitedit.hasContent(body)) {
+                _ = glib.mkdirWithParents(d, 0o755);
+                _ = glib.fileSetContents(f, body.ptr, @intCast(body.len), null);
+            } else {
+                _ = glib.unlink(f);
+                _ = glib.rmdir(d);
+            }
+            common.proc.run(Page, self.guard, &.{ "systemctl", "--user", "daemon-reload" }, onControlled);
+            return;
+        }
+        const final = if (unitedit.hasContent(body)) body else "";
+        common.elevate.run(self.window, "Change a service's override", &.{ "sh", "-c", unitedit.write_system_script, "sh", name }, final, Page, onElevated, self);
+    }
+
+    fn revert(self: *Page) void {
+        const s = self.selected() orelse return;
+        if (s.dinit or !unitedit.validUnit(s.nameSlice())) return common.dialogs.showError(self.window, t("Only systemd units have a packaged definition to go back to"), null);
+        var nb: [128]u8 = undefined;
+        const name = std.fmt.bufPrint(&nb, "{s}", .{s.nameSlice()}) catch return;
+        if (s.user) return common.proc.run(Page, self.guard, &.{ "systemctl", "--user", "revert", name }, onControlled);
+        common.elevate.run(self.window, "Go back to the packaged definition", &.{ "systemctl", "revert", name }, "", Page, onElevated, self);
+    }
+
+    fn resetFailed(self: *Page) void {
+        const s = self.selected() orelse return;
+        if (s.dinit) return;
+        var nb: [128]u8 = undefined;
+        const name = std.fmt.bufPrint(&nb, "{s}", .{s.nameSlice()}) catch return;
+        if (s.user) return common.proc.run(Page, self.guard, &.{ "systemctl", "--user", "reset-failed", name }, onControlled);
+        common.elevate.run(self.window, "Clear a failed state", &.{ "systemctl", "reset-failed", name }, "", Page, onElevated, self);
+    }
+
+    /// systemd re-reads unit files (after files were changed by hand or by a package); for both the system's and yours.
+    fn onReloadUnits(_: *gtk.Button, self: *Page) callconv(.c) void {
+        if (self.user_init == .systemd) common.proc.run(Page, self.guard, &.{ "systemctl", "--user", "daemon-reload" }, onControlled);
+        if (self.sys_init == .systemd) common.elevate.run(self.window, "Make systemd read the unit files again", &.{ "systemctl", "daemon-reload" }, "", Page, onElevated, self);
+    }
+
+    /// Every failed unit back to normal at once.
+    fn onResetAll(_: *gtk.Button, self: *Page) callconv(.c) void {
+        if (self.user_init == .systemd) common.proc.run(Page, self.guard, &.{ "systemctl", "--user", "reset-failed" }, onControlled);
+        if (self.sys_init == .systemd) common.elevate.run(self.window, "Clear all failed states", &.{ "systemctl", "reset-failed" }, "", Page, onElevated, self);
+    }
+
+    fn onTypePicked(drop: *gtk.DropDown, _: *gobject.ParamSpec, self: *Page) callconv(.c) void {
+        const i = drop.getSelected();
+        if (i >= type_suffixes.len or i == self.unit_type) return;
+        self.unit_type = i;
+        self.loaded = false;
+        self.reload();
+    }
+
     fn onJournalAsRoot(_: *gtk.Button, self: *Page) callconv(.c) void {
         var nb: [128]u8 = undefined;
         const name = std.fmt.bufPrint(&nb, "{s}", .{self.reading.nameSlice()}) catch return;
@@ -775,11 +1038,11 @@ test "systemctl lists" {
     const gpa = std.testing.allocator;
     var list: std.ArrayList(Service) = .empty;
     defer list.deinit(gpa);
-    parseUnits(gpa, &list, "accounts-daemon.service loaded active running Accounts Service\nalsa-state.service loaded inactive dead Manage Sound Card State\nfoo.service not-found inactive dead foo.service\n", false);
+    parseUnits(gpa, &list, "accounts-daemon.service loaded active running Accounts Service\nalsa-state.service loaded inactive dead Manage Sound Card State\nfoo.service not-found inactive dead foo.service\napt-daily.timer loaded active waiting Daily apt\n", false, ".service");
     try std.testing.expectEqual(@as(usize, 2), list.items.len);
     try std.testing.expectEqualStrings("Running", list.items[0].status());
     try std.testing.expectEqualStrings("Accounts Service", Service.get(&list.items[0].description));
-    parseUnitFiles(gpa, &list, "accounts-daemon.service enabled enabled\ngetty@.service enabled enabled\ncups.service disabled enabled\n", false);
+    parseUnitFiles(gpa, &list, "accounts-daemon.service enabled enabled\ngetty@.service enabled enabled\ncups.service disabled enabled\n", false, ".service");
     try std.testing.expectEqual(@as(usize, 3), list.items.len);
     try std.testing.expectEqualStrings("Automatic", list.items[0].startup());
     try std.testing.expectEqualStrings("Manual (when needed)", list.items[1].startup());
