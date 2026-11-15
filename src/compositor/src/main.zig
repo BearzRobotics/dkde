@@ -4,12 +4,14 @@
 //! What it does: runs nested in another Wayland session (or headless, with
 //! WLR_BACKENDS=headless), shows xdg-shell windows, gives them keyboard and
 //! pointer focus, and lets Alt+left-drag move and Alt+right-drag resize them.
-//! Alt+Escape quits; Alt+F1 raises the next window.
+//! Alt+Escape quits; Alt+F1 raises the next window; Alt+T switches between
+//! floating and tiling; Alt+Shift+Space floats or tiles the focused window.
 //!
 //! The window layout is a policy (see `layout.zig`): floating now, tiling next.
 
 const std = @import("std");
 const c = @import("c");
+const layout = @import("layout.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -28,7 +30,11 @@ const Server = struct {
     cursor_mgr: *c.wlr_xcursor_manager,
     seat: *c.wlr_seat,
 
-    toplevels: std.ArrayList(*Toplevel) = .empty, // back to front: the last is on top
+    toplevels: std.ArrayList(*Toplevel) = .empty, // focus order, back to front: the last is on top
+    managed: std.ArrayList(*Toplevel) = .empty, // mapped windows in the order they appeared (tiling order)
+    policy: layout.Policy = .floating,
+    layout_options: layout.Options = .{},
+    opened: usize = 0, // windows opened so far, for cascading
     keyboards: std.ArrayList(*Keyboard) = .empty,
 
     cursor_mode: CursorMode = .passthrough,
@@ -38,6 +44,7 @@ const Server = struct {
     grab_box: c.wlr_box = std.mem.zeroes(c.wlr_box),
     resize_edges: u32 = 0,
 
+    layout_change: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_output: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_xdg_toplevel: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_xdg_popup: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -122,6 +129,10 @@ fn onNewOutput(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
 const Toplevel = struct {
     xdg: *c.wlr_xdg_toplevel,
     tree: *c.wlr_scene_tree,
+    /// Kept out of the tiling (a dialog, or a window the user floated).
+    floating: bool = false,
+    /// Where it was before tiling took it, to put it back.
+    saved: ?layout.Rect = null,
 
     map: c.wl_listener = std.mem.zeroes(c.wl_listener),
     unmap: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -136,15 +147,26 @@ const Toplevel = struct {
         const self: *Toplevel = @fieldParentPtr("map", listener.?);
         c._wlr_log(c.WLR_INFO, "window mapped: %s", self.xdg.title);
         server.toplevels.append(gpa, self) catch return;
+        server.managed.append(gpa, self) catch {};
+        // A window with a parent (a dialog) or a fixed size is not tiled.
+        if (self.xdg.parent != null) self.floating = true;
+        if (server.policy == .floating or self.floating) {
+            const spot = layout.cascade(workArea(), server.opened);
+            c.wlr_scene_node_set_position(&self.tree.*.node, spot.x, spot.y);
+        }
+        server.opened += 1;
         focus(self);
+        arrange();
     }
 
     fn onUnmap(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Toplevel = @fieldParentPtr("unmap", listener.?);
         if (server.grabbed == self) resetCursorMode();
         removeFromList(self);
+        removeManaged(self);
         // Give the focus to the window now on top.
         if (server.toplevels.items.len > 0) focus(server.toplevels.items[server.toplevels.items.len - 1]);
+        arrange();
     }
 
     fn onCommit(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
@@ -198,6 +220,83 @@ fn removeFromList(t: *Toplevel) void {
             return;
         }
     }
+}
+
+fn removeManaged(t: *Toplevel) void {
+    for (server.managed.items, 0..) |item, i| {
+        if (item == t) {
+            _ = server.managed.orderedRemove(i);
+            return;
+        }
+    }
+}
+
+/// The part of the screen windows may use (the whole output layout for now;
+/// panels will reserve their strips from it).
+fn workArea() layout.Rect {
+    var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
+    c.wlr_output_layout_get_box(server.output_layout, null, &box);
+    if (box.width <= 0 or box.height <= 0) return .{ .x = 0, .y = 0, .w = 1280, .h = 720 };
+    return .{ .x = box.x, .y = box.y, .w = box.width, .h = box.height };
+}
+
+fn geometryOf(t: *Toplevel) layout.Rect {
+    const geo = t.xdg.base.*.geometry;
+    return .{ .x = t.tree.*.node.x + geo.x, .y = t.tree.*.node.y + geo.y, .w = geo.width, .h = geo.height };
+}
+
+fn place(t: *Toplevel, r: layout.Rect) void {
+    const geo = t.xdg.base.*.geometry;
+    c.wlr_scene_node_set_position(&t.tree.*.node, r.x - geo.x, r.y - geo.y);
+    _ = c.wlr_xdg_toplevel_set_size(t.xdg, r.w, r.h);
+}
+
+/// Puts every window where the policy says. Floating windows stay put.
+fn arrange() void {
+    if (server.policy != .tiling) return;
+    var tiled: std.ArrayList(*Toplevel) = .empty;
+    defer tiled.deinit(gpa);
+    for (server.managed.items) |t| {
+        if (!t.floating) tiled.append(gpa, t) catch return;
+    }
+    const cells = gpa.alloc(layout.Rect, tiled.items.len) catch return;
+    defer gpa.free(cells);
+    layout.tile(workArea(), tiled.items.len, server.layout_options, cells);
+    for (tiled.items, cells) |t, cell| {
+        if (t.saved == null) t.saved = geometryOf(t);
+        place(t, cell);
+    }
+}
+
+/// Floating <-> tiling for the whole screen.
+fn togglePolicy() void {
+    server.policy = server.policy.toggled();
+    if (server.policy == .tiling) {
+        arrange();
+    } else {
+        for (server.managed.items) |t| restore(t);
+    }
+}
+
+/// Gives a window back the place and size it had before tiling.
+fn restore(t: *Toplevel) void {
+    if (t.saved) |r| {
+        place(t, r);
+        t.saved = null;
+    }
+}
+
+/// Alt+Shift+Space: keeps the focused window out of the tiling, or puts it back in.
+fn toggleWindowFloating() void {
+    if (server.toplevels.items.len == 0) return;
+    const t = server.toplevels.items[server.toplevels.items.len - 1];
+    t.floating = !t.floating;
+    if (t.floating) restore(t);
+    arrange();
+}
+
+fn onLayoutChange(_: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+    arrange();
 }
 
 fn onNewToplevel(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
@@ -424,7 +523,8 @@ const Keyboard = struct {
         var handled = false;
         if (c.wlr_keyboard_get_modifiers(self.keyboard) & c.WLR_MODIFIER_ALT != 0 and event.state == c.WL_KEYBOARD_KEY_STATE_PRESSED) {
             var i: usize = 0;
-            while (i < @as(usize, @intCast(count))) : (i += 1) handled = keybinding(syms[i]) or handled;
+            const shift = c.wlr_keyboard_get_modifiers(self.keyboard) & c.WLR_MODIFIER_SHIFT != 0;
+            while (i < @as(usize, @intCast(count))) : (i += 1) handled = keybinding(syms[i], shift) or handled;
         }
         if (!handled) {
             c.wlr_seat_set_keyboard(server.seat, self.keyboard);
@@ -448,8 +548,11 @@ const Keyboard = struct {
 };
 
 /// Compositor shortcuts (with Alt held). True when the key was one of them.
-fn keybinding(sym: c.xkb_keysym_t) bool {
+fn keybinding(sym: c.xkb_keysym_t, shift: bool) bool {
+    c._wlr_log(c.WLR_DEBUG, "Alt+key %u", sym);
     switch (sym) {
+        c.XKB_KEY_t, c.XKB_KEY_T => togglePolicy(),
+        c.XKB_KEY_space => if (shift) toggleWindowFloating() else return false,
         c.XKB_KEY_Escape => c.wl_display_terminate(server.display),
         c.XKB_KEY_F1 => {
             if (server.toplevels.items.len >= 2) focus(server.toplevels.items[0]);
@@ -511,7 +614,7 @@ fn onRequestSetSelection(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) voi
 // ---- start ---------------------------------------------------------------------------------------------------
 
 pub fn main() !void {
-    c.wlr_log_init(c.WLR_INFO, null);
+    c.wlr_log_init(if (std.c.getenv("DKDE_DEBUG") != null) c.WLR_DEBUG else c.WLR_INFO, null);
 
     const display = c.wl_display_create() orelse return error.NoDisplay;
     const backend = c.wlr_backend_autocreate(c.wl_display_get_event_loop(display), null) orelse return error.NoBackend;
@@ -549,6 +652,7 @@ pub fn main() !void {
         .seat = seat,
     };
 
+    listen(&output_layout.*.events.change, &server.layout_change, onLayoutChange);
     listen(&backend.*.events.new_output, &server.new_output, onNewOutput);
     listen(&xdg_shell.*.events.new_toplevel, &server.new_xdg_toplevel, onNewToplevel);
     listen(&xdg_shell.*.events.new_popup, &server.new_xdg_popup, onNewPopup);
@@ -569,6 +673,20 @@ pub fn main() !void {
 
     c.wl_display_run(display);
 
+    // Detach the listeners first: wlroots asserts that none are left when it frees an object.
+    unlisten(&server.new_output);
+    unlisten(&server.layout_change);
+    unlisten(&server.new_xdg_toplevel);
+    unlisten(&server.new_xdg_popup);
+    unlisten(&server.cursor_motion);
+    unlisten(&server.cursor_motion_absolute);
+    unlisten(&server.cursor_button);
+    unlisten(&server.cursor_axis);
+    unlisten(&server.cursor_frame);
+    unlisten(&server.new_input);
+    unlisten(&server.request_cursor);
+    unlisten(&server.pointer_focus_change);
+    unlisten(&server.request_set_selection);
     // Shut down in the order wlroots wants: clients, then the scene, then the rest.
     c.wl_display_destroy_clients(display);
     c.wlr_scene_node_destroy(&scene.*.tree.node);

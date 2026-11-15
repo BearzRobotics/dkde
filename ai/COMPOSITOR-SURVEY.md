@@ -37,3 +37,16 @@ The mismatch to resolve: bindings for the Zig we use (v0.20.x) want wlroots 0.20
 - Compile test of either option (step 1 was blocked before the wlroots source could be fetched).
 - X11 side: XCB extension headers via the same scratch-sysroot trick; a nested server (Xephyr or Xvfb) for testing since Xorg refuses us.
 - GTK4 client inside a nested compositor (Milestone 0 exit test).
+
+## Result (same day): own C interop works
+
+`src/compositor/` is a standalone Zig package (`cd src/compositor && zig build`) that imports wlroots 0.19.2, libwayland-server and xkbcommon through `b.addTranslateC` (no zig-wlroots). It needs the wlroots `-dev` files and `wayland-scanner` (it generates `xdg-shell-protocol.h`, which wlroots' headers include). Notes from building it on Zig 0.17.1:
+
+- `translate-c` handles wlroots' headers; macros that use `__LINE__` do not translate, so `wlr_log` is called as `_wlr_log`.
+- wlroots 0.19's `.pc` requires more `-dev` packages than the obvious ones: `xcb-dri3`, `xcb-present`, `xcb-render-util`, `xcb-shape`, `xcb-res`, `xcb-errors`, `xcb-sync`.
+- Zig 0.17 removed `b.args`; pass program arguments on the command line of the built binary.
+- wlroots asserts at teardown if a listener is still attached to an object it frees: detach every `wl_listener` before `wlr_cursor_destroy` and friends.
+
+What runs (verified nested in a private labwc, with dkde-calc, dkde-clock and dkde-colour as clients, captured with grim through our own screencopy): xdg-shell windows with focus and raise, popups, pointer and keyboard seat, cascade placement, `Alt+T` floating <-> tiling (master left, others stacked right; restores the floating positions), `Alt+Shift+Space` floats one window out of the tiling, `Alt+Escape` quits. The layout maths is in `layout.zig` (no wlroots; 5 tests) so the X11 window manager can reuse it.
+
+Testing caveat: `wtype` builds its own keymap, so its keycodes do not match a us-layout compositor (`t` arrived as Escape). Use `dkde-pointer chord`, and send a warm-up chord first so the nested seat has a keyboard.
