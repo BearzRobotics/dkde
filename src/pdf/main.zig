@@ -574,6 +574,7 @@ const DocView = struct {
         dialog.setTitle(common.tr("Password required"));
         dialog.setTransientFor(self.window.as(gtk.Window));
         dialog.setModal(1);
+        common.dialogs.closeOnEscape(dialog);
         dialog.setDefaultSize(340, -1);
         dialog.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);
@@ -1634,6 +1635,7 @@ const DocView = struct {
         dialog.setTitle(title);
         dialog.setTransientFor(self.window.as(gtk.Window));
         dialog.setModal(1);
+        common.dialogs.closeOnEscape(dialog);
         dialog.setDefaultSize(380, 220);
         dialog.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);
@@ -2151,6 +2153,7 @@ const DocView = struct {
         dialog.setTitle(common.tr("Add bookmark"));
         dialog.setTransientFor(self.window.as(gtk.Window));
         dialog.setModal(1);
+        common.dialogs.closeOnEscape(dialog);
         dialog.setDefaultSize(340, -1);
         dialog.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);

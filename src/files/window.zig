@@ -919,6 +919,7 @@ pub const FilesWindow = struct {
         window.setTitle(common.tr("Connect to Server"));
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
+        common.dialogs.closeOnEscape(window);
         window.setDefaultSize(420, -1);
         window.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);
@@ -2066,6 +2067,7 @@ pub const FilesWindow = struct {
         window.setTitle(title);
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
+        common.dialogs.closeOnEscape(window);
         window.setDefaultSize(340, -1);
         window.as(gtk.Widget).addCssClass("dkde");
 
@@ -2972,6 +2974,7 @@ pub const FilesWindow = struct {
         window.setTitle(common.tr("Open With"));
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
+        common.dialogs.closeOnEscape(window);
         window.setDefaultSize(380, 460);
         window.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);

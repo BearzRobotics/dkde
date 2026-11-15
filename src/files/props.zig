@@ -23,6 +23,7 @@ pub fn show(allocator: std.mem.Allocator, parent: *gtk.Window, file: *gio.File) 
     window.setTitle(common.tr("Properties"));
     window.setTransientFor(parent);
     window.setModal(1);
+    common.dialogs.closeOnEscape(window);
     window.setDefaultSize(400, -1);
     window.as(gtk.Widget).addCssClass("dkde");
 

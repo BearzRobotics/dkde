@@ -323,6 +323,7 @@ pub const NmPage = struct {
             dialog.setTitle(std.fmt.bufPrintSentinel(&title_buf, "{s}", .{if (s.name.len > 0) s.name else "Connection"}, 0) catch "Connection");
             dialog.setTransientFor(page.window.window.as(gtk.Window));
             dialog.setModal(1);
+            common.dialogs.closeOnEscape(dialog);
             dialog.setDefaultSize(440, -1);
             dialog.as(gtk.Widget).addCssClass("dkde");
             const box = gtk.Box.new(.vertical, 8);

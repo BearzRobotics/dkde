@@ -797,6 +797,7 @@ const HexEditor = struct {
         dialog.setTitle(if (kind == .find) common.tr("Find") else if (kind == .sector) common.tr("Go to sector") else common.tr("Go to offset"));
         dialog.setTransientFor(self.window.as(gtk.Window));
         dialog.setModal(1);
+        common.dialogs.closeOnEscape(dialog);
         dialog.setDefaultSize(360, -1);
         dialog.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);
@@ -1390,6 +1391,7 @@ const HexEditor = struct {
         window.setTitle(common.tr("Choose a format"));
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
+        common.dialogs.closeOnEscape(window);
         window.setDefaultSize(460, 520);
         window.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);
@@ -1595,6 +1597,7 @@ const HexEditor = struct {
         window.setTitle(src.title);
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
+        common.dialogs.closeOnEscape(window);
         window.setDefaultSize(480, -1);
         window.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 10);
@@ -2015,6 +2018,7 @@ const HexEditor = struct {
         window.setTitle(if (clone) common.tr("Clone to which disk?") else common.tr("Open a disk"));
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
+        common.dialogs.closeOnEscape(window);
         window.setDefaultSize(560, 420);
         window.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);
@@ -2201,6 +2205,7 @@ const HexEditor = struct {
         window.setTitle(common.tr("Open process memory"));
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
+        common.dialogs.closeOnEscape(window);
         window.setDefaultSize(640, 460);
         window.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);
@@ -2606,6 +2611,7 @@ const HexEditor = struct {
         window.setTitle(if (kind == .fill) common.tr("Fill selection") else common.tr("XOR selection"));
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
+        common.dialogs.closeOnEscape(window);
         window.setDefaultSize(380, -1);
         window.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);
@@ -2713,6 +2719,7 @@ const HexEditor = struct {
         window.setTitle(common.tr("Disassemble selection"));
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
+        common.dialogs.closeOnEscape(window);
         window.setDefaultSize(360, -1);
         window.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);
@@ -2881,6 +2888,7 @@ const HexEditor = struct {
         window.setTitle(common.tr("Bookmark"));
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
+        common.dialogs.closeOnEscape(window);
         window.setDefaultSize(400, -1);
         window.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);

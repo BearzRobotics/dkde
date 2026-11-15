@@ -419,6 +419,7 @@ pub const Page = struct {
         win.setTitle(t("Add a startup app"));
         win.setTransientFor(self.window);
         win.setModal(1);
+        common.dialogs.closeOnEscape(win);
         win.setDefaultSize(520, 560);
         win.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);

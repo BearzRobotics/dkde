@@ -17,6 +17,7 @@ const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 
 const tr = @import("core").i18n.tr;
+const dialogs = @import("dialogs.zig");
 
 pub const Outcome = enum { ok, cancelled, failed };
 
@@ -135,6 +136,7 @@ fn prompt(job: *Job, problem: ?[:0]const u8) void {
     const window = gtk.Window.new();
     window.setTitle(tr("Administrator password"));
     window.setModal(1);
+    dialogs.closeOnEscape(window);
     window.setResizable(0);
     window.setDefaultSize(380, -1);
     if (job.parent) |p| window.setTransientFor(p);

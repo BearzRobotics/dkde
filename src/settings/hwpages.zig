@@ -133,6 +133,7 @@ pub fn openForm(
     dialog.setTitle(title);
     dialog.setTransientFor(parent);
     dialog.setModal(1);
+    common.dialogs.closeOnEscape(dialog);
     dialog.setDefaultSize(380, -1);
     dialog.as(gtk.Widget).addCssClass("dkde");
     const box = gtk.Box.new(.vertical, 8);
@@ -1853,6 +1854,7 @@ pub const ShortcutsPage = struct {
         dialog.setTitle(common.tr("New shortcut"));
         dialog.setTransientFor(self.window.window.as(gtk.Window));
         dialog.setModal(1);
+        common.dialogs.closeOnEscape(dialog);
         dialog.setDefaultSize(380, 150);
         dialog.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 10);

@@ -5,6 +5,7 @@ const std = @import("std");
 const gio = @import("gio2");
 const glib = @import("glib2");
 const gobject = @import("gobject2");
+const gdk = @import("gdk4");
 const gtk = @import("gtk4");
 
 /// Shows `message` with an OK button. Both strings are copied by GTK.
@@ -56,4 +57,19 @@ pub fn choose(
     const ctx = std.heap.c_allocator.create(Ctx) catch return;
     ctx.* = .{ .callback = callback, .data = data };
     dialog.choose(parent, null, Ctx.finish, ctx);
+}
+
+/// Makes Escape close a dialog window (GTK windows do not do this by themselves).
+/// A popup or entry inside that uses Escape itself still gets it first.
+pub fn closeOnEscape(window: anytype) void {
+    const win = window.as(gtk.Window);
+    const keys = gtk.EventControllerKey.new();
+    _ = gtk.EventControllerKey.signals.key_pressed.connect(keys, *gtk.Window, &onEscape, win, .{});
+    win.as(gtk.Widget).addController(keys.as(gtk.EventController));
+}
+
+fn onEscape(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, win: *gtk.Window) callconv(.c) c_int {
+    if (keyval != gdk.KEY_Escape) return 0;
+    win.close();
+    return 1;
 }

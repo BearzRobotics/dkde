@@ -214,6 +214,7 @@ pub const Actions = struct {
         win.setTitle(std.fmt.bufPrintSentinel(&title, "Processor affinity: {s}", .{self.name(pid)}, 0) catch "Processor affinity");
         win.setTransientFor(self.window);
         win.setModal(1);
+        common.dialogs.closeOnEscape(win);
         win.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 8);
         inline for (.{ "setMarginStart", "setMarginEnd", "setMarginTop", "setMarginBottom" }) |m| @field(gtk.Widget, m)(box.as(gtk.Widget), 14);
@@ -295,6 +296,7 @@ pub const Actions = struct {
         win.setTitle(t("Run new task"));
         win.setTransientFor(self.window);
         win.setModal(1);
+        common.dialogs.closeOnEscape(win);
         win.setResizable(0);
         win.setDefaultSize(440, -1);
         win.as(gtk.Widget).addCssClass("dkde");

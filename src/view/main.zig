@@ -2063,6 +2063,7 @@ const RenameDialog = struct {
         win.setTitle(t("Rename"));
         win.setTransientFor(viewer.window.as(gtk.Window));
         win.setModal(1);
+        common.dialogs.closeOnEscape(win);
         win.setResizable(0);
         win.setDefaultSize(380, -1);
         win.as(gtk.Widget).addCssClass("dkde");
@@ -2146,6 +2147,7 @@ const ResizeDialog = struct {
         win.setTitle(t("Resize"));
         win.setTransientFor(viewer.window.as(gtk.Window));
         win.setModal(1);
+        common.dialogs.closeOnEscape(win);
         win.setResizable(0);
         win.as(gtk.Widget).addCssClass("dkde");
         const grid = gtk.Grid.new();

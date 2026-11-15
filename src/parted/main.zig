@@ -758,6 +758,7 @@ const Parted = struct {
         window.setTitle(title);
         window.setTransientFor(self.window.as(gtk.Window));
         window.setModal(1);
+        common.dialogs.closeOnEscape(window);
         window.setDefaultSize(440, -1);
         window.as(gtk.Widget).addCssClass("dkde");
         const box = gtk.Box.new(.vertical, 10);

@@ -166,6 +166,7 @@ pub fn open(app: *App, existing: ?*const events.Event, date: Date) void {
     const w = self.window;
     w.setTitle(if (existing != null) common.tr("Edit event") else common.tr("New event"));
     w.setModal(1);
+    common.dialogs.closeOnEscape(w);
     w.setTransientFor(app.window.as(gtk.Window));
     w.setDefaultSize(440, -1);
     w.as(gtk.Widget).addCssClass("dkde");

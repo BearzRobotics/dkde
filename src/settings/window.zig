@@ -1142,6 +1142,7 @@ pub const SettingsWindow = struct {
         dialog.setTitle(title);
         dialog.setTransientFor(self.window.as(gtk.Window));
         dialog.setModal(1);
+        common.dialogs.closeOnEscape(dialog);
         dialog.setDefaultSize(380, -1);
         dialog.as(gtk.Widget).addCssClass("dkde");
 
@@ -1304,6 +1305,7 @@ pub const SettingsWindow = struct {
         dialog.setTitle(std.fmt.bufPrintSentinel(&title_buf, "Groups of {s}", .{user}, 0) catch "Groups");
         dialog.setTransientFor(self.window.as(gtk.Window));
         dialog.setModal(1);
+        common.dialogs.closeOnEscape(dialog);
         dialog.setDefaultSize(420, 520);
         dialog.as(gtk.Widget).addCssClass("dkde");
 
