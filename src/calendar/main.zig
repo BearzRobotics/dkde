@@ -480,6 +480,8 @@ pub const CalendarApp = struct {
 
         const day_scroller = gtk.ScrolledWindow.new();
         const day_content = gtk.Box.new(.vertical, 8);
+        // The other calendars' dates scroll with the events, so they cannot make the window tall.
+        day_content.append(self.alt_box.as(gtk.Widget));
         day_content.append(self.lit_box.as(gtk.Widget));
         day_content.append(events_label.as(gtk.Widget));
         day_content.append(self.events_box.as(gtk.Widget));
@@ -493,7 +495,6 @@ pub const CalendarApp = struct {
         right.as(gtk.Widget).setSizeRequest(180, -1);
         right.as(gtk.Widget).setHexpand(0);
         right.append(self.heading.as(gtk.Widget));
-        right.append(self.alt_box.as(gtk.Widget));
         right.append(day_scroller.as(gtk.Widget));
         right.append(notes_label.as(gtk.Widget));
         right.append(notes_scroller.as(gtk.Widget));
