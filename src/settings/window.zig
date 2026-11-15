@@ -14,6 +14,7 @@ const pango = @import("pango1");
 const common = @import("common");
 
 const labwc = common.labwc;
+const shared = @import("shared");
 const audio = common.audio;
 const users = @import("users.zig");
 const hwpages = @import("hwpages.zig");
@@ -1503,12 +1504,18 @@ pub const SettingsWindow = struct {
         addRow(page, common.tr("Size (pixels)"), self.spin(&self.panel, "panel", "height", 24, 120, 40).as(gtk.Widget));
         hwpages.QuickRows.add(self, page);
         {
-            const rc = self.readLabwcFile("rc.xml") catch null;
-            defer if (rc) |c| self.allocator.free(c);
             var current: f64 = 4;
-            if (rc) |c| if (std.mem.indexOf(u8, c, "<desktops>") != null) {
-                current = xmlValueFloat(c, "number") orelse 4;
-            };
+            if (self.ownSession()) {
+                const cfg = self.compositorConfig();
+                defer shared.config.free(self.allocator, cfg);
+                current = @floatFromInt(cfg.workspaces);
+            } else {
+                const rc = self.readLabwcFile("rc.xml") catch null;
+                defer if (rc) |c| self.allocator.free(c);
+                if (rc) |c| if (std.mem.indexOf(u8, c, "<desktops>") != null) {
+                    current = xmlValueFloat(c, "number") orelse 4;
+                };
+            }
             const spin_button = gtk.SpinButton.newWithRange(1, 9, 1);
             spin_button.setValue(current);
             _ = gtk.SpinButton.signals.value_changed.connect(spin_button, *SettingsWindow, &onDesktopsChanged, self, .{});
@@ -1571,7 +1578,7 @@ pub const SettingsWindow = struct {
         addRowDesc(page, common.tr("Recent apps shown"), "How many recently used apps the Start menu lists", self.spin(&self.panel, "menu", "recent-count", 0, 15, 5).as(gtk.Widget));
         addRow(page, common.tr("Shut Down command"), self.textEntry(&self.panel, "menu", "shutdown-command", "poweroff").as(gtk.Widget));
         addRow(page, common.tr("Restart command"), self.textEntry(&self.panel, "menu", "restart-command", "reboot").as(gtk.Widget));
-        addRow(page, common.tr("Log Off command"), self.textEntry(&self.panel, "menu", "logoff-command", "labwc --exit").as(gtk.Widget));
+        addRow(page, common.tr("Log Off command"), self.textEntry(&self.panel, "menu", "logoff-command", common.session.defaultLogoff(common.session.kind())).as(gtk.Widget));
         return page;
     }
 
@@ -1849,18 +1856,27 @@ pub const SettingsWindow = struct {
         _ = gobject.Object.signals.notify.connect(picker, *DropDownCtx, &onLayoutPicked, self.dropdownCtx(picker), .{ .detail = "selected" });
         addRow(page, common.tr("Common layouts"), picker.as(gtk.Widget));
 
-        const current = self.readLabwcFile("environment") catch null;
-        defer if (current) |c| self.allocator.free(c);
         const entry = gtk.Entry.new();
         entry.as(gtk.Widget).setSizeRequest(260, -1);
-        if (current) |text| if (envValue(text, "XKB_DEFAULT_LAYOUT")) |value| {
-            var buf: [128]u8 = undefined;
-            entry.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{value}, 0) catch "");
-        };
+        if (self.ownSession()) {
+            const cfg = self.compositorConfig();
+            defer shared.config.free(self.allocator, cfg);
+            if (cfg.input.layout) |value| {
+                var buf: [128]u8 = undefined;
+                entry.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{value}, 0) catch "");
+            }
+        } else {
+            const current = self.readLabwcFile("environment") catch null;
+            defer if (current) |c| self.allocator.free(c);
+            if (current) |text| if (envValue(text, "XKB_DEFAULT_LAYOUT")) |value| {
+                var buf: [128]u8 = undefined;
+                entry.as(gtk.Editable).setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{value}, 0) catch "");
+            };
+        }
         _ = gtk.Entry.signals.activate.connect(entry, *SettingsWindow, &onLayoutEntry, self, .{});
         addRow(page, common.tr("Layout (press Enter to apply)"), entry.as(gtk.Widget));
 
-        const hint = gtk.Label.new(common.tr("Separate several layouts with commas, for example us,de. Written to labwc's environment file."));
+        const hint = gtk.Label.new(common.tr("Separate several layouts with commas, for example us,de. Written to compositor.toml, or labwc's environment file under labwc."));
         hint.setXalign(0);
         hint.setWrap(1);
         hint.as(gtk.Widget).addCssClass("dim-label");
@@ -1891,6 +1907,11 @@ pub const SettingsWindow = struct {
 
     fn applyLayout(self: *SettingsWindow, layout: []const u8) void {
         if (layout.len == 0) return;
+        if (self.ownSession()) {
+            var buf: [192]u8 = undefined;
+            self.setCompositorValue("input", "layout", std.fmt.bufPrint(&buf, "layout = \"{s}\"", .{layout}) catch return);
+            return;
+        }
         self.editLabwcFile("environment", EnvEdit, .{ .key = "XKB_DEFAULT_LAYOUT", .value = layout });
     }
 
@@ -1910,6 +1931,11 @@ pub const SettingsWindow = struct {
     };
 
     fn onDesktopsChanged(button: *gtk.SpinButton, self: *SettingsWindow) callconv(.c) void {
+        if (self.ownSession()) {
+            var buf: [32]u8 = undefined;
+            self.setCompositorValue("workspaces", "count", std.fmt.bufPrint(&buf, "count = {d}", .{button.getValueAsInt()}) catch return);
+            return;
+        }
         self.editLabwcFile("rc.xml", DesktopsEdit, .{ .count = @intCast(button.getValueAsInt()) });
     }
 
@@ -1920,6 +1946,66 @@ pub const SettingsWindow = struct {
             return labwc.setLibinput(allocator, content, self.tag, self.value);
         }
     };
+
+    // ---- compositor.toml (DKDE's own compositor and window manager) ----------
+
+    /// Whether this session's window system is DKDE's own, and so configured in compositor.toml.
+    pub fn ownSession(_: *SettingsWindow) bool {
+        return common.session.kind().isDkde();
+    }
+
+    fn compositorTomlPath(self: *SettingsWindow) ![:0]u8 {
+        if (glib.getenv("DKDE_COMPOSITOR_CONFIG")) |p| return self.allocator.dupeSentinel(u8, std.mem.span(p), 0);
+        return std.fmt.allocPrintSentinel(self.allocator, "{s}/dkde/compositor.toml", .{std.mem.span(glib.getUserConfigDir())}, 0);
+    }
+
+    pub fn readCompositorToml(self: *SettingsWindow) ![]u8 {
+        const path = try self.compositorTomlPath();
+        defer self.allocator.free(path);
+        var contents: [*]u8 = undefined;
+        var length: usize = 0;
+        if (glib.fileGetContents(path, &contents, &length, null) == 0) return self.allocator.dupe(u8, "");
+        defer glib.free(contents);
+        return self.allocator.dupe(u8, contents[0..length]);
+    }
+
+    /// The settings as the compositor reads them. Free with `shared.config.free`.
+    pub fn compositorConfig(self: *SettingsWindow) shared.config.Config {
+        const text = self.readCompositorToml() catch return .{};
+        defer self.allocator.free(text);
+        var warnings: std.ArrayList([]const u8) = .empty;
+        defer {
+            for (warnings.items) |w| self.allocator.free(w);
+            warnings.deinit(self.allocator);
+        }
+        return shared.config.parse(self.allocator, text, &warnings) catch .{};
+    }
+
+    /// Writes a whole new compositor.toml (the compositor and window manager watch the file and apply it).
+    pub fn writeCompositorToml(self: *SettingsWindow, text: []const u8) bool {
+        const path = self.compositorTomlPath() catch return false;
+        defer self.allocator.free(path);
+        const dir = glib.pathGetDirname(path);
+        defer glib.free(dir);
+        _ = glib.mkdirWithParents(dir, 0o755);
+        if (glib.fileSetContents(path, text.ptr, @intCast(text.len), null) == 0) {
+            common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot write the compositor settings"), path);
+            return false;
+        }
+        return true;
+    }
+
+    /// Sets one `key = value` line in `[group]` of compositor.toml, keeping everything else as it is.
+    pub fn setCompositorValue(self: *SettingsWindow, group: []const u8, key: []const u8, rendered: []const u8) void {
+        const before = self.readCompositorToml() catch return;
+        defer self.allocator.free(before);
+        const after = common.tomltext.setKey(self.allocator, before, group, key, rendered) catch |err| {
+            common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot edit the compositor settings"), @errorName(err));
+            return;
+        };
+        defer self.allocator.free(after);
+        _ = self.writeCompositorToml(after);
+    }
 
     // ---- labwc files -----------------------------------------------------
 
@@ -2069,22 +2155,33 @@ pub const SettingsWindow = struct {
 
     fn mousePage(self: *SettingsWindow) *gtk.Box {
         const page = newPage(common.tr("Mouse & touchpad"));
+        if (common.session.kind() == .dkde_wm) {
+            // dkde-wm does not drive libinput: X11 pointer settings belong to the X server.
+            const note = gtk.Label.new(common.tr("On X11 the pointer and touchpad are set with xinput or the X server's configuration, not here."));
+            note.setWrap(1);
+            note.setXalign(0);
+            note.as(gtk.Widget).addCssClass("dim-label");
+            page.append(note.as(gtk.Widget));
+            return page;
+        }
         const rc = self.readLabwcFile("rc.xml") catch null;
         defer if (rc) |c| self.allocator.free(c);
+        const own_cfg: ?shared.config.Config = if (self.ownSession()) self.compositorConfig() else null;
+        defer if (own_cfg) |c| shared.config.free(self.allocator, c);
 
         const speed = gtk.Scale.newWithRange(.horizontal, -1, 1, 0.1);
         speed.as(gtk.Widget).setSizeRequest(240, -1);
-        speed.as(gtk.Range).setValue(if (rc) |c| (xmlValueFloat(c, "pointerSpeed") orelse 0) else 0);
+        speed.as(gtk.Range).setValue(if (own_cfg) |c| (c.input.pointer_speed orelse 0) else if (rc) |c| (xmlValueFloat(c, "pointerSpeed") orelse 0) else 0);
         _ = gtk.Range.signals.value_changed.connect(speed.as(gtk.Range), *SettingsWindow, &onSpeed, self, .{});
         addRow(page, common.tr("Pointer speed"), speed.as(gtk.Widget));
 
         const natural = gtk.Switch.new();
-        natural.setActive(@intFromBool(if (rc) |c| xmlValueBool(c, "naturalScroll") else false));
+        natural.setActive(@intFromBool(if (own_cfg) |c| (c.input.natural_scrolling orelse false) else if (rc) |c| xmlValueBool(c, "naturalScroll") else false));
         _ = gtk.Switch.signals.state_set.connect(natural, *SettingsWindow, &onNatural, self, .{});
         addRow(page, common.tr("Natural scrolling"), natural.as(gtk.Widget));
 
         const tap = gtk.Switch.new();
-        tap.setActive(@intFromBool(if (rc) |c| xmlValueBool(c, "tap") else true));
+        tap.setActive(@intFromBool(if (own_cfg) |c| (c.input.tap_to_click orelse true) else if (rc) |c| xmlValueBool(c, "tap") else true));
         _ = gtk.Switch.signals.state_set.connect(tap, *SettingsWindow, &onTap, self, .{});
         addRow(page, common.tr("Tap to click"), tap.as(gtk.Widget));
         return page;
@@ -2123,16 +2220,29 @@ pub const SettingsWindow = struct {
         const scale: *gtk.Scale = @ptrCast(row.getFirstChild().?.getNextSibling().?);
         var buf: [32]u8 = undefined;
         const text = std.fmt.bufPrint(&buf, "{d:.1}", .{scale.as(gtk.Range).getValue()}) catch return 0;
+        if (self.ownSession()) {
+            var line: [48]u8 = undefined;
+            self.setCompositorValue("input", "pointer_speed", std.fmt.bufPrint(&line, "pointer_speed = {s}", .{text}) catch return 0);
+            return 0;
+        }
         self.editLabwcFile("rc.xml", LibinputEdit, .{ .tag = "pointerSpeed", .value = text });
         return 0;
     }
 
     fn onNatural(_: *gtk.Switch, state: c_int, self: *SettingsWindow) callconv(.c) c_int {
+        if (self.ownSession()) {
+            self.setCompositorValue("input", "natural_scrolling", if (state != 0) "natural_scrolling = true" else "natural_scrolling = false");
+            return 0;
+        }
         self.editLabwcFile("rc.xml", LibinputEdit, .{ .tag = "naturalScroll", .value = if (state != 0) "yes" else "no" });
         return 0;
     }
 
     fn onTap(_: *gtk.Switch, state: c_int, self: *SettingsWindow) callconv(.c) c_int {
+        if (self.ownSession()) {
+            self.setCompositorValue("input", "tap_to_click", if (state != 0) "tap_to_click = true" else "tap_to_click = false");
+            return 0;
+        }
         self.editLabwcFile("rc.xml", LibinputEdit, .{ .tag = "tap", .value = if (state != 0) "yes" else "no" });
         return 0;
     }

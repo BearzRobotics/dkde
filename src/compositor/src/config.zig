@@ -7,6 +7,7 @@
 //!   layout = "floating"      # or "tiling": how windows are placed
 //!   gap = 6                  # pixels between tiled windows and the screen edge
 //!   master_ratio = 0.55      # the master window's share of the width when tiling
+//!   focus = "click"          # or "follow": focus follows the mouse (dkde-wm; the compositor always focuses on click)
 //!
 //!   [input]
 //!   layout = "us"            # xkb layout, variant, options (else XKB_DEFAULT_*, then labwc's environment file)
@@ -44,6 +45,8 @@ pub const Input = struct {
 pub const Config = struct {
     policy: layout.Policy = .floating,
     options: layout.Options = .{},
+    /// Focus follows the mouse instead of a click.
+    focus_follows_mouse: bool = false,
     /// How many virtual desktops (1 to 9).
     workspaces: usize = 4,
     input: Input = .{},
@@ -145,6 +148,16 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
         },
         else => try warnings.append(gpa, try gpa.dupe(u8, "[windows] layout: expected a string; using floating")),
     };
+    if (windows.get("focus")) |v| switch (v) {
+        .string => |s| {
+            if (std.mem.eql(u8, s, "follow")) {
+                config.focus_follows_mouse = true;
+            } else if (!std.mem.eql(u8, s, "click")) {
+                try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[windows] focus = \"{s}\": expected \"click\" or \"follow\"; using click", .{s}));
+            }
+        },
+        else => try warnings.append(gpa, try gpa.dupe(u8, "[windows] focus: expected a string; using click")),
+    };
     if (windows.get("gap")) |v| switch (v) {
         .integer => |i| {
             if (i < 0 or i > 200) {
@@ -161,6 +174,22 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
         try warnings.append(gpa, try gpa.dupe(u8, "[windows] master_ratio: expected a number; using the default"));
     }
     return config;
+}
+
+test "focus follows the mouse when asked, and bad values are reported" {
+    var warnings: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (warnings.items) |w| std.testing.allocator.free(w);
+        warnings.deinit(std.testing.allocator);
+    }
+    const on = try parse(std.testing.allocator, "[windows]\nfocus = \"follow\"\n", &warnings);
+    defer free(std.testing.allocator, on);
+    try std.testing.expect(on.focus_follows_mouse);
+    try std.testing.expectEqual(@as(usize, 0), warnings.items.len);
+    const bad = try parse(std.testing.allocator, "[windows]\nfocus = \"sloppy\"\n", &warnings);
+    defer free(std.testing.allocator, bad);
+    try std.testing.expect(!bad.focus_follows_mouse);
+    try std.testing.expectEqual(@as(usize, 1), warnings.items.len);
 }
 
 test "an empty document gives the defaults" {

@@ -33,7 +33,9 @@ pub const perf = core.perf;
 pub const pixels = core.pixels;
 pub const power = core.power;
 pub const proc = core.proc;
+pub const session = core.session;
 pub const state = core.state;
+pub const tomltext = core.tomltext;
 pub const toolkits = core.toolkits;
 pub const user = core.user;
 

@@ -6,3 +6,6 @@
 #include <xkbcommon/xkbcommon.h>
 #include <xcb/xcbext.h>
 #include <sys/uio.h>
+#include <poll.h>
+#include <sys/inotify.h>
+#include <sys/stat.h>

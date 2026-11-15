@@ -1734,6 +1734,59 @@ fn onReload(_: c_int, _: ?*anyopaque) callconv(.c) c_int {
     return 0;
 }
 
+/// Settings (and the person's editor) rewrite compositor.toml; apply it as soon as it changes, without a signal.
+var config_watch_fd: c_int = -1;
+var config_name_buf: [256]u8 = undefined;
+var config_name: []const u8 = "compositor.toml";
+
+fn onConfigFileChanged(fd: c_int, _: u32, _: ?*anyopaque) callconv(.c) c_int {
+    var buf: [4096]u8 align(@alignOf(c.struct_inotify_event)) = undefined;
+    var changed = false;
+    while (true) {
+        const n = c.read(fd, &buf, buf.len);
+        if (n <= 0) break;
+        var off: usize = 0;
+        while (off < @as(usize, @intCast(n))) {
+            const ev: *const c.struct_inotify_event = @ptrCast(@alignCast(&buf[off]));
+            const name_ptr: [*]const u8 = @ptrCast(&buf[off + @sizeOf(c.struct_inotify_event)]);
+            if (ev.len > 0 and std.mem.eql(u8, std.mem.sliceTo(name_ptr[0..ev.len], 0), config_name)) changed = true;
+            off += @sizeOf(c.struct_inotify_event) + ev.len;
+        }
+    }
+    if (changed) {
+        c._wlr_log(c.WLR_INFO, "compositor.toml changed; reloading the settings");
+        loadConfig();
+    }
+    return 0;
+}
+
+fn watchConfigFile(display: *c.wl_display) void {
+    var path_buf: [1024]u8 = undefined;
+    const path = configPath(&path_buf) orelse return;
+    const slash = std.mem.lastIndexOfScalar(u8, path, '/') orelse return;
+    var dir_buf: [1024]u8 = undefined;
+    const dir = std.fmt.bufPrintSentinel(&dir_buf, "{s}", .{path[0..slash]}, 0) catch return;
+    _ = c.mkdir(dir.ptr, 0o755);
+    const base = path[slash + 1 ..];
+    if (base.len > config_name_buf.len) return;
+    @memcpy(config_name_buf[0..base.len], base);
+    config_name = config_name_buf[0..base.len];
+    const fd = c.inotify_init1(c.IN_NONBLOCK | c.IN_CLOEXEC);
+    if (fd < 0) return;
+    if (c.inotify_add_watch(fd, dir.ptr, c.IN_CLOSE_WRITE | c.IN_MOVED_TO) < 0) {
+        _ = c.close(fd);
+        return;
+    }
+    config_watch_fd = fd;
+    _ = c.wl_event_loop_add_fd(c.wl_display_get_event_loop(display), fd, c.WL_EVENT_READABLE, onConfigFileChanged, null);
+}
+
+/// SIGTERM or SIGINT: end the session (Settings' "Log Off" sends SIGTERM).
+fn onTerminate(_: c_int, data: ?*anyopaque) callconv(.c) c_int {
+    c.wl_display_terminate(@ptrCast(@alignCast(data)));
+    return 0;
+}
+
 // ---- autostart -----------------------------------------------------------------------------------------------
 
 /// What a session needs running beside the compositor: the same as dkde's labwc autostart. A user's own
@@ -1860,6 +1913,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
     workspaces.init(display, &server.ws);
     loadConfig();
     _ = c.wl_event_loop_add_signal(c.wl_display_get_event_loop(display), c.SIGHUP, onReload, null);
+    _ = c.wl_event_loop_add_signal(c.wl_display_get_event_loop(display), c.SIGTERM, onTerminate, display);
+    _ = c.wl_event_loop_add_signal(c.wl_display_get_event_loop(display), c.SIGINT, onTerminate, display);
+    watchConfigFile(display);
     listen(&output_layout.*.events.change, &server.layout_change, onLayoutChange);
     listen(&backend.*.events.new_output, &server.new_output, onNewOutput);
     listen(&xdg_shell.*.events.new_toplevel, &server.new_xdg_toplevel, onNewToplevel);
@@ -1898,6 +1954,10 @@ pub fn main(init: std.process.Init.Minimal) !void {
     if (!c.wlr_backend_start(backend)) return error.BackendStart;
     _ = c.setenv("WAYLAND_DISPLAY", socket, 1);
     c._wlr_log(c.WLR_INFO, "dkde-compositor running on WAYLAND_DISPLAY=%s", socket);
+    // Programs started by the session (Settings, the panel) learn who runs it, to find its config and to end it.
+    _ = c.setenv("DKDE_SESSION_COMPOSITOR", "dkde-compositor", 1);
+    var pid_buf: [24]u8 = undefined;
+    if (std.fmt.bufPrintSentinel(&pid_buf, "{d}", .{c.getpid()}, 0)) |pid| _ = c.setenv("DKDE_SESSION_PID", pid.ptr, 1) else |_| {}
     runAutostart();
 
     c.wl_display_run(display);

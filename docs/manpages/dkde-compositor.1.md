@@ -15,6 +15,8 @@ It serves xdg-shell, layer-shell (the panel, wallpaper, launchers), foreign-topl
 
 Windows float by default; **Alt+T** switches to tiling (one master window on the left, the others stacked on the right) and back. **Alt+left-drag** moves a window, **Alt+right-drag** resizes it from the nearest corner. **Alt+1** to **Alt+9** switch workspace, **Alt+Shift+1** to **9** carry the focused window. The Super key alone opens the Start menu, and the snap and window shortcuts of **dkde-snap** work. The programs of the session (the panel, **dkde-idle**, **dkde-polkit**) are started by the compositor.
 
+dkde-compositor watches **~/.config/dkde/compositor.toml** and applies a change at once (SIGHUP reloads it too). SIGTERM ends the session. It sets **DKDE_SESSION_COMPOSITOR=dkde-compositor** and **DKDE_SESSION_PID** for the programs it starts, so **dkde-settings** edits this file (shortcuts, desktops, keyboard, touchpad) and Log Off can end the session.
+
 # OPTIONS
 **-h**, **--help**
 : Print help to standard output and exit.

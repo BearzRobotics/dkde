@@ -1156,6 +1156,98 @@ fn onScreenChanged() void {
     arrange();
 }
 
+// ---- settings that change while running ---------------------------------------------------------------------
+
+var config_fd: c_int = -1;
+var config_name_buf: [256]u8 = undefined;
+var config_name: []const u8 = "compositor.toml";
+
+/// Words that are safe to hand to `setxkbmap` and `xset` through the shell.
+fn plainWord(text: []const u8) bool {
+    if (text.len == 0) return false;
+    for (text) |ch| if (!(std.ascii.isAlphanumeric(ch) or ch == '_' or ch == ',' or ch == ':' or ch == '(' or ch == ')' or ch == '+' or ch == '-' or ch == '.')) return false;
+    return true;
+}
+
+/// Keyboard layout and key repeat from `[input]`; X11 takes them from setxkbmap and xset.
+fn applyInput() void {
+    const in = cfg.input;
+    if (in.layout) |kb_layout| {
+        if (!plainWord(kb_layout)) {
+            warn("[input] layout {s}: only letters, digits and ,:()+-. are accepted", .{kb_layout});
+        } else {
+            var cmd: std.ArrayList(u8) = .empty;
+            defer cmd.deinit(gpa);
+            cmd.print(gpa, "setxkbmap {s}", .{kb_layout}) catch return;
+            if (in.variant) |v| if (plainWord(v)) cmd.print(gpa, " -variant {s}", .{v}) catch return;
+            if (in.options) |o| if (plainWord(o)) cmd.print(gpa, " -option '' -option {s}", .{o}) catch return;
+            runCommand(cmd.items);
+        }
+    }
+    var rate: [64]u8 = undefined;
+    if (std.fmt.bufPrint(&rate, "xset r rate {d} {d}", .{ in.repeat_delay, in.repeat_rate })) |cmd| runCommand(cmd) else |_| {}
+}
+
+/// Reads compositor.toml again and applies what changed: desktops, layout policy, shortcuts, keyboard.
+fn reloadConfig() void {
+    const before_policy = cfg.policy;
+    loadConfig();
+    ws_count = std.math.clamp(cfg.workspaces, 1, 9);
+    if (cfg.policy != before_policy) @memset(&ws_policy, cfg.policy);
+    if (ws_current >= ws_count) ws_current = @intCast(ws_count - 1);
+    for (clients.items) |cl| if (cl.kind == .normal and cl.ws >= ws_count) {
+        cl.ws = @intCast(ws_count - 1);
+    };
+    buildBindings(cfg.keys);
+    applyInput();
+    publishDesktops();
+    arrange();
+    focusTop();
+}
+
+fn watchConfig() void {
+    var path_buf: [1024]u8 = undefined;
+    const path = configPath(&path_buf) orelse return;
+    const slash = std.mem.lastIndexOfScalar(u8, path, '/') orelse return;
+    var dir_buf: [1024]u8 = undefined;
+    const dir = std.fmt.bufPrintSentinel(&dir_buf, "{s}", .{path[0..slash]}, 0) catch return;
+    _ = c.mkdir(dir.ptr, 0o755);
+    // The file's own name: DKDE_COMPOSITOR_CONFIG may point at another.
+    const base = path[slash + 1 ..];
+    if (base.len > config_name_buf.len) return;
+    @memcpy(config_name_buf[0..base.len], base);
+    config_name = config_name_buf[0..base.len];
+    const fd = c.inotify_init1(c.IN_NONBLOCK | c.IN_CLOEXEC);
+    if (fd < 0) return;
+    if (c.inotify_add_watch(fd, dir.ptr, c.IN_CLOSE_WRITE | c.IN_MOVED_TO) < 0) {
+        _ = c.close(fd);
+        return;
+    }
+    config_fd = fd;
+}
+
+/// True when compositor.toml was among the files written.
+fn configFileChanged() bool {
+    var buf: [4096]u8 align(@alignOf(c.struct_inotify_event)) = undefined;
+    var changed = false;
+    while (true) {
+        const n = c.read(config_fd, &buf, buf.len);
+        if (n <= 0) break;
+        var off: usize = 0;
+        while (off < @as(usize, @intCast(n))) {
+            const ev: *const c.struct_inotify_event = @ptrCast(@alignCast(&buf[off]));
+            const name_ptr: [*]const u8 = @ptrCast(&buf[off + @sizeOf(c.struct_inotify_event)]);
+            if (ev.len > 0 and std.mem.eql(u8, std.mem.sliceTo(name_ptr[0..ev.len], 0), config_name)) changed = true;
+            off += @sizeOf(c.struct_inotify_event) + ev.len;
+        }
+    }
+    return changed;
+}
+
+fn onSignal(_: c_int) callconv(.c) void {
+    running = false;
+}
+
 // ---- start up ----------------------------------------------------------------------------------------------
 
 fn internAtoms() void {
@@ -1229,6 +1321,7 @@ fn readFile(path: [:0]const u8) ?[]u8 {
 
 fn loadConfig() void {
     var path_buf: [1024]u8 = undefined;
+    config.free(gpa, cfg);
     cfg = .{};
     const path = configPath(&path_buf) orelse return;
     const text = readFile(path) orelse return;
@@ -1286,6 +1379,13 @@ pub fn main(init: std.process.Init.Minimal) !void {
     }
 
     _ = c.signal(c.SIGCHLD, c.SIG_IGN);
+    // SIGTERM ends the session (Settings' "Log Off"). No SA_RESTART, so the poll below wakes up.
+    _ = c.signal(c.SIGTERM, onSignal);
+    _ = c.signal(c.SIGINT, onSignal);
+    // Programs started from here learn who runs the session.
+    _ = c.setenv("DKDE_SESSION_COMPOSITOR", "dkde-wm", 1);
+    var pid_buf: [24]u8 = undefined;
+    if (std.fmt.bufPrintSentinel(&pid_buf, "{d}", .{c.getpid()}, 0)) |pid| _ = c.setenv("DKDE_SESSION_PID", pid.ptr, 1) else |_| {}
     internAtoms();
     loadConfig();
     ws_count = std.math.clamp(cfg.workspaces, 1, 9);
@@ -1294,6 +1394,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
     buildBindings(cfg.keys);
     setCursor();
     selectScreenChanges();
+    watchConfig();
+    applyInput();
     publishSupport();
     publishDesktops();
     publishWorkArea();
@@ -1316,11 +1418,20 @@ pub fn main(init: std.process.Init.Minimal) !void {
         }
     }
 
+    // Events from the X server, and the settings file changing, wake the loop; a signal ends it.
+    var fds = [2]c.struct_pollfd{
+        .{ .fd = c.xcb_get_file_descriptor(conn), .events = c.POLLIN, .revents = 0 },
+        .{ .fd = config_fd, .events = c.POLLIN, .revents = 0 },
+    };
     while (running) {
-        const ev = c.xcb_wait_for_event(conn) orelse break;
-        defer std.c.free(ev);
-        handle(ev);
+        while (c.xcb_poll_for_event(conn)) |ev| {
+            defer std.c.free(ev);
+            handle(ev);
+        }
         if (c.xcb_connection_has_error(conn) != 0) break;
+        _ = c.xcb_flush(conn);
+        _ = c.poll(&fds, if (config_fd >= 0) 2 else 1, -1);
+        if (config_fd >= 0 and fds[1].revents & c.POLLIN != 0 and configFileChanged()) reloadConfig();
     }
     clearBindings();
     _ = c.xcb_flush(conn);

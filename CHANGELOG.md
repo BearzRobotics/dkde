@@ -10,6 +10,10 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 - **`dkde-session --x11`** (or `type=x11` in `~/.config/dkde/session.conf`) starts an X11 session: dkde-wm, the panel, polkit. `data/dkde-x11.desktop` is the xsessions entry.
 - **dkde-panel runs on X11**: bars are dock windows with struts, the wallpaper a desktop window, the Start menu a window beside the bar.
 
+### Settings follow the session
+- **Settings > Keyboard shortcuts, Mouse & touchpad, Keyboard layout and Virtual desktops** edit `~/.config/dkde/compositor.toml` when the session is DKDE's own compositor or window manager, and labwc's files under labwc. The compositor and dkde-wm **watch the file and apply changes at once** (no reload command), and both now end the session on SIGTERM. They announce themselves to the programs they start (`DKDE_SESSION_COMPOSITOR`, `DKDE_SESSION_PID`), which is how Settings knows, and the default Log Off command follows.
+- dkde-wm applies `[input]` layout, variant, options and key repeat with `setxkbmap` and `xset`; touchpad options are not offered on X11. The shortcut list is `keys.defaults` plus `[keys]`, one table for both programs.
+
 ### Shared desktop API
 - **`common.desktop`**: one interface for windows, workspaces, outputs and screenshots, with capability discovery; programs no longer touch Wayland or X11 directly. Backends: `src/wldesktop` (Wayland protocols) and `src/x11desktop` (EWMH over XCB). The panel's taskbar and workspace switcher, dkde-snip's capture and dkde-idle's screen off/on use it.
 - **Outputs on both backends**: listing, mode changes and power through the shared API (Wayland output management; X11 RandR 1.3+, one screen-size-aware configuration). **Settings > Display** and dkde-idle use it, so neither needs `wlr-randr` any more; on X11 the Scale row is hidden (RandR has none) and `display.sh` is written with `xrandr` commands.

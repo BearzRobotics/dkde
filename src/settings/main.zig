@@ -63,6 +63,7 @@ test {
     _ = @import("hardware.zig");
     _ = @import("hwpages.zig");
     _ = @import("netparse.zig");
+    _ = @import("shortcut_toml.zig");
 }
 
 test {

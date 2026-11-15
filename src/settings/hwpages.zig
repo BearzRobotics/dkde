@@ -18,6 +18,7 @@ const gdkwayland = @import("gdkwayland4");
 const wl = @import("wayland").client.wl;
 
 const hw = @import("hardware.zig");
+const shortcut_toml = @import("shortcut_toml.zig");
 const np = @import("netparse.zig");
 const netpage = @import("netpage.zig");
 const win = @import("window.zig");
@@ -1687,7 +1688,10 @@ pub const ShortcutsPage = struct {
         const self = gpa.create(ShortcutsPage) catch @panic("OOM");
         self.* = .{ .window = window, .content = gtk.Box.new(.vertical, 8), .status = gtk.Label.new(""), .notice = gtk.Label.new("") };
         self.guard = hw.Guard(ShortcutsPage).create(self);
-        _ = note(page, common.tr("Choose Change, then press the new shortcut. Changes apply at once. A shortcut already used by another entry is refused."));
+        _ = note(page, if (window.ownSession())
+            common.tr("Choose Change, then press the new shortcut. Changes are saved to compositor.toml and apply at once. A shortcut already used by another entry is refused.")
+        else
+            common.tr("Choose Change, then press the new shortcut. Changes apply at once. A shortcut already used by another entry is refused."));
         self.notice.setXalign(0);
         self.notice.setWrap(1);
         self.notice.as(gtk.Widget).addCssClass("dim-label");
@@ -1698,7 +1702,7 @@ pub const ShortcutsPage = struct {
         page.append(self.status.as(gtk.Widget));
         page.append(self.content.as(gtk.Widget));
         _ = gtk.Widget.signals.destroy.connect(page, *ShortcutsPage, &onDestroy, self, .{});
-        self.loadBuiltins();
+        if (!window.ownSession()) self.loadBuiltins();
         // Dev aid: "<entry number>:<key>" rebinds an entry as the page opens, for tests.
         if (glib.getenv("DKDE_DEBUG_SHORTCUT")) |spec| {
             const text = std.mem.span(spec);
@@ -1769,8 +1773,88 @@ pub const ShortcutsPage = struct {
         win.SettingsWindow.addRow(self.content, text, cap.as(gtk.Widget));
     }
 
+    /// DKDE's own compositor and window manager: the list comes from compositor.toml `[keys]` over the built-in set.
+    fn rebuildOwn(self: *ShortcutsPage) void {
+        const text = self.window.readCompositorToml() catch return;
+        defer self.window.allocator.free(text);
+        const cfg = shortcut_toml.parseUserKeys(self.window.allocator, text) catch return;
+        defer shortcut_toml.shared_.config.free(self.window.allocator, cfg);
+        for (labwc.dkde_keybinds, 0..) |kb, i| {
+            var act_buf: [96]u8 = undefined;
+            const act = shortcut_toml.ourAction(kb, &act_buf) orelse continue;
+            var key_buf: [96]u8 = undefined;
+            const bound = shortcut_toml.keyFor(cfg.keys, act, kb.key);
+            const shown = if (bound) |k| labwc.describeKey(&key_buf, k) else "Not set";
+            var z: [128]u8 = undefined;
+            const cap = gtk.Label.new(std.fmt.bufPrintSentinel(&z, "{s}", .{shown}, 0) catch "");
+            cap.as(gtk.Widget).addCssClass("dkde-keycap");
+            if (bound == null) cap.as(gtk.Widget).addCssClass("dim-label");
+
+            var idx_buf: [8]u8 = undefined;
+            const idx = std.fmt.bufPrint(&idx_buf, "{d}", .{i}) catch continue;
+            const change = button(ShortcutsPage, self, common.tr("Change\u{2026}"), onChange, idx, "");
+            const reset = button(ShortcutsPage, self, common.tr("Reset"), onReset, idx, "");
+            reset.as(gtk.Widget).setSensitive(@intFromBool(!(bound != null and shortcut_toml.sameKey(bound.?, kb.key))));
+
+            const controls = gtk.Box.new(.horizontal, 8);
+            controls.append(cap.as(gtk.Widget));
+            controls.append(change.as(gtk.Widget));
+            controls.append(reset.as(gtk.Widget));
+            var name_z: [96]u8 = undefined;
+            const name = std.fmt.bufPrintSentinel(&name_z, "{s}", .{kb.name}, 0) catch continue;
+            win.SettingsWindow.addRow(self.content, name, controls.as(gtk.Widget));
+        }
+        // Entries in compositor.toml that none of the rows above stand for.
+        var heading = false;
+        for (cfg.keys) |e| {
+            if (std.mem.eql(u8, e.action, "none")) continue;
+            var known = false;
+            for (labwc.dkde_keybinds) |kb| {
+                var ab: [96]u8 = undefined;
+                if (shortcut_toml.ourAction(kb, &ab)) |a| if (std.mem.eql(u8, a, e.action)) {
+                    known = true;
+                };
+            }
+            if (known) continue;
+            if (!heading) {
+                self.section(common.tr("Your other shortcuts (from compositor.toml)"));
+                heading = true;
+            }
+            self.readOnlyRow(e.key, e.action, "");
+        }
+    }
+
+    fn applyOwn(self: *ShortcutsPage, index: usize, key: []const u8) void {
+        const kb = labwc.dkde_keybinds[index];
+        var act_buf: [96]u8 = undefined;
+        const act = shortcut_toml.ourAction(kb, &act_buf) orelse return;
+        const a = self.window.allocator;
+        const text = self.window.readCompositorToml() catch return;
+        defer a.free(text);
+        const cfg = shortcut_toml.parseUserKeys(a, text) catch return;
+        defer shortcut_toml.shared_.config.free(a, cfg);
+        if (shortcut_toml.ownerOf(cfg.keys, key)) |owner| {
+            if (!std.mem.eql(u8, owner, act)) {
+                var buf: [64]u8 = undefined;
+                var z: [160]u8 = undefined;
+                self.status.setText(std.fmt.bufPrintSentinel(&z, "{s} is already used by another shortcut.", .{labwc.describeKey(&buf, key)}, 0) catch "That shortcut is already used.");
+                return;
+            }
+        }
+        const after = shortcut_toml.rebind(a, text, cfg.keys, act, kb.key, key) catch |err| {
+            self.status.setText(common.tr("Cannot edit compositor.toml"));
+            std.log.warn("shortcut edit failed: {s}", .{@errorName(err)});
+            return;
+        };
+        defer a.free(after);
+        _ = self.window.writeCompositorToml(after);
+        self.notice.setText("");
+        self.rebuild();
+    }
+
     fn rebuild(self: *ShortcutsPage) void {
         clear(self.content);
+        if (self.window.ownSession()) return self.rebuildOwn();
         const xml = self.window.readLabwcFile("rc.xml") catch return;
         defer self.window.allocator.free(xml);
         for (labwc.dkde_keybinds, 0..) |kb, i| {
@@ -1835,6 +1919,7 @@ pub const ShortcutsPage = struct {
 
     fn apply(self: *ShortcutsPage, index: usize, key: []const u8) void {
         self.status.setText("");
+        if (self.window.ownSession()) return self.applyOwn(index, key);
         const kb = labwc.dkde_keybinds[index];
         const xml = self.window.readLabwcFile("rc.xml") catch return;
         defer self.window.allocator.free(xml);

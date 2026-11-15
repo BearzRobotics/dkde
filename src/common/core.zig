@@ -33,6 +33,7 @@ pub const perf = @import("perf.zig");
 pub const pixels = @import("pixels.zig");
 pub const power = @import("power.zig");
 pub const proc = @import("proc.zig");
+pub const session = @import("session.zig");
 pub const state = @import("state.zig");
 pub const toolkits = @import("toolkits.zig");
 pub const tomltext = @import("tomltext.zig");

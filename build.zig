@@ -72,6 +72,8 @@ pub const Ctx = struct {
     wldesktop: *std.Build.Module,
     /// libxcb-randr outside the system paths (-Dxcb-randr-prefix), for machines without its -dev package.
     randr_prefix: ?[]const u8,
+    /// The compositor's layout, shortcut and settings code (no display code in it), shared with Settings.
+    shared: *std.Build.Module,
     /// The X11 side of it (EWMH through XCB).
     x11desktop: *std.Build.Module,
     /// Image decoding in Zig (vendored zigimg).
@@ -209,6 +211,10 @@ pub fn build(b: *std.Build) void {
     wldesktop.addImport("core", core);
     wldesktop.linkSystemLibrary("wayland-client", .{});
 
+    // What dkde-compositor and dkde-wm share; Settings edits the same file with the same parser.
+    const shared = b.createModule(.{ .root_source_file = b.path("src/compositor/src/shared.zig"), .target = target, .optimize = optimize });
+    shared.addImport("toml", b.dependency("toml", .{ .target = target, .optimize = optimize }).module("toml"));
+
     // The X11 backend: XCB through Zig's C interop.
     const xcb_c = b.addTranslateC(.{ .root_source_file = b.path("src/x11desktop/c.h"), .target = target, .optimize = optimize });
     xcb_c.linkSystemLibrary("xcb", .{});
@@ -259,6 +265,7 @@ pub fn build(b: *std.Build) void {
         .wayland_protocols = wayland_module,
         .wldesktop = wldesktop,
         .x11desktop = x11desktop,
+        .shared = shared,
         .randr_prefix = randr_prefix,
         .imgcodec = imgcodec,
         .pdfrender = pdfrender,

@@ -706,7 +706,7 @@ pub const StartMenu = struct {
     }
 
     fn onLogoff(_: *gtk.Button, self: *StartMenu) callconv(.c) void {
-        self.power("logoff-command", "labwc --exit");
+        self.power("logoff-command", common.session.defaultLogoff(common.session.kind()));
     }
 
     /// Runs the configured power command; there is no logind to ask.
