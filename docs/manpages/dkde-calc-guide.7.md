@@ -380,4 +380,4 @@ Each row of the Graph pane is a function of x: **x²/4 − 1**, **sin(x)**, **f*
 dkde-calc(1), dkde-help(1)
 
 # VERSION
-This guide describes dkde-calc 0.2.0.
+This guide describes dkde-calc 0.3.0.

@@ -2,7 +2,25 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
-## Unreleased
+## 0.3.0 (2026-11-15)
+
+### Window snapping
+- **dkde-snap (Super+Z):** a snap-layout picker as an overlay: halves, two-thirds and a third (both ways), thirds, quarters, a half beside two quarters (both ways) and top/bottom halves. Click a zone and the focused window moves there. The zones are 13 labwc regions with their own shortcuts (Super+Ctrl+Alt+Shift+A…M), written into `rc.xml` by dkde-setup and by Settings > Keyboard shortcuts > take over; dkde-snap follows any rebinding.
+- **Every program can be snapped to half a screen.** The calculator (865 → 616 px least width; the side panes scroll sideways), the calendar (745 → 520), the task manager (929 → 506) and the colour tool no longer hold the window wider than 640 px. The calendar (712 → 325), colour tool (478 → 320) and task manager (552 → 290) also fit a quarter tile on a 720p screen.
+
+### Calculator
+- **Show Work** now lays the steps out as a column of equations with a note beside each, the way a solution is written by hand, and covers `dsolve`, `taylor`, `laplace` and `ilaplace`; the power rule for integrals is shown in its pieces.
+- **`dsolve`:** first-order linear equations and second-order constant-coefficient equations with a constant right side, with initial conditions (`y(0)=…`, `y'(0)=…`).
+- **`taylor(f, x, a, n)`** with exact coefficients for sums, products and quotients of series (Laurent series at poles); **`limit`** now tries the exact series first and gives `limit(x·ln x, x, 0) = 0`, and a limit that grows without bound is detected.
+- **`laplace(f, t)` and `ilaplace(F, s)`** for sums of `c·tⁿ·e^(at)·{1, sin, cos, sinh, cosh}(bt)` and for rational functions (partial fractions).
+- **Fixes:** `gcd(0, 0)` and `taylor(…, -1)` aborted the program; a divergent integral (`integral(1/x, x, 0, 1)`) returned a number and is now an error; an identity (`x^2 = x^2`, `0x = 0`) listed thousands of roots and now says any number works.
+
+### Fixed
+- **Escape closes every dialog** (28 of them, in dkde-files, hex, pdf, view, parted, tasks, settings, calendar and the administrator prompt); GTK windows do not do this by themselves.
+- **dkde-edit:** Ctrl+C in the terminal panel reached the text, not the shell.
+- **dkde-hex:** an empty or short file logged a GTK assertion about the scrollbar range.
+
+### Earlier in this release
 
 ### Calculator
 - **dkde-calc: sessions.** File ▸ Save Session… / Open Session… (`.dkcalc`) keep the history, variables, functions, memory and own formulas in a file. Matrices, complex numbers and amounts with units are now kept between runs too. Nonlinear systems (`x^2+y=3; x-y=1`) are solved approximately by Newton's method.
