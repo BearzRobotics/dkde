@@ -8,6 +8,7 @@
 
 const std = @import("std");
 pub const c = @import("c");
+pub const idle = @import("idle.zig");
 const glib = @import("glib2");
 const core = @import("core");
 

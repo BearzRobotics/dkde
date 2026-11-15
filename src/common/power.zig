@@ -17,7 +17,14 @@ pub const Probe = struct {
 
 /// The first locker found, or null when there is none.
 pub fn detectLock(p: Probe) ?[]const u8 {
-    const candidates = [_][]const u8{ "swaylock", "gtklock", "waylock", "swaylock-effects" };
+    return detectLockFor(p, std.c.getenv("WAYLAND_DISPLAY") != null or std.c.getenv("DISPLAY") == null);
+}
+
+/// The lockers that fit the session: Wayland ones on Wayland, X11 ones on X11.
+pub fn detectLockFor(p: Probe, wayland: bool) ?[]const u8 {
+    const wayland_lockers = [_][]const u8{ "swaylock", "gtklock", "waylock", "swaylock-effects" };
+    const x11_lockers = [_][]const u8{ "xsecurelock", "i3lock", "slock", "xlock" };
+    const candidates: []const []const u8 = if (wayland) &wayland_lockers else &x11_lockers;
     for (candidates) |c| if (p.has_program(p.context, c)) return c;
     return null;
 }
@@ -109,4 +116,12 @@ test "sleep prefers logind, then the helpers" {
     }.f, .has_logind = Fake.logind };
     try std.testing.expect(detectSleep(none) == null);
     try std.testing.expect(detectLock(none) == null);
+    // On X11 the X lockers are the ones that count.
+    const x_only: Probe = .{ .has_program = struct {
+        fn f(_: ?*anyopaque, name: []const u8) bool {
+            return std.mem.eql(u8, name, "i3lock") or std.mem.eql(u8, name, "swaylock");
+        }
+    }.f, .has_logind = Fake.logind };
+    try std.testing.expectEqualStrings("i3lock", detectLockFor(x_only, false).?);
+    try std.testing.expectEqualStrings("swaylock", detectLockFor(x_only, true).?);
 }

@@ -13,6 +13,7 @@ const glib = @import("glib2");
 const wayland = @import("wayland");
 const core = @import("core");
 const wldesktop = @import("wldesktop");
+const x11desktop = @import("x11desktop");
 
 const wl = wayland.client.wl;
 const ext = wayland.client.ext;
@@ -28,10 +29,14 @@ const Kind = enum { lock, screen_off, sleep };
 const Idle = struct {
     allocator: std.mem.Allocator,
     config: core.Config,
-    display: *wl.Display,
+    /// Wayland: the connection and the idle notifier. On X11 these stay null and `x11` is used.
+    display: ?*wl.Display = null,
+    x11: ?x11desktop.idle.Idle = null,
+    /// X11: which actions have fired since the last input.
+    fired: [3]bool = .{ false, false, false },
     notifier: ?*ext.IdleNotifierV1 = null,
     seat: ?*wl.Seat = null,
-    registry: *wl.Registry,
+    registry: ?*wl.Registry = null,
     desktop: core.desktop.Desktop = .{},
     notifications: std.ArrayList(*Watch) = .empty,
     /// Minutes are treated as seconds when set, so a test does not wait an hour.
@@ -67,6 +72,8 @@ const Idle = struct {
 
     /// (Re)creates one notification per configured timeout.
     fn arm(self: *Idle) void {
+        self.fired = .{ false, false, false };
+        if (self.x11 != null) return;
         self.clearWatches();
         const notifier = self.notifier orelse return;
         const seat = self.seat orelse return;
@@ -86,7 +93,7 @@ const Idle = struct {
             self.notifications.append(self.allocator, watch) catch {};
             log.info("{s} after {d} {s}", .{ @tagName(w.kind), m, if (self.fast) "seconds" else "minutes" });
         }
-        _ = self.display.flush();
+        _ = self.display.?.flush();
     }
 
     fn onNotification(_: *ext.IdleNotificationV1, event: ext.IdleNotificationV1.Event, w: *Watch) void {
@@ -134,6 +141,12 @@ const Idle = struct {
             },
             .screen_off => {
                 log.info("screen {s}", .{if (idled) "off" else "on"});
+                if (self.x11) |x| {
+                    if (idled) {
+                        if (!x.screenOff()) log.warn("the X server has no DPMS; cannot switch the screen off", .{});
+                    } else x.screenOn();
+                    return;
+                }
                 var edits: [16]core.desktop.OutputEdit = undefined;
                 var n: usize = 0;
                 for (self.desktop.outputs()) |o| {
@@ -143,7 +156,7 @@ const Idle = struct {
                 }
                 if (n == 0) return log.warn("no outputs to switch (the compositor lacks wlr-output-management)", .{});
                 self.desktop.configureOutputs(edits[0..n], onScreens, self);
-                _ = self.display.flush();
+                _ = self.display.?.flush();
             },
             .sleep => if (idled) {
                 const cmd = self.sleepCommand() orelse return log.warn("no sleep command found: set [menu] sleep-command", .{});
@@ -163,9 +176,37 @@ const Idle = struct {
 
     fn onWaylandReadable(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
         const self: *Idle = @ptrCast(@alignCast(data.?));
-        if (self.display.dispatch() != .SUCCESS) {
+        if (self.display.?.dispatch() != .SUCCESS) {
             log.err("lost the connection to the compositor", .{});
             std.process.exit(1);
+        }
+        return 1;
+    }
+
+    /// X11 has no idle notifications to subscribe to, so the time since the last input is read once a second
+    /// and each action fires when it passes its limit, and ends when input comes back.
+    fn onX11Tick(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Idle = @ptrCast(@alignCast(data.?));
+        const x = self.x11 orelse return 0;
+        x.drain();
+        const idle_ms = x.idleMs() orelse return 1;
+        const scale: u32 = if (self.fast) 1000 else 60_000;
+        const wanted = [_]struct { key: [:0]const u8, kind: Kind }{
+            .{ .key = "lock-after", .kind = .lock },
+            .{ .key = "screen-off-after", .kind = .screen_off },
+            .{ .key = "sleep-after", .kind = .sleep },
+        };
+        for (wanted, 0..) |w, i| {
+            const m = self.minutes(w.key);
+            if (m == 0) continue;
+            const over = idle_ms >= m * scale;
+            if (over and !self.fired[i]) {
+                self.fired[i] = true;
+                self.run(w.kind, true);
+            } else if (!over and self.fired[i]) {
+                self.fired[i] = false;
+                self.run(w.kind, false);
+            }
         }
         return 1;
     }
@@ -182,19 +223,35 @@ pub fn main(init: std.process.Init.Minimal) !void {
     defer debug_allocator.deinit();
     const allocator = debug_allocator.allocator();
 
+    var idle: Idle = .{
+        .allocator = allocator,
+        .config = try core.Config.load(allocator, "panel.toml"),
+        .fast = glib.getenv("DKDE_IDLE_SECONDS") != null,
+    };
+    defer idle.config.deinit();
+
+    // Under a Wayland compositor the idle notifier does the work; without one, on X11, the time since the
+    // last input is polled.
+    if (glib.getenv("WAYLAND_DISPLAY") == null and glib.getenv("DISPLAY") != null) {
+        idle.x11 = x11desktop.idle.Idle.open() orelse {
+            log.err("cannot connect to the X server, or it has no MIT-SCREEN-SAVER extension", .{});
+            std.process.exit(1);
+        };
+        log.info("X11: polling the idle time", .{});
+        idle.arm();
+        idle.config.watch(Idle, Idle.onConfigChanged, &idle) catch |err| log.warn("config not watched: {s}", .{@errorName(err)});
+        _ = glib.timeoutAdd(1000, Idle.onX11Tick, &idle);
+        glib.MainLoop.new(null, 0).run();
+        return;
+    }
+
     const display = wl.Display.connect(null) catch {
         log.err("cannot connect to the compositor", .{});
         std.process.exit(1);
     };
-    var idle: Idle = .{
-        .allocator = allocator,
-        .config = try core.Config.load(allocator, "panel.toml"),
-        .display = display,
-        .registry = try display.getRegistry(),
-        .fast = glib.getenv("DKDE_IDLE_SECONDS") != null,
-    };
-    defer idle.config.deinit();
-    idle.registry.setListener(*Idle, Idle.registryEvent, &idle);
+    idle.display = display;
+    idle.registry = try display.getRegistry();
+    idle.registry.?.setListener(*Idle, Idle.registryEvent, &idle);
     if (display.roundtrip() != .SUCCESS) std.process.exit(1);
     idle.desktop = wldesktop.Wayland.create(allocator, display, .{ .windows = false, .workspaces = false, .capture = false }, .{ .data = &idle });
     defer idle.desktop.destroy();

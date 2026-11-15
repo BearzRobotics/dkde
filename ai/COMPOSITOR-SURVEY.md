@@ -95,3 +95,6 @@ Update (same day): the Wayland backend is now the toolkit-free module `src/wldes
 
 ## dkde-wm follows XRandR — 2026-11-15
 dkde-wm selects RandR screen-change events (one hand-written request and one event, via xcbext.h; no RandR headers) and, when the root size changes, re-reads it, resizes desktop windows, pulls floating windows back onto the screen, republishes `_NET_DESKTOP_GEOMETRY` and lays out again. Verified under Xvfb (1280x720 → 1000x600: work area, a floating window clamped, tiling fitted). Not done: per-monitor work areas and placement, XRandR outputs in the shared API (so Settings > Display on X11), X11 idle/lock.
+
+## X11 idle and lock — 2026-11-15
+dkde-idle (no WAYLAND_DISPLAY, DISPLAY set) polls MIT-SCREEN-SAVER QueryInfo once a second (`src/x11desktop/idle.zig`, requests written out by hand) and runs the same lock / screen-off / sleep actions, firing past the limit and ending when input returns; screen off uses DPMS (Enable + ForceLevel). `common.power.detectLock` picks X lockers on X11. The X11 session starts dkde-idle. Verified under Xvfb: lock command ran after the limit, "screen on" logged when input came back. Not verified: DPMS itself (Xvfb has none), a real X11 locker, sleep. Next: XRandR outputs in the shared API (Settings > Display on X11).

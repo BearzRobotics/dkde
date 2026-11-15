@@ -159,7 +159,7 @@ if ! command -v "$compositor" >/dev/null 2>&1; then
     compositor=labwc
 fi
 # On X11 the window manager does not start the session's programs; this does (the same set as the
-# compositor's autostart, less dkde-idle, which speaks a Wayland protocol). A ~/.config/dkde/autostart
+# compositor's autostart). A ~/.config/dkde/autostart
 # script replaces it. The body runs under dbus-run-session when there is no session bus yet.
 x11_body='
 dkde-wm &
@@ -170,6 +170,7 @@ if [ -r "$cfg/autostart" ]; then
 else
     (while kill -0 "$wm" 2>/dev/null; do dkde-panel; sleep 1; done) &
     [ -f "$cfg/display.sh" ] && sh "$cfg/display.sh" &
+    dkde-idle &
     command -v pkexec >/dev/null 2>&1 && dkde-polkit &
 fi
 wait "$wm"

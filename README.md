@@ -164,7 +164,7 @@ sudo apt install \
 | Bluetooth | `bluez` (`bluetoothctl`) | Bluetooth page and tile hidden |
 | Airplane mode | `rfkill` | tile hidden |
 | Brightness | `brightnessctl` (otherwise dkde writes the backlight in sysfs, which needs permission) | slider hidden on machines with no backlight |
-| Lock screen | `swaylock` (or `gtklock`, `waylock`); dkde runs one you install, it has no lock screen of its own | no Lock item and no idle lock |
+| Lock screen | `swaylock` (or `gtklock`, `waylock`) on Wayland, `xsecurelock` (or `i3lock`, `slock`, `xlock`) on X11; dkde runs one you install, it has no lock screen of its own | no Lock item and no idle lock |
 | Idle screen off | a compositor with `wlr-output-management` (labwc and dkde-compositor have it) | screen-off timeout does nothing |
 | Display settings | `wlr-randr` 0.4 or newer | Display page says what to install |
 | Printers | `cups`, `cups-client`, `cups-filters` | Printers page says what to install |
