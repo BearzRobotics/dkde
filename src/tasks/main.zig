@@ -21,6 +21,7 @@ const users_mod = @import("users.zig");
 const services_mod = @import("services.zig");
 const startup_mod = @import("startup.zig");
 const security_mod = @import("securitypage.zig");
+const firewall_mod = @import("firewallpage.zig");
 
 const Sampler = sampler_mod.Sampler;
 const Table = table_mod.Table;
@@ -34,6 +35,7 @@ pub const PageId = enum {
     details,
     services,
     security,
+    firewall,
     settings,
 
     fn title(self: PageId) [:0]const u8 {
@@ -45,6 +47,7 @@ pub const PageId = enum {
             .details => "Details",
             .services => "Services",
             .security => "Security",
+            .firewall => "Firewall",
             .settings => "Settings",
         };
     }
@@ -58,14 +61,15 @@ pub const PageId = enum {
             .details => "view-list-symbolic",
             .services => "preferences-system-symbolic",
             .security => "security-high-symbolic",
+            .firewall => "security-medium-symbolic",
             .settings => "emblem-system-symbolic",
         };
     }
 };
 
 const base_rail = [_]PageId{ .processes, .performance, .startup, .users, .details, .services };
-const secure_rail = base_rail ++ [_]PageId{.security};
-/// The pages in the rail: Security only where AppArmor or SELinux is running.
+/// The pages in the rail: Security only where AppArmor or SELinux runs, Firewall where a firewall tool is installed.
+var rail_buf: [8]PageId = undefined;
 var rail_pages: []const PageId = &base_rail;
 
 /// Update speed: how often everything is read again.
@@ -130,6 +134,8 @@ pub const TaskManager = struct {
     services: *services_mod.Page = undefined,
     /// AppArmor / SELinux; null where neither runs.
     security: ?*security_mod.Page = null,
+    /// ufw, firewalld or nftables; null where none is installed.
+    firewall: ?*firewall_mod.Page = null,
     startup: *startup_mod.Page = undefined,
     page: PageId = .processes,
     speed: Speed = .normal,
@@ -173,7 +179,22 @@ pub const TaskManager = struct {
         header.setTitleWidget(self.search.as(gtk.Widget));
 
         // The Security page exists only where AppArmor or SELinux runs.
-        if (security_mod.detect() != .none) rail_pages = &secure_rail;
+        {
+            var n: usize = 0;
+            for (base_rail) |p| {
+                rail_buf[n] = p;
+                n += 1;
+            }
+            if (security_mod.detect() != .none) {
+                rail_buf[n] = .security;
+                n += 1;
+            }
+            if (firewall_mod.detect() != .none) {
+                rail_buf[n] = .firewall;
+                n += 1;
+            }
+            rail_pages = rail_buf[0..n];
+        }
         self.buildRail();
         self.buildPages();
 
@@ -298,6 +319,7 @@ pub const TaskManager = struct {
             },
             .services => self.services.reload(),
             .security => if (self.security) |sp| sp.reload(),
+            .firewall => if (self.firewall) |fp| fp.reload(),
             .startup => self.startup.reload(),
             else => {},
         }
@@ -323,6 +345,8 @@ pub const TaskManager = struct {
         self.startup = startup_mod.Page.create(a, self.window.as(gtk.Window));
         const kind = security_mod.detect();
         if (kind != .none) self.security = security_mod.Page.create(a, self.window.as(gtk.Window), kind);
+        const fw_kind = firewall_mod.detect();
+        if (fw_kind != .none) self.firewall = firewall_mod.Page.create(a, self.window.as(gtk.Window), fw_kind);
         self.perf.owner = self;
         self.perf.on_compact = onCompact;
 
@@ -337,6 +361,7 @@ pub const TaskManager = struct {
         _ = self.stack.addNamed(self.tablePage(self.details, .details), "details");
         _ = self.stack.addNamed(self.services.widget, "services");
         if (self.security) |sp| _ = self.stack.addNamed(sp.widget, "security");
+        if (self.firewall) |fp| _ = self.stack.addNamed(fp.widget, "firewall");
         _ = self.stack.addNamed(self.settingsPage(), "settings");
     }
 
@@ -414,7 +439,7 @@ pub const TaskManager = struct {
         self.speed_dropdown = speed;
         settingRow(grid, 0, t("Real-time update speed"), t("How often the figures are read again. F5 updates them at once."), speed.as(gtk.Widget));
 
-        var pages: [secure_rail.len + 1]?[*:0]const u8 = @splat(null);
+        var pages: [rail_buf.len + 1]?[*:0]const u8 = @splat(null);
         for (rail_pages, 0..) |p, i| pages[i] = p.title();
         const start = gtk.DropDown.newFromStrings(@ptrCast(&pages));
         const current = std.meta.stringToEnum(PageId, self.configString("start-page", "processes")) orelse .processes;
@@ -637,6 +662,7 @@ pub const TaskManager = struct {
         self.users.destroy();
         self.services.destroy();
         if (self.security) |sp| sp.destroy();
+        if (self.firewall) |fp| fp.destroy();
         self.startup.destroy();
         self.perf.destroy();
         self.sampler.deinit();
@@ -752,4 +778,5 @@ test {
     _ = @import("startup.zig");
     _ = @import("initsys.zig");
     _ = @import("security.zig");
+    _ = @import("firewall.zig");
 }

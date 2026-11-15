@@ -14,6 +14,8 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 ### Task Manager
 - **Security page** (AppArmor or SELinux, only where one runs): profiles and their mode (Enforce / Complain), SELinux enforcing state and booleans, and the recent refusals from the kernel and audit log explained in plain words ("firefox was refused: read /etc/shadow"), repeats collapsed. Reading and changing need the administrator password; no policy writing.
 
+- **Firewall page** (firewalld, ufw or nftables, where installed): rules in plain words, add and remove, firewalld zones and ufw defaults, the raw nftables ruleset; input is validated and never reaches a shell.
+
 ### Settings follow the session
 - **Settings > Keyboard shortcuts, Mouse & touchpad, Keyboard layout and Virtual desktops** edit `~/.config/dkde/compositor.toml` when the session is DKDE's own compositor or window manager, and labwc's files under labwc. The compositor and dkde-wm **watch the file and apply changes at once** (no reload command), and both now end the session on SIGTERM. They announce themselves to the programs they start (`DKDE_SESSION_COMPOSITOR`, `DKDE_SESSION_PID`), which is how Settings knows, and the default Log Off command follows.
 - dkde-wm applies `[input]` layout, variant, options and key repeat with `setxkbmap` and `xset`; touchpad options are not offered on X11. The shortcut list is `keys.defaults` plus `[keys]`, one table for both programs.
