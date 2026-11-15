@@ -125,6 +125,17 @@ pub const Denial = struct {
     /// Only logged: complain / permissive mode, so nothing was actually refused.
     only_logged: bool = false,
     count: u32 = 1,
+    /// AppArmor: the operation ("open", "exec", "connect"), the requested mask letters ("rw") and, for the
+    /// network, the family and socket type. The page builds the rule that would allow it from these.
+    op: []const u8 = "",
+    mask: []const u8 = "",
+    family: []const u8 = "",
+    sock_type: []const u8 = "",
+    capability: []const u8 = "",
+    /// SELinux: the target type and the permissions ("read write") and class, for audit2allow-style rules.
+    target_type: []const u8 = "",
+    /// The audit line itself, which audit2allow reads.
+    raw: []const u8 = "",
 };
 
 /// The value of `key=` in an audit line: quoted ("...") or bare (up to a space).
@@ -185,7 +196,13 @@ pub fn parseAppArmor(line: []const u8, buf: []u8, time_buf: []u8) ?Denial {
         d.target = fam;
     };
     const op = field(line, "operation") orelse "access";
+    d.op = op;
+    d.mask = field(line, "requested_mask") orelse field(line, "denied_mask") orelse "";
+    d.family = field(line, "family") orelse "";
+    d.sock_type = field(line, "sock_type") orelse "";
+    d.raw = line;
     if (field(line, "capname")) |cap| {
+        d.capability = cap;
         d.action = std.fmt.bufPrint(buf, "use the {s} capability", .{cap}) catch return d;
         return d;
     }
@@ -226,6 +243,8 @@ pub fn parseAvc(line: []const u8, buf: []u8, time_buf: []u8) ?Denial {
         d.target = typeOf(tc);
     };
     d.action = std.fmt.bufPrint(buf, "{s}", .{perms}) catch perms;
+    d.raw = line;
+    if (field(rest, "tcontext")) |tc| d.target_type = typeOf(tc);
     return d;
 }
 

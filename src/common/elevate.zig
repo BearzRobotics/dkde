@@ -78,6 +78,19 @@ pub fn runCapture(
     start(parent, reason, argv, "", true, Data, callback, data);
 }
 
+/// `runCapture` with `stdin_data` written to the command's standard input.
+pub fn runInputCapture(
+    parent: ?*gtk.Window,
+    reason: []const u8,
+    argv: []const []const u8,
+    stdin_data: []const u8,
+    comptime Data: type,
+    callback: *const fn (*Data, Outcome, []const u8) void,
+    data: *Data,
+) void {
+    start(parent, reason, argv, stdin_data, true, Data, callback, data);
+}
+
 fn start(
     parent: ?*gtk.Window,
     reason: []const u8,

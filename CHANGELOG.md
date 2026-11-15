@@ -20,7 +20,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 - Workspaces are now **Super+1…9** (Super+Shift+1…9 carries a window), layout toggle **Super+T**, float **Super+Shift+Space**, quit **Super+Shift+Escape**. They were Alt+digit and friends, which took keys programs use for their own menus and modes (the calculator's Alt+1…3).
 
 ### Task Manager
-- **Security page** (AppArmor or SELinux, only where one runs): profiles and their mode (Enforce / Complain), SELinux enforcing state and booleans, and the recent refusals from the kernel and audit log explained in plain words ("firefox was refused: read /etc/shadow"), repeats collapsed. Reading and changing need the administrator password; no policy writing.
+- **Security page** (AppArmor or SELinux, only where one runs), complete from the GUI: profiles and modes, enforce / complain / disable, edit a profile (checked before it replaces the file) and start a new one; SELinux mode now and at boot, relabel, settings, policy modules, port labels and file labels; the recent refusals told in plain words, with **Allow…** writing the AppArmor rule or SELinux module that would permit one (shown first). Everything goes through the administrator prompt; input never reaches a shell.
 
 - **Firewall page** (firewalld, nftables, ufw or iptables, whichever is installed or running): rules in plain words, add and remove, chain policies and saving for restart (nftables, iptables), firewalld zones, ufw defaults; chains owned by another manager are read-only; input is validated and never reaches a shell.
 

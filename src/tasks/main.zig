@@ -778,6 +778,7 @@ test {
     _ = @import("startup.zig");
     _ = @import("initsys.zig");
     _ = @import("security.zig");
+    _ = @import("securityedit.zig");
     _ = @import("firewall.zig");
     _ = @import("nft.zig");
     _ = @import("iptables.zig");
