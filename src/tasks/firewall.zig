@@ -5,17 +5,18 @@
 
 const std = @import("std");
 
-pub const Backend = enum { none, ufw, firewalld, nft };
+pub const Backend = enum { none, ufw, firewalld, nft, iptables };
 
 /// What is installed and (for ufw and firewalld) running, by the caller's probes.
-pub fn choose(has_ufw: bool, has_firewalld: bool, has_nft: bool, firewalld_active: bool, ufw_active: bool) Backend {
-    // A running one wins (firewalld first: it is the more complete, and the one Fedora, RHEL and SUSE ship);
-    // otherwise whichever is installed, firewalld before ufw, and nftables by hand last.
+pub fn choose(has_ufw: bool, has_firewalld: bool, has_nft: bool, has_iptables: bool, firewalld_active: bool, ufw_active: bool) Backend {
+    // A running manager wins (firewalld before ufw). Otherwise the modern tools first: firewalld, then
+    // nftables itself; ufw and plain iptables are the fallbacks for machines that have only those.
     if (has_firewalld and firewalld_active) return .firewalld;
     if (has_ufw and ufw_active) return .ufw;
     if (has_firewalld) return .firewalld;
-    if (has_ufw) return .ufw;
     if (has_nft) return .nft;
+    if (has_ufw) return .ufw;
+    if (has_iptables) return .iptables;
     return .none;
 }
 
@@ -296,12 +297,16 @@ pub fn explainZoneItem(out: []u8, item: ZoneItem) []const u8 {
 }
 
 test "which tool manages the firewall" {
-    try std.testing.expectEqual(Backend.firewalld, choose(true, true, true, true, false));
-    try std.testing.expectEqual(Backend.ufw, choose(true, true, true, false, true));
-    try std.testing.expectEqual(Backend.ufw, choose(true, false, true, false, false));
-    try std.testing.expectEqual(Backend.firewalld, choose(false, true, true, false, false));
-    try std.testing.expectEqual(Backend.nft, choose(false, false, true, false, false));
-    try std.testing.expectEqual(Backend.none, choose(false, false, false, false, false));
+    // Both running: firewalld. Only ufw running: ufw.
+    try std.testing.expectEqual(Backend.firewalld, choose(true, true, true, true, true, true));
+    try std.testing.expectEqual(Backend.ufw, choose(true, true, true, true, false, true));
+    // Nothing running: the modern tools first.
+    try std.testing.expectEqual(Backend.firewalld, choose(true, true, true, true, false, false));
+    try std.testing.expectEqual(Backend.nft, choose(true, false, true, true, false, false));
+    // The fallbacks.
+    try std.testing.expectEqual(Backend.ufw, choose(true, false, false, true, false, false));
+    try std.testing.expectEqual(Backend.iptables, choose(false, false, false, true, false, false));
+    try std.testing.expectEqual(Backend.none, choose(false, false, false, false, false, false));
 }
 
 const sample_numbered =

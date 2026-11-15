@@ -10,6 +10,8 @@ const gtk = @import("gtk4");
 const common = @import("common");
 
 const firewall = @import("firewall.zig");
+const nft = @import("nft.zig");
+const iptables = @import("iptables.zig");
 const simplelist = @import("simplelist.zig");
 const services = @import("services.zig");
 
@@ -26,7 +28,13 @@ fn hasProgram(name: [:0]const u8) bool {
 }
 
 pub fn detect() firewall.Backend {
-    if (glib.getenv("DKDE_DEBUG_FIREWALL") != null) return .ufw;
+    if (glib.getenv("DKDE_DEBUG_FIREWALL") != null) {
+        // Sample data for trying the page: DKDE_DEBUG_FIREWALL_BACKEND = ufw (default), nft or iptables.
+        const which = if (glib.getenv("DKDE_DEBUG_FIREWALL_BACKEND")) |w| std.mem.span(w) else "ufw";
+        if (std.mem.eql(u8, which, "nft")) return .nft;
+        if (std.mem.eql(u8, which, "iptables")) return .iptables;
+        return .ufw;
+    }
     const ufw_active = blk: {
         var contents: [*]u8 = undefined;
         var length: usize = 0;
@@ -34,7 +42,7 @@ pub fn detect() firewall.Backend {
         defer glib.free(contents);
         break :blk std.mem.indexOf(u8, contents[0..length], "ENABLED=yes") != null;
     };
-    return firewall.choose(hasProgram("ufw"), hasProgram("firewall-cmd"), hasProgram("nft"), exists("/run/firewalld"), ufw_active);
+    return firewall.choose(hasProgram("ufw"), hasProgram("firewall-cmd"), hasProgram("nft"), hasProgram("iptables"), exists("/run/firewalld"), ufw_active);
 }
 
 const ufw_specs = [_]simplelist.ColumnSpec{
@@ -43,6 +51,11 @@ const ufw_specs = [_]simplelist.ColumnSpec{
     .{ .title = "To", .width = 150 },
     .{ .title = "Action", .width = 110 },
     .{ .title = "From", .width = 160 },
+};
+const netfilter_specs = [_]simplelist.ColumnSpec{
+    .{ .title = "Chain", .width = 230 },
+    .{ .title = "Rule", .expand = true },
+    .{ .title = "#", .right = true, .width = 70 },
 };
 const zone_specs = [_]simplelist.ColumnSpec{
     .{ .title = "Kind", .width = 90 },
@@ -74,6 +87,11 @@ pub const Page = struct {
     zone_drop: *gtk.DropDown,
     service_names: std.ArrayList([]u8) = .empty,
     running: bool = true,
+    /// nftables and iptables: chains and their rules, in order.
+    rows: []nft.Row = &.{},
+    policy_accept: *gtk.Button,
+    policy_drop: *gtk.Button,
+    save_button: *gtk.Button,
     /// A firewalld change is two commands (permanent, then reload): what to run after the first.
     reloading: bool = false,
     syncing: bool = false,
@@ -96,6 +114,9 @@ pub const Page = struct {
             .power_button = gtk.Button.newWithLabel(t("Turn on")),
             .add_button = gtk.Button.newWithLabel(t("Add rule…")),
             .remove_button = gtk.Button.newWithLabel(t("Remove")),
+            .policy_accept = gtk.Button.newWithLabel(t("Policy: allow")),
+            .policy_drop = gtk.Button.newWithLabel(t("Policy: drop")),
+            .save_button = gtk.Button.newWithLabel(t("Save for restart")),
             .in_drop = gtk.DropDown.newFromStrings(@ptrCast(&policies)),
             .out_drop = gtk.DropDown.newFromStrings(@ptrCast(&policies)),
             .zone_drop = gtk.DropDown.newFromStrings(@ptrCast(&[_]?[*:0]const u8{ "public", null })),
@@ -103,7 +124,8 @@ pub const Page = struct {
         };
         self.guard = common.proc.Guard(Page).create(self);
         const is_ufw = backend == .ufw;
-        self.list = simplelist.SimpleList.create(gpa, if (is_ufw) &ufw_specs else &zone_specs, .{
+        const is_nf = backend == .nft or backend == .iptables;
+        self.list = simplelist.SimpleList.create(gpa, if (is_ufw) &ufw_specs else if (is_nf) &netfilter_specs else &zone_specs, .{
             .owner = self,
             .text = text,
             .less = less,
@@ -115,6 +137,7 @@ pub const Page = struct {
         const bar = services.commandBar(switch (backend) {
             .ufw => t("Firewall (ufw)"),
             .firewalld => t("Firewall (firewalld)"),
+            .iptables => t("Firewall (iptables)"),
             else => t("Firewall (nftables)"),
         });
         const switcher = gtk.StackSwitcher.new();
@@ -124,16 +147,31 @@ pub const Page = struct {
         load_button.as(gtk.Widget).setTooltipText(t("Read the firewall's rules; needs the administrator password"));
         _ = gtk.Button.signals.clicked.connect(load_button, *Page, &onLoad, self, .{});
         bar.append(load_button.as(gtk.Widget));
-        if (backend != .nft) {
+        if (!is_nf) {
             self.power_button.as(gtk.Widget).setSensitive(0);
             _ = gtk.Button.signals.clicked.connect(self.power_button, *Page, &onPower, self, .{});
             bar.append(self.power_button.as(gtk.Widget));
-            self.add_button.as(gtk.Widget).setSensitive(0);
-            _ = gtk.Button.signals.clicked.connect(self.add_button, *Page, &onAdd, self, .{});
-            bar.append(self.add_button.as(gtk.Widget));
-            self.remove_button.as(gtk.Widget).setSensitive(0);
-            _ = gtk.Button.signals.clicked.connect(self.remove_button, *Page, &onRemove, self, .{});
-            bar.append(self.remove_button.as(gtk.Widget));
+        }
+        self.add_button.as(gtk.Widget).setSensitive(0);
+        _ = gtk.Button.signals.clicked.connect(self.add_button, *Page, &onAdd, self, .{});
+        bar.append(self.add_button.as(gtk.Widget));
+        self.remove_button.as(gtk.Widget).setSensitive(0);
+        _ = gtk.Button.signals.clicked.connect(self.remove_button, *Page, &onRemove, self, .{});
+        bar.append(self.remove_button.as(gtk.Widget));
+        if (is_nf) {
+            // What a base chain does with traffic none of its rules covers, and keeping the rules across a restart.
+            self.policy_accept.as(gtk.Widget).setSensitive(0);
+            self.policy_accept.as(gtk.Widget).setTooltipText(t("Let through whatever no rule of the selected base chain covers"));
+            _ = gtk.Button.signals.clicked.connect(self.policy_accept, *Page, &onPolicyAccept, self, .{});
+            bar.append(self.policy_accept.as(gtk.Widget));
+            self.policy_drop.as(gtk.Widget).setSensitive(0);
+            self.policy_drop.as(gtk.Widget).setTooltipText(t("Block whatever no rule of the selected base chain covers"));
+            _ = gtk.Button.signals.clicked.connect(self.policy_drop, *Page, &onPolicyDrop, self, .{});
+            bar.append(self.policy_drop.as(gtk.Widget));
+            self.save_button.as(gtk.Widget).setSensitive(0);
+            self.save_button.as(gtk.Widget).setTooltipText(t("Write the rules to the system's configuration so they are loaded at start-up"));
+            _ = gtk.Button.signals.clicked.connect(self.save_button, *Page, &onSave, self, .{});
+            bar.append(self.save_button.as(gtk.Widget));
         }
         root.append(services.scrolled(bar));
 
@@ -175,7 +213,7 @@ pub const Page = struct {
             _ = gobject.Object.signals.notify.connect(self.zone_drop, *Page, &onZonePicked, self, .{ .detail = "selected" });
             root.append(row.as(gtk.Widget));
         }
-        if (backend != .nft) _ = self.stack.addTitled(self.list.widget, "rules", t("Rules"));
+        _ = self.stack.addTitled(self.list.widget, "rules", t("Rules"));
         self.raw.setEditable(0);
         self.raw.setMonospace(1);
         const raw_scroll = gtk.ScrolledWindow.new();
@@ -206,7 +244,7 @@ pub const Page = struct {
     }
 
     pub fn reload(self: *Page) void {
-        if (glib.getenv("DKDE_DEBUG_FIREWALL") != null and self.ufw.rules.len == 0) self.load();
+        if (glib.getenv("DKDE_DEBUG_FIREWALL") != null and self.ufw.rules.len == 0 and self.rows.len == 0) self.load();
     }
 
     // ---- reading -------------------------------------------------------------------------
@@ -217,6 +255,16 @@ pub const Page = struct {
 
     /// Dev aid: DKDE_DEBUG_FIREWALL=<folder> reads ufw-numbered.txt and ufw-verbose.txt from there.
     fn loadDebug(self: *Page, dir: []const u8) void {
+        if (self.netfilter()) {
+            var p: [512]u8 = undefined;
+            const name: []const u8 = if (self.backend == .nft) "nft.json" else "iptables.txt";
+            const path = std.fmt.bufPrintSentinel(&p, "{s}/{s}", .{ dir, name }, 0) catch return;
+            var contents: [*]u8 = undefined;
+            var length: usize = 0;
+            if (glib.fileGetContents(path, &contents, &length, null) == 0) return;
+            defer glib.free(contents);
+            return self.onNetfilterRead(.ok, contents[0..length]);
+        }
         var path: [512]u8 = undefined;
         var texts: [2][]u8 = .{ &.{}, &.{} };
         for ([_][]const u8{ "ufw-verbose.txt", "ufw-numbered.txt" }, 0..) |name, i| {
@@ -244,7 +292,9 @@ pub const Page = struct {
                 common.proc.run(Page, self.guard, &.{ "firewall-cmd", "--list-all-zones" }, onZonesRead);
                 if (self.service_names.items.len == 0) common.proc.run(Page, self.guard, &.{ "firewall-cmd", "--get-services" }, onServicesRead);
             },
-            .nft => {},
+            // One command, one password: the rules as data, a separator, the same as text for the Raw tab.
+            .nft => return common.elevate.runCapture(self.window, "Read the firewall's rules", &.{ "sh", "-c", "nft -j list ruleset; echo; echo ====; nft list ruleset" }, Page, onNetfilterRead, self),
+            .iptables => return common.elevate.runCapture(self.window, "Read the firewall's rules", &.{ "sh", "-c", "iptables -S; echo ====; iptables -L -n -v --line-numbers" }, Page, onNetfilterRead, self),
             .none => {},
         }
         common.elevate.runCapture(self.window, "Read the firewall's rules", &.{ "nft", "list", "ruleset" }, Page, onRaw, self);
@@ -370,6 +420,37 @@ pub const Page = struct {
         return std.mem.indexOf(u8, contents[0..length], "ENABLED=yes") != null;
     }
 
+    fn onNetfilterRead(self: *Page, outcome: common.elevate.Outcome, out: []const u8) void {
+        if (outcome != .ok) {
+            if (outcome == .failed) self.status.setText(t("Could not read the firewall. Is nft (or iptables) installed?"));
+            return;
+        }
+        const sep = std.mem.indexOf(u8, out, "\n====\n") orelse out.len;
+        const data = out[0..sep];
+        const raw = if (sep + 6 <= out.len) out[sep + 6 ..] else "";
+        _ = self.data.reset(.retain_capacity);
+        const a = self.data.allocator();
+        self.rows = (if (self.backend == .nft) nft.parse(a, data) else iptables.parse(a, data)) catch {
+            self.status.setText(t("The firewall's output could not be read."));
+            self.rows = &.{};
+            return;
+        };
+        var chains: usize = 0;
+        var rules: usize = 0;
+        var drops = false;
+        for (self.rows) |r| {
+            if (r.kind == .chain) chains += 1 else rules += 1;
+            if (r.kind == .chain and std.mem.eql(u8, r.policy, "drop")) drops = true;
+        }
+        var buf: [320]u8 = undefined;
+        self.status.setText(std.fmt.bufPrintSentinel(&buf, "{d} chains, {d} rules.{s} Changes apply at once; use Save for restart to keep them after a reboot.", .{ chains, rules, if (drops) " Some chains drop traffic no rule allows." else "" }, 0) catch "");
+        self.add_button.as(gtk.Widget).setSensitive(@intFromBool(chains > 0));
+        self.save_button.as(gtk.Widget).setSensitive(1);
+        self.list.update(self.rows.len);
+        onSelection(self);
+        if (raw.len > 0) self.onRaw(.ok, raw);
+    }
+
     fn onRaw(self: *Page, outcome: common.elevate.Outcome, out: []const u8) void {
         if (outcome != .ok) return;
         const z = self.gpa.dupeSentinel(u8, out, 0) catch return;
@@ -384,11 +465,30 @@ pub const Page = struct {
     }
 
     fn count(self: *const Page) usize {
+        if (self.netfilter()) return self.rows.len;
         return if (self.backend == .ufw) self.ufw.rules.len else self.zone.items.len;
+    }
+
+    fn netfilter(self: *const Page) bool {
+        return self.backend == .nft or self.backend == .iptables;
+    }
+
+    fn rowChain(r: nft.Row, buf: []u8) []const u8 {
+        // Rules sit under their chain; the chain's own row carries its name.
+        if (r.kind == .rule) return "";
+        return std.fmt.bufPrint(buf, "{s} {s} {s}", .{ r.family, r.table, r.chain }) catch r.chain;
     }
 
     fn text(owner: *anyopaque, row: usize, col: usize, buf: []u8) []const u8 {
         const self = page(owner);
+        if (self.netfilter()) {
+            const r = self.rows[row];
+            return switch (col) {
+                0 => if (r.kind == .chain) rowChain(r, buf) else "",
+                1 => if (r.kind == .rule) r.text else r.text,
+                else => if (r.kind == .rule) (std.fmt.bufPrint(buf, "{d}", .{r.handle}) catch "") else "",
+            };
+        }
         if (self.backend == .ufw) {
             const r = self.ufw.rules[row];
             return switch (col) {
@@ -414,6 +514,8 @@ pub const Page = struct {
 
     fn less(owner: *anyopaque, a: usize, b: usize, col: usize) bool {
         const self = page(owner);
+        // The ruleset is a tree in reading order; sorting it would separate rules from their chains.
+        if (self.netfilter()) return a < b;
         if (self.backend == .ufw) {
             const x = self.ufw.rules[a];
             const y = self.ufw.rules[b];
@@ -432,6 +534,16 @@ pub const Page = struct {
 
     fn key(owner: *anyopaque, row: usize) u64 {
         const self = page(owner);
+        if (self.netfilter()) {
+            const r = self.rows[row];
+            var h = std.hash.Wyhash.init(0);
+            h.update(r.family);
+            h.update(r.table);
+            h.update(r.chain);
+            h.update(r.text);
+            h.update(std.mem.asBytes(&r.handle));
+            return h.final();
+        }
         if (self.backend == .ufw) {
             const r = self.ufw.rules[row];
             var h = std.hash.Wyhash.init(0);
@@ -448,8 +560,26 @@ pub const Page = struct {
         const self = page(owner);
         const row = self.list.selectedRow();
         self.remove_button.as(gtk.Widget).setSensitive(@intFromBool(row != null));
-        const r = row orelse return;
+        const r = row orelse {
+            self.policy_accept.as(gtk.Widget).setSensitive(0);
+            self.policy_drop.as(gtk.Widget).setSensitive(0);
+            return;
+        };
         var buf: [320]u8 = undefined;
+        if (self.netfilter() and r < self.rows.len) {
+            const nr = self.rows[r];
+            const can_edit = !nr.managed;
+            self.remove_button.as(gtk.Widget).setSensitive(@intFromBool(nr.kind == .rule and can_edit));
+            const base_chain = nr.kind == .chain and nr.policy.len > 0 and can_edit;
+            self.policy_accept.as(gtk.Widget).setSensitive(@intFromBool(base_chain));
+            self.policy_drop.as(gtk.Widget).setSensitive(@intFromBool(base_chain));
+            var out: [520]u8 = undefined;
+            self.detail.setText(std.fmt.bufPrintSentinel(&out, "{s}{s}", .{
+                nr.text,
+                if (nr.managed) ". This belongs to the firewall manager that created it (firewalld or ufw); it would put it back, so it is read-only here." else "",
+            }, 0) catch "");
+            return;
+        }
         if (self.backend == .ufw and r < self.ufw.rules.len) {
             const rule = self.ufw.rules[r];
             var out: [460]u8 = undefined;
@@ -492,6 +622,7 @@ pub const Page = struct {
 
     fn onRemove(_: *gtk.Button, self: *Page) callconv(.c) void {
         const row = self.list.selectedRow() orelse return;
+        if (self.netfilter()) return self.removeNetfilter(row);
         if (self.backend == .ufw) {
             var buf: [16]u8 = undefined;
             const n = std.fmt.bufPrint(&buf, "{d}", .{self.ufw.rules[row].number}) catch return;
@@ -528,6 +659,113 @@ pub const Page = struct {
         common.elevate.run(self.window, "Apply the firewall change", &.{ "firewall-cmd", "--reload" }, "", Page, onChanged, self);
     }
 
+    // ---- nftables and iptables ---------------------------------------------------------------
+
+    fn runArgs(self: *Page, reason: []const u8, argv: []const []const u8) void {
+        const a = self.data.allocator();
+        const owned = a.alloc([]const u8, argv.len) catch return;
+        for (argv, 0..) |arg, i| owned[i] = a.dupe(u8, arg) catch return;
+        common.elevate.run(self.window, reason, owned, "", Page, onChanged, self);
+    }
+
+    fn removeNetfilter(self: *Page, row: usize) void {
+        if (row >= self.rows.len) return;
+        const r = self.rows[row];
+        if (r.managed) return self.fail("This rule belongs to another firewall manager and would be put back.");
+        const a = self.data.allocator();
+        if (self.backend == .nft) {
+            var argv: [8][]const u8 = undefined;
+            const n = nft.deleteArgs(a, r, &argv) catch return self.fail("This is not a rule that can be removed.");
+            self.runArgs("Remove a firewall rule", argv[0..n]);
+        } else {
+            var argv: [5][]const u8 = undefined;
+            const n = iptables.deleteArgs(a, r, &argv) catch return self.fail("This is not a rule that can be removed.");
+            self.runArgs("Remove a firewall rule", argv[0..n]);
+        }
+    }
+
+    fn setPolicy(self: *Page, accept: bool) void {
+        const row = self.list.selectedRow() orelse return;
+        if (row >= self.rows.len) return;
+        const r = self.rows[row];
+        if (self.backend == .nft) {
+            var argv: [8][]const u8 = undefined;
+            const n = nft.policyArgs(r, accept, &argv) catch return self.fail("Only a base chain has a policy.");
+            self.runArgs("Change what a firewall chain does with traffic no rule covers", argv[0..n]);
+        } else {
+            var argv: [5][]const u8 = undefined;
+            const n = iptables.policyArgs(r, accept, &argv) catch return self.fail("Only a built-in chain has a policy.");
+            self.runArgs("Change what a firewall chain does with traffic no rule covers", argv[0..n]);
+        }
+    }
+
+    fn onPolicyAccept(_: *gtk.Button, self: *Page) callconv(.c) void {
+        self.setPolicy(true);
+    }
+    fn onPolicyDrop(_: *gtk.Button, self: *Page) callconv(.c) void {
+        self.setPolicy(false);
+    }
+
+    fn onSave(_: *gtk.Button, self: *Page) callconv(.c) void {
+        const script = if (self.backend == .nft) nft.save_script else iptables.save_script;
+        common.elevate.run(self.window, "Save the firewall rules so they are loaded at start-up", &.{ "sh", "-c", script }, "", Page, onSaved, self);
+    }
+
+    fn onSaved(self: *Page, outcome: common.elevate.Outcome, message: []const u8) void {
+        if (outcome == .failed) return self.fail(message);
+        if (outcome == .ok) self.detail.setText(t("Saved. The rules in use now will be loaded at start-up (a copy of the old file was kept the first time, as a .dkde-backup)."));
+    }
+
+    /// The add dialog's answer for nftables and iptables.
+    fn addNetfilter(self: *Page, d: *Dialog, port_in: []const u8, from: []const u8) void {
+        const chain_index = d.chain.getSelected();
+        const chains = self.chainRows();
+        if (chain_index >= chains.len) return self.fail("Choose a chain.");
+        const chain = chains[chain_index];
+        const verdict: nft.Verdict = @enumFromInt(@min(d.verdict.getSelected(), 2));
+        const proto: nft.Proto = @enumFromInt(@min(d.proto.getSelected(), 2));
+        const a = self.data.allocator();
+        // Ranges are written with a dash by nft and with a colon by iptables.
+        const port = a.dupe(u8, port_in) catch return;
+        for (port) |*ch| {
+            if (self.backend == .nft and ch.* == ':') ch.* = '-';
+            if (self.backend == .iptables and ch.* == '-') ch.* = ':';
+        }
+        const message: ?[]const u8 = blk: {
+            if (self.backend == .nft) {
+                var argv: [24][]const u8 = undefined;
+                const n = nft.addRuleArgs(a, .{ .family = chain.family, .table = chain.table, .chain = chain.chain, .verdict = verdict, .proto = proto, .port = port, .saddr = from }, &argv) catch |err| break :blk specMessage(err);
+                d.window.destroy();
+                self.runArgs("Add a firewall rule", argv[0..n]);
+            } else {
+                var argv: [20][]const u8 = undefined;
+                const n = iptables.addRuleArgs(.{ .chain = chain.chain, .verdict = verdict, .proto = proto, .port = port, .saddr = from }, &argv) catch |err| break :blk specMessage(err);
+                d.window.destroy();
+                self.runArgs("Add a firewall rule", argv[0..n]);
+            }
+            break :blk null;
+        };
+        if (message) |m| self.fail(m);
+    }
+
+    fn specMessage(err: anyerror) []const u8 {
+        return switch (err) {
+            error.BadPort => "The port must be a number from 1 to 65535, a list such as 80,443 or a range such as 8000-8100.",
+            error.BadAddress => "The address must be an IPv4 or IPv6 address, optionally with /prefix.",
+            error.ProtoNeedsPort => "TCP or UDP needs a port. Choose Either to cover all traffic from an address.",
+            error.Empty => "Give a port, an address, or both.",
+            else => "The rule could not be built from what was entered.",
+        };
+    }
+
+    /// The chains rules can be added to: not the ones another manager owns.
+    fn chainRows(self: *Page) []nft.Row {
+        const a = self.data.allocator();
+        var list: std.ArrayList(nft.Row) = .empty;
+        for (self.rows) |r| if (r.kind == .chain and !r.managed) list.append(a, r) catch break;
+        return list.items;
+    }
+
     // ---- adding a rule ---------------------------------------------------------------------
 
     const Dialog = struct {
@@ -538,6 +776,8 @@ pub const Page = struct {
         proto: *gtk.DropDown,
         port: *gtk.Entry,
         from: *gtk.Entry,
+        chain: *gtk.DropDown,
+        verdict: *gtk.DropDown,
     };
 
     fn onAdd(_: *gtk.Button, self: *Page) callconv(.c) void {
@@ -566,11 +806,35 @@ pub const Page = struct {
             .proto = gtk.DropDown.newFromStrings(@ptrCast(&[_]?[*:0]const u8{ "TCP", "UDP", "Either", null })),
             .port = gtk.Entry.new(),
             .from = gtk.Entry.new(),
+            .chain = gtk.DropDown.newFromStrings(@ptrCast(&[_]?[*:0]const u8{ "input", null })),
+            .verdict = gtk.DropDown.newFromStrings(@ptrCast(&[_]?[*:0]const u8{ "Allow", "Drop", "Reject", null })),
         };
-        const is_ufw = self.backend == .ufw;
+        const is_netfilter = self.netfilter();
+        if (is_netfilter) {
+            // The chains to choose from, by name.
+            var labels: std.ArrayList([:0]u8) = .empty;
+            defer {
+                for (labels.items) |l| gpa_alloc.free(l);
+                labels.deinit(gpa_alloc);
+            }
+            var ptrs: std.ArrayList(?[*:0]const u8) = .empty;
+            defer ptrs.deinit(gpa_alloc);
+            for (self.chainRows()) |c| {
+                const label = std.fmt.allocPrintSentinel(gpa_alloc, "{s} {s} {s}", .{ c.family, c.table, c.chain }, 0) catch continue;
+                labels.append(gpa_alloc, label) catch continue;
+                ptrs.append(gpa_alloc, label.ptr) catch continue;
+            }
+            ptrs.append(gpa_alloc, null) catch {};
+            const model = gtk.StringList.new(@ptrCast(ptrs.items.ptr));
+            d.chain.setModel(model.as(gio.ListModel));
+        }
+        const is_ufw = self.backend == .ufw or is_netfilter;
         if (!is_ufw) d.proto = gtk.DropDown.newFromStrings(@ptrCast(&[_]?[*:0]const u8{ "TCP", "UDP", null }));
         var row: c_int = 0;
-        if (is_ufw) {
+        if (is_netfilter) {
+            addRow(grid, &row, t("Chain"), d.chain.as(gtk.Widget));
+            addRow(grid, &row, t("What to do"), d.verdict.as(gtk.Widget));
+        } else if (is_ufw) {
             addRow(grid, &row, t("What to do"), d.action.as(gtk.Widget));
             addRow(grid, &row, t("Direction"), d.direction.as(gtk.Widget));
         }
@@ -591,6 +855,7 @@ pub const Page = struct {
     }
 
     const heap = std.heap.c_allocator;
+    const gpa_alloc = std.heap.c_allocator;
 
     fn addRow(grid: *gtk.Grid, row: *c_int, label: [:0]const u8, widget: *gtk.Widget) void {
         const l = gtk.Label.new(label);
@@ -609,6 +874,7 @@ pub const Page = struct {
         const self = d.page;
         const port = std.mem.trim(u8, std.mem.span(d.port.as(gtk.Editable).getText()), " ");
         const from = std.mem.trim(u8, std.mem.span(d.from.as(gtk.Editable).getText()), " ");
+        if (self.netfilter()) return self.addNetfilter(d, port, from);
         if (self.backend == .ufw) {
             const spec: firewall.RuleSpec = .{
                 .action = @enumFromInt(@min(d.action.getSelected(), 3)),
