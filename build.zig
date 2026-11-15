@@ -70,6 +70,8 @@ pub const Ctx = struct {
     wayland_protocols: *std.Build.Module,
     /// The Wayland side of the shared desktop API (windows, workspaces, outputs, capture).
     wldesktop: *std.Build.Module,
+    /// The X11 side of it (EWMH through XCB).
+    x11desktop: *std.Build.Module,
     /// Image decoding in Zig (vendored zigimg).
     imgcodec: *std.Build.Module,
     /// The PDF page renderer and pdf-zig.
@@ -113,6 +115,8 @@ pub const Ctx = struct {
     pub fn desktopApi(ctx: *const Ctx, mod: *std.Build.Module) void {
         ctx.wayland(mod);
         mod.addImport("wldesktop", ctx.wldesktop);
+        mod.addImport("x11desktop", ctx.x11desktop);
+        mod.linkSystemLibrary("xcb", .{});
     }
 
     /// DKTermCore, which builds libghostty-vt once for every user of it.
@@ -201,6 +205,15 @@ pub fn build(b: *std.Build) void {
     wldesktop.addImport("core", core);
     wldesktop.linkSystemLibrary("wayland-client", .{});
 
+    // The X11 backend: XCB through Zig's C interop.
+    const xcb_c = b.addTranslateC(.{ .root_source_file = b.path("src/x11desktop/c.h"), .target = target, .optimize = optimize });
+    xcb_c.linkSystemLibrary("xcb", .{});
+    const x11desktop = b.createModule(.{ .root_source_file = b.path("src/x11desktop/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
+    x11desktop.addImport("c", xcb_c.createModule());
+    x11desktop.addImport("core", core);
+    x11desktop.addImport("glib2", gobject.module("glib2"));
+    x11desktop.linkSystemLibrary("xcb", .{});
+
     const zigimg = b.dependency("zigimg", .{ .target = target, .optimize = optimize });
     const imgcodec = b.createModule(.{ .root_source_file = b.path("src/imgcodec/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
     imgcodec.addImport("zigimg", zigimg.module("zigimg"));
@@ -232,6 +245,7 @@ pub fn build(b: *std.Build) void {
         .util_unix = util_unix,
         .wayland_protocols = wayland_module,
         .wldesktop = wldesktop,
+        .x11desktop = x11desktop,
         .imgcodec = imgcodec,
         .pdfrender = pdfrender,
         .pdf = pdf_mod,
@@ -258,6 +272,7 @@ pub fn build(b: *std.Build) void {
         _ = addTests(b, test_step, pdfrender);
         _ = addTests(b, test_step, truetype);
     }
+    if (selection.any(&.{"panel"})) addTests(b, test_step, x11desktop).has_side_effects = true; // DKDE_X11_TEST is read from the environment
     if (selection.any(&.{ "polkit", "polkit-ui" })) _ = addTests(b, test_step, polkit_proto);
 
     inline for (programs) |p| {

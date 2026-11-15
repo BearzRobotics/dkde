@@ -22,6 +22,7 @@ const Tray = @import("tray.zig").Tray;
 const Quick = @import("quick.zig").Quick;
 const Osd = @import("osd.zig").Osd;
 const wldesktop = @import("wldesktop");
+const x11desktop = @import("x11desktop");
 const gdkwayland = @import("gdkwayland4");
 const wl = @import("wayland").client.wl;
 const ipc = @import("ipc.zig");
@@ -175,12 +176,11 @@ const App = struct {
         self.toggleMenu();
     }
 
-    /// The desktop API for the running display; empty when not on Wayland.
+    /// The desktop API for the running display: Wayland's protocols or X11's EWMH.
     fn openDesktop(self: *App) common.desktop.Desktop {
         const display = gdk.Display.getDefault() orelse return .{};
         if (gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkwayland.WaylandDisplay.getGObjectType()) == 0) {
-            std.log.warn("not running on Wayland; no taskbar", .{});
-            return .{};
+            return x11desktop.X11.create(self.allocator, onToplevelsChanged, onWorkspacesChanged, self);
         }
         const wl_display: *wl.Display = @ptrCast(gdkwayland.WaylandDisplay.getWlDisplay(@ptrCast(display)) orelse return .{});
         return wldesktop.Wayland.create(self.allocator, wl_display, .{ .outputs = false, .capture = false }, .{
