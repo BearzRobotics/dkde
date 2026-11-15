@@ -10,9 +10,8 @@ const gtk = @import("gtk4");
 const common = @import("common");
 
 const giounix = @import("giounix2");
-const toplevels = @import("toplevels.zig");
 const pins = @import("taskbar_pins.zig");
-const Toplevel = toplevels.Toplevel;
+const Toplevel = common.desktop.Window;
 
 pub const Options = struct {
     /// One button per application instead of per window.

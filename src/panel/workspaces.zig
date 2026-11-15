@@ -8,7 +8,7 @@ const gdkwayland = @import("gdkwayland4");
 const gobject = @import("gobject2");
 const wayland = @import("wayland");
 
-const surface = @import("surface.zig");
+const desktop = @import("common").desktop;
 
 const wl = wayland.client.wl;
 const ext = wayland.client.ext;
@@ -18,9 +18,8 @@ const log = std.log.scoped(.workspaces);
 pub const Workspace = struct {
     handle: *ext.WorkspaceHandleV1,
     owner: *Workspaces,
-    name: []u8 = &.{},
-    active: bool = false,
-    urgent: bool = false,
+    info: desktop.Workspace = .{},
+    name_buf: []u8 = &.{},
     removed: bool = false,
 };
 
@@ -29,6 +28,8 @@ pub const Workspaces = struct {
     manager: ?*ext.WorkspaceManagerV1 = null,
     registry: ?*wl.Registry = null,
     list: std.ArrayList(*Workspace) = .empty,
+    /// `list` as the neutral API sees it, rebuilt on every `done`.
+    infos: std.ArrayList(*const desktop.Workspace) = .empty,
     on_change: *const fn (*anyopaque) void,
     on_change_data: *anyopaque,
 
@@ -51,6 +52,7 @@ pub const Workspaces = struct {
     pub fn destroy(self: *Workspaces) void {
         for (self.list.items) |w| self.free(w);
         self.list.deinit(self.allocator);
+        self.infos.deinit(self.allocator);
         if (self.manager) |m| m.destroy();
         if (self.registry) |r| r.destroy();
         self.allocator.destroy(self);
@@ -62,11 +64,6 @@ pub const Workspaces = struct {
         if (index >= self.list.items.len) return;
         self.list.items[index].handle.activate();
         manager.commit();
-    }
-
-    pub fn activeIndex(self: *const Workspaces) ?usize {
-        for (self.list.items, 0..) |w, i| if (w.active) return i;
-        return null;
     }
 
     fn registryEvent(registry: *wl.Registry, event: wl.Registry.Event, self: *Workspaces) void {
@@ -104,6 +101,8 @@ pub const Workspaces = struct {
                         self.free(self.list.orderedRemove(i));
                     } else i += 1;
                 }
+                self.infos.clearRetainingCapacity();
+                for (self.list.items) |w| self.infos.append(self.allocator, &w.info) catch {};
                 self.on_change(self.on_change_data);
             },
             .finished => {},
@@ -114,12 +113,13 @@ pub const Workspaces = struct {
         switch (event) {
             .name => |e| {
                 const copy = w.owner.allocator.dupe(u8, std.mem.span(e.name)) catch return;
-                w.owner.allocator.free(w.name);
-                w.name = copy;
+                w.owner.allocator.free(w.name_buf);
+                w.name_buf = copy;
+                w.info.name = copy;
             },
             .state => |e| {
-                w.active = e.state.active;
-                w.urgent = e.state.urgent;
+                w.info.active = e.state.active;
+                w.info.urgent = e.state.urgent;
             },
             .removed => w.removed = true,
             .id, .coordinates, .capabilities => {},
@@ -128,7 +128,7 @@ pub const Workspaces = struct {
 
     fn free(self: *Workspaces, w: *Workspace) void {
         w.handle.destroy();
-        self.allocator.free(w.name);
+        self.allocator.free(w.name_buf);
         self.allocator.destroy(w);
     }
 };

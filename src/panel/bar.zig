@@ -13,7 +13,7 @@ const Position = @import("position.zig").Position;
 const Taskbar = @import("taskbar.zig").Taskbar;
 const Tray = @import("tray.zig").Tray;
 const Quick = @import("quick.zig").Quick;
-const Workspaces = @import("workspaces.zig").Workspaces;
+const Desktop = common.desktop.Desktop;
 
 const StartClick = struct { callback: *const fn (*anyopaque) void, data: *anyopaque };
 
@@ -309,7 +309,7 @@ pub const Bar = struct {
         }
     }
 
-    const DesktopClick = struct { workspaces: *Workspaces, index: usize, popover: *gtk.Popover };
+    const DesktopClick = struct { desktop: *Desktop, index: usize, popover: *gtk.Popover };
 
     fn onDesktopDestroy(_: *gtk.Button, ctx: *DesktopClick) callconv(.c) void {
         std.heap.c_allocator.destroy(ctx);
@@ -317,15 +317,13 @@ pub const Bar = struct {
 
     fn onDesktopClicked(_: *gtk.Button, ctx: *DesktopClick) callconv(.c) void {
         ctx.popover.popdown();
-        ctx.workspaces.activate(ctx.index);
+        ctx.desktop.activateWorkspace(ctx.index);
     }
 
     /// Mouse wheel over the icon moves to the next or previous desktop.
-    fn onDesktopScroll(_: *gtk.EventControllerScroll, _: f64, dy: f64, ws: *Workspaces) callconv(.c) c_int {
-        const count = ws.list.items.len;
-        const now = ws.activeIndex() orelse return 0;
-        if (dy > 0 and now + 1 < count) ws.activate(now + 1);
-        if (dy < 0 and now > 0) ws.activate(now - 1);
+    fn onDesktopScroll(_: *gtk.EventControllerScroll, _: f64, dy: f64, d: *Desktop) callconv(.c) c_int {
+        if (dy > 0) _ = d.stepWorkspace(1);
+        if (dy < 0) _ = d.stepWorkspace(-1);
         return 1;
     }
 
@@ -335,10 +333,12 @@ pub const Bar = struct {
 
     /// One icon for all desktops: it shows the current number, a click opens a
     /// chooser, and the wheel switches.
-    pub fn setWorkspaces(self: *Bar, ws: ?*Workspaces) void {
+    pub fn setWorkspaces(self: *Bar, d: *Desktop) void {
         const box = self.desktops_box;
-        const w = ws orelse return box.as(gtk.Widget).setVisible(0);
-        box.as(gtk.Widget).setVisible(@intFromBool(w.list.items.len > 1));
+        // Without workspace support the control is hidden, not broken.
+        if (!d.has(.workspaces)) return box.as(gtk.Widget).setVisible(0);
+        const list = d.workspaces();
+        box.as(gtk.Widget).setVisible(@intFromBool(list.len > 1));
 
         if (self.desktops_popover == null) {
             const button = gtk.Button.new();
@@ -356,7 +356,7 @@ pub const Bar = struct {
             _ = gtk.Button.signals.clicked.connect(button, *gtk.Popover, &onDesktopsButton, popover, .{});
             box.append(button.as(gtk.Widget));
             const scroll = gtk.EventControllerScroll.new(.{ .vertical = true });
-            _ = gtk.EventControllerScroll.signals.scroll.connect(scroll, *Workspaces, &onDesktopScroll, w, .{});
+            _ = gtk.EventControllerScroll.signals.scroll.connect(scroll, *Desktop, &onDesktopScroll, d, .{});
             button.as(gtk.Widget).addController(scroll.as(gtk.EventController));
             self.desktops_scroll = scroll;
             self.desktops_label = label;
@@ -366,7 +366,7 @@ pub const Bar = struct {
         // The current number on the icon.
         if (self.desktops_label) |label| {
             var buf: [8]u8 = undefined;
-            const active = (w.activeIndex() orelse 0) + 1;
+            const active = (d.activeWorkspace() orelse 0) + 1;
             label.setText(std.fmt.bufPrintSentinel(&buf, "{d}", .{active}, 0) catch "");
         }
 
@@ -379,7 +379,7 @@ pub const Bar = struct {
         grid.as(gtk.Widget).setMarginBottom(8);
         grid.as(gtk.Widget).setMarginStart(8);
         grid.as(gtk.Widget).setMarginEnd(8);
-        for (w.list.items, 0..) |item, i| {
+        for (list, 0..) |item, i| {
             var buf: [16]u8 = undefined;
             const text = std.fmt.bufPrintSentinel(&buf, "{d}", .{i + 1}, 0) catch continue;
             const button = gtk.Button.newWithLabel(text);
@@ -387,7 +387,7 @@ pub const Bar = struct {
             if (item.active) button.as(gtk.Widget).addCssClass("active");
             if (item.urgent) button.as(gtk.Widget).addCssClass("urgent");
             const ctx = std.heap.c_allocator.create(DesktopClick) catch continue;
-            ctx.* = .{ .workspaces = w, .index = i, .popover = popover };
+            ctx.* = .{ .desktop = d, .index = i, .popover = popover };
             _ = gtk.Button.signals.clicked.connect(button, *DesktopClick, &onDesktopClicked, ctx, .{});
             _ = gtk.Widget.signals.destroy.connect(button, *DesktopClick, &onDesktopDestroy, ctx, .{});
             grid.attach(button.as(gtk.Widget), @intCast(i % 5), @intCast(i / 5), 1, 1);

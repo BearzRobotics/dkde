@@ -76,3 +76,6 @@ and closed). Not done: the greeter path (dkde-greeter starting our session), a s
 compositor with the other programs (it is a standalone package because the rest of dkde builds without wlroots), Xwayland, input
 settings (keyboard layout from Settings, touchpad options), gamma/night light, per-output workspaces, window rules, the X11 window
 manager, the shared desktop-integration API from the spec.
+
+## Shared desktop API (Milestone 1) — 2026-11-15
+`src/common/desktop.zig` (`common.desktop`) defines the backend-neutral interface: `Capability`/`Capabilities`, `Window` (identity is its pointer; ops table for activate/minimize/maximize/close), `Workspace`, `Output`, capture (`Image`, output and window as separate capabilities), `Backend`/`VTable` and the `Desktop` facade (every query is empty and every request a no-op when the capability is missing; `stepWorkspace` for the wheel). A `Fake` backend covers it in tests. The panel's taskbar and workspace switcher use only this API; `src/panel/backend_wayland.zig` is the Wayland backend (foreign-toplevel + ext-workspace). Verified headless: taskbar lists/removes windows, active highlight, workspace indicator. Not yet behind the API: outputs, screenshots (dkde-snip uses screencopy directly), panel-surface placement. Next: X11 backend (needs the X11 window manager, Milestone 3).

@@ -10,38 +10,45 @@ const gdkwayland = @import("gdkwayland4");
 const gobject = @import("gobject2");
 const wayland = @import("wayland");
 const glib = @import("glib2");
+const common = @import("common");
+const desktop = common.desktop;
 
 const wl = wayland.client.wl;
 const zwlr = wayland.client.zwlr;
 
 const log = std.log.scoped(.toplevels);
 
+/// One window announced by the compositor. `win` is what the rest of the
+/// panel sees; the protocol handle stays here.
 pub const Toplevel = struct {
+    win: desktop.Window = .{ .ops = &ops },
     handle: *zwlr.ForeignToplevelHandleV1,
     manager: *Manager,
-    title: []u8 = &.{},
-    app_id: []u8 = &.{},
-    maximized: bool = false,
-    minimized: bool = false,
-    activated: bool = false,
-    /// Set by the first `done`; before it the window is not shown.
-    ready: bool = false,
+    title_buf: []u8 = &.{},
+    app_id_buf: []u8 = &.{},
 
-    pub fn activate(self: *Toplevel) void {
-        if (self.minimized) self.handle.unsetMinimized();
-        if (self.manager.seat) |seat| self.handle.activate(seat);
+    const ops: desktop.WindowOps = .{
+        .activate = opActivate,
+        .set_minimized = opMinimized,
+        .set_maximized = opMaximized,
+        .close = opClose,
+    };
+
+    fn of(w: *desktop.Window) *Toplevel {
+        return @fieldParentPtr("win", w);
     }
-
-    pub fn setMinimized(self: *Toplevel, minimized: bool) void {
-        if (minimized) self.handle.setMinimized() else self.handle.unsetMinimized();
+    fn opActivate(w: *desktop.Window) void {
+        const t = of(w);
+        if (t.manager.seat) |seat| t.handle.activate(seat);
     }
-
-    pub fn setMaximized(self: *Toplevel, maximized: bool) void {
-        if (maximized) self.handle.setMaximized() else self.handle.unsetMaximized();
+    fn opMinimized(w: *desktop.Window, minimized: bool) void {
+        if (minimized) of(w).handle.setMinimized() else of(w).handle.unsetMinimized();
     }
-
-    pub fn close(self: *Toplevel) void {
-        self.handle.close();
+    fn opMaximized(w: *desktop.Window, maximized: bool) void {
+        if (maximized) of(w).handle.setMaximized() else of(w).handle.unsetMaximized();
+    }
+    fn opClose(w: *desktop.Window) void {
+        of(w).handle.close();
     }
 };
 
@@ -49,7 +56,8 @@ pub const Manager = struct {
     allocator: std.mem.Allocator,
     registry: ?*wl.Registry = null,
     seat: ?*wl.Seat = null,
-    toplevels: std.ArrayList(*Toplevel) = .empty,
+    /// The windows in the order announced; what `desktop.Window` consumers see.
+    windows: std.ArrayList(*desktop.Window) = .empty,
     /// Called after any change to the list or to a toplevel.
     on_change: *const fn (*anyopaque) void,
     on_change_data: *anyopaque,
@@ -80,8 +88,8 @@ pub const Manager = struct {
     }
 
     pub fn destroy(self: *Manager) void {
-        for (self.toplevels.items) |t| self.free(t);
-        self.toplevels.deinit(self.allocator);
+        for (self.windows.items) |w| self.free(Toplevel.of(w));
+        self.windows.deinit(self.allocator);
         if (self.registry) |r| r.destroy();
         self.allocator.destroy(self);
     }
@@ -105,7 +113,7 @@ pub const Manager = struct {
             .toplevel => |e| {
                 const t = self.allocator.create(Toplevel) catch return;
                 t.* = .{ .handle = e.toplevel, .manager = self };
-                self.toplevels.append(self.allocator, t) catch {
+                self.windows.append(self.allocator, &t.win) catch {
                     self.allocator.destroy(t);
                     return;
                 };
@@ -118,30 +126,38 @@ pub const Manager = struct {
     fn toplevelEvent(_: *zwlr.ForeignToplevelHandleV1, event: zwlr.ForeignToplevelHandleV1.Event, t: *Toplevel) void {
         const self = t.manager;
         switch (event) {
-            .title => |e| replace(self.allocator, &t.title, std.mem.span(e.title)),
-            .app_id => |e| replace(self.allocator, &t.app_id, std.mem.span(e.app_id)),
+            .title => |e| {
+                replace(self.allocator, &t.title_buf, std.mem.span(e.title));
+                t.win.title = t.title_buf;
+            },
+            .app_id => |e| {
+                replace(self.allocator, &t.app_id_buf, std.mem.span(e.app_id));
+                t.win.app_id = t.app_id_buf;
+            },
             .state => |e| {
-                t.maximized = false;
-                t.minimized = false;
-                t.activated = false;
+                t.win.maximized = false;
+                t.win.minimized = false;
+                t.win.activated = false;
+                t.win.fullscreen = false;
                 for (std.mem.bytesAsSlice(u32, e.state.slice(u8))) |state| {
                     switch (@as(zwlr.ForeignToplevelHandleV1.State, @fromBackingInt(@intCast(state)))) {
-                        .maximized => t.maximized = true,
-                        .minimized => t.minimized = true,
-                        .activated => t.activated = true,
+                        .maximized => t.win.maximized = true,
+                        .minimized => t.win.minimized = true,
+                        .activated => t.win.activated = true,
+                        .fullscreen => t.win.fullscreen = true,
                         else => {},
                     }
                 }
             },
             // Batched changes take effect on `done`.
             .done => {
-                t.ready = true;
+                t.win.ready = true;
                 self.on_change(self.on_change_data);
             },
             .closed => {
-                for (self.toplevels.items, 0..) |item, i| {
-                    if (item == t) {
-                        _ = self.toplevels.orderedRemove(i);
+                for (self.windows.items, 0..) |item, i| {
+                    if (item == &t.win) {
+                        _ = self.windows.orderedRemove(i);
                         break;
                     }
                 }
@@ -154,8 +170,8 @@ pub const Manager = struct {
 
     fn free(self: *Manager, t: *Toplevel) void {
         t.handle.destroy();
-        self.allocator.free(t.title);
-        self.allocator.free(t.app_id);
+        self.allocator.free(t.title_buf);
+        self.allocator.free(t.app_id_buf);
         self.allocator.destroy(t);
     }
 };

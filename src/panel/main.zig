@@ -21,11 +21,10 @@ const PowerWatch = @import("powerwatch.zig").PowerWatch;
 const Tray = @import("tray.zig").Tray;
 const Quick = @import("quick.zig").Quick;
 const Osd = @import("osd.zig").Osd;
-const Workspaces = @import("workspaces.zig").Workspaces;
+const backend_wayland = @import("backend_wayland.zig");
 const ipc = @import("ipc.zig");
 const slideshow = @import("slideshow.zig");
 const StartMenu = @import("startmenu.zig").StartMenu;
-const toplevels = @import("toplevels.zig");
 
 const default_height = 40;
 const default_clock_format = "%-I:%M %p\n%-m/%-d/%Y";
@@ -48,8 +47,8 @@ const App = struct {
     tray: ?*Tray = null,
     quick: ?*Quick = null,
     osd: ?*Osd = null,
-    workspaces: ?*Workspaces = null,
-    manager: ?*toplevels.Manager = null,
+    /// Windows and workspaces, whichever display backend is running.
+    desktop: common.desktop.Desktop = .{},
     menu: ?*StartMenu = null,
     slide_files: std.ArrayList([:0]u8) = .empty,
     slide_index: usize = 0,
@@ -87,7 +86,7 @@ const App = struct {
         self.quick = Quick.create(self.allocator, &self.config);
         self.osd = Osd.create(self.allocator);
         if (self.quick) |q| q.osd = self.osd;
-        self.workspaces = Workspaces.create(self.allocator, onWorkspacesChanged, self);
+        self.desktop = backend_wayland.Wayland.create(self.allocator, onToplevelsChanged, onWorkspacesChanged, self);
         if (glib.getenv("DKDE_DEBUG_QUICK") != null) _ = glib.timeoutAdd(4000, debugQuick, self);
         self.rebuildSurfaces();
         self.updateClock();
@@ -101,10 +100,6 @@ const App = struct {
         self.power_watch = PowerWatch.create(self.allocator, &self.config);
         self.ipc_server = ipc.Server.start(self.allocator, onCommand, self) catch |err| blk: {
             std.log.warn("IPC unavailable: {s}", .{@errorName(err)});
-            break :blk null;
-        };
-        self.manager = toplevels.Manager.create(self.allocator, onToplevelsChanged, self) catch |err| blk: {
-            std.log.warn("no taskbar: {s}", .{@errorName(err)});
             break :blk null;
         };
         // Pinned apps show even before the first window event.
@@ -184,7 +179,7 @@ const App = struct {
     }
 
     fn syncTaskbars(self: *App) void {
-        const manager = self.manager orelse return;
+        if (!self.desktop.has(.window_list)) return;
         const pinned = taskbar_pins.ids(self.allocator) catch &.{};
         defer common.config.freeStringList(self.allocator, @constCast(pinned));
         const opts: taskbar_mod.Options = .{
@@ -193,7 +188,7 @@ const App = struct {
             // A side panel is too narrow for titles.
             .labels = self.config.getBool("panel", "show-labels", true) and !self.panelPosition().isVertical(),
         };
-        for (self.bars.items) |bar| bar.taskbar.sync(manager.toplevels.items, opts);
+        for (self.bars.items) |bar| bar.taskbar.sync(self.desktop.windows(), opts);
     }
 
     fn onMonitorsChanged(_: *gio.ListModel, _: c_uint, _: c_uint, _: c_uint, self: *App) callconv(.c) void {
@@ -212,12 +207,12 @@ const App = struct {
         const self: *App = @ptrCast(@alignCast(data));
         // Dev aid: ask for the third desktop once, to check switching in screenshots.
         if (!debug_switched and glib.getenv("DKDE_DEBUG_DESKTOP") != null) {
-            if (self.workspaces) |w| if (w.list.items.len > 2) {
+            if (self.desktop.workspaces().len > 2) {
                 debug_switched = true;
-                w.activate(2);
-            };
+                self.desktop.activateWorkspace(2);
+            }
         }
-        for (self.bars.items) |bar| bar.setWorkspaces(self.workspaces);
+        for (self.bars.items) |bar| bar.setWorkspaces(&self.desktop);
     }
 
     var debug_switched = false;
@@ -362,7 +357,7 @@ const App = struct {
                 return;
             };
             self.bars.append(self.allocator, bar) catch return;
-            bar.setWorkspaces(self.workspaces);
+            bar.setWorkspaces(&self.desktop);
         }
     }
 
@@ -426,7 +421,6 @@ const App = struct {
         if (self.menu) |menu| menu.close();
         if (self.ipc_server) |server| server.stop();
         for (self.bars.items) |bar| bar.destroy();
-        if (self.manager) |m| m.destroy();
         if (self.clock_source != 0) _ = glib.Source.remove(self.clock_source);
         if (self.reminders) |r| r.destroy();
         if (self.power_watch) |w| w.destroy();
@@ -434,7 +428,7 @@ const App = struct {
         if (self.tray) |tray| tray.destroy();
         if (self.quick) |q| q.destroy();
         if (self.osd) |o| o.destroy();
-        if (self.workspaces) |w| w.destroy();
+        self.desktop.destroy();
         self.bars.deinit(self.allocator);
         self.wallpapers.deinit(self.allocator);
         self.wallpaper_css.as(gobject.Object).unref();

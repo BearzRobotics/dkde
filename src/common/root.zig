@@ -15,6 +15,7 @@ pub const civil = core.civil;
 pub const rosquin = core.rosquin;
 pub const rrule = core.rrule;
 pub const config = core.config;
+pub const desktop = core.desktop;
 pub const events = core.events;
 pub const feeds = core.feeds;
 pub const goa = core.goa;

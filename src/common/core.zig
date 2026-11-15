@@ -15,6 +15,7 @@ pub const civil = @import("civil.zig");
 pub const rosquin = @import("rosquin.zig");
 pub const rrule = @import("rrule.zig");
 pub const config = @import("config.zig");
+pub const desktop = @import("desktop.zig");
 pub const fsio = @import("fsio.zig");
 pub const events = @import("events.zig");
 pub const feeds = @import("feeds.zig");
