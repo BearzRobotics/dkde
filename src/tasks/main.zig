@@ -169,6 +169,9 @@ pub const TaskManager = struct {
         const body = gtk.Box.new(.horizontal, 0);
         body.append(self.rail_box.as(gtk.Widget));
         self.stack.as(gtk.Widget).setHexpand(1);
+        // Only the page in view sets the window's least size.
+        self.stack.setHhomogeneous(0);
+        self.stack.setVhomogeneous(0);
         self.stack.setTransitionType(.crossfade);
         self.stack.setTransitionDuration(120);
         body.append(self.stack.as(gtk.Widget));

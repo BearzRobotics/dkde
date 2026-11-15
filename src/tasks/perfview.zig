@@ -405,6 +405,8 @@ pub const Perf = struct {
         list.setSelectionMode(.browse);
         list.as(gtk.Widget).addCssClass("dkde-perf-list");
         const stack = gtk.Stack.new();
+        stack.setHhomogeneous(0);
+        stack.setVhomogeneous(0);
         stack.as(gtk.Widget).setHexpand(1);
         const side = gtk.ScrolledWindow.new();
         side.setChild(list.as(gtk.Widget));
