@@ -20,6 +20,14 @@ pub fn build(b: *std.Build) void {
     const scan = b.addSystemCommand(&.{ "wayland-scanner", "server-header", xdg_xml });
     const xdg_header = scan.addOutputFileArg("xdg-shell-protocol.h");
 
+    // The same for the layer shell and the foreign-toplevel protocol (wlroots' headers include them).
+    const layer_scan = b.addSystemCommand(&.{ "wayland-scanner", "server-header" });
+    layer_scan.addFileArg(b.path("protocols/wlr-layer-shell-unstable-v1.xml"));
+    const layer_header = layer_scan.addOutputFileArg("wlr-layer-shell-unstable-v1-protocol.h");
+    const toplevel_scan = b.addSystemCommand(&.{ "wayland-scanner", "server-header" });
+    toplevel_scan.addFileArg(b.path("../../protocols/wlr-foreign-toplevel-management-unstable-v1.xml"));
+    const toplevel_header = toplevel_scan.addOutputFileArg("wlr-foreign-toplevel-management-unstable-v1-protocol.h");
+
     // wlroots, wayland-server and xkbcommon through Zig's C interop.
     const translate_c = b.addTranslateC(.{
         .root_source_file = b.path("src/c.h"),
@@ -27,6 +35,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     translate_c.addIncludePath(xdg_header.dirname());
+    translate_c.addIncludePath(layer_header.dirname());
+    translate_c.addIncludePath(toplevel_header.dirname());
     translate_c.linkSystemLibrary("wlroots-0.19", .{});
     translate_c.linkSystemLibrary("wayland-server", .{});
     translate_c.linkSystemLibrary("xkbcommon", .{});

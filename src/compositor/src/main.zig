@@ -26,6 +26,13 @@ const Server = struct {
     scene_layout: *c.wlr_scene_output_layout,
     output_layout: *c.wlr_output_layout,
     xdg_shell: *c.wlr_xdg_shell,
+    layer_shell: *c.wlr_layer_shell_v1,
+    foreign: *c.wlr_foreign_toplevel_manager_v1,
+    /// Scene layers, bottom to top: background, bottom, windows, top, overlay.
+    trees: [5]*c.wlr_scene_tree,
+    layer_surfaces: std.ArrayList(*LayerSurface) = .empty,
+    /// What the layer surfaces (panels) leave free for windows.
+    usable: ?layout.Rect = null,
     cursor: *c.wlr_cursor,
     cursor_mgr: *c.wlr_xcursor_manager,
     seat: *c.wlr_seat,
@@ -48,6 +55,7 @@ const Server = struct {
     new_output: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_xdg_toplevel: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_xdg_popup: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    new_layer_surface: c.wl_listener = std.mem.zeroes(c.wl_listener),
     cursor_motion: c.wl_listener = std.mem.zeroes(c.wl_listener),
     cursor_motion_absolute: c.wl_listener = std.mem.zeroes(c.wl_listener),
     cursor_button: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -133,6 +141,14 @@ const Toplevel = struct {
     floating: bool = false,
     /// Where it was before tiling took it, to put it back.
     saved: ?layout.Rect = null,
+    minimized: bool = false,
+    /// What the taskbar sees of this window.
+    handle: ?*c.wlr_foreign_toplevel_handle_v1 = null,
+    handle_activate: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    handle_close: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    handle_minimize: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    set_title: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    set_app_id: c.wl_listener = std.mem.zeroes(c.wl_listener),
 
     map: c.wl_listener = std.mem.zeroes(c.wl_listener),
     unmap: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -155,6 +171,7 @@ const Toplevel = struct {
             c.wlr_scene_node_set_position(&self.tree.*.node, spot.x, spot.y);
         }
         server.opened += 1;
+        addHandle(self);
         focus(self);
         arrange();
     }
@@ -162,6 +179,7 @@ const Toplevel = struct {
     fn onUnmap(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Toplevel = @fieldParentPtr("unmap", listener.?);
         if (server.grabbed == self) resetCursorMode();
+        dropHandle(self);
         removeFromList(self);
         removeManaged(self);
         // Give the focus to the window now on top.
@@ -187,6 +205,7 @@ const Toplevel = struct {
         unlisten(&self.request_resize);
         unlisten(&self.request_maximize);
         unlisten(&self.request_fullscreen);
+        dropHandle(self);
         gpa.destroy(self);
     }
 
@@ -222,6 +241,79 @@ fn removeFromList(t: *Toplevel) void {
     }
 }
 
+// ---- the taskbar's view of the windows (wlr-foreign-toplevel-management) -----------------------------------
+
+fn addHandle(t: *Toplevel) void {
+    const h = c.wlr_foreign_toplevel_handle_v1_create(server.foreign) orelse return;
+    t.handle = h;
+    c.wlr_foreign_toplevel_handle_v1_set_title(h, t.xdg.title orelse "");
+    c.wlr_foreign_toplevel_handle_v1_set_app_id(h, t.xdg.app_id orelse "");
+    if (c.wlr_output_layout_get_center_output(server.output_layout)) |output| c.wlr_foreign_toplevel_handle_v1_output_enter(h, output);
+    listen(&h.*.events.request_activate, &t.handle_activate, onHandleActivate);
+    listen(&h.*.events.request_close, &t.handle_close, onHandleClose);
+    listen(&h.*.events.request_minimize, &t.handle_minimize, onHandleMinimize);
+    listen(&t.xdg.events.set_title, &t.set_title, onSetTitle);
+    listen(&t.xdg.events.set_app_id, &t.set_app_id, onSetAppId);
+}
+
+fn dropHandle(t: *Toplevel) void {
+    const h = t.handle orelse return;
+    unlisten(&t.handle_activate);
+    unlisten(&t.handle_close);
+    unlisten(&t.handle_minimize);
+    unlisten(&t.set_title);
+    unlisten(&t.set_app_id);
+    c.wlr_foreign_toplevel_handle_v1_destroy(h);
+    t.handle = null;
+}
+
+fn onSetTitle(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+    const t: *Toplevel = @fieldParentPtr("set_title", listener.?);
+    if (t.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_title(h, t.xdg.title orelse "");
+}
+
+fn onSetAppId(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+    const t: *Toplevel = @fieldParentPtr("set_app_id", listener.?);
+    if (t.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_app_id(h, t.xdg.app_id orelse "");
+}
+
+fn onHandleActivate(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+    const t: *Toplevel = @fieldParentPtr("handle_activate", listener.?);
+    setMinimized(t, false);
+    focus(t);
+}
+
+fn onHandleClose(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+    const t: *Toplevel = @fieldParentPtr("handle_close", listener.?);
+    c.wlr_xdg_toplevel_send_close(t.xdg);
+}
+
+fn onHandleMinimize(listener: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const t: *Toplevel = @fieldParentPtr("handle_minimize", listener.?);
+    const event: *c.wlr_foreign_toplevel_handle_v1_minimized_event = @ptrCast(@alignCast(data));
+    setMinimized(t, event.minimized);
+}
+
+/// Hides a window (the taskbar shows it as minimized) or brings it back.
+fn setMinimized(t: *Toplevel, minimized: bool) void {
+    if (t.minimized == minimized) return;
+    t.minimized = minimized;
+    c.wlr_scene_node_set_enabled(&t.tree.*.node, !minimized);
+    if (t.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_minimized(h, minimized);
+    if (minimized) {
+        // The window now on top (not minimized) gets the keyboard.
+        var i = server.toplevels.items.len;
+        while (i > 0) : (i -= 1) {
+            const other = server.toplevels.items[i - 1];
+            if (other != t and !other.minimized) {
+                focus(other);
+                break;
+            }
+        }
+    }
+    arrange();
+}
+
 fn removeManaged(t: *Toplevel) void {
     for (server.managed.items, 0..) |item, i| {
         if (item == t) {
@@ -234,6 +326,7 @@ fn removeManaged(t: *Toplevel) void {
 /// The part of the screen windows may use (the whole output layout for now;
 /// panels will reserve their strips from it).
 fn workArea() layout.Rect {
+    if (server.usable) |u| return u;
     var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
     c.wlr_output_layout_get_box(server.output_layout, null, &box);
     if (box.width <= 0 or box.height <= 0) return .{ .x = 0, .y = 0, .w = 1280, .h = 720 };
@@ -257,7 +350,7 @@ fn arrange() void {
     var tiled: std.ArrayList(*Toplevel) = .empty;
     defer tiled.deinit(gpa);
     for (server.managed.items) |t| {
-        if (!t.floating) tiled.append(gpa, t) catch return;
+        if (!t.floating and !t.minimized) tiled.append(gpa, t) catch return;
     }
     const cells = gpa.alloc(layout.Rect, tiled.items.len) catch return;
     defer gpa.free(cells);
@@ -303,7 +396,7 @@ fn onNewToplevel(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     const xdg: *c.wlr_xdg_toplevel = @ptrCast(@alignCast(data));
     c._wlr_log(c.WLR_INFO, "new window");
     const t = gpa.create(Toplevel) catch return;
-    const tree = c.wlr_scene_xdg_surface_create(&server.scene.*.tree, xdg.base) orelse {
+    const tree = c.wlr_scene_xdg_surface_create(server.trees[2], xdg.base) orelse {
         gpa.destroy(t);
         return;
     };
@@ -342,8 +435,14 @@ const Popup = struct {
 
 fn onNewPopup(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     const xdg: *c.wlr_xdg_popup = @ptrCast(@alignCast(data));
-    const parent = c.wlr_xdg_surface_try_from_wlr_surface(xdg.parent) orelse return;
+    // A popup of a layer surface has no xdg parent; the layer surface announces it itself.
+    const parent_surface = xdg.parent orelse return;
+    const parent = c.wlr_xdg_surface_try_from_wlr_surface(parent_surface) orelse return;
     const parent_tree: *c.wlr_scene_tree = @ptrCast(@alignCast(parent.*.data orelse return));
+    addPopup(xdg, parent_tree);
+}
+
+fn addPopup(xdg: *c.wlr_xdg_popup, parent_tree: *c.wlr_scene_tree) void {
     const popup = gpa.create(Popup) catch return;
     popup.* = .{ .xdg = xdg };
     xdg.base.*.data = c.wlr_scene_xdg_surface_create(parent_tree, xdg.base);
@@ -364,12 +463,15 @@ fn focus(t: *Toplevel) void {
     removeFromList(t);
     server.toplevels.append(gpa, t) catch {};
     _ = c.wlr_xdg_toplevel_set_activated(t.xdg, true);
+    for (server.toplevels.items) |other| {
+        if (other.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_activated(h, other == t);
+    }
     if (c.wlr_seat_get_keyboard(seat)) |keyboard| {
         c.wlr_seat_keyboard_notify_enter(seat, surface, keyboard.*.keycodes[0..].ptr, keyboard.*.num_keycodes, &keyboard.*.modifiers);
     }
 }
 
-const Hit = struct { toplevel: *Toplevel, surface: *c.wlr_surface, sx: f64, sy: f64 };
+const Hit = struct { toplevel: ?*Toplevel, layer: ?*LayerSurface, surface: *c.wlr_surface, sx: f64, sy: f64 };
 
 /// The window and surface under layout position (lx, ly), if any.
 fn windowAt(lx: f64, ly: f64) ?Hit {
@@ -379,13 +481,137 @@ fn windowAt(lx: f64, ly: f64) ?Hit {
     if (node.*.type != c.WLR_SCENE_NODE_BUFFER) return null;
     const buffer = c.wlr_scene_buffer_from_node(node);
     const scene_surface = c.wlr_scene_surface_try_from_buffer(buffer) orelse return null;
+    // Walk up to the tree that stands for a window or a layer surface; its parent says which.
     var tree: ?*c.wlr_scene_tree = node.*.parent;
     while (tree) |t| : (tree = t.node.parent) {
-        if (t.node.data != null) {
-            return .{ .toplevel = @ptrCast(@alignCast(t.node.data)), .surface = scene_surface.*.surface, .sx = sx, .sy = sy };
+        const data = t.node.data orelse continue;
+        const parent = t.node.parent orelse return null;
+        if (parent == server.trees[2]) {
+            return .{ .toplevel = @ptrCast(@alignCast(data)), .layer = null, .surface = scene_surface.*.surface, .sx = sx, .sy = sy };
         }
+        return .{ .toplevel = null, .layer = @ptrCast(@alignCast(data)), .surface = scene_surface.*.surface, .sx = sx, .sy = sy };
     }
     return null;
+}
+
+// ---- layer surfaces: panels, launchers, the desktop background -------------------------------------------
+
+const LayerSurface = struct {
+    surface: *c.wlr_layer_surface_v1,
+    scene: *c.wlr_scene_layer_surface_v1,
+    map: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    unmap: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    commit: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    destroy: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    new_popup: c.wl_listener = std.mem.zeroes(c.wl_listener),
+
+    fn onMap(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+        const self: *LayerSurface = @fieldParentPtr("map", listener.?);
+        arrangeLayers();
+        focusLayer(self);
+    }
+
+    fn onUnmap(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+        const self: *LayerSurface = @fieldParentPtr("unmap", listener.?);
+        // A layer surface that held the keyboard gives it to the window on top.
+        if (server.seat.*.keyboard_state.focused_surface == self.surface.*.surface and server.toplevels.items.len > 0) {
+            const top = server.toplevels.items[server.toplevels.items.len - 1];
+            c.wlr_seat_keyboard_clear_focus(server.seat);
+            const surface = top.xdg.base.*.surface;
+            if (c.wlr_seat_get_keyboard(server.seat)) |kb| {
+                c.wlr_seat_keyboard_notify_enter(server.seat, surface, kb.*.keycodes[0..].ptr, kb.*.num_keycodes, &kb.*.modifiers);
+            }
+        }
+        arrangeLayers();
+    }
+
+    fn onCommit(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+        const self: *LayerSurface = @fieldParentPtr("commit", listener.?);
+        _ = self;
+        arrangeLayers();
+    }
+
+    fn onNewPopup(listener: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+        const self: *LayerSurface = @fieldParentPtr("new_popup", listener.?);
+        const popup: *c.wlr_xdg_popup = @ptrCast(@alignCast(data));
+        addPopup(popup, self.scene.*.tree);
+    }
+
+    fn onDestroy(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+        const self: *LayerSurface = @fieldParentPtr("destroy", listener.?);
+        unlisten(&self.map);
+        unlisten(&self.unmap);
+        unlisten(&self.commit);
+        unlisten(&self.destroy);
+        unlisten(&self.new_popup);
+        for (server.layer_surfaces.items, 0..) |item, i| {
+            if (item == self) {
+                _ = server.layer_surfaces.orderedRemove(i);
+                break;
+            }
+        }
+        gpa.destroy(self);
+        arrangeLayers();
+    }
+};
+
+fn onNewLayerSurface(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const surface: *c.wlr_layer_surface_v1 = @ptrCast(@alignCast(data));
+    // A client that names no output gets the primary one.
+    if (surface.output == null) {
+        surface.output = c.wlr_output_layout_get_center_output(server.output_layout);
+        if (surface.output == null) {
+            c.wlr_layer_surface_v1_destroy(surface);
+            return;
+        }
+    }
+    const layer: usize = surface.pending.layer;
+    const parent = server.trees[if (layer >= 2) layer + 1 else layer];
+    const scene = c.wlr_scene_layer_surface_v1_create(parent, surface) orelse return;
+    const self = gpa.create(LayerSurface) catch return;
+    self.* = .{ .surface = surface, .scene = scene };
+    scene.*.tree.*.node.data = self;
+    server.layer_surfaces.append(gpa, self) catch {};
+    listen(&surface.*.surface.*.events.map, &self.map, LayerSurface.onMap);
+    listen(&surface.*.surface.*.events.unmap, &self.unmap, LayerSurface.onUnmap);
+    listen(&surface.*.surface.*.events.commit, &self.commit, LayerSurface.onCommit);
+    listen(&surface.*.events.destroy, &self.destroy, LayerSurface.onDestroy);
+    listen(&surface.*.events.new_popup, &self.new_popup, LayerSurface.onNewPopup);
+}
+
+/// Gives a layer surface the keyboard when it asks for it (a launcher), unless it asked not to have it.
+fn focusLayer(ls: *LayerSurface) void {
+    const mode = ls.surface.*.current.keyboard_interactive;
+    if (mode == c.ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE) return;
+    if (!ls.surface.*.surface.*.mapped) return;
+    if (c.wlr_seat_get_keyboard(server.seat)) |kb| {
+        c.wlr_seat_keyboard_notify_enter(server.seat, ls.surface.*.surface, kb.*.keycodes[0..].ptr, kb.*.num_keycodes, &kb.*.modifiers);
+    }
+}
+
+/// Lays out every layer surface on the primary output and works out what is left for windows.
+fn arrangeLayers() void {
+    const output = c.wlr_output_layout_get_center_output(server.output_layout) orelse return;
+    var full: c.wlr_box = std.mem.zeroes(c.wlr_box);
+    c.wlr_output_layout_get_box(server.output_layout, output, &full);
+    var usable = full;
+    // Surfaces that reserve space first, so the others lay out in what remains.
+    var pass: u8 = 0;
+    while (pass < 2) : (pass += 1) {
+        var layer: i32 = 3;
+        while (layer >= 0) : (layer -= 1) {
+            for (server.layer_surfaces.items) |ls| {
+                if (ls.surface.*.current.layer != layer) continue;
+                const exclusive = ls.surface.*.current.exclusive_zone > 0;
+                if ((pass == 0) != exclusive) continue;
+                c.wlr_scene_layer_surface_v1_configure(ls.scene, &full, &usable);
+            }
+        }
+    }
+    const area = layout.Rect{ .x = usable.x, .y = usable.y, .w = usable.width, .h = usable.height };
+    const changed = if (server.usable) |old| !std.meta.eql(old, area) else true;
+    server.usable = area;
+    if (changed) arrange();
 }
 
 // ---- pointer -------------------------------------------------------------------------------------------------
@@ -485,7 +711,8 @@ fn onCursorButton(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     if (event.state == c.WL_POINTER_BUTTON_STATE_RELEASED) {
         resetCursorMode();
     } else if (windowAt(server.cursor.*.x, server.cursor.*.y)) |hit| {
-        focus(hit.toplevel);
+        if (hit.toplevel) |t| focus(t);
+        if (hit.layer) |ls| focusLayer(ls);
     }
 }
 
@@ -633,6 +860,10 @@ pub fn main() !void {
     const scene = c.wlr_scene_create() orelse return error.NoScene;
     const scene_layout = c.wlr_scene_attach_output_layout(scene, output_layout) orelse return error.NoScene;
     const xdg_shell = c.wlr_xdg_shell_create(display, 3) orelse return error.NoXdgShell;
+    const layer_shell = c.wlr_layer_shell_v1_create(display, 4) orelse return error.NoLayerShell;
+    const foreign = c.wlr_foreign_toplevel_manager_v1_create(display) orelse return error.NoForeignToplevel;
+    var trees: [5]*c.wlr_scene_tree = undefined;
+    for (&trees) |*t| t.* = c.wlr_scene_tree_create(&scene.*.tree) orelse return error.NoScene;
     const cursor = c.wlr_cursor_create() orelse return error.NoCursor;
     c.wlr_cursor_attach_output_layout(cursor, output_layout);
     const cursor_mgr = c.wlr_xcursor_manager_create(null, 24) orelse return error.NoCursor;
@@ -647,6 +878,9 @@ pub fn main() !void {
         .scene_layout = scene_layout,
         .output_layout = output_layout,
         .xdg_shell = xdg_shell,
+        .layer_shell = layer_shell,
+        .foreign = foreign,
+        .trees = trees,
         .cursor = cursor,
         .cursor_mgr = cursor_mgr,
         .seat = seat,
@@ -656,6 +890,7 @@ pub fn main() !void {
     listen(&backend.*.events.new_output, &server.new_output, onNewOutput);
     listen(&xdg_shell.*.events.new_toplevel, &server.new_xdg_toplevel, onNewToplevel);
     listen(&xdg_shell.*.events.new_popup, &server.new_xdg_popup, onNewPopup);
+    listen(&layer_shell.*.events.new_surface, &server.new_layer_surface, onNewLayerSurface);
     listen(&cursor.*.events.motion, &server.cursor_motion, onCursorMotion);
     listen(&cursor.*.events.motion_absolute, &server.cursor_motion_absolute, onCursorMotionAbsolute);
     listen(&cursor.*.events.button, &server.cursor_button, onCursorButton);
@@ -678,6 +913,7 @@ pub fn main() !void {
     unlisten(&server.layout_change);
     unlisten(&server.new_xdg_toplevel);
     unlisten(&server.new_xdg_popup);
+    unlisten(&server.new_layer_surface);
     unlisten(&server.cursor_motion);
     unlisten(&server.cursor_motion_absolute);
     unlisten(&server.cursor_button);
