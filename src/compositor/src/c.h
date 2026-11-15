@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
+#include <unistd.h>
 #include <wayland-server-core.h>
 #include <xkbcommon/xkbcommon.h>
 #include <ext-workspace-v1-protocol.h>

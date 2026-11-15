@@ -1364,6 +1364,40 @@ fn onReload(_: c_int, _: ?*anyopaque) callconv(.c) c_int {
     return 0;
 }
 
+// ---- autostart -----------------------------------------------------------------------------------------------
+
+/// What a session needs running beside the compositor: the same as dkde's labwc autostart. A user's own
+/// `~/.config/dkde/autostart` (a shell script) replaces it. Set DKDE_NO_AUTOSTART to start nothing (tests).
+const default_autostart =
+    "(while [ -S \"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\" ]; do dkde-panel; sleep 1; done) &\n" ++
+    "[ -f \"${XDG_CONFIG_HOME:-$HOME/.config}/dkde/display.sh\" ] && sh \"${XDG_CONFIG_HOME:-$HOME/.config}/dkde/display.sh\" &\n" ++
+    "dkde-idle &\n" ++
+    "command -v pkexec >/dev/null 2>&1 && dkde-polkit &\n";
+
+fn runAutostart() void {
+    if (std.c.getenv("DKDE_NO_AUTOSTART") != null) return;
+    var path_buf: [1024]u8 = undefined;
+    const user_script: ?[:0]const u8 = blk: {
+        if (std.c.getenv("XDG_CONFIG_HOME")) |d| break :blk std.fmt.bufPrintSentinel(&path_buf, "{s}/dkde/autostart", .{std.mem.span(d)}, 0) catch null;
+        const home = std.c.getenv("HOME") orelse break :blk null;
+        break :blk std.fmt.bufPrintSentinel(&path_buf, "{s}/.config/dkde/autostart", .{std.mem.span(home)}, 0) catch null;
+    };
+    if (user_script) |path| {
+        if (c.access(path.ptr, c.R_OK) == 0) {
+            runCommand(std.fmt.allocPrint(gpa, "sh \"{s}\"", .{path}) catch return);
+            return;
+        }
+    }
+    // Written to a file first: the script has quotes of its own.
+    const script_path = std.fmt.bufPrintSentinel(&path_buf, "{s}/dkde-compositor-autostart.sh", .{if (std.c.getenv("XDG_RUNTIME_DIR")) |r| std.mem.span(r) else "/tmp"}, 0) catch return;
+    const file = c.fopen(script_path.ptr, "wb") orelse return;
+    _ = c.fwrite(default_autostart.ptr, 1, default_autostart.len, file);
+    _ = c.fclose(file);
+    var cmd_buf: [1100]u8 = undefined;
+    const cmd = std.fmt.bufPrint(&cmd_buf, "sh {s}", .{script_path}) catch return;
+    runCommand(cmd);
+}
+
 // ---- start ---------------------------------------------------------------------------------------------------
 
 pub fn main() !void {
@@ -1452,6 +1486,7 @@ pub fn main() !void {
     if (!c.wlr_backend_start(backend)) return error.BackendStart;
     _ = c.setenv("WAYLAND_DISPLAY", socket, 1);
     c._wlr_log(c.WLR_INFO, "dkde-compositor running on WAYLAND_DISPLAY=%s", socket);
+    runAutostart();
 
     c.wl_display_run(display);
 

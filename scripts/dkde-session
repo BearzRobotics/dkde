@@ -12,8 +12,8 @@ case "${1:-}" in
 esac
 # The dkde Wayland session: greetd (or any login manager, or a tty) runs this.
 # It prepares the environment a systemd-less system does not provide, then
-# starts labwc under a private session D-Bus when one can be had. The labwc
-# autostart (see data/labwc/autostart) starts the panel.
+# starts labwc (or the compositor named by DKDE_COMPOSITOR) under a private session
+# D-Bus when one can be had. The labwc autostart (see data/labwc/autostart) starts the panel.
 
 export XDG_SESSION_TYPE=wayland
 
@@ -123,11 +123,18 @@ seat_check
 
 # A session bus is optional (SPEC.md 2): notifications and the tray use it.
 started=$(date +%s)
+# The compositor is labwc unless DKDE_COMPOSITOR names another (dkde-compositor, DKDE's own, which starts the
+# panel itself; labwc's autostart file does that for labwc).
+compositor="${DKDE_COMPOSITOR:-labwc}"
+if ! command -v "$compositor" >/dev/null 2>&1; then
+    echo "dkde-session: $compositor not found; using labwc"
+    compositor=labwc
+fi
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
-    dbus-run-session -- labwc "$@"
+    dbus-run-session -- "$compositor" "$@"
 else
-    labwc "$@"
+    "$compositor" "$@"
 fi
 status=$?
-echo "dkde-session: labwc exited with status $status after $(( $(date +%s) - started )) s"
+echo "dkde-session: $compositor exited with status $status after $(( $(date +%s) - started )) s"
 exit "$status"
