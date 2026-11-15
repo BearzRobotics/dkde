@@ -1770,7 +1770,34 @@ fn runAutostart() void {
 
 // ---- start ---------------------------------------------------------------------------------------------------
 
-pub fn main() !void {
+const version = "0.3.0";
+
+const help_text =
+    "dkde-compositor - DKDE's own Wayland compositor (experimental)\n\n" ++
+    "Usage: dkde-compositor\n\n" ++
+    "  -h, --help     show this help and exit\n" ++
+    "  -V, --version  show the version and exit\n\n" ++
+    "Settings: ~/.config/dkde/compositor.toml (see dkde-compositor(1)).\n";
+
+pub fn main(init: std.process.Init.Minimal) !void {
+    // The command-line contract every dkde program follows: --help and --version exit 0; an unknown option exits 2.
+    for (init.args.vector[1..]) |arg_z| {
+        const arg = std.mem.span(arg_z);
+        if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
+            _ = std.c.write(1, help_text.ptr, help_text.len);
+            return;
+        }
+        if (std.mem.eql(u8, arg, "-V") or std.mem.eql(u8, arg, "--version")) {
+            const text = "dkde-compositor " ++ version ++ "\n";
+            _ = std.c.write(1, text.ptr, text.len);
+            return;
+        }
+        if (arg.len > 0 and arg[0] == '-') {
+            const text = "dkde-compositor: unknown option\nTry 'dkde-compositor --help'.\n";
+            _ = std.c.write(2, text.ptr, text.len);
+            std.process.exit(2);
+        }
+    }
     loadEnvironmentFile();
     c.wlr_log_init(if (std.c.getenv("DKDE_DEBUG") != null) c.WLR_DEBUG else c.WLR_INFO, null);
 
