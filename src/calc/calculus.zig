@@ -258,8 +258,13 @@ pub fn limit(ev: *eval.Eval, f: *const Node, x: []const u8, at: f64) Error!f64 {
     // Defined there: that is the limit (for the functions here).
     const direct = ev.float(f, x, at);
     if (std.math.isFinite(direct)) return direct;
-    const left = try approach(ev, f, x, at, -1, false);
-    const right = try approach(ev, f, x, at, 1, false);
+    // A side outside the function's domain (ln x for x < 0) leaves the other.
+    const left_try = approach(ev, f, x, at, -1, false);
+    const right_try = approach(ev, f, x, at, 1, false);
+    if (left_try) |_| {} else |_| return right_try;
+    if (right_try) |_| {} else |_| return left_try;
+    const left = left_try catch unreachable;
+    const right = right_try catch unreachable;
     if (@abs(left - right) > 1e-6 * @max(1, @abs(left))) return error.Domain;
     return (left + right) / 2;
 }
@@ -276,6 +281,9 @@ fn approach(ev: *eval.Eval, f: *const Node, x: []const u8, at: f64, dir: f64, in
         if (!std.math.isFinite(v.*)) return error.Domain;
         h /= 10;
     }
+    // Growing without bound: the limit is infinite.
+    if (@abs(values[7]) > 1e6 and @abs(values[7]) > 5 * @abs(values[6]) and @abs(values[6]) > 5 * @abs(values[5]))
+        return if (values[7] > 0) std.math.inf(f64) else -std.math.inf(f64);
     // Richardson: the error shrinks tenfold per step, so v + (v − prev)/9.
     var best: f64 = values[values.len - 1];
     var best_change: f64 = std.math.inf(f64);
@@ -344,6 +352,8 @@ test "integrals, limits, sums" {
     try std.testing.expectEqualStrings("0.74682413", try f.out("integral(e^(-x²), x, 0, 1)", .radians));
     try std.testing.expectEqualStrings("1", try f.out("limit(sin(x)/x, x, 0)", .radians));
     try std.testing.expectEqualStrings("2.71828183", try f.out("limit((1 + 1/n)^n, n, inf)", .radians));
+    try std.testing.expectEqualStrings("0", try f.out("limit(x ln(x), x, 0)", .radians));
+    try std.testing.expectEqualStrings("0", try f.out("limit(1/x, x, inf)", .radians));
     try std.testing.expectEqualStrings("385", try f.out("sum(k², k, 1, 10)", .radians));
     try std.testing.expectEqualStrings("120", try f.out("prod(k, k, 1, 5)", .radians));
     try std.testing.expectEqualStrings("0.99", try f.out("sum(1/(k(k+1)), k, 1, 99)", .radians));
