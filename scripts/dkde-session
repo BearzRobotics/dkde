@@ -125,6 +125,13 @@ seat_check
 started=$(date +%s)
 # The compositor is labwc unless DKDE_COMPOSITOR names another (dkde-compositor, DKDE's own, which starts the
 # panel itself; labwc's autostart file does that for labwc).
+# ~/.config/dkde/session.conf may hold a line `compositor=dkde-compositor` (the environment wins).
+session_conf="${XDG_CONFIG_HOME:-$HOME/.config}/dkde/session.conf"
+if [ -z "$DKDE_COMPOSITOR" ] && [ -f "$session_conf" ]; then
+    while IFS='=' read -r key value; do
+        [ "$key" = compositor ] && DKDE_COMPOSITOR="$value"
+    done < "$session_conf"
+fi
 compositor="${DKDE_COMPOSITOR:-labwc}"
 if ! command -v "$compositor" >/dev/null 2>&1; then
     echo "dkde-session: $compositor not found; using labwc"

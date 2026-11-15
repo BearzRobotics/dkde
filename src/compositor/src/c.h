@@ -8,7 +8,9 @@
 #include <wayland-server-core.h>
 #include <xkbcommon/xkbcommon.h>
 #include <ext-workspace-v1-protocol.h>
+#include <libinput.h>
 #include <wlr/backend.h>
+#include <wlr/backend/libinput.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>

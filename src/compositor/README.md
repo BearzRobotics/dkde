@@ -29,6 +29,15 @@ master_ratio = 0.55      # the master window's share of the width when tiling
 [workspaces]
 count = 4                # 1 to 9
 
+[input]                  # all optional
+layout = "us"            # xkb layout / variant / options; else XKB_DEFAULT_*, then ~/.config/labwc/environment
+options = "ctrl:nocaps"
+repeat_rate = 25
+repeat_delay = 600
+natural_scrolling = false
+tap_to_click = true
+pointer_speed = 0.0      # -1 to 1
+
 [keys]                   # added to the built-in shortcuts; "none" removes one
 "W-Return" = "exec dkde-term"
 "A-Tab" = "none"
@@ -46,7 +55,7 @@ volume, snapping, dkde-snap's regions) plus Alt+digit workspaces, Alt+T (floatin
 
 The session programs (panel with restart, dkde-idle, dkde-polkit) are started by the compositor from a built-in
 script; `~/.config/dkde/autostart` (a shell script) replaces it. `scripts/dkde-session` runs the compositor named by
-`DKDE_COMPOSITOR` (default labwc).
+`DKDE_COMPOSITOR`, or by a `compositor=` line in `~/.config/dkde/session.conf` (default labwc).
 
 Pointer: Alt+left-drag moves a window, Alt+right-drag resizes it from the nearest corner (a tiled window
 becomes floating); title bars drag as usual.

@@ -45,6 +45,7 @@ const Server = struct {
     lock: ?*Lock = null,
     lock_tree: ?*c.wlr_scene_tree = null,
     outputs: std.ArrayList(*Output) = .empty,
+    pointers: std.ArrayList(*c.wlr_input_device) = .empty,
     cursor: *c.wlr_cursor,
     cursor_mgr: *c.wlr_xcursor_manager,
     seat: *c.wlr_seat,
@@ -1079,6 +1080,8 @@ fn onCursorFrame(_: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
 
 const Keyboard = struct {
     keyboard: *c.wlr_keyboard,
+    /// A virtual keyboard (an on-screen keyboard, wtype) brings its own keymap.
+    virtual: bool = false,
     modifiers: c.wl_listener = std.mem.zeroes(c.wl_listener),
     key: c.wl_listener = std.mem.zeroes(c.wl_listener),
     destroy: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -1294,20 +1297,93 @@ fn snapTo(t: *Toplevel, region: keys.Region) void {
     arrange();
 }
 
+// ---- input settings --------------------------------------------------------------------------------------------
+
+/// The `[input]` settings, kept as C strings for xkb.
+var xkb_layout: ?[:0]u8 = null;
+var xkb_variant: ?[:0]u8 = null;
+var xkb_options: ?[:0]u8 = null;
+var input_settings: config.Input = .{};
+
+fn replaceString(slot: *?[:0]u8, value: ?[]const u8) void {
+    if (slot.*) |old| gpa.free(old);
+    slot.* = if (value) |v| gpa.dupeSentinel(u8, v, 0) catch null else null;
+}
+
+fn applyKeymap(keyboard: *c.wlr_keyboard) void {
+    // Null names fall back to XKB_DEFAULT_LAYOUT and friends, which labwc's environment file may set.
+    var names = std.mem.zeroes(c.xkb_rule_names);
+    if (xkb_layout) |v| names.layout = v.ptr;
+    if (xkb_variant) |v| names.variant = v.ptr;
+    if (xkb_options) |v| names.options = v.ptr;
+    const context = c.xkb_context_new(c.XKB_CONTEXT_NO_FLAGS);
+    defer c.xkb_context_unref(context);
+    const keymap = c.xkb_keymap_new_from_names(context, &names, c.XKB_KEYMAP_COMPILE_NO_FLAGS) orelse {
+        c._wlr_log(c.WLR_ERROR, "the keyboard layout in compositor.toml is not valid; keeping the current one");
+        return;
+    };
+    defer c.xkb_keymap_unref(keymap);
+    _ = c.wlr_keyboard_set_keymap(keyboard, keymap);
+    c.wlr_keyboard_set_repeat_info(keyboard, input_settings.repeat_rate, input_settings.repeat_delay);
+}
+
+fn configurePointer(device: *c.wlr_input_device) void {
+    if (!c.wlr_input_device_is_libinput(device)) return;
+    const li = c.wlr_libinput_get_device_handle(device) orelse return;
+    if (input_settings.natural_scrolling) |v| {
+        if (c.libinput_device_config_scroll_has_natural_scroll(li) != 0) _ = c.libinput_device_config_scroll_set_natural_scroll_enabled(li, @intFromBool(v));
+    }
+    if (input_settings.tap_to_click) |v| {
+        if (c.libinput_device_config_tap_get_finger_count(li) > 0) {
+            _ = c.libinput_device_config_tap_set_enabled(li, if (v) c.LIBINPUT_CONFIG_TAP_ENABLED else c.LIBINPUT_CONFIG_TAP_DISABLED);
+        }
+    }
+    if (input_settings.pointer_speed) |v| {
+        if (c.libinput_device_config_accel_is_available(li) != 0) _ = c.libinput_device_config_accel_set_speed(li, v);
+    }
+}
+
+/// Puts the `[input]` settings on every device already plugged in.
+fn applyInput() void {
+    for (server.keyboards.items) |k| {
+        if (!k.virtual) applyKeymap(k.keyboard);
+    }
+    for (server.pointers.items) |d| configurePointer(d);
+}
+
+/// labwc's `~/.config/labwc/environment` (KEY=VALUE lines; Settings > Keyboard writes XKB_DEFAULT_* there):
+/// each variable not already set is set, so the layout chosen in Settings applies here too.
+fn loadEnvironmentFile() void {
+    var path_buf: [1024]u8 = undefined;
+    const path = blk: {
+        if (std.c.getenv("XDG_CONFIG_HOME")) |d| break :blk std.fmt.bufPrintSentinel(&path_buf, "{s}/labwc/environment", .{std.mem.span(d)}, 0) catch return;
+        const home = std.c.getenv("HOME") orelse return;
+        break :blk std.fmt.bufPrintSentinel(&path_buf, "{s}/.config/labwc/environment", .{std.mem.span(home)}, 0) catch return;
+    };
+    const text = readFile(path) orelse return;
+    defer gpa.free(text);
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |raw| {
+        const line = std.mem.trim(u8, raw, " \t\r");
+        if (line.len == 0 or line[0] == '#') continue;
+        const eq = std.mem.indexOfScalar(u8, line, '=') orelse continue;
+        const key = std.mem.trim(u8, line[0..eq], " \t");
+        const value = std.mem.trim(u8, line[eq + 1 ..], " \t");
+        const kz = gpa.dupeSentinel(u8, key, 0) catch continue;
+        defer gpa.free(kz);
+        const vz = gpa.dupeSentinel(u8, value, 0) catch continue;
+        defer gpa.free(vz);
+        _ = c.setenv(kz.ptr, vz.ptr, 0);
+    }
+}
+
 fn addKeyboard(device: *c.wlr_input_device, set_keymap: bool) void {
     const keyboard = c.wlr_keyboard_from_input_device(device);
     const k = gpa.create(Keyboard) catch return;
-    k.* = .{ .keyboard = keyboard };
+    k.* = .{ .keyboard = keyboard, .virtual = !set_keymap };
 
     // A virtual keyboard brings its own keymap; a real one gets ours.
-    if (set_keymap) {
-        const context = c.xkb_context_new(c.XKB_CONTEXT_NO_FLAGS);
-        const keymap = c.xkb_keymap_new_from_names(context, null, c.XKB_KEYMAP_COMPILE_NO_FLAGS);
-        _ = c.wlr_keyboard_set_keymap(keyboard, keymap);
-        c.xkb_keymap_unref(keymap);
-        c.xkb_context_unref(context);
-        c.wlr_keyboard_set_repeat_info(keyboard, 25, 600);
-    }
+    if (set_keymap) applyKeymap(keyboard);
 
     listen(&keyboard.*.events.modifiers, &k.modifiers, Keyboard.onModifiers);
     listen(&keyboard.*.events.key, &k.key, Keyboard.onKey);
@@ -1320,7 +1396,11 @@ fn onNewInput(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     const device: *c.wlr_input_device = @ptrCast(@alignCast(data));
     switch (device.type) {
         c.WLR_INPUT_DEVICE_KEYBOARD => addKeyboard(device, true),
-        c.WLR_INPUT_DEVICE_POINTER => c.wlr_cursor_attach_input_device(server.cursor, device),
+        c.WLR_INPUT_DEVICE_POINTER => {
+            c.wlr_cursor_attach_input_device(server.cursor, device);
+            server.pointers.append(gpa, device) catch {};
+            configurePointer(device);
+        },
         else => {},
     }
     var caps: u32 = c.WL_SEAT_CAPABILITY_POINTER;
@@ -1436,9 +1516,17 @@ fn loadConfig() void {
         }
     }
     buildBindings(cfg.keys);
+    input_settings = cfg.input;
+    replaceString(&xkb_layout, cfg.input.layout);
+    replaceString(&xkb_variant, cfg.input.variant);
+    replaceString(&xkb_options, cfg.input.options);
+    input_settings.layout = null;
+    input_settings.variant = null;
+    input_settings.options = null;
     config.free(gpa, cfg);
     cfg.keys = &.{};
     const was = server.policy;
+    applyInput();
     server.ws.count = cfg.workspaces;
     if (server.ws.active >= server.ws.count) switchWorkspace(server.ws.count - 1);
     workspaces.refresh();
@@ -1513,6 +1601,7 @@ fn runAutostart() void {
 // ---- start ---------------------------------------------------------------------------------------------------
 
 pub fn main() !void {
+    loadEnvironmentFile();
     c.wlr_log_init(if (std.c.getenv("DKDE_DEBUG") != null) c.WLR_DEBUG else c.WLR_INFO, null);
 
     const display = c.wl_display_create() orelse return error.NoDisplay;

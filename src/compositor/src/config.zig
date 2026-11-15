@@ -8,6 +8,15 @@
 //!   gap = 6                  # pixels between tiled windows and the screen edge
 //!   master_ratio = 0.55      # the master window's share of the width when tiling
 //!
+//!   [input]
+//!   layout = "us"            # xkb layout, variant, options (else XKB_DEFAULT_*, then labwc's environment file)
+//!   options = "ctrl:nocaps"
+//!   repeat_rate = 25         # keys per second, and the delay before repeating (ms)
+//!   repeat_delay = 600
+//!   natural_scrolling = false    # touchpads and mice (libinput), all optional
+//!   tap_to_click = true
+//!   pointer_speed = 0.0      # -1 to 1
+//!
 //!   [keys]                   # shortcuts, added to the built-in set (see keys.zig)
 //!   "W-Return" = "exec dkde-term"
 //!
@@ -19,16 +28,33 @@ const toml = @import("toml");
 const layout = @import("layout.zig");
 const keys = @import("keys.zig");
 
+pub const Input = struct {
+    /// xkb layout, variant and options (e.g. "us", "intl", "ctrl:nocaps"); null leaves them to XKB_DEFAULT_*.
+    layout: ?[]const u8 = null,
+    variant: ?[]const u8 = null,
+    options: ?[]const u8 = null,
+    repeat_rate: i32 = 25,
+    repeat_delay: i32 = 600,
+    natural_scrolling: ?bool = null,
+    tap_to_click: ?bool = null,
+    /// libinput pointer acceleration, -1 (slowest) to 1 (fastest).
+    pointer_speed: ?f64 = null,
+};
+
 pub const Config = struct {
     policy: layout.Policy = .floating,
     options: layout.Options = .{},
     /// How many virtual desktops (1 to 9).
     workspaces: usize = 4,
+    input: Input = .{},
     /// The user's `[keys]` entries, on top of the built-in shortcuts (owned: see `free`).
     keys: []const keys.Entry = &.{},
 };
 
 pub fn free(gpa: std.mem.Allocator, config: Config) void {
+    if (config.input.layout) |v| gpa.free(v);
+    if (config.input.variant) |v| gpa.free(v);
+    if (config.input.options) |v| gpa.free(v);
     for (config.keys) |e| {
         gpa.free(e.key);
         gpa.free(e.action);
@@ -45,6 +71,35 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
     };
     defer doc.deinit();
 
+    if (doc.root.getTable("input")) |t| {
+        const inp = &config.input;
+        if (t.getString("layout")) |v| inp.layout = try gpa.dupe(u8, v);
+        if (t.getString("variant")) |v| inp.variant = try gpa.dupe(u8, v);
+        if (t.getString("options")) |v| inp.options = try gpa.dupe(u8, v);
+        if (t.getInt("repeat_rate")) |v| {
+            if (v < 1 or v > 200) {
+                try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[input] repeat_rate = {d}: expected 1 to 200; using 25", .{v}));
+            } else inp.repeat_rate = @intCast(v);
+        }
+        if (t.getInt("repeat_delay")) |v| {
+            if (v < 100 or v > 3000) {
+                try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[input] repeat_delay = {d}: expected 100 to 3000; using 600", .{v}));
+            } else inp.repeat_delay = @intCast(v);
+        }
+        if (t.get("natural_scrolling")) |v| switch (v) {
+            .boolean => |b| inp.natural_scrolling = b,
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[input] natural_scrolling: expected true or false; ignored")),
+        };
+        if (t.get("tap_to_click")) |v| switch (v) {
+            .boolean => |b| inp.tap_to_click = b,
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[input] tap_to_click: expected true or false; ignored")),
+        };
+        if (t.getFloat("pointer_speed")) |v| {
+            if (v < -1 or v > 1) {
+                try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[input] pointer_speed = {d}: expected -1 to 1; ignored", .{v}));
+            } else inp.pointer_speed = v;
+        }
+    }
     if (doc.root.getTable("keys")) |table| {
         var list: std.ArrayList(keys.Entry) = .empty;
         errdefer list.deinit(gpa);
@@ -180,4 +235,20 @@ test "shortcuts from the settings file" {
     try std.testing.expectEqual(@as(usize, 2), config.keys.len);
     try std.testing.expectEqualStrings("W-Return", config.keys[0].key);
     try std.testing.expectEqual(@as(usize, 2), warnings.items.len);
+}
+
+test "input settings" {
+    var warnings: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (warnings.items) |w| std.testing.allocator.free(w);
+        warnings.deinit(std.testing.allocator);
+    }
+    const config = try parse(std.testing.allocator, "[input]\nlayout = \"de\"\noptions = \"ctrl:nocaps\"\nrepeat_rate = 40\ntap_to_click = true\npointer_speed = 5\n", &warnings);
+    defer free(std.testing.allocator, config);
+    try std.testing.expectEqualStrings("de", config.input.layout.?);
+    try std.testing.expect(config.input.variant == null);
+    try std.testing.expectEqual(@as(i32, 40), config.input.repeat_rate);
+    try std.testing.expectEqual(@as(?bool, true), config.input.tap_to_click);
+    try std.testing.expect(config.input.pointer_speed == null);
+    try std.testing.expectEqual(@as(usize, 1), warnings.items.len);
 }

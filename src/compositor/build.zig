@@ -98,6 +98,7 @@ pub fn build(b: *std.Build) void {
     root.linkSystemLibrary(wlroots, .{});
     root.linkSystemLibrary("wayland-server", .{});
     root.linkSystemLibrary("xkbcommon", .{});
+    root.linkSystemLibrary("libinput", .{});
     root.linkSystemLibrary("pixman-1", .{});
 
     const exe = b.addExecutable(.{ .name = "dkde-compositor", .root_module = root });
