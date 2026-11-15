@@ -37,6 +37,31 @@ pub fn build(b: *std.Build) void {
     const ws_glue = b.addSystemCommand(&.{ "wayland-scanner", "private-code", ws_xml });
     const ws_code = ws_glue.addOutputFileArg("ext-workspace-v1-protocol.c");
 
+    // Server headers of the other protocols wlroots' headers include.
+    const more = [_][2][]const u8{
+        .{ "staging/cursor-shape/cursor-shape-v1", "cursor-shape-v1" },
+        .{ "unstable/tablet/tablet-unstable-v2", "tablet-unstable-v2" },
+        .{ "staging/fractional-scale/fractional-scale-v1", "fractional-scale-v1" },
+        .{ "unstable/xdg-decoration/xdg-decoration-unstable-v1", "xdg-decoration-unstable-v1" },
+        .{ "staging/ext-idle-notify/ext-idle-notify-v1", "ext-idle-notify-v1" },
+        .{ "unstable/primary-selection/primary-selection-unstable-v1", "primary-selection-unstable-v1" },
+        .{ "stable/viewporter/viewporter", "viewporter" },
+    };
+    var more_headers: [more.len]std.Build.LazyPath = undefined;
+    for (more, 0..) |entry, i| {
+        const run = b.addSystemCommand(&.{ "wayland-scanner", "server-header", b.fmt("{s}/{s}.xml", .{ protocols, entry[0] }) });
+        more_headers[i] = run.addOutputFileArg(b.fmt("{s}-protocol.h", .{entry[1]}));
+    }
+
+    // And the ones whose XML is in the repository's protocols/ folder.
+    const repo = [_][]const u8{ "virtual-keyboard-unstable-v1", "wlr-virtual-pointer-unstable-v1" };
+    var repo_headers: [repo.len]std.Build.LazyPath = undefined;
+    for (repo, 0..) |name, i| {
+        const run = b.addSystemCommand(&.{ "wayland-scanner", "server-header" });
+        run.addFileArg(b.path(b.fmt("../../protocols/{s}.xml", .{name})));
+        repo_headers[i] = run.addOutputFileArg(b.fmt("{s}-protocol.h", .{name}));
+    }
+
     // wlroots, wayland-server and xkbcommon through Zig's C interop.
     const translate_c = b.addTranslateC(.{
         .root_source_file = b.path("src/c.h"),
@@ -47,6 +72,8 @@ pub fn build(b: *std.Build) void {
     translate_c.addIncludePath(layer_header.dirname());
     translate_c.addIncludePath(toplevel_header.dirname());
     translate_c.addIncludePath(ws_header.dirname());
+    for (more_headers) |h| translate_c.addIncludePath(h.dirname());
+    for (repo_headers) |h| translate_c.addIncludePath(h.dirname());
     translate_c.linkSystemLibrary(wlroots, .{});
     translate_c.linkSystemLibrary("wayland-server", .{});
     translate_c.linkSystemLibrary("xkbcommon", .{});

@@ -35,6 +35,7 @@ const Server = struct {
     layer_surfaces: std.ArrayList(*LayerSurface) = .empty,
     /// What the layer surfaces (panels) leave free for windows.
     usable: ?layout.Rect = null,
+    idle: *c.wlr_idle_notifier_v1,
     cursor: *c.wlr_cursor,
     cursor_mgr: *c.wlr_xcursor_manager,
     seat: *c.wlr_seat,
@@ -59,6 +60,11 @@ const Server = struct {
     new_xdg_toplevel: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_xdg_popup: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_layer_surface: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    new_decoration: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    new_virtual_keyboard: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    new_virtual_pointer: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    request_set_primary: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    request_set_shape: c.wl_listener = std.mem.zeroes(c.wl_listener),
     cursor_motion: c.wl_listener = std.mem.zeroes(c.wl_listener),
     cursor_motion_absolute: c.wl_listener = std.mem.zeroes(c.wl_listener),
     cursor_button: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -146,6 +152,10 @@ const Toplevel = struct {
     /// Where it was before tiling took it, to put it back.
     saved: ?layout.Rect = null,
     minimized: bool = false,
+    maximized: bool = false,
+    fullscreen: bool = false,
+    /// Where it was before it was maximized or made fullscreen.
+    before: ?layout.Rect = null,
     /// The workspace it is on.
     workspace: usize = 0,
     /// Where tiling wants the window's content; kept so it can be moved again when the client changes its own margins.
@@ -228,15 +238,14 @@ const Toplevel = struct {
         beginGrab(self, .resize, event.edges);
     }
 
-    // Maximize and fullscreen are not done yet; the client is told its state is unchanged.
     fn onRequestMaximize(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Toplevel = @fieldParentPtr("request_maximize", listener.?);
-        if (self.xdg.base.*.initialized) _ = c.wlr_xdg_surface_schedule_configure(self.xdg.base);
+        setMaximized(self, self.xdg.requested.maximized);
     }
 
     fn onRequestFullscreen(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Toplevel = @fieldParentPtr("request_fullscreen", listener.?);
-        if (self.xdg.base.*.initialized) _ = c.wlr_xdg_surface_schedule_configure(self.xdg.base);
+        setFullscreen(self, self.xdg.requested.fullscreen);
     }
 };
 
@@ -322,6 +331,60 @@ fn setMinimized(t: *Toplevel, minimized: bool) void {
         }
     }
     arrange();
+}
+
+// ---- maximize and fullscreen -----------------------------------------------------------------------------------
+
+/// The whole screen (panels included), for fullscreen windows.
+fn screenArea() layout.Rect {
+    var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
+    c.wlr_output_layout_get_box(server.output_layout, null, &box);
+    if (box.width <= 0 or box.height <= 0) return .{ .x = 0, .y = 0, .w = 1280, .h = 720 };
+    return .{ .x = box.x, .y = box.y, .w = box.width, .h = box.height };
+}
+
+fn setMaximized(t: *Toplevel, on: bool) void {
+    if (!t.xdg.base.*.initialized) return;
+    if (on == t.maximized) {
+        _ = c.wlr_xdg_surface_schedule_configure(t.xdg.base);
+        return;
+    }
+    t.maximized = on;
+    _ = c.wlr_xdg_toplevel_set_maximized(t.xdg, on);
+    if (on) {
+        if (t.before == null) t.before = geometryOf(t);
+        place(t, workArea());
+    } else if (!t.fullscreen) {
+        leaveBig(t);
+    }
+    arrange();
+}
+
+fn setFullscreen(t: *Toplevel, on: bool) void {
+    if (!t.xdg.base.*.initialized) return;
+    if (on == t.fullscreen) {
+        _ = c.wlr_xdg_surface_schedule_configure(t.xdg.base);
+        return;
+    }
+    t.fullscreen = on;
+    _ = c.wlr_xdg_toplevel_set_fullscreen(t.xdg, on);
+    if (on) {
+        if (t.before == null) t.before = geometryOf(t);
+        place(t, screenArea());
+        c.wlr_scene_node_reparent(&t.tree.*.node, server.trees[4]);
+    } else {
+        c.wlr_scene_node_reparent(&t.tree.*.node, server.trees[2]);
+        if (t.maximized) place(t, workArea()) else leaveBig(t);
+    }
+    arrange();
+}
+
+/// Back to the place and size from before maximizing or fullscreen.
+fn leaveBig(t: *Toplevel) void {
+    if (t.before) |r| {
+        place(t, r);
+        t.before = null;
+    }
 }
 
 // ---- workspaces ----------------------------------------------------------------------------------------------
@@ -415,7 +478,7 @@ fn arrange() void {
     var tiled: std.ArrayList(*Toplevel) = .empty;
     defer tiled.deinit(gpa);
     for (server.managed.items) |t| {
-        if (!t.floating and !t.minimized and t.workspace == server.ws.active) tiled.append(gpa, t) catch return;
+        if (!t.floating and !t.minimized and !t.maximized and !t.fullscreen and t.workspace == server.ws.active) tiled.append(gpa, t) catch return;
     }
     const cells = gpa.alloc(layout.Rect, tiled.items.len) catch return;
     defer gpa.free(cells);
@@ -553,7 +616,7 @@ fn windowAt(lx: f64, ly: f64) ?Hit {
     while (tree) |t| : (tree = t.node.parent) {
         const data = t.node.data orelse continue;
         const parent = t.node.parent orelse return null;
-        if (parent == server.trees[2]) {
+        if (parent == server.trees[2] or parent == server.trees[4]) {
             return .{ .toplevel = @ptrCast(@alignCast(data)), .layer = null, .surface = scene_surface.*.surface, .sx = sx, .sy = sy };
         }
         return .{ .toplevel = null, .layer = @ptrCast(@alignCast(data)), .surface = scene_surface.*.surface, .sx = sx, .sy = sy };
@@ -760,12 +823,14 @@ fn processCursorMotion(time: u32) void {
 }
 
 fn onCursorMotion(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    noteActivity();
     const event: *c.wlr_pointer_motion_event = @ptrCast(@alignCast(data));
     c.wlr_cursor_move(server.cursor, &event.pointer.*.base, event.delta_x, event.delta_y);
     processCursorMotion(event.time_msec);
 }
 
 fn onCursorMotionAbsolute(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    noteActivity();
     const event: *c.wlr_pointer_motion_absolute_event = @ptrCast(@alignCast(data));
     c.wlr_cursor_warp_absolute(server.cursor, &event.pointer.*.base, event.x, event.y);
     processCursorMotion(event.time_msec);
@@ -781,6 +846,7 @@ fn altHeld() bool {
 
 fn onCursorButton(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     const event: *c.wlr_pointer_button_event = @ptrCast(@alignCast(data));
+    noteActivity();
     c._wlr_log(c.WLR_DEBUG, "button %u state %d alt=%d keyboards=%d", event.button, @as(c_int, @intCast(event.state)), @as(c_int, @intFromBool(altHeld())), @as(c_int, @intCast(server.keyboards.items.len)));
     // Alt + left button drags the window under the pointer, Alt + right button resizes it from the nearest corner;
     // the client never sees these clicks.
@@ -847,6 +913,7 @@ const Keyboard = struct {
     fn onKey(listener: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
         const self: *Keyboard = @fieldParentPtr("key", listener.?);
         const event: *c.wlr_keyboard_key_event = @ptrCast(@alignCast(data));
+        noteActivity();
 
         // Translate the evdev keycode to an xkb one and look up what it types.
         const keycode: u32 = event.keycode + 8;
@@ -906,17 +973,20 @@ fn keybinding(sym: c.xkb_keysym_t, shift: bool) bool {
     return true;
 }
 
-fn addKeyboard(device: *c.wlr_input_device) void {
+fn addKeyboard(device: *c.wlr_input_device, set_keymap: bool) void {
     const keyboard = c.wlr_keyboard_from_input_device(device);
     const k = gpa.create(Keyboard) catch return;
     k.* = .{ .keyboard = keyboard };
 
-    const context = c.xkb_context_new(c.XKB_CONTEXT_NO_FLAGS);
-    const keymap = c.xkb_keymap_new_from_names(context, null, c.XKB_KEYMAP_COMPILE_NO_FLAGS);
-    _ = c.wlr_keyboard_set_keymap(keyboard, keymap);
-    c.xkb_keymap_unref(keymap);
-    c.xkb_context_unref(context);
-    c.wlr_keyboard_set_repeat_info(keyboard, 25, 600);
+    // A virtual keyboard brings its own keymap; a real one gets ours.
+    if (set_keymap) {
+        const context = c.xkb_context_new(c.XKB_CONTEXT_NO_FLAGS);
+        const keymap = c.xkb_keymap_new_from_names(context, null, c.XKB_KEYMAP_COMPILE_NO_FLAGS);
+        _ = c.wlr_keyboard_set_keymap(keyboard, keymap);
+        c.xkb_keymap_unref(keymap);
+        c.xkb_context_unref(context);
+        c.wlr_keyboard_set_repeat_info(keyboard, 25, 600);
+    }
 
     listen(&keyboard.*.events.modifiers, &k.modifiers, Keyboard.onModifiers);
     listen(&keyboard.*.events.key, &k.key, Keyboard.onKey);
@@ -928,13 +998,76 @@ fn addKeyboard(device: *c.wlr_input_device) void {
 fn onNewInput(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     const device: *c.wlr_input_device = @ptrCast(@alignCast(data));
     switch (device.type) {
-        c.WLR_INPUT_DEVICE_KEYBOARD => addKeyboard(device),
+        c.WLR_INPUT_DEVICE_KEYBOARD => addKeyboard(device, true),
         c.WLR_INPUT_DEVICE_POINTER => c.wlr_cursor_attach_input_device(server.cursor, device),
         else => {},
     }
     var caps: u32 = c.WL_SEAT_CAPABILITY_POINTER;
     if (server.keyboards.items.len > 0) caps |= c.WL_SEAT_CAPABILITY_KEYBOARD;
     c.wlr_seat_set_capabilities(server.seat, caps);
+}
+
+/// Clients that ask for server-side decorations get client-side ones: the windows draw their own title bars.
+const Decoration = struct {
+    deco: *c.wlr_xdg_toplevel_decoration_v1,
+    request_mode: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    destroy: c.wl_listener = std.mem.zeroes(c.wl_listener),
+
+    fn apply(self: *Decoration) void {
+        _ = c.wlr_xdg_toplevel_decoration_v1_set_mode(self.deco, c.WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE);
+    }
+
+    fn onRequestMode(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+        const self: *Decoration = @fieldParentPtr("request_mode", listener.?);
+        if (self.deco.toplevel.*.base.*.initialized) self.apply();
+    }
+
+    fn onDestroy(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+        const self: *Decoration = @fieldParentPtr("destroy", listener.?);
+        unlisten(&self.request_mode);
+        unlisten(&self.destroy);
+        gpa.destroy(self);
+    }
+};
+
+fn onNewDecoration(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const deco: *c.wlr_xdg_toplevel_decoration_v1 = @ptrCast(@alignCast(data));
+    const d = gpa.create(Decoration) catch return;
+    d.* = .{ .deco = deco };
+    listen(&deco.events.request_mode, &d.request_mode, Decoration.onRequestMode);
+    listen(&deco.events.destroy, &d.destroy, Decoration.onDestroy);
+    if (deco.toplevel.*.base.*.initialized) d.apply();
+}
+
+/// Tools that type and click for the user (on-screen keyboards, wtype, dkde-pointer, dkde-snap).
+fn onNewVirtualKeyboard(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const vk: *c.wlr_virtual_keyboard_v1 = @ptrCast(@alignCast(data));
+    addKeyboard(&vk.keyboard.base, false);
+    var caps: u32 = c.WL_SEAT_CAPABILITY_POINTER | c.WL_SEAT_CAPABILITY_KEYBOARD;
+    caps |= 0;
+    c.wlr_seat_set_capabilities(server.seat, caps);
+}
+
+fn onNewVirtualPointer(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const event: *c.wlr_virtual_pointer_v1_new_pointer_event = @ptrCast(@alignCast(data));
+    c.wlr_cursor_attach_input_device(server.cursor, &event.new_pointer.*.pointer.base);
+}
+
+fn onRequestSetPrimary(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const event: *c.wlr_seat_request_set_primary_selection_event = @ptrCast(@alignCast(data));
+    c.wlr_seat_set_primary_selection(server.seat, event.source, event.serial);
+}
+
+/// wp-cursor-shape: the client names a shape ("pointer", "text") instead of sending an image.
+fn onRequestSetShape(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const event: *c.wlr_cursor_shape_manager_v1_request_set_shape_event = @ptrCast(@alignCast(data));
+    if (server.seat.*.pointer_state.focused_client != event.seat_client) return;
+    c.wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, c.wlr_cursor_shape_v1_name(event.shape));
+}
+
+/// Anything the user does counts as activity for the idle timers (screen lock, blanking).
+fn noteActivity() void {
+    c.wlr_idle_notifier_v1_notify_activity(server.idle, server.seat);
 }
 
 fn onRequestCursor(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
@@ -1045,6 +1178,14 @@ pub fn main() !void {
     const foreign = c.wlr_foreign_toplevel_manager_v1_create(display) orelse return error.NoForeignToplevel;
     var trees: [5]*c.wlr_scene_tree = undefined;
     for (&trees) |*t| t.* = c.wlr_scene_tree_create(&scene.*.tree) orelse return error.NoScene;
+    const decoration_manager = c.wlr_xdg_decoration_manager_v1_create(display) orelse return error.NoProtocol;
+    const virtual_keyboard = c.wlr_virtual_keyboard_manager_v1_create(display) orelse return error.NoProtocol;
+    const virtual_pointer = c.wlr_virtual_pointer_manager_v1_create(display) orelse return error.NoProtocol;
+    _ = c.wlr_primary_selection_v1_device_manager_create(display);
+    _ = c.wlr_viewporter_create(display);
+    _ = c.wlr_fractional_scale_manager_v1_create(display, 1);
+    const shape_manager = c.wlr_cursor_shape_manager_v1_create(display, 1) orelse return error.NoProtocol;
+    const idle = c.wlr_idle_notifier_v1_create(display) orelse return error.NoProtocol;
     const cursor = c.wlr_cursor_create() orelse return error.NoCursor;
     c.wlr_cursor_attach_output_layout(cursor, output_layout);
     const cursor_mgr = c.wlr_xcursor_manager_create(null, 24) orelse return error.NoCursor;
@@ -1062,6 +1203,7 @@ pub fn main() !void {
         .layer_shell = layer_shell,
         .foreign = foreign,
         .trees = trees,
+        .idle = idle,
         .cursor = cursor,
         .cursor_mgr = cursor_mgr,
         .seat = seat,
@@ -1081,6 +1223,11 @@ pub fn main() !void {
     listen(&cursor.*.events.axis, &server.cursor_axis, onCursorAxis);
     listen(&cursor.*.events.frame, &server.cursor_frame, onCursorFrame);
     listen(&backend.*.events.new_input, &server.new_input, onNewInput);
+    listen(&decoration_manager.*.events.new_toplevel_decoration, &server.new_decoration, onNewDecoration);
+    listen(&virtual_keyboard.*.events.new_virtual_keyboard, &server.new_virtual_keyboard, onNewVirtualKeyboard);
+    listen(&virtual_pointer.*.events.new_virtual_pointer, &server.new_virtual_pointer, onNewVirtualPointer);
+    listen(&shape_manager.*.events.request_set_shape, &server.request_set_shape, onRequestSetShape);
+    listen(&seat.*.events.request_set_primary_selection, &server.request_set_primary, onRequestSetPrimary);
     listen(&seat.*.events.request_set_cursor, &server.request_cursor, onRequestCursor);
     listen(&seat.*.pointer_state.events.focus_change, &server.pointer_focus_change, onPointerFocusChange);
     listen(&seat.*.events.request_set_selection, &server.request_set_selection, onRequestSetSelection);
@@ -1105,6 +1252,11 @@ pub fn main() !void {
     unlisten(&server.cursor_axis);
     unlisten(&server.cursor_frame);
     unlisten(&server.new_input);
+    unlisten(&server.new_decoration);
+    unlisten(&server.new_virtual_keyboard);
+    unlisten(&server.new_virtual_pointer);
+    unlisten(&server.request_set_shape);
+    unlisten(&server.request_set_primary);
     unlisten(&server.request_cursor);
     unlisten(&server.pointer_focus_change);
     unlisten(&server.request_set_selection);
