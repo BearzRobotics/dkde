@@ -33,6 +33,7 @@ const AppEntry = struct {
 };
 
 pub const StartMenu = struct {
+    closing: bool = false,
     allocator: std.mem.Allocator,
     config: *const common.Config,
     window: *gtk.Window,
@@ -78,7 +79,8 @@ pub const StartMenu = struct {
         try self.loadApps();
         self.recent = try common.state.loadList(allocator, "recent.conf", "recent", "apps");
 
-        self.build(bar_height, position);
+        // On X11 the menu is its own small window beside the bar, not a transparent screen-sized overlay.
+        self.build(if (surface.isX11()) 0 else bar_height, position);
 
         surface.setup(window, .{
             .name_space = "dkde-menu",
@@ -90,12 +92,21 @@ pub const StartMenu = struct {
             .size = bar_height,
             .menu_side = position.edge(),
         });
+        // Without an overlay to click on, losing the focus is how an X11 menu closes.
+        if (surface.isX11()) _ = gobject.Object.signals.notify.connect(window, *StartMenu, &onActiveChanged, self, .{ .detail = "is-active" });
         window.present();
         _ = self.search.as(gtk.Widget).grabFocus();
         return self;
     }
 
+    fn onActiveChanged(window: *gtk.Window, _: *gobject.ParamSpec, self: *StartMenu) callconv(.c) void {
+        if (window.isActive() == 0 and !self.closing) self.close();
+    }
+
     pub fn close(self: *StartMenu) void {
+        // Destroying the window changes its focus, which comes back here.
+        if (self.closing) return;
+        self.closing = true;
         self.window.destroy();
         self.freeData();
         const callback = self.on_closed;

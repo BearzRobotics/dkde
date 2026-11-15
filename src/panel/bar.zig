@@ -307,6 +307,7 @@ pub const Bar = struct {
             self.root.as(gtk.Widget).setSizeRequest(-1, self.thickness);
             self.window.setDefaultSize(0, t);
         }
+        surface.span(self.window, self.position.isVertical(), t);
     }
 
     const DesktopClick = struct { desktop: *Desktop, index: usize, popover: *gtk.Popover };

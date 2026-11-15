@@ -47,6 +47,8 @@ const Atom = enum {
     _NET_WM_STATE_MAXIMIZED_HORZ,
     _NET_WM_STATE_HIDDEN,
     _NET_WM_STATE_DEMANDS_ATTENTION,
+    _NET_WM_STATE_SKIP_TASKBAR,
+    _NET_WM_STATE_ABOVE,
     _NET_WM_WINDOW_TYPE,
     _NET_WM_WINDOW_TYPE_DOCK,
     _NET_WM_WINDOW_TYPE_DESKTOP,
@@ -90,6 +92,9 @@ const Client = struct {
     maximized: bool = false,
     fullscreen: bool = false,
     minimized: bool = false,
+    /// Asked for by the client and kept in its state (a pop-up window that is not a task).
+    skip_taskbar: bool = false,
+    above: bool = false,
     mapped: bool = false,
     /// UnmapNotify events caused by our own unmap calls, which are not the client leaving.
     ignore_unmap: u8 = 0,
@@ -285,8 +290,16 @@ fn publishWorkArea() void {
 }
 
 fn publishClientState(cl: *const Client) void {
-    var state: [4]u32 = undefined;
+    var state: [6]u32 = undefined;
     var n: usize = 0;
+    if (cl.skip_taskbar) {
+        state[n] = atom(._NET_WM_STATE_SKIP_TASKBAR);
+        n += 1;
+    }
+    if (cl.above) {
+        state[n] = atom(._NET_WM_STATE_ABOVE);
+        n += 1;
+    }
     if (cl.fullscreen) {
         state[n] = atom(._NET_WM_STATE_FULLSCREEN);
         n += 1;
@@ -296,7 +309,7 @@ fn publishClientState(cl: *const Client) void {
         state[n + 1] = atom(._NET_WM_STATE_MAXIMIZED_HORZ);
         n += 2;
     }
-    if (cl.minimized and n < state.len) {
+    if (cl.minimized) {
         state[n] = atom(._NET_WM_STATE_HIDDEN);
         n += 1;
     }
@@ -377,6 +390,13 @@ fn restack() void {
             _ = c.xcb_configure_window(conn, cl.win, c.XCB_CONFIG_WINDOW_SIBLING | c.XCB_CONFIG_WINDOW_STACK_MODE, &values);
         }
         below = cl.win;
+    }
+    // Windows that asked to stay on top (the Start menu) go above the rest.
+    for (stack.items) |cl| {
+        if (cl.kind == .normal and cl.above and visible(cl)) {
+            const v = [_]u32{c.XCB_STACK_MODE_ABOVE};
+            _ = c.xcb_configure_window(conn, cl.win, c.XCB_CONFIG_WINDOW_STACK_MODE, &v);
+        }
     }
     for (clients.items) |cl| {
         if (cl.kind == .desktop) {
@@ -565,6 +585,8 @@ fn manage(win: c.xcb_window_t) void {
             if (getProp(win, atom(._NET_WM_STATE), c.XCB_ATOM_ATOM, 8)) |r| {
                 defer std.c.free(r);
                 for (propU32(r)) |s| {
+                    if (s == atom(._NET_WM_STATE_SKIP_TASKBAR)) cl.skip_taskbar = true;
+                    if (s == atom(._NET_WM_STATE_ABOVE)) cl.above = true;
                     if (s == atom(._NET_WM_STATE_FULLSCREEN)) cl.fullscreen = true;
                     if (s == atom(._NET_WM_STATE_MAXIMIZED_VERT) or s == atom(._NET_WM_STATE_MAXIMIZED_HORZ)) cl.maximized = true;
                 }
@@ -1008,6 +1030,10 @@ fn onClientMessage(ev: *const c.xcb_client_message_event_t) void {
                 applyStateAction(&cl.fullscreen, d[0]);
             } else if (prop == atom(._NET_WM_STATE_MAXIMIZED_VERT) or prop == atom(._NET_WM_STATE_MAXIMIZED_HORZ)) {
                 applyStateAction(&cl.maximized, d[0]);
+            } else if (prop == atom(._NET_WM_STATE_SKIP_TASKBAR)) {
+                applyStateAction(&cl.skip_taskbar, d[0]);
+            } else if (prop == atom(._NET_WM_STATE_ABOVE)) {
+                applyStateAction(&cl.above, d[0]);
             } else if (prop == atom(._NET_WM_STATE_HIDDEN)) {
                 var m = cl.minimized;
                 applyStateAction(&m, d[0]);
@@ -1112,7 +1138,7 @@ fn publishSupport() void {
         ._NET_WM_STATE,                   ._NET_WM_STATE_FULLSCREEN,     ._NET_WM_STATE_MAXIMIZED_VERT,    ._NET_WM_STATE_MAXIMIZED_HORZ,
         ._NET_WM_STATE_HIDDEN,            ._NET_WM_WINDOW_TYPE,          ._NET_WM_WINDOW_TYPE_DOCK,        ._NET_WM_WINDOW_TYPE_DESKTOP,
         ._NET_WM_WINDOW_TYPE_DIALOG,      ._NET_WM_STRUT,                ._NET_WM_STRUT_PARTIAL,           ._NET_CLOSE_WINDOW,
-        ._NET_WM_NAME,
+        ._NET_WM_NAME,                    ._NET_WM_STATE_SKIP_TASKBAR,   ._NET_WM_STATE_ABOVE,
     };
     var list: [supported.len]u32 = undefined;
     for (supported, 0..) |a, i| list[i] = atom(a);

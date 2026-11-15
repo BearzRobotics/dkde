@@ -7,7 +7,7 @@
 //! It opens its own XCB connection and watches it from the GLib main loop.
 
 const std = @import("std");
-const c = @import("c");
+pub const c = @import("c");
 const glib = @import("glib2");
 const core = @import("core");
 
