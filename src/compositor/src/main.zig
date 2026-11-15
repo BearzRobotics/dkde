@@ -13,6 +13,7 @@ const std = @import("std");
 const c = @import("c");
 const layout = @import("layout.zig");
 const config = @import("config.zig");
+const workspaces = @import("workspaces.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -40,6 +41,7 @@ const Server = struct {
 
     toplevels: std.ArrayList(*Toplevel) = .empty, // focus order, back to front: the last is on top
     managed: std.ArrayList(*Toplevel) = .empty, // mapped windows in the order they appeared (tiling order)
+    ws: workspaces.Workspaces = .{ .on_activate = switchWorkspace },
     policy: layout.Policy = .floating,
     layout_options: layout.Options = .{},
     opened: usize = 0, // windows opened so far, for cascading
@@ -143,6 +145,8 @@ const Toplevel = struct {
     /// Where it was before tiling took it, to put it back.
     saved: ?layout.Rect = null,
     minimized: bool = false,
+    /// The workspace it is on.
+    workspace: usize = 0,
     /// Where tiling wants the window's content; kept so it can be moved again when the client changes its own margins.
     cell: ?layout.Rect = null,
     /// What the taskbar sees of this window.
@@ -169,6 +173,7 @@ const Toplevel = struct {
         server.managed.append(gpa, self) catch {};
         // A window with a parent (a dialog) or a fixed size is not tiled.
         if (self.xdg.parent != null) self.floating = true;
+        self.workspace = server.ws.active;
         // Every window starts at a cascade spot, so the place it goes back to when tiling is switched off is a good one.
         const spot = layout.cascade(workArea(), server.opened);
         c.wlr_scene_node_set_position(&self.tree.*.node, spot.x, spot.y);
@@ -281,6 +286,8 @@ fn onSetAppId(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
 
 fn onHandleActivate(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
     const t: *Toplevel = @fieldParentPtr("handle_activate", listener.?);
+    // Asking for a window on another workspace goes there first.
+    if (t.workspace != server.ws.active) switchWorkspace(t.workspace);
     setMinimized(t, false);
     focus(t);
 }
@@ -300,7 +307,7 @@ fn onHandleMinimize(listener: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) v
 fn setMinimized(t: *Toplevel, minimized: bool) void {
     if (t.minimized == minimized) return;
     t.minimized = minimized;
-    c.wlr_scene_node_set_enabled(&t.tree.*.node, !minimized);
+    showIfVisible(t);
     if (t.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_minimized(h, minimized);
     if (minimized) {
         // The window now on top (not minimized) gets the keyboard.
@@ -312,6 +319,54 @@ fn setMinimized(t: *Toplevel, minimized: bool) void {
                 break;
             }
         }
+    }
+    arrange();
+}
+
+// ---- workspaces ----------------------------------------------------------------------------------------------
+
+/// A window is drawn when it is on the current workspace and not minimized.
+fn showIfVisible(t: *Toplevel) void {
+    c.wlr_scene_node_set_enabled(&t.tree.*.node, !t.minimized and t.workspace == server.ws.active);
+}
+
+/// The window on top among those on the current workspace, if any.
+fn topWindow() ?*Toplevel {
+    var i = server.toplevels.items.len;
+    while (i > 0) : (i -= 1) {
+        const t = server.toplevels.items[i - 1];
+        if (!t.minimized and t.workspace == server.ws.active) return t;
+    }
+    return null;
+}
+
+fn switchWorkspace(index: usize) void {
+    if (index >= server.ws.count or index == server.ws.active) return;
+    server.ws.active = index;
+    for (server.toplevels.items) |t| showIfVisible(t);
+    if (topWindow()) |t| {
+        // focus() does nothing for the window that already has it, so clear first.
+        c.wlr_seat_keyboard_clear_focus(server.seat);
+        focus(t);
+    } else {
+        c.wlr_seat_keyboard_clear_focus(server.seat);
+        for (server.toplevels.items) |t| {
+            if (t.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_activated(h, false);
+        }
+    }
+    arrange();
+    workspaces.refresh();
+}
+
+/// Alt+Shift+number: sends the focused window to another workspace.
+fn moveWindowToWorkspace(index: usize) void {
+    if (index >= server.ws.count) return;
+    const t = topWindow() orelse return;
+    t.workspace = index;
+    showIfVisible(t);
+    if (topWindow()) |next| {
+        c.wlr_seat_keyboard_clear_focus(server.seat);
+        focus(next);
     }
     arrange();
 }
@@ -359,7 +414,7 @@ fn arrange() void {
     var tiled: std.ArrayList(*Toplevel) = .empty;
     defer tiled.deinit(gpa);
     for (server.managed.items) |t| {
-        if (!t.floating and !t.minimized) tiled.append(gpa, t) catch return;
+        if (!t.floating and !t.minimized and t.workspace == server.ws.active) tiled.append(gpa, t) catch return;
     }
     const cells = gpa.alloc(layout.Rect, tiled.items.len) catch return;
     defer gpa.free(cells);
@@ -787,6 +842,18 @@ const Keyboard = struct {
 /// Compositor shortcuts (with Alt held). True when the key was one of them.
 fn keybinding(sym: c.xkb_keysym_t, shift: bool) bool {
     c._wlr_log(c.WLR_DEBUG, "Alt+key %u", sym);
+    // Alt+1…9 switches workspace; with Shift (which turns the digit into ! @ # …) it moves the window.
+    const shifted = [_]c.xkb_keysym_t{ c.XKB_KEY_exclam, c.XKB_KEY_at, c.XKB_KEY_numbersign, c.XKB_KEY_dollar, c.XKB_KEY_percent, c.XKB_KEY_asciicircum, c.XKB_KEY_ampersand, c.XKB_KEY_asterisk, c.XKB_KEY_parenleft };
+    if (sym >= c.XKB_KEY_1 and sym <= c.XKB_KEY_9) {
+        switchWorkspace(sym - c.XKB_KEY_1);
+        return true;
+    }
+    for (shifted, 0..) |k, i| {
+        if (sym == k) {
+            moveWindowToWorkspace(i);
+            return true;
+        }
+    }
     switch (sym) {
         c.XKB_KEY_t, c.XKB_KEY_T => togglePolicy(),
         c.XKB_KEY_space => if (shift) toggleWindowFloating() else return false,
@@ -875,6 +942,9 @@ fn loadConfig() void {
         }
     }
     const was = server.policy;
+    server.ws.count = cfg.workspaces;
+    if (server.ws.active >= server.ws.count) switchWorkspace(server.ws.count - 1);
+    workspaces.refresh();
     server.policy = cfg.policy;
     server.layout_options = cfg.options;
     // The policy changed: put windows where it says (or back where they were).
@@ -957,6 +1027,7 @@ pub fn main() !void {
         .seat = seat,
     };
 
+    workspaces.init(display, &server.ws);
     loadConfig();
     _ = c.wl_event_loop_add_signal(c.wl_display_get_event_loop(display), c.SIGHUP, onReload, null);
     listen(&output_layout.*.events.change, &server.layout_change, onLayoutChange);
@@ -981,6 +1052,7 @@ pub fn main() !void {
 
     c.wl_display_run(display);
 
+    workspaces.deinit();
     // Detach the listeners first: wlroots asserts that none are left when it frees an object.
     unlisten(&server.new_output);
     unlisten(&server.layout_change);

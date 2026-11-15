@@ -57,3 +57,7 @@ Testing caveat: `wtype` builds its own keymap, so its keycodes do not match a us
 - wlroots' `wlr_scene_xdg_surface` already shifts the surface by the window geometry, so the tree's position is where the window's content (without CSD shadows) appears. Do not subtract the geometry offset again (a first version did, and tiled windows sat 14 px too far up and left).
 - Tiled windows are told they are tiled (`xdg_toplevel.set_tiled`), so GTK draws them square and without shadows.
 - Test-harness rule: anything that starts dkde-panel must run under `dbus-run-session` with an empty `XDG_CONFIG_DIRS`, or the panel starts the real session's autostart programs.
+
+## Workspaces (ext-workspace-v1)
+
+wlroots 0.19 has no helper for `ext-workspace-v1`, so `src/workspaces.zig` serves it on libwayland: `build.zig` runs `wayland-scanner server-header` (for the C interop) and `private-code` (the protocol's `wl_interface` tables, compiled with `addCSourceFile`). One group holds N workspaces (`[workspaces] count`, 1 to 9, default 4); a client's `activate` is applied at `commit`. The compositor switches with Alt+1…9 and moves the focused window with Alt+Shift+1…9; windows on other workspaces are hidden (the taskbar still lists them, and activating one switches to its workspace first); tiling lays out only the current workspace. Verified nested with dkde-panel: its workspace indicator follows the switch, a window opened on workspace 2 is not drawn on workspace 1.

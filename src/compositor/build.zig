@@ -28,6 +28,14 @@ pub fn build(b: *std.Build) void {
     toplevel_scan.addFileArg(b.path("../../protocols/wlr-foreign-toplevel-management-unstable-v1.xml"));
     const toplevel_header = toplevel_scan.addOutputFileArg("wlr-foreign-toplevel-management-unstable-v1-protocol.h");
 
+    // ext-workspace-v1 is not in wlroots 0.19: the compositor serves it itself, from wayland-scanner's
+    // header (for the C interop) and glue code (the protocol's wl_interface tables).
+    const ws_xml = b.fmt("{s}/staging/ext-workspace/ext-workspace-v1.xml", .{protocols});
+    const ws_head = b.addSystemCommand(&.{ "wayland-scanner", "server-header", ws_xml });
+    const ws_header = ws_head.addOutputFileArg("ext-workspace-v1-protocol.h");
+    const ws_glue = b.addSystemCommand(&.{ "wayland-scanner", "private-code", ws_xml });
+    const ws_code = ws_glue.addOutputFileArg("ext-workspace-v1-protocol.c");
+
     // wlroots, wayland-server and xkbcommon through Zig's C interop.
     const translate_c = b.addTranslateC(.{
         .root_source_file = b.path("src/c.h"),
@@ -37,6 +45,7 @@ pub fn build(b: *std.Build) void {
     translate_c.addIncludePath(xdg_header.dirname());
     translate_c.addIncludePath(layer_header.dirname());
     translate_c.addIncludePath(toplevel_header.dirname());
+    translate_c.addIncludePath(ws_header.dirname());
     translate_c.linkSystemLibrary("wlroots-0.19", .{});
     translate_c.linkSystemLibrary("wayland-server", .{});
     translate_c.linkSystemLibrary("xkbcommon", .{});
@@ -49,6 +58,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     root.addImport("c", translate_c.createModule());
+    root.addCSourceFile(.{ .file = ws_code });
     const toml = b.dependency("toml", .{ .target = target, .optimize = optimize }).module("toml");
     root.addImport("toml", toml);
     root.linkSystemLibrary("wlroots-0.19", .{});

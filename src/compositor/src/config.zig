@@ -7,6 +7,9 @@
 //!   layout = "floating"      # or "tiling": how windows are placed
 //!   gap = 6                  # pixels between tiled windows and the screen edge
 //!   master_ratio = 0.55      # the master window's share of the width when tiling
+//!
+//!   [workspaces]
+//!   count = 4                # virtual desktops, 1 to 9 (Alt+1…9 switches, Alt+Shift+1…9 moves a window)
 
 const std = @import("std");
 const toml = @import("toml");
@@ -15,6 +18,8 @@ const layout = @import("layout.zig");
 pub const Config = struct {
     policy: layout.Policy = .floating,
     options: layout.Options = .{},
+    /// How many virtual desktops (1 to 9).
+    workspaces: usize = 4,
 };
 
 /// Reads settings from TOML text. Problems are described in `warnings`.
@@ -26,6 +31,16 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
     };
     defer doc.deinit();
 
+    if (doc.root.getTable("workspaces")) |w| {
+        if (w.get("count")) |v| switch (v) {
+            .integer => |i| {
+                if (i < 1 or i > 9) {
+                    try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[workspaces] count = {d}: expected 1 to 9; using {d}", .{ i, config.workspaces }));
+                } else config.workspaces = @intCast(i);
+            },
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[workspaces] count: expected an integer; using the default")),
+        };
+    }
     const windows = doc.root.getTable("windows") orelse return config;
     if (windows.get("layout")) |v| switch (v) {
         .string => |s| {
@@ -78,6 +93,19 @@ test "tiling with a gap and a ratio" {
     try std.testing.expectEqual(@as(i32, 12), config.options.gap);
     try std.testing.expectApproxEqAbs(@as(f32, 0.6), config.options.master_ratio, 0.001);
     try std.testing.expectEqual(@as(usize, 0), warnings.items.len);
+}
+
+test "workspace count" {
+    var warnings: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (warnings.items) |w| std.testing.allocator.free(w);
+        warnings.deinit(std.testing.allocator);
+    }
+    const config = try parse(std.testing.allocator, "[workspaces]\ncount = 6\n", &warnings);
+    try std.testing.expectEqual(@as(usize, 6), config.workspaces);
+    const bad = try parse(std.testing.allocator, "[workspaces]\ncount = 12\n", &warnings);
+    try std.testing.expectEqual(@as(usize, 4), bad.workspaces);
+    try std.testing.expectEqual(@as(usize, 1), warnings.items.len);
 }
 
 test "wrong values are reported and replaced by defaults" {

@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <wayland-server-core.h>
 #include <xkbcommon/xkbcommon.h>
+#include <ext-workspace-v1-protocol.h>
 #include <wlr/backend.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
