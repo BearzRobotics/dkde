@@ -12,6 +12,7 @@ const cli = @import("cli");
 const glib = @import("glib2");
 const wayland = @import("wayland");
 const core = @import("core");
+const wldesktop = @import("wldesktop");
 
 const wl = wayland.client.wl;
 const ext = wayland.client.ext;
@@ -31,6 +32,7 @@ const Idle = struct {
     notifier: ?*ext.IdleNotifierV1 = null,
     seat: ?*wl.Seat = null,
     registry: *wl.Registry,
+    desktop: core.desktop.Desktop = .{},
     notifications: std.ArrayList(*Watch) = .empty,
     /// Minutes are treated as seconds when set, so a test does not wait an hour.
     fast: bool = false,
@@ -111,6 +113,10 @@ const Idle = struct {
         return self.allocator.dupe(u8, found) catch null;
     }
 
+    fn onScreens(_: ?*anyopaque, ok: bool) void {
+        log.debug("switching the screens: {s}", .{if (ok) "done" else "refused"});
+    }
+
     fn shell(self: *Idle, command: []const u8) void {
         // Run in the background so the wait for the next event never blocks.
         const line = std.fmt.allocPrintSentinel(self.allocator, "{s} >/dev/null 2>&1 &", .{command}, 0) catch return;
@@ -127,10 +133,17 @@ const Idle = struct {
                 self.shell(cmd);
             },
             .screen_off => {
-                var buf: [256]u8 = undefined;
-                const script = std.fmt.bufPrint(&buf, "for o in $(wlr-randr | awk '/^[^ ]/ {{print $1}}'); do wlr-randr --output \"$o\" {s}; done", .{if (idled) "--off" else "--on"}) catch return;
                 log.info("screen {s}", .{if (idled) "off" else "on"});
-                self.shell(script);
+                var edits: [16]core.desktop.OutputEdit = undefined;
+                var n: usize = 0;
+                for (self.desktop.outputs()) |o| {
+                    if (n == edits.len) break;
+                    edits[n] = .{ .id = o.id, .change = .{ .enabled = !idled } };
+                    n += 1;
+                }
+                if (n == 0) return log.warn("no outputs to switch (the compositor lacks wlr-output-management)", .{});
+                self.desktop.configureOutputs(edits[0..n], onScreens, self);
+                _ = self.display.flush();
             },
             .sleep => if (idled) {
                 const cmd = self.sleepCommand() orelse return log.warn("no sleep command found: set [menu] sleep-command", .{});
@@ -183,6 +196,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
     defer idle.config.deinit();
     idle.registry.setListener(*Idle, Idle.registryEvent, &idle);
     if (display.roundtrip() != .SUCCESS) std.process.exit(1);
+    idle.desktop = wldesktop.Wayland.create(allocator, display, .{ .windows = false, .workspaces = false, .capture = false }, .{ .data = &idle });
+    defer idle.desktop.destroy();
     if (idle.notifier == null) {
         log.err("the compositor does not offer ext-idle-notify-v1", .{});
         std.process.exit(1);

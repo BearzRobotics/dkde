@@ -88,20 +88,46 @@ pub const Workspace = struct {
     urgent: bool = false,
 };
 
+pub const Mode = struct {
+    width: u32,
+    height: u32,
+    /// Millihertz; 0 when unknown.
+    refresh_mhz: u32 = 0,
+    preferred: bool = false,
+    current: bool = false,
+};
+
 /// An output (monitor). The id is only meaningful to the backend that made it
-/// (spec 6.5: ids are not interchangeable between backends).
+/// (spec 6.5: ids are not interchangeable between backends). Strings and the
+/// mode list are backend-owned and valid until the next change callback.
 pub const Output = struct {
     id: u64,
     name: []const u8 = "",
+    description: []const u8 = "",
+    /// Size and refresh of the current mode; 0 when the output is off.
     width: u32 = 0,
     height: u32 = 0,
-    /// Millihertz; 0 when unknown.
     refresh_mhz: u32 = 0,
     scale: f32 = 1,
     enabled: bool = true,
+    x: i32 = 0,
+    y: i32 = 0,
+    modes: []const Mode = &.{},
 };
 
+/// What to change on one output; null fields stay as they are.
+pub const OutputChange = struct {
+    enabled: ?bool = null,
+    mode: ?Mode = null,
+    scale: ?f32 = null,
+};
+
+/// One output's change in a batch.
+pub const OutputEdit = struct { id: u64, change: OutputChange };
+
 pub const CaptureTarget = union(enum) {
+    /// The first output the backend knows.
+    primary,
     output: u64,
     window: *Window,
 };
@@ -117,7 +143,12 @@ pub const Image = struct {
     }
 };
 
-pub const Error = error{Unsupported} || std.mem.Allocator.Error || error{CaptureFailed};
+pub const Error = error{ Unsupported, CaptureFailed, OutOfMemory, BadFormat };
+
+/// Called once when a capture finishes. The image is owned by the callee.
+pub const CaptureDone = *const fn (ctx: ?*anyopaque, result: Error!Image) void;
+/// Called once when an output change has been applied or refused.
+pub const ConfigDone = *const fn (ctx: ?*anyopaque, ok: bool) void;
 
 /// What a display backend provides. Entries a backend cannot do are null and
 /// its capability set leaves the matching capability out.
@@ -127,7 +158,8 @@ pub const VTable = struct {
     workspaces: ?*const fn (*anyopaque) []const *const Workspace = null,
     activate_workspace: ?*const fn (*anyopaque, usize) void = null,
     outputs: ?*const fn (*anyopaque) []const Output = null,
-    capture: ?*const fn (*anyopaque, std.mem.Allocator, CaptureTarget) Error!Image = null,
+    configure_outputs: ?*const fn (*anyopaque, []const OutputEdit, ConfigDone, ?*anyopaque) void = null,
+    capture: ?*const fn (*anyopaque, std.mem.Allocator, CaptureTarget, CaptureDone, ?*anyopaque) void = null,
     destroy: *const fn (*anyopaque) void,
 };
 
@@ -198,17 +230,32 @@ pub const Desktop = struct {
         return f(b.ptr);
     }
 
-    /// Captures an output or a window. `error.Unsupported` when the backend
-    /// (or the compositor's rules) does not allow that kind of capture.
-    pub fn capture(self: Desktop, allocator: std.mem.Allocator, target: CaptureTarget) Error!Image {
-        const b = self.backend orelse return error.Unsupported;
+    /// Applies the edits together, as one configuration (outputs not named
+    /// stay as they are). `done` runs once, with false when unsupported or
+    /// refused.
+    pub fn configureOutputs(self: Desktop, edits: []const OutputEdit, done: ConfigDone, ctx: ?*anyopaque) void {
+        const b = self.backend orelse return done(ctx, false);
+        const f = b.vtable.configure_outputs orelse return done(ctx, false);
+        if (!self.has(.output_config)) return done(ctx, false);
+        f(b.ptr, edits, done, ctx);
+    }
+
+    pub fn configureOutput(self: Desktop, id: u64, change: OutputChange, done: ConfigDone, ctx: ?*anyopaque) void {
+        self.configureOutputs(&.{.{ .id = id, .change = change }}, done, ctx);
+    }
+
+    /// Captures an output or a window; `done` runs once, with
+    /// `error.Unsupported` when the backend (or the compositor's rules) does
+    /// not allow that kind of capture. May run before this returns.
+    pub fn capture(self: Desktop, allocator: std.mem.Allocator, target: CaptureTarget, done: CaptureDone, ctx: ?*anyopaque) void {
+        const b = self.backend orelse return done(ctx, error.Unsupported);
         const needed: Capability = switch (target) {
-            .output => .screenshot_output,
+            .primary, .output => .screenshot_output,
             .window => .screenshot_window,
         };
-        if (!self.has(needed)) return error.Unsupported;
-        const f = b.vtable.capture orelse return error.Unsupported;
-        return f(b.ptr, allocator, target);
+        if (!self.has(needed)) return done(ctx, error.Unsupported);
+        const f = b.vtable.capture orelse return done(ctx, error.Unsupported);
+        f(b.ptr, allocator, target, done, ctx);
     }
 
     pub fn destroy(self: *Desktop) void {
@@ -244,6 +291,7 @@ pub const Fake = struct {
         .activate_workspace = switchTo,
         .outputs = outputsOf,
         .capture = captureOf,
+        .configure_outputs = configureOf,
         .destroy = destroyOf,
     };
 
@@ -314,12 +362,33 @@ pub const Fake = struct {
     fn outputsOf(p: *anyopaque) []const Output {
         return self_(p).out_list.items;
     }
-    fn captureOf(p: *anyopaque, allocator: std.mem.Allocator, target: CaptureTarget) Error!Image {
+    fn captureOf(p: *anyopaque, allocator: std.mem.Allocator, target: CaptureTarget, done: CaptureDone, ctx: ?*anyopaque) void {
         _ = p;
         _ = target;
-        const px = try allocator.alloc(u8, 2 * 2 * 4);
+        const px = allocator.alloc(u8, 2 * 2 * 4) catch return done(ctx, error.OutOfMemory);
         @memset(px, 0xff);
-        return .{ .width = 2, .height = 2, .rgba = px };
+        done(ctx, .{ .width = 2, .height = 2, .rgba = px });
+    }
+    fn configureOf(p: *anyopaque, edits: []const OutputEdit, done: ConfigDone, ctx: ?*anyopaque) void {
+        const self = self_(p);
+        // All or nothing: check every id first.
+        for (edits) |e| {
+            var found = false;
+            for (self.out_list.items) |o| if (o.id == e.id) {
+                found = true;
+            };
+            if (!found) return done(ctx, false);
+        }
+        for (edits) |e| for (self.out_list.items) |*o| if (o.id == e.id) {
+            if (e.change.enabled) |en| o.enabled = en;
+            if (e.change.scale) |sc| o.scale = sc;
+            if (e.change.mode) |m| {
+                o.width = m.width;
+                o.height = m.height;
+                o.refresh_mhz = m.refresh_mhz;
+            }
+        };
+        done(ctx, true);
     }
     fn destroyOf(p: *anyopaque) void {
         const self = self_(p);
@@ -333,6 +402,21 @@ pub const Fake = struct {
     }
 };
 
+/// Collects the result of a capture or a configuration in tests.
+const Probe = struct {
+    image: ?Error!Image = null,
+    ok: ?bool = null,
+
+    fn onCapture(ctx: ?*anyopaque, result: Error!Image) void {
+        const self: *Probe = @ptrCast(@alignCast(ctx.?));
+        self.image = result;
+    }
+    fn onConfig(ctx: ?*anyopaque, ok: bool) void {
+        const self: *Probe = @ptrCast(@alignCast(ctx.?));
+        self.ok = ok;
+    }
+};
+
 test "no backend: queries are empty and requests do nothing" {
     var d: Desktop = .{};
     try std.testing.expectEqual(BackendKind.none, d.kind());
@@ -342,7 +426,11 @@ test "no backend: queries are empty and requests do nothing" {
     try std.testing.expectEqual(@as(?usize, null), d.activeWorkspace());
     d.activateWorkspace(0);
     try std.testing.expect(!d.stepWorkspace(1));
-    try std.testing.expectError(error.Unsupported, d.capture(std.testing.allocator, .{ .output = 0 }));
+    var probe: Probe = .{};
+    d.capture(std.testing.allocator, .primary, Probe.onCapture, &probe);
+    try std.testing.expectError(error.Unsupported, probe.image.?);
+    d.configureOutput(1, .{ .enabled = false }, Probe.onConfig, &probe);
+    try std.testing.expectEqual(false, probe.ok.?);
 }
 
 test "windows: activate restores a minimized window first" {
@@ -374,7 +462,11 @@ test "capabilities gate every query" {
     try std.testing.expectEqual(@as(usize, 0), d.windows().len);
     try std.testing.expectEqual(@as(usize, 0), d.workspaces().len);
     try std.testing.expectEqual(@as(usize, 0), d.outputs().len);
-    try std.testing.expectError(error.Unsupported, d.capture(a, .{ .output = 1 }));
+    var probe: Probe = .{};
+    d.capture(a, .{ .output = 1 }, Probe.onCapture, &probe);
+    try std.testing.expectError(error.Unsupported, probe.image.?);
+    d.configureOutput(1, .{ .scale = 2 }, Probe.onConfig, &probe);
+    try std.testing.expectEqual(false, probe.ok.?);
 }
 
 test "workspaces: switching and stepping stop at the ends" {
@@ -402,19 +494,40 @@ test "capture: output and window are separate capabilities" {
     const fake = try Fake.create(a, Capabilities.initMany(&.{.screenshot_output}));
     var d: Desktop = .{ .backend = fake.backend() };
     defer d.destroy();
-    const img = try d.capture(a, .{ .output = 1 });
+    var probe: Probe = .{};
+    d.capture(a, .primary, Probe.onCapture, &probe);
+    const img = try probe.image.?;
     defer img.deinit(a);
     try std.testing.expectEqual(@as(usize, 16), img.rgba.len);
     const w = try fake.addWindow("x", "y");
-    try std.testing.expectError(error.Unsupported, d.capture(a, .{ .window = w }));
+    probe = .{};
+    d.capture(a, .{ .window = w }, Probe.onCapture, &probe);
+    try std.testing.expectError(error.Unsupported, probe.image.?);
 }
 
-test "outputs are listed when the capability is present" {
+test "outputs: listed, and changes are applied when the capability is present" {
     const a = std.testing.allocator;
-    const fake = try Fake.create(a, Capabilities.initMany(&.{.outputs}));
+    const fake = try Fake.create(a, Capabilities.initMany(&.{ .outputs, .output_config }));
     var d: Desktop = .{ .backend = fake.backend() };
     defer d.destroy();
     try fake.out_list.append(a, .{ .id = 7, .name = "DP-1", .width = 1920, .height = 1080, .refresh_mhz = 60000 });
     try std.testing.expectEqual(@as(usize, 1), d.outputs().len);
     try std.testing.expectEqualStrings("DP-1", d.outputs()[0].name);
+
+    var probe: Probe = .{};
+    d.configureOutput(7, .{ .enabled = false, .scale = 1.5, .mode = .{ .width = 1280, .height = 720, .refresh_mhz = 60000 } }, Probe.onConfig, &probe);
+    try std.testing.expectEqual(true, probe.ok.?);
+    try std.testing.expect(!d.outputs()[0].enabled);
+    try std.testing.expectEqual(@as(u32, 1280), d.outputs()[0].width);
+    d.configureOutput(99, .{}, Probe.onConfig, &probe);
+    try std.testing.expectEqual(false, probe.ok.?);
+
+    // A batch is all or nothing.
+    try fake.out_list.append(a, .{ .id = 8, .name = "DP-2" });
+    d.configureOutputs(&.{ .{ .id = 8, .change = .{ .enabled = false } }, .{ .id = 99, .change = .{} } }, Probe.onConfig, &probe);
+    try std.testing.expectEqual(false, probe.ok.?);
+    try std.testing.expect(d.outputs()[1].enabled);
+    d.configureOutputs(&.{ .{ .id = 7, .change = .{ .enabled = true } }, .{ .id = 8, .change = .{ .enabled = false } } }, Probe.onConfig, &probe);
+    try std.testing.expectEqual(true, probe.ok.?);
+    try std.testing.expect(!d.outputs()[1].enabled and d.outputs()[0].enabled);
 }

@@ -1,17 +1,11 @@
 //! Window list from `wlr-foreign-toplevel-management-unstable-v1` (SPEC.md 5.1).
 //!
-//! The protocol runs on the `wl_display` GDK already owns, so GDK's event
-//! loop dispatches it. Windows that existed before the panel started are
+//! The protocol runs on the `wl_display` the caller owns and dispatches. Windows that existed before the panel started are
 //! announced by the compositor as soon as the manager is bound.
 
 const std = @import("std");
-const gdk = @import("gdk4");
-const gdkwayland = @import("gdkwayland4");
-const gobject = @import("gobject2");
 const wayland = @import("wayland");
-const glib = @import("glib2");
-const common = @import("common");
-const desktop = common.desktop;
+const desktop = @import("core").desktop;
 
 const wl = wayland.client.wl;
 const zwlr = wayland.client.zwlr;
@@ -54,58 +48,36 @@ pub const Toplevel = struct {
 
 pub const Manager = struct {
     allocator: std.mem.Allocator,
-    registry: ?*wl.Registry = null,
     seat: ?*wl.Seat = null,
+    manager: ?*zwlr.ForeignToplevelManagerV1 = null,
     /// The windows in the order announced; what `desktop.Window` consumers see.
     windows: std.ArrayList(*desktop.Window) = .empty,
     /// Called after any change to the list or to a toplevel.
     on_change: *const fn (*anyopaque) void,
     on_change_data: *anyopaque,
 
-    /// Connects to the compositor. Returns null (and logs) when the
-    /// compositor lacks the protocol.
-    pub fn create(allocator: std.mem.Allocator, on_change: *const fn (*anyopaque) void, data: *anyopaque) !?*Manager {
-        const display = gdk.Display.getDefault() orelse return null;
-        if (gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkwayland.WaylandDisplay.getGObjectType()) == 0) {
-            log.warn("not running on Wayland; no taskbar", .{});
-            return null;
-        }
-        const wl_display: *wl.Display = @ptrCast(gdkwayland.WaylandDisplay.getWlDisplay(@ptrCast(display)) orelse return null);
-
+    pub fn create(allocator: std.mem.Allocator, on_change: *const fn (*anyopaque) void, data: *anyopaque) !*Manager {
         const self = try allocator.create(Manager);
-        self.* = .{
-            .allocator = allocator,
-            .registry = try wl_display.getRegistry(),
-            .on_change = on_change,
-            .on_change_data = data,
-        };
-
-        if (display.getDefaultSeat()) |seat| {
-            self.seat = @ptrCast(@alignCast(gdkwayland.WaylandSeat.getWlSeat(@ptrCast(seat))));
-        }
-        self.registry.?.setListener(*Manager, registryEvent, self);
+        self.* = .{ .allocator = allocator, .on_change = on_change, .on_change_data = data };
         return self;
     }
 
     pub fn destroy(self: *Manager) void {
         for (self.windows.items) |w| self.free(Toplevel.of(w));
         self.windows.deinit(self.allocator);
-        if (self.registry) |r| r.destroy();
+        if (self.manager) |m| m.destroy();
         self.allocator.destroy(self);
     }
 
-    fn registryEvent(registry: *wl.Registry, event: wl.Registry.Event, self: *Manager) void {
-        switch (event) {
-            .global => |global| {
-                if (std.mem.orderZ(u8, global.interface, zwlr.ForeignToplevelManagerV1.interface.name) != .eq) return;
-                const manager = registry.bind(global.name, zwlr.ForeignToplevelManagerV1, @min(global.version, 3)) catch |err| {
-                    log.warn("cannot bind foreign-toplevel manager: {s}", .{@errorName(err)});
-                    return;
-                };
-                manager.setListener(*Manager, managerEvent, self);
-            },
-            .global_remove => {},
-        }
+    /// Offered every registry global; takes the one it wants.
+    pub fn onGlobal(self: *Manager, registry: *wl.Registry, global: anytype) void {
+        if (std.mem.orderZ(u8, global.interface, zwlr.ForeignToplevelManagerV1.interface.name) != .eq) return;
+        const manager = registry.bind(global.name, zwlr.ForeignToplevelManagerV1, @min(global.version, 3)) catch |err| {
+            log.warn("cannot bind foreign-toplevel manager: {s}", .{@errorName(err)});
+            return;
+        };
+        self.manager = manager;
+        manager.setListener(*Manager, managerEvent, self);
     }
 
     fn managerEvent(_: *zwlr.ForeignToplevelManagerV1, event: zwlr.ForeignToplevelManagerV1.Event, self: *Manager) void {

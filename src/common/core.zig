@@ -30,6 +30,7 @@ pub const migrate = @import("migrate.zig");
 pub const notify = @import("notify.zig");
 pub const paths = @import("paths.zig");
 pub const perf = @import("perf.zig");
+pub const pixels = @import("pixels.zig");
 pub const power = @import("power.zig");
 pub const proc = @import("proc.zig");
 pub const state = @import("state.zig");

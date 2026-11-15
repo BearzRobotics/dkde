@@ -3,12 +3,9 @@
 //! number of desktops is labwc's `<desktops><number>` setting.
 
 const std = @import("std");
-const gdk = @import("gdk4");
-const gdkwayland = @import("gdkwayland4");
-const gobject = @import("gobject2");
 const wayland = @import("wayland");
 
-const desktop = @import("common").desktop;
+const desktop = @import("core").desktop;
 
 const wl = wayland.client.wl;
 const ext = wayland.client.ext;
@@ -26,26 +23,15 @@ pub const Workspace = struct {
 pub const Workspaces = struct {
     allocator: std.mem.Allocator,
     manager: ?*ext.WorkspaceManagerV1 = null,
-    registry: ?*wl.Registry = null,
     list: std.ArrayList(*Workspace) = .empty,
     /// `list` as the neutral API sees it, rebuilt on every `done`.
     infos: std.ArrayList(*const desktop.Workspace) = .empty,
     on_change: *const fn (*anyopaque) void,
     on_change_data: *anyopaque,
 
-    /// Null when not on Wayland or when the compositor has no workspaces.
     pub fn create(allocator: std.mem.Allocator, on_change: *const fn (*anyopaque) void, data: *anyopaque) ?*Workspaces {
-        const display = gdk.Display.getDefault() orelse return null;
-        if (gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkwayland.WaylandDisplay.getGObjectType()) == 0) return null;
-        const wl_display: *wl.Display = @ptrCast(gdkwayland.WaylandDisplay.getWlDisplay(@ptrCast(display)) orelse return null);
-
         const self = allocator.create(Workspaces) catch return null;
         self.* = .{ .allocator = allocator, .on_change = on_change, .on_change_data = data };
-        self.registry = wl_display.getRegistry() catch {
-            allocator.destroy(self);
-            return null;
-        };
-        self.registry.?.setListener(*Workspaces, registryEvent, self);
         return self;
     }
 
@@ -54,7 +40,6 @@ pub const Workspaces = struct {
         self.list.deinit(self.allocator);
         self.infos.deinit(self.allocator);
         if (self.manager) |m| m.destroy();
-        if (self.registry) |r| r.destroy();
         self.allocator.destroy(self);
     }
 
@@ -66,19 +51,14 @@ pub const Workspaces = struct {
         manager.commit();
     }
 
-    fn registryEvent(registry: *wl.Registry, event: wl.Registry.Event, self: *Workspaces) void {
-        switch (event) {
-            .global => |global| {
-                if (std.mem.orderZ(u8, global.interface, ext.WorkspaceManagerV1.interface.name) != .eq) return;
-                const manager = registry.bind(global.name, ext.WorkspaceManagerV1, 1) catch |err| {
-                    log.warn("cannot bind the workspace manager: {s}", .{@errorName(err)});
-                    return;
-                };
-                self.manager = manager;
-                manager.setListener(*Workspaces, managerEvent, self);
-            },
-            .global_remove => {},
-        }
+    pub fn onGlobal(self: *Workspaces, registry: *wl.Registry, global: anytype) void {
+        if (std.mem.orderZ(u8, global.interface, ext.WorkspaceManagerV1.interface.name) != .eq) return;
+        const manager = registry.bind(global.name, ext.WorkspaceManagerV1, 1) catch |err| {
+            log.warn("cannot bind the workspace manager: {s}", .{@errorName(err)});
+            return;
+        };
+        self.manager = manager;
+        manager.setListener(*Workspaces, managerEvent, self);
     }
 
     fn managerEvent(_: *ext.WorkspaceManagerV1, event: ext.WorkspaceManagerV1.Event, self: *Workspaces) void {

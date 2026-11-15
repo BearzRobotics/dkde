@@ -24,14 +24,8 @@ const editor = @import("editor.zig");
 
 const wl = wayland.client.wl;
 const zwlr = wayland.client.zwlr;
+const wldesktop = @import("wldesktop");
 
-extern fn memfd_create(name: [*:0]const u8, flags: c_uint) c_int;
-extern fn ftruncate(fd: c_int, length: c_long) c_int;
-extern fn mmap(addr: ?*anyopaque, length: usize, prot: c_int, flags: c_int, fd: c_int, offset: c_long) ?*anyopaque;
-extern fn munmap(addr: *anyopaque, length: usize) c_int;
-extern fn close(fd: c_int) c_int;
-const PROT_READ_WRITE = 3;
-const MAP_SHARED = 1;
 
 const log = std.log.scoped(.snip);
 
@@ -74,9 +68,8 @@ const Snip = struct {
     delay: *gtk.SpinButton,
 
     registry: ?*wl.Registry = null,
-    manager: ?*zwlr.ScreencopyManagerV1 = null,
-    shm: ?*wl.Shm = null,
-    output: ?*wl.Output = null,
+    /// Screenshots go through the shared desktop API.
+    desktop: common.desktop.Desktop = .{},
     vptr_manager: ?*zwlr.VirtualPointerManagerV1 = null,
     seat: ?*wl.Seat = null,
     /// While a scrolling capture runs: frames go to the job, not to the picker.
@@ -108,7 +101,8 @@ const Snip = struct {
             self.registry = try wl_display.getRegistry();
             self.registry.?.setListener(*Snip, registryEvent, self);
             _ = wl_display.roundtrip();
-            if (self.manager == null) log.warn("the compositor does not offer wlr-screencopy", .{});
+            self.desktop = wldesktop.Wayland.create(allocator, wl_display, .{ .windows = false, .workspaces = false, .outputs = false }, .{ .data = self });
+            if (!self.desktop.has(.screenshot_output)) log.warn("the compositor does not offer wlr-screencopy", .{});
         }
 
         const window = self.window;
@@ -174,6 +168,7 @@ const Snip = struct {
     }
 
     fn onDestroy(_: *gtk.ApplicationWindow, self: *Snip) callconv(.c) void {
+        self.desktop.destroy();
         if (self.registry) |r| r.destroy();
         self.allocator.destroy(self);
     }
@@ -182,17 +177,10 @@ const Snip = struct {
         switch (event) {
             .global => |g| {
                 const name = std.mem.span(g.interface);
-                if (std.mem.eql(u8, name, std.mem.span(zwlr.ScreencopyManagerV1.interface.name))) {
-                    self.manager = registry.bind(g.name, zwlr.ScreencopyManagerV1, @min(g.version, 3)) catch null;
-                } else if (std.mem.eql(u8, name, std.mem.span(wl.Shm.interface.name))) {
-                    self.shm = registry.bind(g.name, wl.Shm, 1) catch null;
-                } else if (std.mem.eql(u8, name, std.mem.span(zwlr.VirtualPointerManagerV1.interface.name))) {
+                if (std.mem.eql(u8, name, std.mem.span(zwlr.VirtualPointerManagerV1.interface.name))) {
                     self.vptr_manager = registry.bind(g.name, zwlr.VirtualPointerManagerV1, @min(g.version, 2)) catch null;
                 } else if (std.mem.eql(u8, name, std.mem.span(wl.Seat.interface.name))) {
                     if (self.seat == null) self.seat = registry.bind(g.name, wl.Seat, 1) catch null;
-                } else if (std.mem.eql(u8, name, std.mem.span(wl.Output.interface.name))) {
-                    // The first output is captured.
-                    if (self.output == null) self.output = registry.bind(g.name, wl.Output, 1) catch null;
                 }
             },
             .global_remove => {},
@@ -230,7 +218,7 @@ const Snip = struct {
 
     /// Hides the window (so it is not in the picture), waits the delay, then captures.
     fn begin(self: *Snip, mode: Mode) void {
-        if (self.manager == null or self.shm == null or self.output == null) {
+        if (!self.desktop.has(.screenshot_output)) {
             self.fail(common.tr("This compositor does not support screen capture (wlr-screencopy)."));
             return;
         }
@@ -249,12 +237,26 @@ const Snip = struct {
     }
 
     fn captureNow(self: *Snip) void {
-        const frame = self.manager.?.captureOutput(0, self.output.?) catch {
-            return self.fail(common.tr("Could not start the capture."));
-        };
-        const cap = self.allocator.create(Capture) catch return self.fail("Out of memory");
-        cap.* = .{ .snip = self, .frame = frame };
-        frame.setListener(*Capture, Capture.onEvent, cap);
+        self.desktop.capture(self.allocator, .primary, onCaptured, self);
+    }
+
+    /// The captured image becomes a pixbuf for the picker, editor or file.
+    fn onCaptured(ctx: ?*anyopaque, result: common.desktop.Error!common.desktop.Image) void {
+        const self: *Snip = @ptrCast(@alignCast(ctx.?));
+        const image = result catch |err| return self.fail(switch (err) {
+            error.BadFormat => common.tr("The compositor used a pixel format dkde-snip cannot read."),
+            error.OutOfMemory => common.tr("Out of memory"),
+            error.Unsupported => common.tr("This compositor does not support screen capture (wlr-screencopy)."),
+            error.CaptureFailed => common.tr("The compositor refused the capture."),
+        });
+        defer image.deinit(self.allocator);
+        const w: usize = image.width;
+        const h: usize = image.height;
+        const pixbuf = gdkpixbuf.Pixbuf.new(.rgb, 1, 8, @intCast(w), @intCast(h)) orelse return self.fail(common.tr("Out of memory"));
+        const dst = pixbuf.getPixels();
+        const rowstride: usize = @intCast(pixbuf.getRowstride());
+        for (0..h) |y| @memcpy(dst[y * rowstride ..][0 .. w * 4], image.rgba[y * w * 4 ..][0 .. w * 4]);
+        self.captured(pixbuf);
     }
 
     fn fail(self: *Snip, message: [:0]const u8) void {
@@ -437,105 +439,6 @@ const Snip = struct {
             return null;
         }
         return dir;
-    }
-};
-
-/// One screencopy request in flight.
-const Capture = struct {
-    snip: *Snip,
-    frame: *zwlr.ScreencopyFrameV1,
-    format: wl.Shm.Format = .argb8888,
-    width: u32 = 0,
-    height: u32 = 0,
-    stride: u32 = 0,
-    y_invert: bool = false,
-    map: ?[*]u8 = null,
-    size: usize = 0,
-    buffer: ?*wl.Buffer = null,
-
-    fn onEvent(frame: *zwlr.ScreencopyFrameV1, event: zwlr.ScreencopyFrameV1.Event, self: *Capture) void {
-        _ = frame;
-        switch (event) {
-            .buffer => |b| {
-                self.format = b.format;
-                self.width = b.width;
-                self.height = b.height;
-                self.stride = b.stride;
-            },
-            .flags => |f| self.y_invert = f.flags.y_invert,
-            // Version 3 announces every buffer type, then says it is done.
-            .buffer_done => self.copy(),
-            .ready => self.ready(),
-            .failed => {
-                self.snip.fail(common.tr("The compositor refused the capture."));
-                self.release();
-            },
-            .damage, .linux_dmabuf => {},
-        }
-    }
-
-    fn copy(self: *Capture) void {
-        const snip = self.snip;
-        self.size = @as(usize, self.stride) * self.height;
-        const fd = memfd_create("dkde-snip", 0);
-        if (fd < 0 or ftruncate(fd, @intCast(self.size)) != 0) {
-            if (fd >= 0) _ = close(fd);
-            snip.fail(common.tr("Could not allocate shared memory."));
-            return self.release();
-        }
-        defer _ = close(fd);
-        const mapped = mmap(null, self.size, PROT_READ_WRITE, MAP_SHARED, fd, 0) orelse {
-            snip.fail(common.tr("Could not map shared memory."));
-            return self.release();
-        };
-        if (@intFromPtr(mapped) == std.math.maxInt(usize)) {
-            snip.fail(common.tr("Could not map shared memory."));
-            return self.release();
-        }
-        self.map = @ptrCast(mapped);
-
-        const pool = snip.shm.?.createPool(fd, @intCast(self.size)) catch {
-            snip.fail(common.tr("Could not create the capture buffer."));
-            return self.release();
-        };
-        defer pool.destroy();
-        self.buffer = pool.createBuffer(0, @intCast(self.width), @intCast(self.height), @intCast(self.stride), self.format) catch {
-            snip.fail(common.tr("Could not create the capture buffer."));
-            return self.release();
-        };
-        self.frame.copy(self.buffer.?);
-    }
-
-    fn ready(self: *Capture) void {
-        const snip = self.snip;
-        defer self.release();
-
-        const layout: pure.Layout = switch (self.format) {
-            .argb8888, .xrgb8888 => .bgra,
-            .abgr8888, .xbgr8888 => .rgba,
-            else => {
-                snip.fail(common.tr("The compositor used a pixel format dkde-snip cannot read."));
-                return;
-            },
-        };
-        const w: usize = self.width;
-        const h: usize = self.height;
-        const rgba = snip.allocator.alloc(u8, w * h * 4) catch return snip.fail("Out of memory");
-        defer snip.allocator.free(rgba);
-        pure.toRgba(rgba, self.map.?[0..self.size], w, h, self.stride, layout, self.y_invert);
-
-        const pixbuf = gdkpixbuf.Pixbuf.new(.rgb, 1, 8, @intCast(w), @intCast(h)) orelse return snip.fail("Out of memory");
-        const dst = pixbuf.getPixels();
-        const rowstride: usize = @intCast(pixbuf.getRowstride());
-        for (0..h) |y| @memcpy(dst[y * rowstride ..][0 .. w * 4], rgba[y * w * 4 ..][0 .. w * 4]);
-        snip.captured(pixbuf);
-    }
-
-    fn release(self: *Capture) void {
-        if (self.buffer) |b| b.destroy();
-        if (self.map) |m| _ = munmap(@ptrCast(m), self.size);
-        self.frame.destroy();
-        self.snip.allocator.destroy(self);
     }
 };
 

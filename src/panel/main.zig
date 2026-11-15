@@ -21,7 +21,9 @@ const PowerWatch = @import("powerwatch.zig").PowerWatch;
 const Tray = @import("tray.zig").Tray;
 const Quick = @import("quick.zig").Quick;
 const Osd = @import("osd.zig").Osd;
-const backend_wayland = @import("backend_wayland.zig");
+const wldesktop = @import("wldesktop");
+const gdkwayland = @import("gdkwayland4");
+const wl = @import("wayland").client.wl;
 const ipc = @import("ipc.zig");
 const slideshow = @import("slideshow.zig");
 const StartMenu = @import("startmenu.zig").StartMenu;
@@ -86,7 +88,7 @@ const App = struct {
         self.quick = Quick.create(self.allocator, &self.config);
         self.osd = Osd.create(self.allocator);
         if (self.quick) |q| q.osd = self.osd;
-        self.desktop = backend_wayland.Wayland.create(self.allocator, onToplevelsChanged, onWorkspacesChanged, self);
+        self.desktop = openDesktop(self);
         if (glib.getenv("DKDE_DEBUG_QUICK") != null) _ = glib.timeoutAdd(4000, debugQuick, self);
         self.rebuildSurfaces();
         self.updateClock();
@@ -171,6 +173,21 @@ const App = struct {
     fn onStartClicked(data: *anyopaque) void {
         const self: *App = @ptrCast(@alignCast(data));
         self.toggleMenu();
+    }
+
+    /// The desktop API for the running display; empty when not on Wayland.
+    fn openDesktop(self: *App) common.desktop.Desktop {
+        const display = gdk.Display.getDefault() orelse return .{};
+        if (gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkwayland.WaylandDisplay.getGObjectType()) == 0) {
+            std.log.warn("not running on Wayland; no taskbar", .{});
+            return .{};
+        }
+        const wl_display: *wl.Display = @ptrCast(gdkwayland.WaylandDisplay.getWlDisplay(@ptrCast(display)) orelse return .{});
+        return wldesktop.Wayland.create(self.allocator, wl_display, .{ .outputs = false, .capture = false }, .{
+            .data = self,
+            .on_windows = onToplevelsChanged,
+            .on_workspaces = onWorkspacesChanged,
+        });
     }
 
     fn onToplevelsChanged(data: *anyopaque) void {

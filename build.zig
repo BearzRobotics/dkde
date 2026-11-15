@@ -68,6 +68,8 @@ pub const Ctx = struct {
     util_unix: *std.Build.Module,
     /// Bindings for the Wayland protocols GTK does not expose.
     wayland_protocols: *std.Build.Module,
+    /// The Wayland side of the shared desktop API (windows, workspaces, outputs, capture).
+    wldesktop: *std.Build.Module,
     /// Image decoding in Zig (vendored zigimg).
     imgcodec: *std.Build.Module,
     /// The PDF page renderer and pdf-zig.
@@ -105,6 +107,12 @@ pub const Ctx = struct {
         mod.addImport("gdkwayland4", ctx.gobject.module("gdkwayland4"));
         mod.addImport("wayland", ctx.wayland_protocols);
         mod.linkSystemLibrary("wayland-client", .{});
+    }
+
+    /// The Wayland backend of the shared desktop API; needs the protocol bindings too.
+    pub fn desktopApi(ctx: *const Ctx, mod: *std.Build.Module) void {
+        ctx.wayland(mod);
+        mod.addImport("wldesktop", ctx.wldesktop);
     }
 
     /// DKTermCore, which builds libghostty-vt once for every user of it.
@@ -173,11 +181,11 @@ pub fn build(b: *std.Build) void {
 
     // Protocol bindings for what GTK does not expose (SPEC.md 3).
     const scanner = Scanner.create(b, .{});
-    inline for (.{ "wlr-foreign-toplevel-management-unstable-v1", "wlr-screencopy-unstable-v1", "wlr-virtual-pointer-unstable-v1", "ext-workspace-v1", "ext-idle-notify-v1", "virtual-keyboard-unstable-v1" }) |p| {
+    inline for (.{ "wlr-foreign-toplevel-management-unstable-v1", "wlr-screencopy-unstable-v1", "wlr-virtual-pointer-unstable-v1", "ext-workspace-v1", "ext-idle-notify-v1", "virtual-keyboard-unstable-v1", "wlr-output-management-unstable-v1" }) |p| {
         scanner.addCustomProtocol(b.path("protocols/" ++ p ++ ".xml"));
     }
     scanner.generate("wl_seat", 1);
-    scanner.generate("wl_output", 1);
+    scanner.generate("wl_output", 4);
     scanner.generate("zwlr_foreign_toplevel_manager_v1", 3);
     scanner.generate("wl_shm", 1);
     scanner.generate("zwlr_screencopy_manager_v1", 3);
@@ -185,7 +193,13 @@ pub fn build(b: *std.Build) void {
     scanner.generate("ext_workspace_manager_v1", 1);
     scanner.generate("ext_idle_notifier_v1", 1);
     scanner.generate("zwp_virtual_keyboard_manager_v1", 1);
+    scanner.generate("zwlr_output_manager_v1", 4);
     const wayland_module = b.createModule(.{ .root_source_file = scanner.result, .target = target, .optimize = optimize });
+
+    const wldesktop = b.createModule(.{ .root_source_file = b.path("src/wldesktop/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
+    wldesktop.addImport("wayland", wayland_module);
+    wldesktop.addImport("core", core);
+    wldesktop.linkSystemLibrary("wayland-client", .{});
 
     const zigimg = b.dependency("zigimg", .{ .target = target, .optimize = optimize });
     const imgcodec = b.createModule(.{ .root_source_file = b.path("src/imgcodec/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
@@ -217,6 +231,7 @@ pub fn build(b: *std.Build) void {
         .common = common,
         .util_unix = util_unix,
         .wayland_protocols = wayland_module,
+        .wldesktop = wldesktop,
         .imgcodec = imgcodec,
         .pdfrender = pdfrender,
         .pdf = pdf_mod,

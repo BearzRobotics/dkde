@@ -30,6 +30,7 @@ pub const migrate = core.migrate;
 pub const notify = core.notify;
 pub const paths = core.paths;
 pub const perf = core.perf;
+pub const pixels = core.pixels;
 pub const power = core.power;
 pub const proc = core.proc;
 pub const state = core.state;
