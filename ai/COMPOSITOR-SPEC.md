@@ -499,3 +499,8 @@ The following decisions remain open and must be resolved through prototyping:
 - Exact protocol versions and optional extensions supported.
 
 These decisions must not be treated as settled merely because an implementation prototype uses one particular approach.
+
+## 14. Decisions taken
+
+- **Window-management policy (2026-11-15): configurable.** Floating is the default; tiling is a first-class alternative, not an afterthought. The policy is a setting (`[windows] layout = "floating" | "tiling"`, per workspace where practical), shared by the Wayland compositor and the X11 window manager, so the layout logic lives in one backend-neutral module that both call. Tiling must coexist with floating windows (dialogs, panels and any window the user marks as floating stay floating), and switching a workspace between the two must not lose windows or their floating geometry.
+- Survey of the build environment and the Zig bindings: see `ai/COMPOSITOR-SURVEY.md`.
