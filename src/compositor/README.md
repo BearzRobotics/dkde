@@ -14,7 +14,7 @@ xdg-shell (windows, popups), xdg-decoration (always client-side), layer-shell (p
 launchers; exclusive zones keep windows clear), wlr-foreign-toplevel-management (the taskbar),
 ext-workspace-v1 (virtual desktops), wlr-screencopy (screenshots), wlr-output-management (wlr-randr,
 Settings > Display, screen off), ext-session-lock (swaylock, gtklock: a lock client that dies leaves the screen
-locked), ext-idle-notify, wlr virtual keyboard and pointer, cursor-shape, primary selection, viewporter, fractional-scale, xdg-output.
+locked), ext-idle-notify, wlr virtual keyboard and pointer, cursor-shape, primary selection, viewporter, fractional-scale, xdg-output, and Xwayland (X11 programs run beside Wayland ones; it starts when the first one connects; `DKDE_NO_XWAYLAND=1` turns it off).
 
 ## Settings: `~/.config/dkde/compositor.toml`
 

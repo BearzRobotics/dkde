@@ -74,6 +74,7 @@ const Server = struct {
     new_xdg_popup: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_layer_surface: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_lock: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    new_x_surface: c.wl_listener = std.mem.zeroes(c.wl_listener),
     output_apply: c.wl_listener = std.mem.zeroes(c.wl_listener),
     output_test: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_decoration: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -100,7 +101,11 @@ fn listen(signal: *c.wl_signal, listener: *c.wl_listener, notify: c.wl_notify_fu
 }
 
 fn unlisten(listener: *c.wl_listener) void {
+    // A listener that was never added (or already removed) has no links.
+    if (listener.link.next == null or listener.link.prev == null) return;
     c.wl_list_remove(&listener.link);
+    listener.link.next = null;
+    listener.link.prev = null;
 }
 
 // ---- outputs -------------------------------------------------------------------------------------------------
@@ -225,8 +230,15 @@ fn onOutputTest(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
 // ---- windows -------------------------------------------------------------------------------------------------
 
 const Toplevel = struct {
-    xdg: *c.wlr_xdg_toplevel,
+    /// A window is either an xdg-shell toplevel or an X11 window (through Xwayland).
+    xdg: ?*c.wlr_xdg_toplevel = null,
+    xs: ?*c.wlr_xwayland_surface = null,
     tree: *c.wlr_scene_tree,
+    /// The surface drawn for an X11 window (it exists while the window is associated with a wl_surface).
+    x_scene: ?*c.wlr_scene_surface = null,
+    x_associate: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    x_dissociate: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    x_request_configure: c.wl_listener = std.mem.zeroes(c.wl_listener),
     /// Kept out of the tiling (a dialog, or a window the user floated).
     floating: bool = false,
     /// Where it was before tiling took it, to put it back.
@@ -257,13 +269,102 @@ const Toplevel = struct {
     request_maximize: c.wl_listener = std.mem.zeroes(c.wl_listener),
     request_fullscreen: c.wl_listener = std.mem.zeroes(c.wl_listener),
 
+
+    fn surf(self: *const Toplevel) ?*c.wlr_surface {
+        if (self.xdg) |x| return x.base.*.surface;
+        if (self.xs) |x| return x.surface;
+        return null;
+    }
+
+    fn title(self: *const Toplevel) [*c]const u8 {
+        if (self.xdg) |x| return if (x.title != null) x.title else "";
+        if (self.xs) |x| return if (x.title != null) x.title else "";
+        return "";
+    }
+
+    fn appId(self: *const Toplevel) [*c]const u8 {
+        if (self.xdg) |x| return if (x.app_id != null) x.app_id else "";
+        if (self.xs) |x| return if (x.class != null) x.class else "";
+        return "";
+    }
+
+    fn sendClose(self: *Toplevel) void {
+        if (self.xdg) |x| c.wlr_xdg_toplevel_send_close(x);
+        if (self.xs) |x| c.wlr_xwayland_surface_close(x);
+    }
+
+    fn activate(self: *Toplevel, on: bool) void {
+        if (self.xdg) |x| _ = c.wlr_xdg_toplevel_set_activated(x, on);
+        if (self.xs) |x| c.wlr_xwayland_surface_activate(x, on);
+    }
+
+    fn setTiledEdges(self: *Toplevel, edges: u32) void {
+        if (self.xdg) |x| _ = c.wlr_xdg_toplevel_set_tiled(x, edges);
+    }
+
+    fn setMaxFlag(self: *Toplevel, on: bool) void {
+        if (self.xdg) |x| _ = c.wlr_xdg_toplevel_set_maximized(x, on);
+        if (self.xs) |x| c.wlr_xwayland_surface_set_maximized(x, on, on);
+    }
+
+    fn setFullFlag(self: *Toplevel, on: bool) void {
+        if (self.xdg) |x| _ = c.wlr_xdg_toplevel_set_fullscreen(x, on);
+        if (self.xs) |x| c.wlr_xwayland_surface_set_fullscreen(x, on);
+    }
+
+    /// Ready for configure requests (an X11 window always is).
+    fn ready(self: *const Toplevel) bool {
+        if (self.xdg) |x| return x.base.*.initialized;
+        return true;
+    }
+
+    fn reconfigure(self: *Toplevel) void {
+        if (self.xdg) |x| _ = c.wlr_xdg_surface_schedule_configure(x.base);
+    }
+
+    fn hasParent(self: *const Toplevel) bool {
+        if (self.xdg) |x| return x.parent != null;
+        if (self.xs) |x| return x.parent != null;
+        return false;
+    }
+
+    /// An X11 menu or tooltip: placed where it asks, never tiled, never focused.
+    fn unmanaged(self: *const Toplevel) bool {
+        if (self.xs) |x| return x.override_redirect;
+        return false;
+    }
+
+    /// The window's content size.
+    fn contentSize(self: *const Toplevel) struct { w: i32, h: i32 } {
+        if (self.xdg) |x| return .{ .w = x.base.*.geometry.width, .h = x.base.*.geometry.height };
+        if (self.xs) |x| return .{ .w = x.width, .h = x.height };
+        return .{ .w = 0, .h = 0 };
+    }
+
+    fn wantsMaximized(self: *const Toplevel) bool {
+        if (self.xdg) |x| return x.requested.maximized;
+        if (self.xs) |x| return x.maximized_vert and x.maximized_horz;
+        return false;
+    }
+
+    fn wantsFullscreen(self: *const Toplevel) bool {
+        if (self.xdg) |x| return x.requested.fullscreen;
+        if (self.xs) |x| return x.fullscreen;
+        return false;
+    }
+
     fn onMap(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Toplevel = @fieldParentPtr("map", listener.?);
-        c._wlr_log(c.WLR_INFO, "window mapped: %s", self.xdg.title);
+        c._wlr_log(c.WLR_INFO, "window mapped: %s", self.title());
+        if (self.unmanaged()) {
+            // A menu or tooltip of an X11 program: where it asks, above the windows, not in any list.
+            c.wlr_scene_node_set_position(&self.tree.*.node, self.xs.?.x, self.xs.?.y);
+            return;
+        }
         server.toplevels.append(gpa, self) catch return;
         server.managed.append(gpa, self) catch {};
         // A window with a parent (a dialog) or a fixed size is not tiled.
-        if (self.xdg.parent != null) self.floating = true;
+        if (self.hasParent() or (self.xs != null and self.xs.?.override_redirect)) self.floating = true;
         self.workspace = server.ws.active;
         // Every window starts at a cascade spot, so the place it goes back to when tiling is switched off is a good one.
         const spot = layout.cascade(workArea(), server.opened);
@@ -276,6 +377,7 @@ const Toplevel = struct {
 
     fn onUnmap(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Toplevel = @fieldParentPtr("unmap", listener.?);
+        if (self.unmanaged()) return;
         if (server.grabbed == self) resetCursorMode();
         dropHandle(self);
         removeFromList(self);
@@ -287,9 +389,11 @@ const Toplevel = struct {
 
     fn onCommit(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Toplevel = @fieldParentPtr("commit", listener.?);
-        if (self.xdg.base.*.initial_commit) {
-            // Let the client pick its own size.
-            _ = c.wlr_xdg_toplevel_set_size(self.xdg, 0, 0);
+        if (self.xdg) |x| {
+            if (x.base.*.initial_commit) {
+                // Let the client pick its own size.
+                _ = c.wlr_xdg_toplevel_set_size(x, 0, 0);
+            }
         }
     }
 
@@ -320,12 +424,12 @@ const Toplevel = struct {
 
     fn onRequestMaximize(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Toplevel = @fieldParentPtr("request_maximize", listener.?);
-        setMaximized(self, self.xdg.requested.maximized);
+        setMaximized(self, self.wantsMaximized());
     }
 
     fn onRequestFullscreen(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Toplevel = @fieldParentPtr("request_fullscreen", listener.?);
-        setFullscreen(self, self.xdg.requested.fullscreen);
+        setFullscreen(self, self.wantsFullscreen());
     }
 };
 
@@ -343,14 +447,20 @@ fn removeFromList(t: *Toplevel) void {
 fn addHandle(t: *Toplevel) void {
     const h = c.wlr_foreign_toplevel_handle_v1_create(server.foreign) orelse return;
     t.handle = h;
-    c.wlr_foreign_toplevel_handle_v1_set_title(h, t.xdg.title orelse "");
-    c.wlr_foreign_toplevel_handle_v1_set_app_id(h, t.xdg.app_id orelse "");
+    c.wlr_foreign_toplevel_handle_v1_set_title(h, t.title());
+    c.wlr_foreign_toplevel_handle_v1_set_app_id(h, t.appId());
     if (c.wlr_output_layout_get_center_output(server.output_layout)) |output| c.wlr_foreign_toplevel_handle_v1_output_enter(h, output);
     listen(&h.*.events.request_activate, &t.handle_activate, onHandleActivate);
     listen(&h.*.events.request_close, &t.handle_close, onHandleClose);
     listen(&h.*.events.request_minimize, &t.handle_minimize, onHandleMinimize);
-    listen(&t.xdg.events.set_title, &t.set_title, onSetTitle);
-    listen(&t.xdg.events.set_app_id, &t.set_app_id, onSetAppId);
+    if (t.xdg) |x| {
+        listen(&x.events.set_title, &t.set_title, onSetTitle);
+        listen(&x.events.set_app_id, &t.set_app_id, onSetAppId);
+    }
+    if (t.xs) |x| {
+        listen(&x.events.set_title, &t.set_title, onSetTitle);
+        listen(&x.events.set_class, &t.set_app_id, onSetAppId);
+    }
 }
 
 fn dropHandle(t: *Toplevel) void {
@@ -366,12 +476,12 @@ fn dropHandle(t: *Toplevel) void {
 
 fn onSetTitle(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
     const t: *Toplevel = @fieldParentPtr("set_title", listener.?);
-    if (t.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_title(h, t.xdg.title orelse "");
+    if (t.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_title(h, t.title());
 }
 
 fn onSetAppId(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
     const t: *Toplevel = @fieldParentPtr("set_app_id", listener.?);
-    if (t.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_app_id(h, t.xdg.app_id orelse "");
+    if (t.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_app_id(h, t.appId());
 }
 
 fn onHandleActivate(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
@@ -384,7 +494,7 @@ fn onHandleActivate(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void
 
 fn onHandleClose(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
     const t: *Toplevel = @fieldParentPtr("handle_close", listener.?);
-    c.wlr_xdg_toplevel_send_close(t.xdg);
+    t.sendClose();
 }
 
 fn onHandleMinimize(listener: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
@@ -424,13 +534,13 @@ fn screenArea() layout.Rect {
 }
 
 fn setMaximized(t: *Toplevel, on: bool) void {
-    if (!t.xdg.base.*.initialized) return;
+    if (!t.ready()) return;
     if (on == t.maximized) {
-        _ = c.wlr_xdg_surface_schedule_configure(t.xdg.base);
+        t.reconfigure();
         return;
     }
     t.maximized = on;
-    _ = c.wlr_xdg_toplevel_set_maximized(t.xdg, on);
+    t.setMaxFlag(on);
     if (on) {
         if (t.before == null) t.before = geometryOf(t);
         place(t, workArea());
@@ -441,13 +551,13 @@ fn setMaximized(t: *Toplevel, on: bool) void {
 }
 
 fn setFullscreen(t: *Toplevel, on: bool) void {
-    if (!t.xdg.base.*.initialized) return;
+    if (!t.ready()) return;
     if (on == t.fullscreen) {
-        _ = c.wlr_xdg_surface_schedule_configure(t.xdg.base);
+        t.reconfigure();
         return;
     }
     t.fullscreen = on;
-    _ = c.wlr_xdg_toplevel_set_fullscreen(t.xdg, on);
+    t.setFullFlag(on);
     if (on) {
         if (t.before == null) t.before = geometryOf(t);
         place(t, screenArea());
@@ -630,19 +740,20 @@ fn workArea() layout.Rect {
 
 fn geometryOf(t: *Toplevel) layout.Rect {
     // The scene puts the window's geometry (its content, without shadows) at the tree's position.
-    const geo = t.xdg.base.*.geometry;
-    return .{ .x = t.tree.*.node.x, .y = t.tree.*.node.y, .w = geo.width, .h = geo.height };
+    const size = t.contentSize();
+    return .{ .x = t.tree.*.node.x, .y = t.tree.*.node.y, .w = size.w, .h = size.h };
 }
 
 fn place(t: *Toplevel, r: layout.Rect) void {
     c.wlr_scene_node_set_position(&t.tree.*.node, r.x, r.y);
-    _ = c.wlr_xdg_toplevel_set_size(t.xdg, r.w, r.h);
+    if (t.xdg) |x| _ = c.wlr_xdg_toplevel_set_size(x, r.w, r.h);
+    if (t.xs) |x| c.wlr_xwayland_surface_configure(x, @intCast(r.x), @intCast(r.y), @intCast(@max(r.w, 1)), @intCast(@max(r.h, 1)));
 }
 
 /// Places a window in a tiling cell and tells it so (clients then draw square, shadowless windows).
 fn placeTiled(t: *Toplevel, r: layout.Rect) void {
     t.cell = r;
-    _ = c.wlr_xdg_toplevel_set_tiled(t.xdg, c.WLR_EDGE_TOP | c.WLR_EDGE_BOTTOM | c.WLR_EDGE_LEFT | c.WLR_EDGE_RIGHT);
+    t.setTiledEdges(c.WLR_EDGE_TOP | c.WLR_EDGE_BOTTOM | c.WLR_EDGE_LEFT | c.WLR_EDGE_RIGHT);
     place(t, r);
 }
 
@@ -676,7 +787,7 @@ fn togglePolicy() void {
 /// Gives a window back the place and size it had before tiling.
 fn restore(t: *Toplevel) void {
     t.cell = null;
-    _ = c.wlr_xdg_toplevel_set_tiled(t.xdg, 0);
+    t.setTiledEdges(0);
     if (t.saved) |r| {
         place(t, r);
         t.saved = null;
@@ -720,6 +831,62 @@ fn onNewToplevel(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     listen(&xdg.events.request_fullscreen, &t.request_fullscreen, Toplevel.onRequestFullscreen);
 }
 
+// ---- X11 programs (Xwayland) -----------------------------------------------------------------------------------
+
+fn onNewXSurface(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const xs: *c.wlr_xwayland_surface = @ptrCast(@alignCast(data));
+    const t = gpa.create(Toplevel) catch return;
+    const tree = c.wlr_scene_tree_create(server.trees[2]) orelse {
+        gpa.destroy(t);
+        return;
+    };
+    t.* = .{ .xs = xs, .tree = tree };
+    tree.*.node.data = t;
+    listen(&xs.events.associate, &t.x_associate, onXAssociate);
+    listen(&xs.events.dissociate, &t.x_dissociate, onXDissociate);
+    listen(&xs.events.destroy, &t.destroy, Toplevel.onDestroy);
+    listen(&xs.events.request_configure, &t.x_request_configure, onXRequestConfigure);
+    listen(&xs.events.request_maximize, &t.request_maximize, Toplevel.onRequestMaximize);
+    listen(&xs.events.request_fullscreen, &t.request_fullscreen, Toplevel.onRequestFullscreen);
+    // Already associated with a surface (it can happen before we hear of it)?
+    if (xs.surface != null) onXAssociate(&t.x_associate, null);
+}
+
+/// The window now has a wl_surface: draw it, and follow its map and unmap.
+fn onXAssociate(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+    const t: *Toplevel = @fieldParentPtr("x_associate", listener.?);
+    const xs = t.xs.?;
+    const surface = xs.surface orelse return;
+    t.x_scene = c.wlr_scene_surface_create(t.tree, surface);
+    listen(&surface.*.events.map, &t.map, Toplevel.onMap);
+    listen(&surface.*.events.unmap, &t.unmap, Toplevel.onUnmap);
+}
+
+fn onXDissociate(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+    const t: *Toplevel = @fieldParentPtr("x_dissociate", listener.?);
+    unlisten(&t.map);
+    unlisten(&t.unmap);
+    if (t.x_scene) |scene| c.wlr_scene_node_destroy(&scene.*.buffer.*.node);
+    t.x_scene = null;
+}
+
+/// The program asks to move or resize itself. Floating windows may; a tiled one is put back in its cell.
+fn onXRequestConfigure(listener: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const t: *Toplevel = @fieldParentPtr("x_request_configure", listener.?);
+    const ev: *c.wlr_xwayland_surface_configure_event = @ptrCast(@alignCast(data));
+    const xs = t.xs.?;
+    if (t.cell) |cell| {
+        c.wlr_xwayland_surface_configure(xs, @intCast(cell.x), @intCast(cell.y), @intCast(@max(cell.w, 1)), @intCast(@max(cell.h, 1)));
+        return;
+    }
+    if (t.maximized or t.fullscreen) {
+        c.wlr_xwayland_surface_configure(xs, xs.x, xs.y, xs.width, xs.height);
+        return;
+    }
+    c.wlr_xwayland_surface_configure(xs, ev.x, ev.y, ev.width, ev.height);
+    if (!t.unmanaged() and t.handle != null) c.wlr_scene_node_set_position(&t.tree.*.node, ev.x, ev.y);
+}
+
 const Popup = struct {
     xdg: *c.wlr_xdg_popup,
     commit: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -757,18 +924,20 @@ fn addPopup(xdg: *c.wlr_xdg_popup, parent_tree: *c.wlr_scene_tree) void {
 
 /// Gives the keyboard focus to `t` and raises it.
 fn focus(t: *Toplevel) void {
-    if (server.locked) return;
+    if (server.locked or t.unmanaged()) return;
     const seat = server.seat;
-    const surface = t.xdg.base.*.surface;
+    const surface = t.surf() orelse return;
     const previous = seat.*.keyboard_state.focused_surface;
     if (previous == surface) return;
     if (previous) |prev| {
-        if (c.wlr_xdg_toplevel_try_from_wlr_surface(prev)) |prev_top| _ = c.wlr_xdg_toplevel_set_activated(prev_top, false);
+        for (server.toplevels.items) |other| {
+            if (other.surf() == prev) other.activate(false);
+        }
     }
     c.wlr_scene_node_raise_to_top(&t.tree.*.node);
     removeFromList(t);
     server.toplevels.append(gpa, t) catch {};
-    _ = c.wlr_xdg_toplevel_set_activated(t.xdg, true);
+    t.activate(true);
     for (server.toplevels.items) |other| {
         if (other.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_activated(h, other == t);
     }
@@ -827,7 +996,7 @@ const LayerSurface = struct {
         if (server.seat.*.keyboard_state.focused_surface == self.surface.*.surface and server.toplevels.items.len > 0) {
             const top = server.toplevels.items[server.toplevels.items.len - 1];
             c.wlr_seat_keyboard_clear_focus(server.seat);
-            const surface = top.xdg.base.*.surface;
+            const surface = top.surf() orelse return;
             if (c.wlr_seat_get_keyboard(server.seat)) |kb| {
                 c.wlr_seat_keyboard_notify_enter(server.seat, surface, kb.*.keycodes[0..].ptr, kb.*.num_keycodes, &kb.*.modifiers);
             }
@@ -934,7 +1103,7 @@ fn resetCursorMode() void {
 fn beginGrab(t: *Toplevel, mode: CursorMode, edges: u32) void {
     // Only the window that has the pointer may start a grab.
     const focused = server.seat.*.pointer_state.focused_surface;
-    if (focused == null or t.xdg.base.*.surface != c.wlr_surface_get_root_surface(focused)) return;
+    if (focused == null or t.surf() == null or t.surf().? != c.wlr_surface_get_root_surface(focused)) return;
     server.grabbed = t;
     server.cursor_mode = mode;
     const cursor = server.cursor;
@@ -942,12 +1111,12 @@ fn beginGrab(t: *Toplevel, mode: CursorMode, edges: u32) void {
         server.grab_x = cursor.*.x - @as(f64, @floatFromInt(t.tree.*.node.x));
         server.grab_y = cursor.*.y - @as(f64, @floatFromInt(t.tree.*.node.y));
     } else {
-        const geo = t.xdg.base.*.geometry;
-        const border_x = @as(f64, @floatFromInt(t.tree.*.node.x)) + (if (edges & c.WLR_EDGE_RIGHT != 0) @as(f64, @floatFromInt(geo.width)) else 0);
-        const border_y = @as(f64, @floatFromInt(t.tree.*.node.y)) + (if (edges & c.WLR_EDGE_BOTTOM != 0) @as(f64, @floatFromInt(geo.height)) else 0);
+        const geo = t.contentSize();
+        const border_x = @as(f64, @floatFromInt(t.tree.*.node.x)) + (if (edges & c.WLR_EDGE_RIGHT != 0) @as(f64, @floatFromInt(geo.w)) else 0);
+        const border_y = @as(f64, @floatFromInt(t.tree.*.node.y)) + (if (edges & c.WLR_EDGE_BOTTOM != 0) @as(f64, @floatFromInt(geo.h)) else 0);
         server.grab_x = cursor.*.x - border_x;
         server.grab_y = cursor.*.y - border_y;
-        server.grab_box = geo;
+        server.grab_box = .{ .x = 0, .y = 0, .width = geo.w, .height = geo.h };
         server.grab_box.x = t.tree.*.node.x;
         server.grab_box.y = t.tree.*.node.y;
         server.resize_edges = edges;
@@ -986,7 +1155,8 @@ fn processCursorMotion(time: u32) void {
                     if (new_right <= new_left) new_right = new_left + 1;
                 }
                 c.wlr_scene_node_set_position(&t.tree.*.node, new_left, new_top);
-                _ = c.wlr_xdg_toplevel_set_size(t.xdg, new_right - new_left, new_bottom - new_top);
+                if (t.xdg) |x| _ = c.wlr_xdg_toplevel_set_size(x, new_right - new_left, new_bottom - new_top);
+                if (t.xs) |x| c.wlr_xwayland_surface_configure(x, @intCast(new_left), @intCast(new_top), @intCast(@max(new_right - new_left, 1)), @intCast(@max(new_bottom - new_top, 1)));
             }
             return;
         },
@@ -1245,7 +1415,7 @@ fn perform(action: keys.Action) void {
     switch (action) {
         .none => {},
         .quit => c.wl_display_terminate(server.display),
-        .close => if (topWindow()) |t| c.wlr_xdg_toplevel_send_close(t.xdg),
+        .close => if (topWindow()) |t| t.sendClose(),
         .next_window => {
             // The window at the bottom of this workspace comes to the top.
             for (server.toplevels.items) |t| {
@@ -1287,12 +1457,12 @@ fn perform(action: keys.Action) void {
 fn snapTo(t: *Toplevel, region: keys.Region) void {
     if (t.maximized) {
         t.maximized = false;
-        _ = c.wlr_xdg_toplevel_set_maximized(t.xdg, false);
+        t.setMaxFlag(false);
     }
     t.floating = true;
     t.cell = null;
     t.saved = null;
-    _ = c.wlr_xdg_toplevel_set_tiled(t.xdg, 0);
+    t.setTiledEdges(0);
     place(t, layout.regionRect(workArea(), region));
     arrange();
 }
@@ -1611,7 +1781,7 @@ pub fn main() !void {
     const allocator = c.wlr_allocator_autocreate(backend, renderer) orelse return error.NoAllocator;
 
     // The protocols every client expects.
-    _ = c.wlr_compositor_create(display, 5, renderer);
+    const compositor = c.wlr_compositor_create(display, 5, renderer) orelse return error.NoProtocol;
     _ = c.wlr_subcompositor_create(display);
     _ = c.wlr_data_device_manager_create(display);
     _ = c.wlr_screencopy_manager_v1_create(display);
@@ -1686,6 +1856,17 @@ pub fn main() !void {
     listen(&seat.*.pointer_state.events.focus_change, &server.pointer_focus_change, onPointerFocusChange);
     listen(&seat.*.events.request_set_selection, &server.request_set_selection, onRequestSetSelection);
 
+    // X11 programs: Xwayland starts when the first one connects.
+    var xwayland: ?*c.wlr_xwayland = null;
+    if (std.c.getenv("DKDE_NO_XWAYLAND") == null) {
+        xwayland = c.wlr_xwayland_create(display, compositor, true);
+        if (xwayland) |xw| {
+            listen(&xw.events.new_surface, &server.new_x_surface, onNewXSurface);
+            c.wlr_xwayland_set_seat(xw, seat);
+            _ = c.setenv("DISPLAY", xw.display_name, 1);
+        }
+    }
+
     const socket = c.wl_display_add_socket_auto(display) orelse return error.NoSocket;
     if (!c.wlr_backend_start(backend)) return error.BackendStart;
     _ = c.setenv("WAYLAND_DISPLAY", socket, 1);
@@ -1695,6 +1876,10 @@ pub fn main() !void {
     c.wl_display_run(display);
 
     workspaces.deinit();
+    if (xwayland) |xw| {
+        unlisten(&server.new_x_surface);
+        c.wlr_xwayland_destroy(xw);
+    }
     // Detach the listeners first: wlroots asserts that none are left when it frees an object.
     unlisten(&server.new_output);
     unlisten(&server.layout_change);
