@@ -2,6 +2,12 @@
     .name = .dkde_compositor,
     .version = "0.0.0",
     .minimum_zig_version = "0.17.1",
-    .paths = .{ "build.zig", "build.zig.zon", "src" },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "protocols" },
     .fingerprint = 0x596db93b933e977a,
+    .dependencies = .{
+        .toml = .{
+            .url = "https://github.com/BearzRobotics/toml-zig/releases/download/v0.2.0/toml-0.2.0.tar.gz",
+            .hash = "toml-0.2.0-dDatLIhiAgBq8q4SLFu0RZSUcCJLAwl49UZRIZ-fHqqx",
+        },
+    },
 }

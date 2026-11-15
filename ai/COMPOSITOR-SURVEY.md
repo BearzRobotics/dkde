@@ -50,3 +50,10 @@ The mismatch to resolve: bindings for the Zig we use (v0.20.x) want wlroots 0.20
 What runs (verified nested in a private labwc, with dkde-calc, dkde-clock and dkde-colour as clients, captured with grim through our own screencopy): xdg-shell windows with focus and raise, popups, pointer and keyboard seat, cascade placement, `Alt+T` floating <-> tiling (master left, others stacked right; restores the floating positions), `Alt+Shift+Space` floats one window out of the tiling, `Alt+Escape` quits. The layout maths is in `layout.zig` (no wlroots; 5 tests) so the X11 window manager can reuse it.
 
 Testing caveat: `wtype` builds its own keymap, so its keycodes do not match a us-layout compositor (`t` arrived as Escape). Use `dkde-pointer chord`, and send a warm-up chord first so the nested seat has a keyboard.
+
+## Settings and layout fixes
+
+- `~/.config/dkde/compositor.toml` (or `DKDE_COMPOSITOR_CONFIG`): `[windows] layout = "floating" | "tiling"`, `gap`, `master_ratio`. Every key is optional; a missing file is fine; a bad value is logged and replaced by its default; bad TOML is logged and the defaults are used. `kill -HUP` re-reads it. Tests in `src/config.zig`.
+- wlroots' `wlr_scene_xdg_surface` already shifts the surface by the window geometry, so the tree's position is where the window's content (without CSD shadows) appears. Do not subtract the geometry offset again (a first version did, and tiled windows sat 14 px too far up and left).
+- Tiled windows are told they are tiled (`xdg_toplevel.set_tiled`), so GTK draws them square and without shadows.
+- Test-harness rule: anything that starts dkde-panel must run under `dbus-run-session` with an empty `XDG_CONFIG_DIRS`, or the panel starts the real session's autostart programs.

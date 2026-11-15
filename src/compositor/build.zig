@@ -49,6 +49,8 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     root.addImport("c", translate_c.createModule());
+    const toml = b.dependency("toml", .{ .target = target, .optimize = optimize }).module("toml");
+    root.addImport("toml", toml);
     root.linkSystemLibrary("wlroots-0.19", .{});
     root.linkSystemLibrary("wayland-server", .{});
     root.linkSystemLibrary("xkbcommon", .{});
@@ -56,6 +58,15 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{ .name = "dkde-compositor", .root_module = root });
     b.installArtifact(exe);
+
+    // The pieces with no wlroots in them (layout, settings) are tested on their own.
+    const test_step = b.step("test", "Run the tests");
+    inline for (.{ "src/layout.zig", "src/config.zig" }) |file| {
+        const test_mod = b.createModule(.{ .root_source_file = b.path(file), .target = target, .optimize = optimize });
+        test_mod.addImport("toml", toml);
+        const t = b.addTest(.{ .root_module = test_mod });
+        test_step.dependOn(&b.addRunArtifact(t).step);
+    }
 
     const run = b.addRunArtifact(exe);
     b.step("run", "Run the compositor").dependOn(&run.step);

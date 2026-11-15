@@ -12,6 +12,7 @@
 const std = @import("std");
 const c = @import("c");
 const layout = @import("layout.zig");
+const config = @import("config.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -142,6 +143,8 @@ const Toplevel = struct {
     /// Where it was before tiling took it, to put it back.
     saved: ?layout.Rect = null,
     minimized: bool = false,
+    /// Where tiling wants the window's content; kept so it can be moved again when the client changes its own margins.
+    cell: ?layout.Rect = null,
     /// What the taskbar sees of this window.
     handle: ?*c.wlr_foreign_toplevel_handle_v1 = null,
     handle_activate: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -166,10 +169,9 @@ const Toplevel = struct {
         server.managed.append(gpa, self) catch {};
         // A window with a parent (a dialog) or a fixed size is not tiled.
         if (self.xdg.parent != null) self.floating = true;
-        if (server.policy == .floating or self.floating) {
-            const spot = layout.cascade(workArea(), server.opened);
-            c.wlr_scene_node_set_position(&self.tree.*.node, spot.x, spot.y);
-        }
+        // Every window starts at a cascade spot, so the place it goes back to when tiling is switched off is a good one.
+        const spot = layout.cascade(workArea(), server.opened);
+        c.wlr_scene_node_set_position(&self.tree.*.node, spot.x, spot.y);
         server.opened += 1;
         addHandle(self);
         focus(self);
@@ -334,14 +336,21 @@ fn workArea() layout.Rect {
 }
 
 fn geometryOf(t: *Toplevel) layout.Rect {
+    // The scene puts the window's geometry (its content, without shadows) at the tree's position.
     const geo = t.xdg.base.*.geometry;
-    return .{ .x = t.tree.*.node.x + geo.x, .y = t.tree.*.node.y + geo.y, .w = geo.width, .h = geo.height };
+    return .{ .x = t.tree.*.node.x, .y = t.tree.*.node.y, .w = geo.width, .h = geo.height };
 }
 
 fn place(t: *Toplevel, r: layout.Rect) void {
-    const geo = t.xdg.base.*.geometry;
-    c.wlr_scene_node_set_position(&t.tree.*.node, r.x - geo.x, r.y - geo.y);
+    c.wlr_scene_node_set_position(&t.tree.*.node, r.x, r.y);
     _ = c.wlr_xdg_toplevel_set_size(t.xdg, r.w, r.h);
+}
+
+/// Places a window in a tiling cell and tells it so (clients then draw square, shadowless windows).
+fn placeTiled(t: *Toplevel, r: layout.Rect) void {
+    t.cell = r;
+    _ = c.wlr_xdg_toplevel_set_tiled(t.xdg, c.WLR_EDGE_TOP | c.WLR_EDGE_BOTTOM | c.WLR_EDGE_LEFT | c.WLR_EDGE_RIGHT);
+    place(t, r);
 }
 
 /// Puts every window where the policy says. Floating windows stay put.
@@ -357,7 +366,7 @@ fn arrange() void {
     layout.tile(workArea(), tiled.items.len, server.layout_options, cells);
     for (tiled.items, cells) |t, cell| {
         if (t.saved == null) t.saved = geometryOf(t);
-        place(t, cell);
+        placeTiled(t, cell);
     }
 }
 
@@ -373,6 +382,8 @@ fn togglePolicy() void {
 
 /// Gives a window back the place and size it had before tiling.
 fn restore(t: *Toplevel) void {
+    t.cell = null;
+    _ = c.wlr_xdg_toplevel_set_tiled(t.xdg, 0);
     if (t.saved) |r| {
         place(t, r);
         t.saved = null;
@@ -633,13 +644,13 @@ fn beginGrab(t: *Toplevel, mode: CursorMode, edges: u32) void {
         server.grab_y = cursor.*.y - @as(f64, @floatFromInt(t.tree.*.node.y));
     } else {
         const geo = t.xdg.base.*.geometry;
-        const border_x = @as(f64, @floatFromInt(t.tree.*.node.x + geo.x)) + (if (edges & c.WLR_EDGE_RIGHT != 0) @as(f64, @floatFromInt(geo.width)) else 0);
-        const border_y = @as(f64, @floatFromInt(t.tree.*.node.y + geo.y)) + (if (edges & c.WLR_EDGE_BOTTOM != 0) @as(f64, @floatFromInt(geo.height)) else 0);
+        const border_x = @as(f64, @floatFromInt(t.tree.*.node.x)) + (if (edges & c.WLR_EDGE_RIGHT != 0) @as(f64, @floatFromInt(geo.width)) else 0);
+        const border_y = @as(f64, @floatFromInt(t.tree.*.node.y)) + (if (edges & c.WLR_EDGE_BOTTOM != 0) @as(f64, @floatFromInt(geo.height)) else 0);
         server.grab_x = cursor.*.x - border_x;
         server.grab_y = cursor.*.y - border_y;
         server.grab_box = geo;
-        server.grab_box.x += t.tree.*.node.x;
-        server.grab_box.y += t.tree.*.node.y;
+        server.grab_box.x = t.tree.*.node.x;
+        server.grab_box.y = t.tree.*.node.y;
         server.resize_edges = edges;
     }
 }
@@ -655,7 +666,6 @@ fn processCursorMotion(time: u32) void {
         },
         .resize => {
             if (server.grabbed) |t| {
-                const geo = t.xdg.base.*.geometry;
                 const border_x: i32 = @intFromFloat(cursor.*.x - server.grab_x);
                 const border_y: i32 = @intFromFloat(cursor.*.y - server.grab_y);
                 var new_left = server.grab_box.x;
@@ -676,7 +686,7 @@ fn processCursorMotion(time: u32) void {
                     new_right = border_x;
                     if (new_right <= new_left) new_right = new_left + 1;
                 }
-                c.wlr_scene_node_set_position(&t.tree.*.node, new_left - geo.x, new_top - geo.y);
+                c.wlr_scene_node_set_position(&t.tree.*.node, new_left, new_top);
                 _ = c.wlr_xdg_toplevel_set_size(t.xdg, new_right - new_left, new_bottom - new_top);
             }
             return;
@@ -838,6 +848,67 @@ fn onRequestSetSelection(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) voi
     c.wlr_seat_set_selection(server.seat, event.source, event.serial);
 }
 
+// ---- settings ------------------------------------------------------------------------------------------------
+
+/// Where the settings file is: DKDE_COMPOSITOR_CONFIG, or ~/.config/dkde/compositor.toml.
+fn configPath(buf: []u8) ?[:0]const u8 {
+    if (std.c.getenv("DKDE_COMPOSITOR_CONFIG")) |p| return std.fmt.bufPrintSentinel(buf, "{s}", .{std.mem.span(p)}, 0) catch null;
+    if (std.c.getenv("XDG_CONFIG_HOME")) |d| return std.fmt.bufPrintSentinel(buf, "{s}/dkde/compositor.toml", .{std.mem.span(d)}, 0) catch null;
+    const home = std.c.getenv("HOME") orelse return null;
+    return std.fmt.bufPrintSentinel(buf, "{s}/.config/dkde/compositor.toml", .{std.mem.span(home)}, 0) catch null;
+}
+
+/// Reads the settings file (a missing one is fine) and applies it.
+fn loadConfig() void {
+    var path_buf: [1024]u8 = undefined;
+    var cfg: config.Config = .{};
+    if (configPath(&path_buf)) |path| {
+        if (readFile(path)) |text| {
+            defer gpa.free(text);
+            var warnings: std.ArrayList([]const u8) = .empty;
+            defer {
+                for (warnings.items) |w| gpa.free(w);
+                warnings.deinit(gpa);
+            }
+            cfg = config.parse(gpa, text, &warnings) catch cfg;
+            for (warnings.items) |w| c._wlr_log(c.WLR_ERROR, "%s: %.*s", path.ptr, @as(c_int, @intCast(w.len)), w.ptr);
+        }
+    }
+    const was = server.policy;
+    server.policy = cfg.policy;
+    server.layout_options = cfg.options;
+    // The policy changed: put windows where it says (or back where they were).
+    if (was != cfg.policy) {
+        if (cfg.policy == .floating) {
+            for (server.managed.items) |t| restore(t);
+        }
+    }
+    arrange();
+}
+
+fn readFile(path: [:0]const u8) ?[]u8 {
+    const file = c.fopen(path.ptr, "rb") orelse return null;
+    defer _ = c.fclose(file);
+    var list: std.ArrayList(u8) = .empty;
+    var buf: [4096]u8 = undefined;
+    while (true) {
+        const n = c.fread(&buf, 1, buf.len, file);
+        if (n == 0) break;
+        list.appendSlice(gpa, buf[0..n]) catch {
+            list.deinit(gpa);
+            return null;
+        };
+    }
+    return list.toOwnedSlice(gpa) catch null;
+}
+
+/// SIGHUP: read the settings again.
+fn onReload(_: c_int, _: ?*anyopaque) callconv(.c) c_int {
+    c._wlr_log(c.WLR_INFO, "reloading the settings");
+    loadConfig();
+    return 0;
+}
+
 // ---- start ---------------------------------------------------------------------------------------------------
 
 pub fn main() !void {
@@ -886,6 +957,8 @@ pub fn main() !void {
         .seat = seat,
     };
 
+    loadConfig();
+    _ = c.wl_event_loop_add_signal(c.wl_display_get_event_loop(display), c.SIGHUP, onReload, null);
     listen(&output_layout.*.events.change, &server.layout_change, onLayoutChange);
     listen(&backend.*.events.new_output, &server.new_output, onNewOutput);
     listen(&xdg_shell.*.events.new_toplevel, &server.new_xdg_toplevel, onNewToplevel);

@@ -2,6 +2,8 @@
 #define WLR_USE_UNSTABLE 1
 #include <time.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <signal.h>
 #include <wayland-server-core.h>
 #include <xkbcommon/xkbcommon.h>
 #include <wlr/backend.h>
