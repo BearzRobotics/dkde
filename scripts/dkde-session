@@ -2,12 +2,15 @@
 
 case "${1:-}" in
     -h|--help)
-        echo "dkde-session - start the DKDE Wayland session (labwc, the panel and a session D-Bus when available)"
-        echo "Usage: dkde-session"
+        echo "dkde-session - start the DKDE session (labwc, the panel and a session D-Bus when available)"
+        echo "Usage: dkde-session [--x11]"
+        echo "  --x11          an X11 session: dkde-wm and the panel (needs dkde-wm; started with startx"
+        echo "                 when there is no X server yet)"
         echo "  -h, --help     show this help and exit"
         echo "  -V, --version  show the version and exit"
         exit 0 ;;
     -V|--version) echo "dkde-session @VERSION@"; exit 0 ;;
+    --x11) shift; DKDE_SESSION_TYPE=x11 ;;
     -*) echo "dkde-session: unknown option '$1'" >&2; echo "Try 'dkde-session --help'." >&2; exit 2 ;;
 esac
 # The dkde Wayland session: greetd (or any login manager, or a tty) runs this.
@@ -15,7 +18,13 @@ esac
 # starts labwc (or the compositor named by DKDE_COMPOSITOR) under a private session
 # D-Bus when one can be had. The labwc autostart (see data/labwc/autostart) starts the panel.
 
-export XDG_SESSION_TYPE=wayland
+# DKDE_SESSION_TYPE=x11 (or --x11, or `type=x11` in ~/.config/dkde/session.conf) starts the X11 session instead.
+if [ -z "$DKDE_SESSION_TYPE" ] && [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/dkde/session.conf" ]; then
+    while IFS='=' read -r key value; do
+        [ "$key" = type ] && DKDE_SESSION_TYPE="$value"
+    done < "${XDG_CONFIG_HOME:-$HOME/.config}/dkde/session.conf"
+fi
+case "$DKDE_SESSION_TYPE" in x11) export XDG_SESSION_TYPE=x11 ;; *) export XDG_SESSION_TYPE=wayland ;; esac
 
 # This session's own messages go to ~/.local/state/dkde/session.log (the last
 # session only). When labwc cannot start (no seat, no GPU), greetd just shows the
@@ -119,7 +128,14 @@ seat_check() {
     fi
     echo "dkde-session: seatd is at $sock"
 }
-seat_check
+# An X11 session needs an X server: from a tty, startx makes one and runs this script again inside it.
+if [ "$XDG_SESSION_TYPE" = x11 ] && [ -z "$DISPLAY" ]; then
+    self=$(command -v dkde-session || echo "$0")
+    if command -v startx >/dev/null 2>&1; then exec startx "$self" --x11; fi
+    echo "dkde-session: no X server (DISPLAY is not set) and startx is not installed"
+    exit 1
+fi
+[ "$XDG_SESSION_TYPE" = x11 ] || seat_check
 
 # A session bus is optional (SPEC.md 2): notifications and the tray use it.
 started=$(date +%s)
@@ -132,12 +148,39 @@ if [ -z "$DKDE_COMPOSITOR" ] && [ -f "$session_conf" ]; then
         [ "$key" = compositor ] && DKDE_COMPOSITOR="$value"
     done < "$session_conf"
 fi
+if [ "$XDG_SESSION_TYPE" = x11 ]; then
+    unset WAYLAND_DISPLAY
+    command -v dkde-wm >/dev/null 2>&1 || { echo "dkde-session: dkde-wm not found (it is built from src/xwm)"; exit 1; }
+    DKDE_COMPOSITOR=dkde-wm
+fi
 compositor="${DKDE_COMPOSITOR:-labwc}"
 if ! command -v "$compositor" >/dev/null 2>&1; then
     echo "dkde-session: $compositor not found; using labwc"
     compositor=labwc
 fi
-if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
+# On X11 the window manager does not start the session's programs; this does (the same set as the
+# compositor's autostart, less dkde-idle, which speaks a Wayland protocol). A ~/.config/dkde/autostart
+# script replaces it. The body runs under dbus-run-session when there is no session bus yet.
+x11_body='
+dkde-wm &
+wm=$!
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/dkde"
+if [ -r "$cfg/autostart" ]; then
+    sh "$cfg/autostart" &
+else
+    (while kill -0 "$wm" 2>/dev/null; do dkde-panel; sleep 1; done) &
+    [ -f "$cfg/display.sh" ] && sh "$cfg/display.sh" &
+    command -v pkexec >/dev/null 2>&1 && dkde-polkit &
+fi
+wait "$wm"
+'
+if [ "$XDG_SESSION_TYPE" = x11 ]; then
+    if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
+        dbus-run-session -- sh -c "$x11_body"
+    else
+        sh -c "$x11_body"
+    fi
+elif [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
     dbus-run-session -- "$compositor" "$@"
 else
     "$compositor" "$@"

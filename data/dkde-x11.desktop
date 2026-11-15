@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=dkde (X11)
+Comment=The dkde desktop on X11, with dkde-wm
+Exec=dkde-session --x11
+Type=Application
+DesktopNames=dkde
