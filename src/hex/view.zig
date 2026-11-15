@@ -197,7 +197,8 @@ pub const View = struct {
     fn updateScrollRange(self: *View) void {
         const rows: f64 = @floatFromInt(self.rowCount());
         const page: f64 = @floatFromInt(self.visibleRows());
-        self.adjustment.configure(@min(self.adjustment.getValue(), @max(0, rows - page)), 0, rows, 1, page - 1, page);
+        // GTK wants lower + page ≤ upper: a short file in a tall window still has a full page.
+        self.adjustment.configure(@min(self.adjustment.getValue(), @max(0, rows - page)), 0, @max(rows, page), 1, page - 1, page);
     }
 
     fn firstRow(self: *const View) usize {
