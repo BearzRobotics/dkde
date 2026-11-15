@@ -12,6 +12,10 @@ const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const common = @import("common");
 const calsys = @import("calsys");
+const wldesktop = @import("wldesktop");
+const x11desktop = @import("x11desktop");
+const gdkwayland = @import("gdkwayland4");
+const wl = @import("wayland").client.wl;
 
 const hw = @import("hardware.zig");
 const np = @import("netparse.zig");
@@ -192,30 +196,31 @@ pub fn dropdownOf(items: []const []const u8) *gtk.DropDown {
 
 pub const DisplayPage = struct {
     window: *SettingsWindow,
-    guard: *hw.Guard(DisplayPage) = undefined,
     content: *gtk.Box,
-    parsed: ?std.json.Parsed([]hw.Output) = null,
     status: *gtk.Label,
+    /// The outputs, through the shared desktop API (Wayland output management or X11 RandR).
+    desktop: common.desktop.Desktop = .{},
+    /// Callbacks of the API may arrive after the page is gone; they check this.
+    token: *Token,
     /// The settings a pending change replaced, so "Revert" can put them back.
-    revert_name: ?[]u8 = null,
-    revert_mode: ?[]u8 = null,
-    revert_scale: f64 = 1,
+    revert_id: ?u64 = null,
+    revert_mode: ?common.desktop.Mode = null,
+    revert_scale: f32 = 1,
     revert_left: u32 = 0,
     revert_source: c_uint = 0,
     revert_label: ?*gtk.Label = null,
+
+    const Token = struct { alive: bool = true, pending: u32 = 0, page: *DisplayPage };
 
     const scales = [_]f64{ 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0 };
     const scale_names = [_][]const u8{ "100%", "125%", "150%", "175%", "200%", "250%", "300%" };
 
     pub fn build(window: *SettingsWindow) *gtk.Box {
         const page = win.SettingsWindow.newPage(common.tr("Display"));
-        if (!hw.hasProgram("wlr-randr")) {
-            _ = note(page, common.tr("Display settings need the wlr-randr tool. Install the package wlr-randr."));
-            return page;
-        }
         const self = gpa.create(DisplayPage) catch @panic("OOM");
-        self.* = .{ .window = window, .content = gtk.Box.new(.vertical, 12), .status = gtk.Label.new("") };
-        self.guard = hw.Guard(DisplayPage).create(self);
+        const token = gpa.create(Token) catch @panic("OOM");
+        self.* = .{ .window = window, .content = gtk.Box.new(.vertical, 12), .status = gtk.Label.new(""), .token = token };
+        token.* = .{ .page = self };
         self.status.setXalign(0);
         self.status.as(gtk.Widget).addCssClass("dim-label");
         page.append(self.status.as(gtk.Widget));
@@ -227,59 +232,68 @@ pub const DisplayPage = struct {
 
     fn onDestroy(_: *gtk.Box, self: *DisplayPage) callconv(.c) void {
         if (self.revert_source != 0) _ = glib.Source.remove(self.revert_source);
-        self.guard.kill();
-        if (self.parsed) |*p| p.deinit();
-        if (self.revert_name) |n| gpa.free(n);
-        if (self.revert_mode) |m| gpa.free(m);
+        self.desktop.destroy();
+        self.token.alive = false;
+        if (self.token.pending == 0) gpa.destroy(self.token);
         gpa.destroy(self);
     }
 
     fn onMap(_: *gtk.Box, self: *DisplayPage) callconv(.c) void {
+        if (self.desktop.backend == null) self.desktop = openDesktop(self);
         self.refresh();
     }
 
-    fn refresh(self: *DisplayPage) void {
-        hw.run(DisplayPage, self.guard, &.{ "wlr-randr", "--json" }, onList);
+    fn onOutputsChanged(data: *anyopaque) void {
+        const self: *DisplayPage = @ptrCast(@alignCast(data));
+        self.refresh();
     }
 
-    fn onList(self: *DisplayPage, ok: bool, out: []const u8) void {
+    /// Wayland's protocols or X11's RandR, whichever this session runs.
+    fn openDesktop(self: *DisplayPage) common.desktop.Desktop {
+        const display = gdk.Display.getDefault() orelse return .{};
+        if (gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkwayland.WaylandDisplay.getGObjectType()) == 0) {
+            return x11desktop.X11.create(gpa, ignoreChange, ignoreChange, self, onOutputsChanged);
+        }
+        const wl_display: *wl.Display = @ptrCast(gdkwayland.WaylandDisplay.getWlDisplay(@ptrCast(display)) orelse return .{});
+        return wldesktop.Wayland.create(gpa, wl_display, .{ .windows = false, .workspaces = false, .capture = false }, .{ .data = self, .on_outputs = onOutputsChanged });
+    }
+
+    fn ignoreChange(_: *anyopaque) void {}
+
+    fn refresh(self: *DisplayPage) void {
         clear(self.content);
-        if (self.parsed) |*p| p.deinit();
-        self.parsed = null;
-        if (!ok) {
-            _ = note(self.content, common.tr("Could not read the displays. wlr-randr needs a compositor that supports wlr-output-management (labwc does) and a version with --json (0.4 or newer)."));
+        if (!self.desktop.has(.outputs)) {
+            _ = note(self.content, common.tr("Display settings need a session that can configure outputs: a Wayland compositor with wlr-output-management (labwc and dkde-compositor have it), or X11 with RandR."));
             return;
         }
-        self.parsed = hw.parseOutputs(gpa, out) catch {
-            _ = note(self.content, common.tr("wlr-randr gave output this page cannot read."));
-            return;
-        };
-        for (self.parsed.?.value) |output| self.addOutput(output);
+        for (self.desktop.outputs()) |output| self.addOutput(output);
     }
 
-    fn modeText(m: hw.Mode) [:0]u8 {
-        return std.fmt.allocPrintSentinel(gpa, "{d} \u{00d7} {d} @ {d:.0} Hz{s}", .{ m.width, m.height, m.refresh, if (m.preferred) " (recommended)" else "" }, 0) catch @panic("OOM");
+    fn modeText(m: common.desktop.Mode) [:0]u8 {
+        const hz = @as(f64, @floatFromInt(m.refresh_mhz)) / 1000.0;
+        if (m.refresh_mhz == 0) return std.fmt.allocPrintSentinel(gpa, "{d} \u{00d7} {d}{s}", .{ m.width, m.height, if (m.preferred) " (recommended)" else "" }, 0) catch @panic("OOM");
+        return std.fmt.allocPrintSentinel(gpa, "{d} \u{00d7} {d} @ {d:.0} Hz{s}", .{ m.width, m.height, hz, if (m.preferred) " (recommended)" else "" }, 0) catch @panic("OOM");
     }
 
     const Row = struct {
         page: *DisplayPage,
-        output: []u8,
-        modes: []hw.Mode,
+        id: u64,
+        modes: []common.desktop.Mode,
         mode_drop: *gtk.DropDown,
-        scale_drop: *gtk.DropDown,
+        scale_drop: ?*gtk.DropDown,
     };
 
-    fn onRowDestroy(_: *gtk.Box, row: *Row) callconv(.c) void {
-        gpa.free(row.output);
+    fn onRowDestroyAny(_: *gtk.Box, row: *Row) callconv(.c) void {
         gpa.free(row.modes);
         gpa.destroy(row);
     }
 
-    fn addOutput(self: *DisplayPage, output: hw.Output) void {
+    fn addOutput(self: *DisplayPage, output: common.desktop.Output) void {
         const card = gtk.Box.new(.vertical, 8);
         card.as(gtk.Widget).addCssClass("dkde-setting-row");
         var title_buf: [256]u8 = undefined;
-        const title = std.fmt.bufPrintSentinel(&title_buf, "{s}{s}{s}", .{ output.name, if (output.description != null) " \u{2014} " else "", output.description orelse "" }, 0) catch "Display";
+        const has_description = output.description.len > 0 and !std.mem.eql(u8, output.description, output.name);
+        const title = std.fmt.bufPrintSentinel(&title_buf, "{s}{s}{s}", .{ output.name, if (has_description) " \u{2014} " else "", if (has_description) output.description else "" }, 0) catch "Display";
         const heading = gtk.Label.new(title);
         heading.setXalign(0);
         heading.as(gtk.Widget).addCssClass("heading");
@@ -287,8 +301,9 @@ pub const DisplayPage = struct {
 
         const row = gpa.create(Row) catch return;
         row.page = self;
-        row.output = gpa.dupe(u8, output.name) catch return;
-        row.modes = gpa.dupe(hw.Mode, output.modes) catch return;
+        row.id = output.id;
+        row.modes = gpa.dupe(common.desktop.Mode, output.modes) catch return;
+        row.scale_drop = null;
 
         var names: std.ArrayList([]const u8) = .empty;
         defer {
@@ -304,13 +319,17 @@ pub const DisplayPage = struct {
         row.mode_drop.setSelected(current);
         win.SettingsWindow.addRowDesc(card, common.tr("Resolution and refresh rate"), null, row.mode_drop.as(gtk.Widget));
 
-        row.scale_drop = dropdownOf(&scale_names);
-        var best: u32 = 0;
-        for (scales, 0..) |s, i| {
-            if (@abs(s - output.scale) < @abs(scales[best] - output.scale)) best = @intCast(i);
+        // RandR has no per-output scale; the row is only there when the session can do it.
+        if (self.desktop.kind() == .wayland) {
+            const drop = dropdownOf(&scale_names);
+            var best: u32 = 0;
+            for (scales, 0..) |sc, i| {
+                if (@abs(sc - output.scale) < @abs(scales[best] - output.scale)) best = @intCast(i);
+            }
+            drop.setSelected(best);
+            row.scale_drop = drop;
+            win.SettingsWindow.addRowDesc(card, common.tr("Scale"), common.tr("Makes text and apps larger or smaller."), drop.as(gtk.Widget));
         }
-        row.scale_drop.setSelected(best);
-        win.SettingsWindow.addRowDesc(card, common.tr("Scale"), common.tr("Makes text and apps larger or smaller."), row.scale_drop.as(gtk.Widget));
 
         const apply = gtk.Button.newWithLabel(common.tr("Apply"));
         apply.as(gtk.Widget).addCssClass("suggested-action");
@@ -321,45 +340,45 @@ pub const DisplayPage = struct {
         self.content.append(card.as(gtk.Widget));
     }
 
-    fn onRowDestroyAny(_: *gtk.Box, row: *Row) callconv(.c) void {
-        gpa.free(row.output);
-        gpa.free(row.modes);
-        gpa.destroy(row);
+    fn currentOf(self: *DisplayPage, id: u64) ?common.desktop.Output {
+        for (self.desktop.outputs()) |o| if (o.id == id) return o;
+        return null;
     }
 
-    fn modeArg(buf: []u8, m: hw.Mode) []const u8 {
-        return std.fmt.bufPrint(buf, "{d}x{d}@{d:.3}Hz", .{ m.width, m.height, m.refresh }) catch "";
+    /// Asks for a change and calls `then` with the page when it is done (and the page still exists).
+    fn request(self: *DisplayPage, id: u64, change: common.desktop.OutputChange, comptime then: fn (*DisplayPage, bool) void) void {
+        const Done = struct {
+            fn run(ctx: ?*anyopaque, ok: bool) void {
+                const token: *Token = @ptrCast(@alignCast(ctx.?));
+                token.pending -= 1;
+                if (token.alive) then(token.page, ok) else if (token.pending == 0) gpa.destroy(token);
+            }
+        };
+        self.token.pending += 1;
+        self.desktop.configureOutput(id, change, Done.run, self.token);
     }
 
     fn onApply(_: *gtk.Button, row: *Row) callconv(.c) void {
         const self = row.page;
         const index = row.mode_drop.getSelected();
         if (index >= row.modes.len) return;
-        const mode = row.modes[index];
-        const scale = scales[@min(row.scale_drop.getSelected(), scales.len - 1)];
+        var change: common.desktop.OutputChange = .{ .mode = row.modes[index] };
+        if (row.scale_drop) |d| change.scale = @floatCast(scales[@min(d.getSelected(), scales.len - 1)]);
 
         // Remember what was there for the "keep changes?" safety net.
-        if (self.revert_name) |n| gpa.free(n);
-        if (self.revert_mode) |m| gpa.free(m);
-        self.revert_name = gpa.dupe(u8, row.output) catch null;
+        self.revert_id = row.id;
         self.revert_mode = null;
         self.revert_scale = 1;
-        if (self.parsed) |p| for (p.value) |o| {
-            if (!std.mem.eql(u8, o.name, row.output)) continue;
-            if (hw.currentMode(o)) |cur| {
-                var buf: [64]u8 = undefined;
-                self.revert_mode = gpa.dupe(u8, modeArg(&buf, cur)) catch null;
-            }
+        if (self.currentOf(row.id)) |o| {
+            for (o.modes) |m| if (m.current) {
+                self.revert_mode = m;
+            };
             self.revert_scale = o.scale;
-        };
-
-        var mode_buf: [64]u8 = undefined;
-        var scale_buf: [16]u8 = undefined;
-        const scale_text = std.fmt.bufPrint(&scale_buf, "{d:.2}", .{scale}) catch return;
-        hw.run(DisplayPage, self.guard, &.{ "wlr-randr", "--output", row.output, "--mode", modeArg(&mode_buf, mode), "--scale", scale_text }, onApplied);
+        }
+        self.request(row.id, change, onApplied);
     }
 
-    fn onApplied(self: *DisplayPage, ok: bool, _: []const u8) void {
+    fn onApplied(self: *DisplayPage, ok: bool) void {
         if (!ok) {
             self.status.setText(common.tr("The display refused that setting."));
             self.refresh();
@@ -419,7 +438,7 @@ pub const DisplayPage = struct {
     fn onKeep(self: *DisplayPage, _: []const u8, _: []const u8) void {
         self.stopCountdown();
         // Remember the layout so it comes back at the next login.
-        hw.run(DisplayPage, self.guard, &.{ "wlr-randr", "--json" }, onSave);
+        self.saveLayout();
         self.refresh();
     }
 
@@ -429,32 +448,41 @@ pub const DisplayPage = struct {
     }
 
     fn revert(self: *DisplayPage) void {
-        const name = self.revert_name orelse return self.refresh();
+        const id = self.revert_id orelse return self.refresh();
         const mode = self.revert_mode orelse return self.refresh();
-        var scale_buf: [16]u8 = undefined;
-        const scale_text = std.fmt.bufPrint(&scale_buf, "{d:.2}", .{self.revert_scale}) catch return;
-        hw.run(DisplayPage, self.guard, &.{ "wlr-randr", "--output", name, "--mode", mode, "--scale", scale_text }, onReverted);
+        var change: common.desktop.OutputChange = .{ .mode = mode };
+        if (self.desktop.kind() == .wayland) change.scale = self.revert_scale;
+        self.request(id, change, onReverted);
     }
 
-    fn onReverted(self: *DisplayPage, _: bool, _: []const u8) void {
+    fn onReverted(self: *DisplayPage, _: bool) void {
         self.status.setText(common.tr("Reverted to the previous display settings."));
         self.refresh();
     }
 
-    /// Writes `display.sh`, which the labwc autostart runs to restore the layout.
-    fn onSave(self: *DisplayPage, ok: bool, out: []const u8) void {
-        if (!ok) return;
-        var parsed = hw.parseOutputs(gpa, out) catch return;
-        defer parsed.deinit();
+    /// Writes `display.sh`, which the session's autostart runs to restore the layout: wlr-randr commands on
+    /// Wayland, xrandr on X11.
+    fn saveLayout(self: *DisplayPage) void {
+        const x11 = self.desktop.kind() == .x11;
         var script: std.ArrayList(u8) = .empty;
         defer script.deinit(gpa);
-        script.appendSlice(gpa, "#!/bin/sh\n# Written by dkde-settings (Display). The labwc autostart runs this.\n") catch return;
-        for (parsed.value) |o| {
+        script.appendSlice(gpa, "#!/bin/sh\n# Written by dkde-settings (Display). The session's autostart runs this.\n") catch return;
+        for (self.desktop.outputs()) |o| {
             const line = if (!o.enabled)
-                std.fmt.allocPrint(gpa, "wlr-randr --output '{s}' --off\n", .{o.name}) catch return
+                std.fmt.allocPrint(gpa, "{s} --output '{s}' --off\n", .{ if (x11) "xrandr" else "wlr-randr", o.name }) catch return
             else blk: {
-                const m = hw.currentMode(o) orelse continue;
-                break :blk std.fmt.allocPrint(gpa, "wlr-randr --output '{s}' --on --mode {d}x{d}@{d:.3}Hz --scale {d:.2}\n", .{ o.name, m.width, m.height, m.refresh, o.scale }) catch return;
+                var cur: ?common.desktop.Mode = null;
+                for (o.modes) |m| if (m.current) {
+                    cur = m;
+                };
+                const m = cur orelse continue;
+                const hz = @as(f64, @floatFromInt(m.refresh_mhz)) / 1000.0;
+                if (x11) {
+                    var rate_buf: [32]u8 = undefined;
+                    const rate = if (m.refresh_mhz > 0) std.fmt.bufPrint(&rate_buf, " --rate {d:.2}", .{hz}) catch "" else "";
+                    break :blk std.fmt.allocPrint(gpa, "xrandr --output '{s}' --mode {d}x{d}{s}\n", .{ o.name, m.width, m.height, rate }) catch return;
+                }
+                break :blk std.fmt.allocPrint(gpa, "wlr-randr --output '{s}' --on --mode {d}x{d}@{d:.3}Hz --scale {d:.2}\n", .{ o.name, m.width, m.height, hz, o.scale }) catch return;
             };
             defer gpa.free(line);
             script.appendSlice(gpa, line) catch return;
@@ -467,7 +495,7 @@ pub const DisplayPage = struct {
         if (glib.fileSetContents(path, script.items.ptr, @intCast(script.items.len), null) == 0) {
             self.status.setText(common.tr("Could not save the display layout."));
         } else {
-            self.status.setText(common.tr("Saved. The layout is restored at login (the labwc autostart runs display.sh)."));
+            self.status.setText(common.tr("Saved. The layout is restored at login (the session's autostart runs display.sh)."));
         }
     }
 };

@@ -123,34 +123,6 @@ pub fn toneWav(allocator: std.mem.Allocator, left: bool, right: bool) ![]u8 {
     return out;
 }
 
-// ---- display ----------------------------------------------------------------------
-
-pub const Mode = struct {
-    width: i64,
-    height: i64,
-    refresh: f64 = 0,
-    preferred: bool = false,
-    current: bool = false,
-};
-
-pub const Output = struct {
-    name: []const u8,
-    description: ?[]const u8 = null,
-    enabled: bool = true,
-    modes: []const Mode = &.{},
-    scale: f64 = 1.0,
-};
-
-/// `wlr-randr --json`. Free with `.deinit()`.
-pub fn parseOutputs(allocator: std.mem.Allocator, text: []const u8) !std.json.Parsed([]Output) {
-    return std.json.parseFromSlice([]Output, allocator, text, .{ .ignore_unknown_fields = true });
-}
-
-pub fn currentMode(output: Output) ?Mode {
-    for (output.modes) |m| if (m.current) return m;
-    return null;
-}
-
 /// `rfkill list`: true when every radio is soft-blocked, false when any is on,
 /// null when there are none.
 pub fn parseRfkill(text: []const u8) ?bool {
@@ -394,20 +366,6 @@ test "tone is a valid stereo wav" {
     try std.testing.expect(!loud_right);
 }
 
-test "wlr-randr json" {
-    const a = std.testing.allocator;
-    const json =
-        \\[{"name":"HDMI-A-1","description":"Dell","make":"Dell","enabled":true,"scale":1.5,
-        \\ "position":{"x":0,"y":0},"transform":"normal",
-        \\ "modes":[{"width":1920,"height":1080,"refresh":60.0,"preferred":true,"current":true},
-        \\          {"width":1280,"height":720,"refresh":59.94,"preferred":false,"current":false}]}]
-    ;
-    var parsed = try parseOutputs(a, json);
-    defer parsed.deinit();
-    try std.testing.expectEqual(@as(usize, 1), parsed.value.len);
-    try std.testing.expectEqual(@as(f64, 1.5), parsed.value[0].scale);
-    try std.testing.expectEqual(@as(i64, 1920), currentMode(parsed.value[0]).?.width);
-}
 
 test "wpa_cli scan results" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);

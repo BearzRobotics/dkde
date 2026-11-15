@@ -9,6 +9,7 @@
 const std = @import("std");
 pub const c = @import("c");
 pub const idle = @import("idle.zig");
+const outputs_mod = @import("outputs.zig");
 const glib = @import("glib2");
 const core = @import("core");
 
@@ -56,6 +57,8 @@ pub const X11 = struct {
     ws: std.ArrayList(*desktop.Workspace) = .empty,
     ws_names: std.ArrayList([]u8) = .empty,
     has_wm: bool = false,
+    outputs: outputs_mod.Outputs,
+    on_outputs: ?*const fn (*anyopaque) void = null,
     source: c_uint = 0,
     on_windows: *const fn (*anyopaque) void,
     on_workspaces: *const fn (*anyopaque) void,
@@ -66,6 +69,8 @@ pub const X11 = struct {
         .windows = windowList,
         .workspaces = workspaceList,
         .activate_workspace = activateWorkspace,
+        .outputs = outputList,
+        .configure_outputs = configureOutputs,
         .capture = captureOf,
         .destroy = destroy,
     };
@@ -79,7 +84,7 @@ pub const X11 = struct {
 
     /// Connects to $DISPLAY. Returns an empty Desktop when there is no X
     /// server or no EWMH window manager on it.
-    pub fn create(allocator: std.mem.Allocator, on_windows: *const fn (*anyopaque) void, on_workspaces: *const fn (*anyopaque) void, data: *anyopaque) desktop.Desktop {
+    pub fn create(allocator: std.mem.Allocator, on_windows: *const fn (*anyopaque) void, on_workspaces: *const fn (*anyopaque) void, data: *anyopaque, on_outputs: ?*const fn (*anyopaque) void) desktop.Desktop {
         var num: c_int = 0;
         const conn = c.xcb_connect(null, &num) orelse return .{};
         if (c.xcb_connection_has_error(conn) != 0) {
@@ -94,7 +99,7 @@ pub const X11 = struct {
             c.xcb_disconnect(conn);
             return .{};
         };
-        self.* = .{ .allocator = allocator, .conn = conn, .root = it.data.*.root, .screen = it.data, .on_windows = on_windows, .on_workspaces = on_workspaces, .data = data };
+        self.* = .{ .allocator = allocator, .conn = conn, .root = it.data.*.root, .screen = it.data, .on_windows = on_windows, .on_workspaces = on_workspaces, .data = data, .on_outputs = on_outputs, .outputs = outputs_mod.Outputs.init(allocator, conn, it.data.*.root) };
         self.internAtoms();
         self.has_wm = self.wmPresent();
         // Property changes on the root tell us everything about the desktop.
@@ -298,8 +303,14 @@ pub const X11 = struct {
         }
         var windows_changed = false;
         var workspaces_changed = false;
+        var outputs_changed = false;
         while (c.xcb_poll_for_event(self.conn)) |ev| {
             defer std.c.free(ev);
+            if (self.outputs.isEvent(ev.*.response_type)) {
+                self.outputs.refresh();
+                outputs_changed = true;
+                continue;
+            }
             if (ev.*.response_type & 0x7f != c.XCB_PROPERTY_NOTIFY) continue;
             const p: *const c.xcb_property_notify_event_t = @ptrCast(ev);
             if (p.window == self.root) {
@@ -325,6 +336,7 @@ pub const X11 = struct {
         }
         if (windows_changed) self.on_windows(self.data);
         if (workspaces_changed) self.on_workspaces(self.data);
+        if (outputs_changed) if (self.on_outputs) |f| f(self.data);
         return 1;
     }
 
@@ -379,10 +391,22 @@ pub const X11 = struct {
         var caps = desktop.Capabilities.empty;
         // Capture works without a window manager; the rest is the manager's.
         caps.insert(.screenshot_output);
+        if (self.outputs.present) {
+            caps.insert(.outputs);
+            caps.insert(.output_config);
+        }
         if (self.has_wm) {
             for ([_]desktop.Capability{ .window_list, .window_activate, .window_minimize, .window_maximize, .window_close, .window_workspace, .workspaces, .workspace_switch }) |cap| caps.insert(cap);
         }
         return caps;
+    }
+
+    fn outputList(p: *anyopaque) []const desktop.Output {
+        return of(p).outputs.list.items;
+    }
+
+    fn configureOutputs(p: *anyopaque, edits: []const desktop.OutputEdit, done: desktop.ConfigDone, ctx: ?*anyopaque) void {
+        done(ctx, of(p).outputs.configure(edits));
     }
 
     fn windowList(p: *anyopaque) []const *desktop.Window {
@@ -427,6 +451,7 @@ pub const X11 = struct {
         for (self.items.items) |it| self.freeItem(it);
         self.items.deinit(self.allocator);
         self.windows.deinit(self.allocator);
+        self.outputs.deinit();
         for (self.ws.items) |w| self.allocator.destroy(w);
         self.ws.deinit(self.allocator);
         for (self.ws_names.items) |n| self.allocator.free(n);
@@ -448,7 +473,12 @@ const Probe = struct {
     window_calls: usize = 0,
     workspace_calls: usize = 0,
     image: ?desktop.Error!desktop.Image = null,
+    config_ok: ?bool = null,
 
+    fn onConfig(ctx: ?*anyopaque, ok: bool) void {
+        const self: *Probe = @ptrCast(@alignCast(ctx.?));
+        self.config_ok = ok;
+    }
     fn onWindows(p: *anyopaque) void {
         const self: *Probe = @ptrCast(@alignCast(p));
         self.window_calls += 1;
@@ -477,7 +507,7 @@ test "against a live X server" {
     if (std.c.getenv("DKDE_X11_TEST") == null) return error.SkipZigTest;
     const a = std.testing.allocator;
     var probe: Probe = .{};
-    var d = X11.create(a, Probe.onWindows, Probe.onWorkspaces, &probe);
+    var d = X11.create(a, Probe.onWindows, Probe.onWorkspaces, &probe, null);
     defer d.destroy();
     try std.testing.expectEqual(desktop.BackendKind.x11, d.kind());
     try std.testing.expect(d.has(.window_list) and d.has(.workspaces));
@@ -502,6 +532,24 @@ test "against a live X server" {
     w.activate();
     pump(500);
     try std.testing.expect(!w.minimized and w.activated);
+
+    // Outputs (RandR): the screen is listed with its modes, and re-applying its own mode is accepted.
+    try std.testing.expect(d.has(.outputs));
+    try std.testing.expect(d.outputs().len >= 1);
+    const o = d.outputs()[0];
+    try std.testing.expect(o.enabled and o.width > 0 and o.modes.len >= 1);
+    var cur: ?desktop.Mode = null;
+    for (o.modes) |m| if (m.current) {
+        cur = m;
+    };
+    try std.testing.expect(cur != null);
+    probe.config_ok = null;
+    d.configureOutput(o.id, .{ .mode = cur.? }, Probe.onConfig, &probe);
+    try std.testing.expectEqual(@as(?bool, true), probe.config_ok);
+    // Switching off the only screen is refused.
+    probe.config_ok = null;
+    d.configureOutput(d.outputs()[0].id, .{ .enabled = false }, Probe.onConfig, &probe);
+    try std.testing.expectEqual(@as(?bool, false), probe.config_ok);
 
     // The screenshot.
     d.capture(a, .primary, Probe.onCapture, &probe);

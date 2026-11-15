@@ -22,7 +22,7 @@ or by the page that needs them.
 | Need | Packages |
 |---|---|
 | Compositor, session, login | `labwc`, `greetd`, `seatd`, `dbus` |
-| Display page, screen off | `wlr-randr` |
+| Display page, screen off | nothing extra: wlr-output-management (Wayland) or RandR and DPMS (X11) |
 | Network, Bluetooth, printers | `network-manager` (or `wpasupplicant`, `dhcpcd`, `iproute2`), `bluez`, `cups` |
 | Online calendars (https) | `ca-certificates` |
 | Files: sftp, MTP phones | `openssh-client`, `gvfs-backends`, `libmtp-common`, `gvfs-fuse` |

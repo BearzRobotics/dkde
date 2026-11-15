@@ -144,7 +144,7 @@ sudo apt install \
     shared-mime-info papirus-icon-theme webp-pixbuf-loader librsvg2-common \
     fonts-noto-core fonts-noto-color-emoji \
     pipewire pipewire-pulse pipewire-bin wireplumber pulseaudio-utils \
-    wpasupplicant dhcpcd iproute2 bluez rfkill brightnessctl wlr-randr \
+    wpasupplicant dhcpcd iproute2 bluez rfkill brightnessctl \
     cups cups-client cups-filters \
     gvfs gvfs-backends gvfs-fuse libmtp-common udisks2 libarchive13t64 chrony sudo passwd \
     ca-certificates openssh-client ocrmypdf util-linux qt6ct gnome-online-accounts-gtk \
@@ -166,7 +166,7 @@ sudo apt install \
 | Brightness | `brightnessctl` (otherwise dkde writes the backlight in sysfs, which needs permission) | slider hidden on machines with no backlight |
 | Lock screen | `swaylock` (or `gtklock`, `waylock`) on Wayland, `xsecurelock` (or `i3lock`, `slock`, `xlock`) on X11; dkde runs one you install, it has no lock screen of its own | no Lock item and no idle lock |
 | Idle screen off | a compositor with `wlr-output-management` (labwc and dkde-compositor have it) | screen-off timeout does nothing |
-| Display settings | `wlr-randr` 0.4 or newer | Display page says what to install |
+| Display settings | a compositor with `wlr-output-management` (labwc, dkde-compositor) on Wayland, RandR on X11; no extra tool | Display page says what is missing |
 | Printers | `cups`, `cups-client`, `cups-filters` | Printers page says what to install |
 | Phones and cameras in Files (Android MTP, PTP, iOS) | `gvfs-backends`, `libmtp-common` (udev rules), `gvfs-fuse` for other programs | The Phones and cameras sidebar section is hidden. The phone must be unlocked and set to File transfer |
 | Servers in Files (sftp, ftp, smb) | `gvfs`, `gvfs-backends` (sftp, ftp), `gvfs-smb` or `smbclient` as your distribution splits them | File > Connect to Server says what to install; the Network sidebar section is hidden |
@@ -213,7 +213,7 @@ and skips the seat-group check when one is running.
 
 **Packages on other distributions.** The apt command above is Ubuntu-specific
 (and the only names I verified). Everywhere else, install the *programs* the
-table lists by their command names: `labwc`, `wlr-randr`, `wpa_cli`, `ip`,
+table lists by their command names: `labwc`, `wpa_cli`, `ip`,
 `bluetoothctl`, `rfkill`, `brightnessctl`, `wpctl` or `pactl` (and `pw-play`
 or `paplay`), `lpstat`/`lpadmin`/`lpoptions`/`lp`, `dbus-run-session`,
 `sudo`, plus `greetd` and `seatd` for a graphical login. Build-time you need

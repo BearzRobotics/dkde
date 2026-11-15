@@ -12,9 +12,9 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 ### Shared desktop API
 - **`common.desktop`**: one interface for windows, workspaces, outputs and screenshots, with capability discovery; programs no longer touch Wayland or X11 directly. Backends: `src/wldesktop` (Wayland protocols) and `src/x11desktop` (EWMH over XCB). The panel's taskbar and workspace switcher, dkde-snip's capture and dkde-idle's screen off/on use it.
-- dkde-idle no longer needs `wlr-randr` (it uses wlr-output-management itself); Settings > Display still does.
+- **Outputs on both backends**: listing, mode changes and power through the shared API (Wayland output management; X11 RandR 1.3+, one screen-size-aware configuration). **Settings > Display** and dkde-idle use it, so neither needs `wlr-randr` any more; on X11 the Scale row is hidden (RandR has none) and `display.sh` is written with `xrandr` commands.
 - **dkde-idle on X11**: polls the idle time (MIT-SCREEN-SAVER) and switches the screen off with DPMS; lock detection picks xsecurelock, i3lock, slock or xlock there. The X11 session starts it.
-- Building dkde-panel now needs the XCB development files (`libxcb1-dev`).
+- Building the panel, idle and settings now needs the XCB development files (`libxcb1-dev`, `libxcb-randr0-dev`).
 
 ## 0.3.0 (2026-11-15)
 

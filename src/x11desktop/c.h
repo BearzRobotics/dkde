@@ -2,3 +2,4 @@
 #include <xcb/xcb.h>
 #include <xcb/xcbext.h>
 #include <sys/uio.h>
+#include <xcb/randr.h>

@@ -180,7 +180,7 @@ const App = struct {
     fn openDesktop(self: *App) common.desktop.Desktop {
         const display = gdk.Display.getDefault() orelse return .{};
         if (gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkwayland.WaylandDisplay.getGObjectType()) == 0) {
-            return x11desktop.X11.create(self.allocator, onToplevelsChanged, onWorkspacesChanged, self);
+            return x11desktop.X11.create(self.allocator, onToplevelsChanged, onWorkspacesChanged, self, null);
         }
         const wl_display: *wl.Display = @ptrCast(gdkwayland.WaylandDisplay.getWlDisplay(@ptrCast(display)) orelse return .{});
         return wldesktop.Wayland.create(self.allocator, wl_display, .{ .outputs = false, .capture = false }, .{

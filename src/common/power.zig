@@ -92,7 +92,7 @@ test "lock tool is the first one found" {
         }
     };
     const p: Probe = .{ .has_program = Fake.has, .has_logind = Fake.logind };
-    try std.testing.expectEqualStrings("gtklock", detectLock(p).?);
+    try std.testing.expectEqualStrings("gtklock", detectLockFor(p, true).?);
 }
 
 test "sleep prefers logind, then the helpers" {
@@ -115,7 +115,7 @@ test "sleep prefers logind, then the helpers" {
         }
     }.f, .has_logind = Fake.logind };
     try std.testing.expect(detectSleep(none) == null);
-    try std.testing.expect(detectLock(none) == null);
+    try std.testing.expect(detectLockFor(none, true) == null and detectLockFor(none, false) == null);
     // On X11 the X lockers are the ones that count.
     const x_only: Probe = .{ .has_program = struct {
         fn f(_: ?*anyopaque, name: []const u8) bool {

@@ -70,6 +70,8 @@ pub const Ctx = struct {
     wayland_protocols: *std.Build.Module,
     /// The Wayland side of the shared desktop API (windows, workspaces, outputs, capture).
     wldesktop: *std.Build.Module,
+    /// libxcb-randr outside the system paths (-Dxcb-randr-prefix), for machines without its -dev package.
+    randr_prefix: ?[]const u8,
     /// The X11 side of it (EWMH through XCB).
     x11desktop: *std.Build.Module,
     /// Image decoding in Zig (vendored zigimg).
@@ -117,6 +119,8 @@ pub const Ctx = struct {
         mod.addImport("wldesktop", ctx.wldesktop);
         mod.addImport("x11desktop", ctx.x11desktop);
         mod.linkSystemLibrary("xcb", .{});
+        if (ctx.randr_prefix) |prefix| mod.addLibraryPath(.{ .cwd_relative = ctx.b.fmt("{s}/lib", .{prefix}) });
+        mod.linkSystemLibrary("xcb-randr", .{});
     }
 
     /// DKTermCore, which builds libghostty-vt once for every user of it.
@@ -208,11 +212,20 @@ pub fn build(b: *std.Build) void {
     // The X11 backend: XCB through Zig's C interop.
     const xcb_c = b.addTranslateC(.{ .root_source_file = b.path("src/x11desktop/c.h"), .target = target, .optimize = optimize });
     xcb_c.linkSystemLibrary("xcb", .{});
+    // Where libxcb-randr's header and library are when they are not installed system-wide.
+    const randr_prefix = b.option([]const u8, "xcb-randr-prefix", "Folder with include/ and lib/ of libxcb-randr (default: system)");
+    if (randr_prefix) |prefix| {
+        xcb_c.addIncludePath(.{ .cwd_relative = b.fmt("{s}/include", .{prefix}) });
+        // randr.h includes "xcb.h" from its own folder, which the prefix does not have.
+        xcb_c.addIncludePath(.{ .cwd_relative = "/usr/include/xcb" });
+    }
     const x11desktop = b.createModule(.{ .root_source_file = b.path("src/x11desktop/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
     x11desktop.addImport("c", xcb_c.createModule());
     x11desktop.addImport("core", core);
     x11desktop.addImport("glib2", gobject.module("glib2"));
     x11desktop.linkSystemLibrary("xcb", .{});
+    if (randr_prefix) |prefix| x11desktop.addLibraryPath(.{ .cwd_relative = b.fmt("{s}/lib", .{prefix}) });
+    x11desktop.linkSystemLibrary("xcb-randr", .{});
 
     const zigimg = b.dependency("zigimg", .{ .target = target, .optimize = optimize });
     const imgcodec = b.createModule(.{ .root_source_file = b.path("src/imgcodec/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
@@ -246,6 +259,7 @@ pub fn build(b: *std.Build) void {
         .wayland_protocols = wayland_module,
         .wldesktop = wldesktop,
         .x11desktop = x11desktop,
+        .randr_prefix = randr_prefix,
         .imgcodec = imgcodec,
         .pdfrender = pdfrender,
         .pdf = pdf_mod,
