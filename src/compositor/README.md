@@ -12,8 +12,9 @@ seatd. `DKDE_DEBUG=1` logs at debug level; `kill -HUP` re-reads the settings.
 
 xdg-shell (windows, popups), xdg-decoration (always client-side), layer-shell (panels, wallpaper,
 launchers; exclusive zones keep windows clear), wlr-foreign-toplevel-management (the taskbar),
-ext-workspace-v1 (virtual desktops), wlr-screencopy (screenshots), ext-idle-notify, wlr virtual keyboard
-and pointer, cursor-shape, primary selection, viewporter, fractional-scale, xdg-output.
+ext-workspace-v1 (virtual desktops), wlr-screencopy (screenshots), wlr-output-management (wlr-randr,
+Settings > Display, screen off), ext-session-lock (swaylock, gtklock: a lock client that dies leaves the screen
+locked), ext-idle-notify, wlr virtual keyboard and pointer, cursor-shape, primary selection, viewporter, fractional-scale, xdg-output.
 
 ## Settings: `~/.config/dkde/compositor.toml`
 
@@ -42,6 +43,10 @@ left-two-thirds, right-two-thirds, top-left, top-right, bottom-left, bottom-righ
 The built-in set is `src/keys.zig` (`defaults`): dkde's shortcuts (Start menu, terminal, lock, screenshots,
 volume, snapping, dkde-snap's regions) plus Alt+digit workspaces, Alt+T (floating/tiling), Alt+Shift+Space
 (float one window) and Alt+Esc (quit).
+
+The session programs (panel with restart, dkde-idle, dkde-polkit) are started by the compositor from a built-in
+script; `~/.config/dkde/autostart` (a shell script) replaces it. `scripts/dkde-session` runs the compositor named by
+`DKDE_COMPOSITOR` (default labwc).
 
 Pointer: Alt+left-drag moves a window, Alt+right-drag resizes it from the nearest corner (a tiled window
 becomes floating); title bars drag as usual.

@@ -50,6 +50,7 @@ pub fn build(b: *std.Build) void {
         .{ "staging/ext-idle-notify/ext-idle-notify-v1", "ext-idle-notify-v1" },
         .{ "unstable/primary-selection/primary-selection-unstable-v1", "primary-selection-unstable-v1" },
         .{ "stable/viewporter/viewporter", "viewporter" },
+        .{ "staging/ext-session-lock/ext-session-lock-v1", "ext-session-lock-v1" },
     };
     var more_headers: [more.len]std.Build.LazyPath = undefined;
     for (more, 0..) |entry, i| {

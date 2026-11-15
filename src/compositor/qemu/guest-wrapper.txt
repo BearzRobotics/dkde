@@ -2,6 +2,6 @@ mkdir -p ~/bin && cat > ~/bin/labwc <<'EOF'
 #!/bin/sh
 # Test wrapper: the image's dkde-session runs "labwc"; this runs dkde-compositor instead (it starts the panel itself).
 export DKDE_COMPOSITOR_CONFIG=/mnt/compositor.toml DKDE_DEBUG=1 WLR_RENDERER=pixman
-exec /mnt/dkde-compositor
+exec /mnt/dkde-compositor > $HOME/comp.log 2>&1
 EOF
 chmod +x ~/bin/labwc; echo 'export PATH=$HOME/bin:$PATH' >> ~/.profile; tail -2 ~/.profile

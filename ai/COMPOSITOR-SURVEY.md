@@ -65,3 +65,14 @@ wlroots 0.19 has no helper for `ext-workspace-v1`, so `src/workspaces.zig` serve
 ## On a real display: QEMU (2026-11-15)
 
 `src/compositor/qemu/README.md` has the procedure. Built for the dkbuild image (musl, wlroots 0.20.2; the only source change from the 0.19 build was musl's opaque `timespec`) and booted in QEMU with KVM: the compositor runs on the DRM/KMS backend through libseat/seatd on virtio-gpu, `dkde-panel` shows the taskbar and workspace indicator, dkde-calc and dkde-term open, and keys sent through QEMU's keyboard (Alt+T tiling, Alt+2 / Alt+1 workspaces) are handled. Not tried there: the pointer, and the greeter login path (the test replaces `labwc` through a wrapper on the live user's PATH).
+
+## State after the first long session (2026-11-15)
+
+Working and checked (nested in labwc, and on DRM/KMS in the QEMU image): windows, popups, focus, Alt+drag move and resize,
+title-bar drag, maximize, fullscreen, minimize and raise from the taskbar, floating and tiling with gaps, workspaces,
+panel/wallpaper/launcher layer surfaces, shortcuts (including a bare Super tap and dkde-snap's regions), settings and live
+reload, output management (wlr-randr), screen lock (swaylock), autostart of the panel, idle and polkit agent, stress (six windows opened
+and closed). Not done: the greeter path (dkde-greeter starting our session), a session entry in the greeter's list, installing the
+compositor with the other programs (it is a standalone package because the rest of dkde builds without wlroots), Xwayland, input
+settings (keyboard layout from Settings, touchpad options), gamma/night light, per-output workspaces, window rules, the X11 window
+manager, the shared desktop-integration API from the spec.

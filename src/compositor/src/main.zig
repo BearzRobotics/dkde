@@ -38,6 +38,12 @@ const Server = struct {
     usable: ?layout.Rect = null,
     idle: *c.wlr_idle_notifier_v1,
     output_manager: *c.wlr_output_manager_v1,
+    session_lock: *c.wlr_session_lock_manager_v1,
+    /// True from the moment a lock client takes the screen until it unlocks it. A lock client that dies
+    /// leaves the screen locked (a new lock client may take over).
+    locked: bool = false,
+    lock: ?*Lock = null,
+    lock_tree: ?*c.wlr_scene_tree = null,
     outputs: std.ArrayList(*Output) = .empty,
     cursor: *c.wlr_cursor,
     cursor_mgr: *c.wlr_xcursor_manager,
@@ -66,6 +72,7 @@ const Server = struct {
     new_xdg_toplevel: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_xdg_popup: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_layer_surface: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    new_lock: c.wl_listener = std.mem.zeroes(c.wl_listener),
     output_apply: c.wl_listener = std.mem.zeroes(c.wl_listener),
     output_test: c.wl_listener = std.mem.zeroes(c.wl_listener),
     new_decoration: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -459,6 +466,100 @@ fn leaveBig(t: *Toplevel) void {
     }
 }
 
+// ---- screen lock (ext-session-lock-v1: swaylock, gtklock …) ---------------------------------------------------
+
+const Lock = struct {
+    lock: *c.wlr_session_lock_v1,
+    new_surface: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    unlock: c.wl_listener = std.mem.zeroes(c.wl_listener),
+    destroy: c.wl_listener = std.mem.zeroes(c.wl_listener),
+
+    const onNewSurface = Lock_onNewSurface;
+    const onUnlock = Lock_onUnlock;
+    const onDestroy = Lock_onDestroy;
+};
+
+fn onNewLock(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    const lock: *c.wlr_session_lock_v1 = @ptrCast(@alignCast(data));
+    // One lock client at a time; but when the last one died without unlocking, another may take over.
+    if (server.lock != null) {
+        c.wlr_session_lock_v1_destroy(lock);
+        return;
+    }
+    const self = gpa.create(Lock) catch {
+        c.wlr_session_lock_v1_destroy(lock);
+        return;
+    };
+    self.* = .{ .lock = lock };
+
+    // A black cover over every output, above everything, before the lock is reported done.
+    if (server.lock_tree == null) {
+        const tree = c.wlr_scene_tree_create(&server.scene.*.tree) orelse {
+            gpa.destroy(self);
+            c.wlr_session_lock_v1_destroy(lock);
+            return;
+        };
+        for (server.outputs.items) |o| {
+            var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
+            c.wlr_output_layout_get_box(server.output_layout, o.output, &box);
+            const black = [4]f32{ 0, 0, 0, 1 };
+            if (c.wlr_scene_rect_create(tree, box.width, box.height, &black)) |rect| {
+                c.wlr_scene_node_set_position(&rect.*.node, box.x, box.y);
+            }
+        }
+        c.wlr_scene_node_raise_to_top(&tree.*.node);
+        server.lock_tree = tree;
+    }
+    server.locked = true;
+    server.lock = self;
+    // Nothing keeps the keyboard while locked until the lock surface takes it.
+    c.wlr_seat_keyboard_clear_focus(server.seat);
+    c.wlr_seat_pointer_clear_focus(server.seat);
+    listen(&lock.events.new_surface, &self.new_surface, Lock.onNewSurface);
+    listen(&lock.events.unlock, &self.unlock, Lock.onUnlock);
+    listen(&lock.events.destroy, &self.destroy, Lock.onDestroy);
+    c.wlr_session_lock_v1_send_locked(lock);
+}
+
+fn lockSurfaceFor(surface: *c.wlr_session_lock_surface_v1) void {
+    const tree = server.lock_tree orelse return;
+    const output = surface.output orelse return;
+    var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
+    c.wlr_output_layout_get_box(server.output_layout, output, &box);
+    _ = c.wlr_session_lock_surface_v1_configure(surface, @intCast(box.width), @intCast(box.height));
+    if (c.wlr_scene_subsurface_tree_create(tree, surface.surface)) |sub| {
+        c.wlr_scene_node_set_position(&sub.*.node, box.x, box.y);
+    }
+    if (c.wlr_seat_get_keyboard(server.seat)) |kb| {
+        c.wlr_seat_keyboard_notify_enter(server.seat, surface.surface, kb.*.keycodes[0..].ptr, kb.*.num_keycodes, &kb.*.modifiers);
+    }
+}
+
+fn Lock_onNewSurface(listener: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    _ = listener;
+    const surface: *c.wlr_session_lock_surface_v1 = @ptrCast(@alignCast(data));
+    lockSurfaceFor(surface);
+}
+
+fn Lock_onUnlock(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+    _ = listener;
+    server.locked = false;
+    if (server.lock_tree) |tree| c.wlr_scene_node_destroy(&tree.*.node);
+    server.lock_tree = null;
+    c.wlr_seat_keyboard_clear_focus(server.seat);
+    if (topWindow()) |t| focus(t);
+}
+
+fn Lock_onDestroy(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+    const self: *Lock = @fieldParentPtr("destroy", listener.?);
+    unlisten(&self.new_surface);
+    unlisten(&self.unlock);
+    unlisten(&self.destroy);
+    // Destroyed without unlocking: the screen stays locked (the cover stays), and a new lock client may start.
+    server.lock = null;
+    gpa.destroy(self);
+}
+
 // ---- workspaces ----------------------------------------------------------------------------------------------
 
 /// A window is drawn when it is on the current workspace and not minimized.
@@ -655,6 +756,7 @@ fn addPopup(xdg: *c.wlr_xdg_popup, parent_tree: *c.wlr_scene_tree) void {
 
 /// Gives the keyboard focus to `t` and raises it.
 fn focus(t: *Toplevel) void {
+    if (server.locked) return;
     const seat = server.seat;
     const surface = t.xdg.base.*.surface;
     const previous = seat.*.keyboard_state.focused_surface;
@@ -687,6 +789,10 @@ fn windowAt(lx: f64, ly: f64) ?Hit {
     // Walk up to the tree that stands for a window or a layer surface; its parent says which.
     var tree: ?*c.wlr_scene_tree = node.*.parent;
     while (tree) |t| : (tree = t.node.parent) {
+        // The lock screen: the pointer reaches it, nothing else.
+        if (server.lock_tree != null and t == server.lock_tree.?) {
+            return .{ .toplevel = null, .layer = null, .surface = scene_surface.*.surface, .sx = sx, .sy = sy };
+        }
         const data = t.node.data orelse continue;
         const parent = t.node.parent orelse return null;
         if (parent == server.trees[2] or parent == server.trees[4]) {
@@ -997,6 +1103,12 @@ const Keyboard = struct {
         const count = c.xkb_keymap_key_get_syms_by_level(self.keyboard.*.keymap, keycode, layout_index, 0, &syms);
         var handled = false;
         const pressed = event.state == c.WL_KEYBOARD_KEY_STATE_PRESSED;
+        // While the screen is locked no shortcut works: every key goes to the lock screen.
+        if (server.locked) {
+            c.wlr_seat_set_keyboard(server.seat, self.keyboard);
+            c.wlr_seat_keyboard_notify_key(server.seat, event.time_msec, event.keycode, event.state);
+            return;
+        }
         var i: usize = 0;
         while (i < @as(usize, @intCast(@max(count, 0)))) : (i += 1) {
             const sym = syms[i];
@@ -1433,6 +1545,7 @@ pub fn main() !void {
     const shape_manager = c.wlr_cursor_shape_manager_v1_create(display, 1) orelse return error.NoProtocol;
     const idle = c.wlr_idle_notifier_v1_create(display) orelse return error.NoProtocol;
     const output_manager = c.wlr_output_manager_v1_create(display) orelse return error.NoProtocol;
+    const session_lock = c.wlr_session_lock_manager_v1_create(display) orelse return error.NoProtocol;
     const cursor = c.wlr_cursor_create() orelse return error.NoCursor;
     c.wlr_cursor_attach_output_layout(cursor, output_layout);
     const cursor_mgr = c.wlr_xcursor_manager_create(null, 24) orelse return error.NoCursor;
@@ -1452,6 +1565,7 @@ pub fn main() !void {
         .trees = trees,
         .idle = idle,
         .output_manager = output_manager,
+        .session_lock = session_lock,
         .cursor = cursor,
         .cursor_mgr = cursor_mgr,
         .seat = seat,
@@ -1471,6 +1585,7 @@ pub fn main() !void {
     listen(&cursor.*.events.axis, &server.cursor_axis, onCursorAxis);
     listen(&cursor.*.events.frame, &server.cursor_frame, onCursorFrame);
     listen(&backend.*.events.new_input, &server.new_input, onNewInput);
+    listen(&session_lock.*.events.new_lock, &server.new_lock, onNewLock);
     listen(&output_manager.*.events.apply, &server.output_apply, onOutputApply);
     listen(&output_manager.*.events.@"test", &server.output_test, onOutputTest);
     listen(&decoration_manager.*.events.new_toplevel_decoration, &server.new_decoration, onNewDecoration);
@@ -1503,6 +1618,7 @@ pub fn main() !void {
     unlisten(&server.cursor_axis);
     unlisten(&server.cursor_frame);
     unlisten(&server.new_input);
+    unlisten(&server.new_lock);
     unlisten(&server.output_apply);
     unlisten(&server.output_test);
     unlisten(&server.new_decoration);
