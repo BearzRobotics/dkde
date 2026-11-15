@@ -27,7 +27,7 @@ It speaks ICCCM (delete and take-focus protocols, WM_STATE) and EWMH (supporting
 : Settings: **[windows]**, **[workspaces]**, **[keys]** (see **dkde-compositor**(1)). **[input]** does not apply; X11 input is set with **setxkbmap** and **xinput**.
 
 # LIMITS
-No window decorations for programs that draw none, and no XRandR handling yet (the screen size is read at start). dkde-panel needs a Wayland layer shell, so on X11 it does not run until its X11 backend exists.
+No window decorations for programs that draw none. The screen size follows XRandR changes (windows are laid out again and floating windows pulled back onto the screen), but each monitor is not treated separately: the work area is the whole screen. dkde-panel needs a Wayland layer shell, so on X11 it does not run until its X11 backend exists.
 
 # SEE ALSO
 **dkde-compositor**(1)

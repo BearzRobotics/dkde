@@ -12,4 +12,6 @@ Xvfb :77 & DISPLAY=:77 zig-out/bin/dkde-wm &
 
 Start a whole session with `dkde-session --x11`. Manual: `docs/manpages/dkde-wm.1.md`. Status and open items: `ai/COMPOSITOR-SURVEY.md`.
 
-Not done: XRandR, frames for programs without decorations, WM_NORMAL_HINTS, focus-follows-mouse.
+XRandR: the screen size is followed (the screen-change event, with the one request written out by hand, so no RandR headers are needed); per-monitor work areas are not done.
+
+Not done: per-monitor handling, frames for programs without decorations, WM_NORMAL_HINTS, focus-follows-mouse.

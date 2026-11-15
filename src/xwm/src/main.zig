@@ -182,8 +182,12 @@ fn setCardinal(win: c.xcb_window_t, prop: Atom, list: []const u32) void {
     setU32(win, prop, c.XCB_ATOM_CARDINAL, list);
 }
 
+/// The root window's size, kept up to date when the screen changes (XRandR).
+var screen_w: i32 = 0;
+var screen_h: i32 = 0;
+
 fn screenRect() layout.Rect {
-    return .{ .x = 0, .y = 0, .w = screen.width_in_pixels, .h = screen.height_in_pixels };
+    return .{ .x = 0, .y = 0, .w = screen_w, .h = screen_h };
 }
 
 /// The screen less what panels reserve (their struts).
@@ -540,8 +544,8 @@ fn manage(win: c.xcb_window_t) void {
         .desktop => {
             cl.x = 0;
             cl.y = 0;
-            cl.w = screen.width_in_pixels;
-            cl.h = screen.height_in_pixels;
+            cl.w = screen_w;
+            cl.h = screen_h;
             configure(win, screenRect());
         },
         .unmanaged => {
@@ -1101,8 +1105,55 @@ fn handle(ev: *c.xcb_generic_event_t) void {
             loadKeyboard();
             buildBindings(cfg.keys);
         },
-        else => {},
+        else => if (randr_event_base) |base| {
+            if (ev.response_type & 0x7f == base) onScreenChanged();
+        },
     }
+}
+
+// ---- screen changes (XRandR) --------------------------------------------------------------------------------
+
+// The RandR headers are not needed for this: one request (select events on the root) and one event (the screen
+// changed) are written out by hand, so the window manager builds with XCB's core alone.
+var randr_ext: c.xcb_extension_t = .{ .name = "RANDR", .global_id = 0 };
+var randr_event_base: ?u8 = null;
+
+fn selectScreenChanges() void {
+    const data = c.xcb_get_extension_data(conn, &randr_ext) orelse return;
+    if (data.*.present == 0) return;
+    randr_event_base = data.*.first_event;
+    // RRSelectInput (minor opcode 4): window, enable mask (ScreenChangeNotify = 1).
+    const Request = extern struct { major: u8, minor: u8, length: u16, window: u32, enable: u16, pad: u16 };
+    var req: Request = .{ .major = 0, .minor = 4, .length = 0, .window = root, .enable = 1, .pad = 0 };
+    var parts: [4]c.struct_iovec = undefined;
+    parts[2] = .{ .iov_base = &req, .iov_len = @sizeOf(Request) };
+    parts[3] = .{ .iov_base = null, .iov_len = 0 };
+    var proto: c.xcb_protocol_request_t = .{ .count = 2, .ext = &randr_ext, .opcode = 4, .isvoid = 1 };
+    _ = c.xcb_send_request(conn, 0, &parts[2], &proto);
+}
+
+/// The screen got a different size (a monitor plugged in, a mode set): read it again and lay everything out anew.
+fn onScreenChanged() void {
+    const geo = c.xcb_get_geometry_reply(conn, c.xcb_get_geometry(conn, root), null) orelse return;
+    defer std.c.free(geo);
+    if (geo.*.width == screen_w and geo.*.height == screen_h) return;
+    screen_w = geo.*.width;
+    screen_h = geo.*.height;
+    for (clients.items) |cl| {
+        if (cl.kind == .desktop) {
+            cl.w = screen_w;
+            cl.h = screen_h;
+            configure(cl.win, screenRect());
+        } else if (cl.kind == .normal and !cl.maximized and !cl.fullscreen) {
+            // A floating window that is now off the screen comes back onto it.
+            cl.w = @min(cl.w, screen_w);
+            cl.h = @min(cl.h, screen_h);
+            cl.x = std.math.clamp(cl.x, 0, @max(screen_w - cl.w, 0));
+            cl.y = std.math.clamp(cl.y, 0, @max(screen_h - cl.h, 0));
+        }
+    }
+    publishDesktops();
+    arrange();
 }
 
 // ---- start up ----------------------------------------------------------------------------------------------
@@ -1221,6 +1272,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
     while (i < screen_num) : (i += 1) c.xcb_screen_next(&it);
     screen = it.data;
     root = screen.root;
+    screen_w = screen.width_in_pixels;
+    screen_h = screen.height_in_pixels;
 
     // Becoming the window manager: only one client may select this on the root.
     const mask = c.XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | c.XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | c.XCB_EVENT_MASK_PROPERTY_CHANGE |
@@ -1240,6 +1293,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     loadKeyboard();
     buildBindings(cfg.keys);
     setCursor();
+    selectScreenChanges();
     publishSupport();
     publishDesktops();
     publishWorkArea();

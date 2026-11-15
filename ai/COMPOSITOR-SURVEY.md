@@ -92,3 +92,6 @@ Update (same day): the Wayland backend is now the toolkit-free module `src/wldes
 
 ## X11 session — 2026-11-15
 `dkde-session --x11` (or `DKDE_SESSION_TYPE=x11`, or `type=x11` in ~/.config/dkde/session.conf): without DISPLAY it runs `startx dkde-session --x11`; inside X it starts dkde-wm, then the panel (restarted when it exits), display.sh and dkde-polkit under dbus-run-session; `~/.config/dkde/autostart` replaces the set; dkde-idle is not started (Wayland protocol; X11 idle/lock is not done). `data/dkde-x11.desktop` is the xsessions entry (not installed by the main build, since dkde-wm is not part of it). Verified under Xvfb: the script started dkde-wm and the panel (work area 1280x680), logs went to session.log. Not verified: startx from a tty, a login manager's xsession, lock/idle on X11.
+
+## dkde-wm follows XRandR — 2026-11-15
+dkde-wm selects RandR screen-change events (one hand-written request and one event, via xcbext.h; no RandR headers) and, when the root size changes, re-reads it, resizes desktop windows, pulls floating windows back onto the screen, republishes `_NET_DESKTOP_GEOMETRY` and lays out again. Verified under Xvfb (1280x720 → 1000x600: work area, a floating window clamped, tiling fitted). Not done: per-monitor work areas and placement, XRandR outputs in the shared API (so Settings > Display on X11), X11 idle/lock.
