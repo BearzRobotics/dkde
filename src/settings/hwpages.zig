@@ -493,7 +493,7 @@ pub const DisplayPage = struct {
         _ = glib.mkdirWithParents(dir, 0o755);
         const path = std.fmt.allocPrintSentinel(gpa, "{s}/display.sh", .{dir}, 0) catch return;
         defer gpa.free(path);
-        if (glib.fileSetContents(path, script.items.ptr, @intCast(script.items.len), null) == 0) {
+        if (!common.fsio.tryWrite(path, script.items)) {
             self.status.setText(common.tr("Could not save the display layout."));
         } else {
             self.status.setText(common.tr("Saved. The layout is restored at login (the session's autostart runs display.sh)."));
@@ -1106,7 +1106,7 @@ pub const PrintersPage = struct {
         const path = std.fmt.allocPrintSentinel(gpa, "{s}/dkde-test-page.txt", .{std.mem.span(glib.getUserCacheDir())}, 0) catch return;
         defer gpa.free(path);
         _ = glib.mkdirWithParents(std.mem.span(glib.getUserCacheDir()), 0o755);
-        if (glib.fileSetContents(path, test_text.ptr, test_text.len, null) == 0) return;
+        if (!common.fsio.tryWrite(path, test_text)) return;
         hw.run(PrintersPage, self.guard, &.{ "lp", "-d", name, path }, onTestSent);
     }
 
@@ -1277,7 +1277,7 @@ pub const SoundDevices = struct {
             return null;
         };
         defer gpa.free(bytes);
-        if (glib.fileSetContents(path, bytes.ptr, @intCast(bytes.len), null) == 0) {
+        if (!common.fsio.tryWrite(path, bytes)) {
             gpa.free(path);
             return null;
         }

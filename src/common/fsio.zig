@@ -50,6 +50,15 @@ pub fn writeFileAtomic(path: []const u8, data: []const u8) !void {
     try atomic.replace(i);
 }
 
+/// `writeFileAtomic` that says whether it worked. For settings and remembered state: the file is replaced by
+/// a rename, with no flush to the disk first, because that flush (what GLib's g_file_set_contents does) can
+/// hold a program for many seconds on a busy disk while a person waits for Apply. A power cut can cost the
+/// last change; it never leaves half a file.
+pub fn tryWrite(path: []const u8, data: []const u8) bool {
+    writeFileAtomic(path, data) catch return false;
+    return true;
+}
+
 /// Creates `path` and any missing parents.
 pub fn makePath(path: []const u8) !void {
     try std.Io.Dir.cwd().createDirPath(io(), path);

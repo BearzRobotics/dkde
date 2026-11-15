@@ -161,12 +161,8 @@ pub const RegionPage = struct {
         const dir = glib.pathGetDirname(path);
         defer glib.free(dir);
         _ = glib.mkdirWithParents(dir, 0o755);
-        var err: ?*glib.Error = null;
-        if (glib.fileSetContents(path, text.ptr, @intCast(text.len), &err) == 0) {
-            if (err) |e| {
-                log.warn("cannot write {s}: {s}", .{ path, std.mem.span(e.f_message.?) });
-                e.free();
-            }
+        if (!common.fsio.tryWrite(path, text)) {
+            log.warn("cannot write {s}", .{path});
             self.status.setText(common.tr("The setting could not be saved."));
             return;
         }

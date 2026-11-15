@@ -943,7 +943,7 @@ pub const Page = struct {
             const f = std.fmt.bufPrintSentinel(&file, "{s}/override.conf", .{d}, 0) catch return;
             if (unitedit.hasContent(body)) {
                 _ = glib.mkdirWithParents(d, 0o755);
-                _ = glib.fileSetContents(f, body.ptr, @intCast(body.len), null);
+                _ = common.fsio.tryWrite(f, body);
             } else {
                 _ = glib.unlink(f);
                 _ = glib.rmdir(d);

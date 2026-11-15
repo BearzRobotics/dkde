@@ -7,6 +7,7 @@
 //! on and off, and adds the user's own commands (`addCommand`).
 
 const std = @import("std");
+const fsio = @import("fsio.zig");
 const gio = @import("gio2");
 const glib = @import("glib2");
 const gobject = @import("gobject2");
@@ -197,11 +198,11 @@ fn loadSystem(kf: *glib.KeyFile, id: []const u8, flags: glib.KeyFileFlags) bool 
 
 fn save(kf: *glib.KeyFile, dir: [:0]const u8, path: [:0]const u8) Error!void {
     _ = glib.mkdirWithParents(dir, 0o700);
-    var err: ?*glib.Error = null;
-    if (kf.saveToFile(path, &err) == 0) {
-        if (err) |x| x.free();
-        return error.Unwritable;
-    }
+    // Written by renaming, with no flush to the disk (see fsio.tryWrite): Apply must not wait on it.
+    var length: usize = 0;
+    const data = kf.toData(&length, null) orelse return error.Unwritable;
+    defer glib.free(data);
+    if (!fsio.tryWrite(path, data[0..length])) return error.Unwritable;
 }
 
 /// The file name for a new entry: the name's letters and digits, made
@@ -289,7 +290,7 @@ pub fn runOnce(gpa: std.mem.Allocator) void {
     }
     var sb: [64]u8 = undefined;
     const text = std.fmt.bufPrintSentinel(&sb, "{s}\n", .{session}, 0) catch return;
-    _ = glib.fileSetContents(mark, text.ptr, @intCast(text.len), null);
+    _ = fsio.tryWrite(mark, text);
     run(gpa);
 }
 

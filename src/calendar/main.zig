@@ -45,9 +45,7 @@ fn loadGlyphFont(allocator: std.mem.Allocator) void {
     const path = std.fmt.allocPrintSentinel(allocator, "{s}/RosquinGlyphs.ttf", .{dir}, 0) catch return;
     defer allocator.free(path);
     _ = glib.mkdirWithParents(dir, 0o755);
-    var err: ?*glib.Error = null;
-    if (glib.fileSetContents(path, glyph_font.ptr, glyph_font.len, &err) == 0) {
-        if (err) |e| e.free();
+    if (!common.fsio.tryWrite(path, glyph_font)) {
         std.log.warn("cannot write {s}; Rosquin days will show as boxes", .{path});
         return;
     }
@@ -1581,9 +1579,7 @@ pub const CalendarApp = struct {
         defer self.allocator.free(text);
         const z = try self.allocator.dupeSentinel(u8, path, 0);
         defer self.allocator.free(z);
-        var err: ?*glib.Error = null;
-        if (glib.fileSetContents(z, text.ptr, @intCast(text.len), &err) == 0) {
-            if (err) |e| e.free();
+        if (!common.fsio.tryWrite(z, text)) {
             return error.WriteFailed;
         }
     }

@@ -411,9 +411,9 @@ const Setup = struct {
             // One backup of an existing file, before the first edit.
             const backup = self.fmtZ("{s}.dkde-backup", .{path});
             if (exists(path) and !exists(backup)) {
-                if (self.readFile(path)) |old| _ = glib.fileSetContents(backup, old.ptr, @intCast(old.len), null);
+                if (self.readFile(path)) |old| _ = core.fsio.tryWrite(backup, old);
             }
-            if (glib.fileSetContents(path, content.ptr, @intCast(content.len), null) != 0) {
+            if (core.fsio.tryWrite(path, content)) {
                 print("  wrote {s}\n", .{path});
             } else print("  could not write {s}\n", .{path});
         }
@@ -463,7 +463,7 @@ fn writeMarker(allocator: std.mem.Allocator) void {
     defer glib.free(dir);
     _ = glib.mkdirWithParents(dir, 0o755);
     const text = "dkde-setup has run for this user. Delete this file to let the first-login run repeat.\n";
-    _ = glib.fileSetContents(path, text.ptr, text.len, null);
+    _ = core.fsio.tryWrite(path, text);
 }
 
 /// `--migrate-config`: old INI files become TOML, originals kept as `.migrated`.

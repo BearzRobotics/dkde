@@ -64,6 +64,7 @@ test {
     _ = @import("hwpages.zig");
     _ = @import("netparse.zig");
     _ = @import("shortcut_toml.zig");
+    _ = @import("sessionconf.zig");
 }
 
 test {

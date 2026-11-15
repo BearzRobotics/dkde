@@ -26,6 +26,7 @@
 const std = @import("std");
 const glib = @import("glib2");
 const config_mod = @import("config.zig");
+const fsio = @import("fsio.zig");
 const events = @import("events.zig");
 const ics = @import("ics.zig");
 const civil = @import("civil.zig");
@@ -423,11 +424,7 @@ pub fn refresh(allocator: std.mem.Allocator, acct: Account) !usize {
     defer allocator.free(path);
     const path_z = try allocator.dupeSentinel(u8, path, 0);
     defer allocator.free(path_z);
-    var err: ?*glib.Error = null;
-    if (glib.fileSetContents(path_z, body.ptr, @intCast(body.len), &err) == 0) {
-        if (err) |e| e.free();
-        return error.WriteFailed;
-    }
+    if (!fsio.tryWrite(path_z, body)) return error.WriteFailed;
     return count;
 }
 

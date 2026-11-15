@@ -15,6 +15,7 @@ const common = @import("common");
 
 const labwc = common.labwc;
 const shared = @import("shared");
+const sessionconf = @import("sessionconf.zig");
 const audio = common.audio;
 const users = @import("users.zig");
 const hwpages = @import("hwpages.zig");
@@ -42,6 +43,7 @@ const sections = [_]Section{
 const pages = [_]Page{
     .{ .id = "appearance", .title = "Appearance", .icon = "applications-graphics-symbolic", .category = 0, .desc = "Dark mode, accent colour, icons, wallpaper" },
     .{ .id = "taskbar", .title = "Taskbar", .icon = "view-list-symbolic", .category = 0, .desc = "The panel: position, size, clock and tray" },
+    .{ .id = "windows", .title = "Windows", .icon = "view-restore-symbolic", .category = 0, .desc = "Floating or tiling windows, gaps, focus, and which window system starts" },
     .{ .id = "startmenu", .title = "Start menu", .icon = "start-here-symbolic", .category = 0, .desc = "Pinned apps and how the menu looks" },
     .{ .id = "display", .title = "Display", .icon = "video-display-symbolic", .category = 1, .desc = "Resolution, scale, arrangement and night light" },
     .{ .id = "audio", .title = "Sound", .icon = "audio-volume-high-symbolic", .category = 1, .desc = "Volume and the input and output devices" },
@@ -244,6 +246,7 @@ pub const SettingsWindow = struct {
     fn addEagerPages(self: *SettingsWindow) void {
         _ = self.stack.addNamed(self.appearancePage().as(gtk.Widget), "appearance");
         _ = self.stack.addNamed(self.taskbarPage().as(gtk.Widget), "taskbar");
+        _ = self.stack.addNamed(self.windowsPage().as(gtk.Widget), "windows");
         _ = self.stack.addNamed(self.startMenuPage().as(gtk.Widget), "startmenu");
         _ = self.stack.addNamed(self.terminalPage().as(gtk.Widget), "terminal");
         _ = self.stack.addNamed(self.keyboardPage().as(gtk.Widget), "keyboard");
@@ -1497,6 +1500,107 @@ pub const SettingsWindow = struct {
 
     // ---- taskbar ---------------------------------------------------------
 
+    // ---- windows ---------------------------------------------------------
+
+    fn sessionConfPath(self: *SettingsWindow) ![:0]u8 {
+        return std.fmt.allocPrintSentinel(self.allocator, "{s}/dkde/session.conf", .{std.mem.span(glib.getUserConfigDir())}, 0);
+    }
+
+    fn readSessionConf(self: *SettingsWindow) []u8 {
+        const path = self.sessionConfPath() catch return self.allocator.dupe(u8, "") catch &.{};
+        defer self.allocator.free(path);
+        var contents: [*]u8 = undefined;
+        var length: usize = 0;
+        if (glib.fileGetContents(path, &contents, &length, null) == 0) return self.allocator.dupe(u8, "") catch &.{};
+        defer glib.free(contents);
+        return self.allocator.dupe(u8, contents[0..length]) catch &.{};
+    }
+
+    fn windowsPage(self: *SettingsWindow) *gtk.Box {
+        const page = newPage(common.tr("Windows"));
+
+        // Which window system starts at the next sign-in (dkde-session reads session.conf).
+        const text = self.readSessionConf();
+        defer self.allocator.free(text);
+        const choices = [_]?[*:0]const u8{ "labwc", "DKDE compositor (Wayland)", "DKDE window manager (X11)", null };
+        const picker = gtk.DropDown.newFromStrings(@ptrCast(&choices));
+        picker.setSelected(@intFromEnum(sessionconf.current(text)));
+        _ = gobject.Object.signals.notify.connect(picker, *SettingsWindow, &onSessionPicked, self, .{ .detail = "selected" });
+        addRowDesc(page, common.tr("Window system at next sign-in"), common.tr("Takes effect the next time you sign in. The DKDE choices need dkde-compositor or dkde-wm installed."), picker.as(gtk.Widget));
+
+        if (!self.ownSession()) {
+            const note = gtk.Label.new(common.tr("The options below are for DKDE's own compositor and window manager. This session runs labwc, which is set through its own files."));
+            note.setWrap(1);
+            note.setXalign(0);
+            note.as(gtk.Widget).addCssClass("dim-label");
+            page.append(note.as(gtk.Widget));
+            return page;
+        }
+        const cfg = self.compositorConfig();
+        defer shared.config.free(self.allocator, cfg);
+
+        const layouts = [_]?[*:0]const u8{ "Floating", "Tiling", null };
+        const layout_drop = gtk.DropDown.newFromStrings(@ptrCast(&layouts));
+        layout_drop.setSelected(if (cfg.policy == .tiling) 1 else 0);
+        _ = gobject.Object.signals.notify.connect(layout_drop, *SettingsWindow, &onWindowLayoutPicked, self, .{ .detail = "selected" });
+        addRowDesc(page, common.tr("Window layout"), common.tr("Floating keeps windows where you put them; tiling shares the screen between them (Super+T switches)."), layout_drop.as(gtk.Widget));
+
+        const gap = gtk.SpinButton.newWithRange(0, 100, 1);
+        gap.setValue(@floatFromInt(cfg.options.gap));
+        _ = gtk.SpinButton.signals.value_changed.connect(gap, *SettingsWindow, &onGapChanged, self, .{});
+        addRowDesc(page, common.tr("Gap between tiled windows"), common.tr("In pixels."), gap.as(gtk.Widget));
+
+        const ratio = gtk.SpinButton.newWithRange(10, 90, 1);
+        ratio.setValue(@round(@as(f64, cfg.options.master_ratio) * 100));
+        _ = gtk.SpinButton.signals.value_changed.connect(ratio, *SettingsWindow, &onRatioChanged, self, .{});
+        addRowDesc(page, common.tr("Main window width when tiling"), common.tr("Percent of the screen the first tiled window takes."), ratio.as(gtk.Widget));
+
+        // Focus following the mouse is the X11 window manager's; the compositor focuses on click.
+        if (common.session.kind() == .dkde_wm) {
+            const focus = [_]?[*:0]const u8{ "Click to focus", "Focus follows the mouse", null };
+            const focus_drop = gtk.DropDown.newFromStrings(@ptrCast(&focus));
+            focus_drop.setSelected(if (cfg.focus_follows_mouse) 1 else 0);
+            _ = gobject.Object.signals.notify.connect(focus_drop, *SettingsWindow, &onFocusPicked, self, .{ .detail = "selected" });
+            addRowDesc(page, common.tr("Keyboard focus"), common.tr("Whether a window gets the keyboard by clicking it or by pointing at it."), focus_drop.as(gtk.Widget));
+        }
+        return page;
+    }
+
+    fn onSessionPicked(drop: *gtk.DropDown, _: *gobject.ParamSpec, self: *SettingsWindow) callconv(.c) void {
+        const index = drop.getSelected();
+        if (index > 2) return;
+        const picked: sessionconf.Choice = @enumFromInt(index);
+        const before = self.readSessionConf();
+        defer self.allocator.free(before);
+        if (sessionconf.current(before) == picked) return;
+        const after = sessionconf.set(self.allocator, before, picked) catch return;
+        defer self.allocator.free(after);
+        const path = self.sessionConfPath() catch return;
+        defer self.allocator.free(path);
+        const dir = glib.pathGetDirname(path);
+        defer glib.free(dir);
+        _ = glib.mkdirWithParents(dir, 0o755);
+        if (!common.fsio.tryWrite(path, after)) common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot write the session choice"), path);
+    }
+
+    fn onWindowLayoutPicked(drop: *gtk.DropDown, _: *gobject.ParamSpec, self: *SettingsWindow) callconv(.c) void {
+        self.setCompositorValue("windows", "layout", if (drop.getSelected() == 1) "layout = \"tiling\"" else "layout = \"floating\"");
+    }
+
+    fn onGapChanged(button: *gtk.SpinButton, self: *SettingsWindow) callconv(.c) void {
+        var buf: [32]u8 = undefined;
+        self.setCompositorValue("windows", "gap", std.fmt.bufPrint(&buf, "gap = {d}", .{button.getValueAsInt()}) catch return);
+    }
+
+    fn onRatioChanged(button: *gtk.SpinButton, self: *SettingsWindow) callconv(.c) void {
+        var buf: [48]u8 = undefined;
+        self.setCompositorValue("windows", "master_ratio", std.fmt.bufPrint(&buf, "master_ratio = {d:.2}", .{button.getValue() / 100.0}) catch return);
+    }
+
+    fn onFocusPicked(drop: *gtk.DropDown, _: *gobject.ParamSpec, self: *SettingsWindow) callconv(.c) void {
+        self.setCompositorValue("windows", "focus", if (drop.getSelected() == 1) "focus = \"follow\"" else "focus = \"click\"");
+    }
+
     fn taskbarPage(self: *SettingsWindow) *gtk.Box {
         const page = newPage(common.tr("Taskbar"));
         addRowDesc(page, common.tr("Position on screen"), "Which edge of the screen the taskbar sits on", self.choice(&self.panel, "panel", "position", &.{ "bottom", "top", "left", "right" }, "bottom").as(gtk.Widget));
@@ -1988,7 +2092,7 @@ pub const SettingsWindow = struct {
         const dir = glib.pathGetDirname(path);
         defer glib.free(dir);
         _ = glib.mkdirWithParents(dir, 0o755);
-        if (glib.fileSetContents(path, text.ptr, @intCast(text.len), null) == 0) {
+        if (!common.fsio.tryWrite(path, text)) {
             common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot write the compositor settings"), path);
             return false;
         }
@@ -2044,9 +2148,9 @@ pub const SettingsWindow = struct {
         const backup = std.fmt.allocPrintSentinel(self.allocator, "{s}.dkde-backup", .{path}, 0) catch return;
         defer self.allocator.free(backup);
         if (before.len > 0 and glib.fileTest(backup, .{ .exists = true }) == 0)
-            _ = glib.fileSetContents(backup, before.ptr, @intCast(before.len), null);
+            _ = common.fsio.tryWrite(backup, before);
 
-        if (glib.fileSetContents(path, after.ptr, @intCast(after.len), null) == 0) {
+        if (!common.fsio.tryWrite(path, after)) {
             common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot write the labwc configuration"), path);
             return;
         }

@@ -26,6 +26,10 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 - **Firewall page** (firewalld, nftables, ufw or iptables, whichever is installed or running): rules in plain words, add and remove, chain policies and saving for restart (nftables, iptables), firewalld zones, ufw defaults; chains owned by another manager are read-only; input is validated and never reaches a shell.
 
+### Settings
+- **Windows page** (Personalization): floating or tiling, the gap, the main window's width, focus following the mouse (X11), and which window system starts at the next sign-in (labwc, DKDE compositor, DKDE X11 window manager; written to session.conf).
+- **Apply no longer waits on the disk**: settings, the autostart entries, the locale file, display.sh, the calendar's files and setup's files are replaced by a rename with no flush first (`fsio.tryWrite`); the flush could hold a program for many seconds on a busy disk.
+
 ### Settings follow the session
 - **Settings > Keyboard shortcuts, Mouse & touchpad, Keyboard layout and Virtual desktops** edit `~/.config/dkde/compositor.toml` when the session is DKDE's own compositor or window manager, and labwc's files under labwc. The compositor and dkde-wm **watch the file and apply changes at once** (no reload command), and both now end the session on SIGTERM. They announce themselves to the programs they start (`DKDE_SESSION_COMPOSITOR`, `DKDE_SESSION_PID`), which is how Settings knows, and the default Log Off command follows.
 - dkde-wm applies `[input]` layout, variant, options and key repeat with `setxkbmap` and `xset`; touchpad options are not offered on X11. The shortcut list is `keys.defaults` plus `[keys]`, one table for both programs.
