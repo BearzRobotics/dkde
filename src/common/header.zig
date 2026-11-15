@@ -57,19 +57,15 @@ fn descend(w: *gtk.Widget, depth: usize) void {
     var min: c_int = 0;
     w.measure(.horizontal, -1, &min, null, null, null);
     std.debug.print("{s}{s} min={d}\n", .{ "                                        "[0..@min(depth * 2, 40)], std.mem.span(w.getCssName()), min });
-    var best: ?*gtk.Widget = null;
-    var best_min: c_int = -1;
+    if (depth >= 30) return;
+    // Every visible child that is itself wide (side by side, each may matter).
     var c = w.getFirstChild();
     while (c) |child| : (c = child.getNextSibling()) {
         if (child.getVisible() == 0) continue;
         var cm: c_int = 0;
         child.measure(.horizontal, -1, &cm, null, null, null);
-        if (cm > best_min) {
-            best_min = cm;
-            best = child;
-        }
+        if (cm >= 200) descend(child, depth + 1);
     }
-    if (best) |b| if (depth < 30 and best_min >= 200) descend(b, depth + 1);
 }
 
 fn onTitleChanged(window: *gtk.Window, _: *gobject.ParamSpec, label: *gtk.Label) callconv(.c) void {

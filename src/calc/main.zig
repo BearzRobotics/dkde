@@ -358,7 +358,10 @@ const Calc = struct {
         left.append(self.keypad.as(gtk.Widget));
 
         // The panes on the right.
-        self.side.as(gtk.Widget).setSizeRequest(320, -1);
+        // Only the pane in view sets the window's least size (a stack takes the widest of all).
+        self.side.setHhomogeneous(0);
+        self.side.setVhomogeneous(0);
+        self.side.as(gtk.Widget).setSizeRequest(210, -1);
         self.side.as(gtk.Widget).setMarginTop(10);
         self.side.as(gtk.Widget).setMarginBottom(10);
         self.side.as(gtk.Widget).setMarginEnd(10);
@@ -374,7 +377,13 @@ const Calc = struct {
 
         const body = gtk.Box.new(.horizontal, 0);
         body.append(left.as(gtk.Widget));
-        body.append(self.side.as(gtk.Widget));
+        // The panes scroll sideways when the window is narrow, so it can still be snapped to half a screen.
+        const side_scroll = gtk.ScrolledWindow.new();
+        side_scroll.setPolicy(.automatic, .automatic);
+        side_scroll.setMinContentWidth(210);
+        side_scroll.setChild(self.side.as(gtk.Widget));
+        side_scroll.as(gtk.Widget).setHexpand(1);
+        body.append(side_scroll.as(gtk.Widget));
         body.as(gtk.Widget).setVexpand(1);
 
         const root = gtk.Box.new(.vertical, 0);
