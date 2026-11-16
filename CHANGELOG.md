@@ -2,7 +2,7 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
-## Unreleased
+## 0.3.2 (2026-11-16)
 
 ### Packaging
 - **dkde-compositor and dkde-wm are packaged**: `packaging/build.sh` builds and installs both (and the `dkde-compositor` Wayland session entry) from the release tarball's vendored dependencies. `COMPOSITOR=no` / `WM=no` leave one out; `WLROOTS=0.19|0.20` and `XCB_RANDR_PREFIX` pick libraries. `packaging/PACKAGING.md` lists their build and run-time needs.
