@@ -11,7 +11,7 @@ const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const common = @import("common");
 
-const security = @import("security.zig");
+pub const security = @import("security.zig");
 const edit = @import("securityedit.zig");
 const simplelist = @import("simplelist.zig");
 const services = @import("services.zig");
@@ -19,7 +19,11 @@ const services = @import("services.zig");
 const t = common.tr;
 
 /// Which security module this machine runs, from the kernel's own files.
+/// Set from Task Manager's settings: use this module instead of the detected one (`.none` hides the page).
+pub var forced: ?security.Kind = null;
+
 pub fn detect() security.Kind {
+    if (forced) |f| return f;
     var a_buf: [16]u8 = undefined;
     var s_buf: [16]u8 = undefined;
     const apparmor = readSmall("/sys/module/apparmor/parameters/enabled", &a_buf);

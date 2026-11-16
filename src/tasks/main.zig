@@ -178,6 +178,9 @@ pub const TaskManager = struct {
         _ = gtk.SearchEntry.signals.search_changed.connect(self.search, *TaskManager, &onSearchChanged, self, .{});
         header.setTitleWidget(self.search.as(gtk.Widget));
 
+        // The settings can override what is detected.
+        firewall_mod.forced = std.meta.stringToEnum(firewall_mod.firewall.Backend, self.configString("firewall-backend", "auto"));
+        security_mod.forced = std.meta.stringToEnum(security_mod.security.Kind, self.configString("security-module", "auto"));
         // The Security page exists only where AppArmor or SELinux runs.
         {
             var n: usize = 0;
@@ -451,7 +454,19 @@ pub const TaskManager = struct {
         shortcut.setXalign(0);
         shortcut.setWrap(1);
         shortcut.as(gtk.Widget).addCssClass("dim-label");
-        grid.attach(shortcut.as(gtk.Widget), 0, 2, 2, 1);
+        grid.attach(shortcut.as(gtk.Widget), 0, 4, 2, 1);
+
+        const fw_names = [_:null]?[*:0]const u8{ t("Automatic"), t("firewalld"), t("ufw"), t("nftables"), t("iptables"), t("None (hide the page)") };
+        const fw = gtk.DropDown.newFromStrings(@ptrCast(&fw_names));
+        fw.setSelected(optionIndex(&fw_values, self.configString("firewall-backend", "auto")));
+        _ = gobject.Object.signals.notify.connect(fw, *TaskManager, &onFirewallChosen, self, .{ .detail = "selected" });
+        settingRow(grid, 2, t("Firewall backend"), t("Which firewall the Firewall page manages. Automatic picks the one that is running. Applies the next time Task Manager starts."), fw.as(gtk.Widget));
+
+        const sec_names = [_:null]?[*:0]const u8{ t("Automatic"), t("AppArmor"), t("SELinux"), t("None (hide the page)") };
+        const sec = gtk.DropDown.newFromStrings(@ptrCast(&sec_names));
+        sec.setSelected(optionIndex(&sec_values, self.configString("security-module", "auto")));
+        _ = gobject.Object.signals.notify.connect(sec, *TaskManager, &onSecurityChosen, self, .{ .detail = "selected" });
+        settingRow(grid, 3, t("Security module"), t("Which mandatory access control the Security page manages. Applies the next time Task Manager starts."), sec.as(gtk.Widget));
         root.append(grid.as(gtk.Widget));
         return root.as(gtk.Widget);
     }
@@ -478,6 +493,26 @@ pub const TaskManager = struct {
         const speed: Speed = @enumFromInt(i);
         self.setSpeed(speed);
         self.config.setString("tasks", "update-speed", @tagName(speed)) catch {};
+    }
+
+    const fw_values = [_][:0]const u8{ "auto", "firewalld", "ufw", "nft", "iptables", "none" };
+    const sec_values = [_][:0]const u8{ "auto", "apparmor", "selinux", "none" };
+
+    fn optionIndex(values: []const [:0]const u8, current: []const u8) c_uint {
+        for (values, 0..) |v, i| if (std.mem.eql(u8, v, current)) return @intCast(i);
+        return 0;
+    }
+
+    fn onFirewallChosen(dd: *gtk.DropDown, _: *gobject.ParamSpec, self: *TaskManager) callconv(.c) void {
+        const i = dd.getSelected();
+        if (i >= fw_values.len) return;
+        self.config.setString("tasks", "firewall-backend", fw_values[i]) catch {};
+    }
+
+    fn onSecurityChosen(dd: *gtk.DropDown, _: *gobject.ParamSpec, self: *TaskManager) callconv(.c) void {
+        const i = dd.getSelected();
+        if (i >= sec_values.len) return;
+        self.config.setString("tasks", "security-module", sec_values[i]) catch {};
     }
 
     fn onStartChosen(dd: *gtk.DropDown, _: *gobject.ParamSpec, self: *TaskManager) callconv(.c) void {

@@ -9,7 +9,7 @@ const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const common = @import("common");
 
-const firewall = @import("firewall.zig");
+pub const firewall = @import("firewall.zig");
 const nft = @import("nft.zig");
 const iptables = @import("iptables.zig");
 const simplelist = @import("simplelist.zig");
@@ -27,7 +27,11 @@ fn hasProgram(name: [:0]const u8) bool {
     return true;
 }
 
+/// Set from Task Manager's settings: use this backend instead of the detected one (`.none` hides the page).
+pub var forced: ?firewall.Backend = null;
+
 pub fn detect() firewall.Backend {
+    if (forced) |f| return f;
     if (glib.getenv("DKDE_DEBUG_FIREWALL") != null) {
         // Sample data for trying the page: DKDE_DEBUG_FIREWALL_BACKEND = ufw (default), nft or iptables.
         const which = if (glib.getenv("DKDE_DEBUG_FIREWALL_BACKEND")) |w| std.mem.span(w) else "ufw";
