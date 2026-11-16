@@ -29,6 +29,8 @@ extern fn read(fd: c_int, buf: [*]u8, count: usize) isize;
 extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 extern fn mkdir(path: [*:0]const u8, mode: c_uint) c_int;
 extern fn time(t: ?*i64) i64;
+const Tm = extern struct { sec: c_int, min: c_int, hour: c_int, mday: c_int, mon: c_int, year: c_int, wday: c_int, yday: c_int, isdst: c_int, gmtoff: c_long, zone: ?[*:0]const u8 };
+extern fn localtime_r(t: *const i64, out: *Tm) ?*Tm;
 extern const program_invocation_short_name: [*:0]const u8;
 
 const Settings = struct {
@@ -141,13 +143,15 @@ pub fn logFn(
     if (!read_env) init();
     if (@backingInt(level) > @backingInt(settings.level)) return;
 
-    const seconds: u64 = @intCast(time(null));
-    const day = seconds % 86400;
+    // Local time, as the clock on the desktop shows it.
+    const now_s: i64 = time(null);
+    var tm: Tm = undefined;
+    const have_local = localtime_r(&now_s, &tm) != null;
     var buf: [2048]u8 = undefined;
     const prefix = std.fmt.bufPrint(&buf, "{d:0>2}:{d:0>2}:{d:0>2} {s}({s}) {s}[{d}]: ", .{
-        day / 3600,
-        day % 3600 / 60,
-        day % 60,
+        if (have_local) @as(u32, @intCast(tm.hour)) else @as(u32, @intCast(@divTrunc(@mod(now_s, 86400), 3600))),
+        if (have_local) @as(u32, @intCast(tm.min)) else @as(u32, @intCast(@divTrunc(@mod(now_s, 3600), 60))),
+        if (have_local) @as(u32, @intCast(tm.sec)) else @as(u32, @intCast(@mod(now_s, 60))),
         level.asText(),
         @tagName(scope),
         std.mem.span(program_invocation_short_name),

@@ -270,6 +270,7 @@ pub const Page = struct {
 
         const root = gtk.Box.new(.vertical, 0);
         const bar = commandBar(t("Services"));
+        bar.append(common.elevate.padlock(window).as(gtk.Widget));
         self.search.setPlaceholderText(t("Search services"));
         self.search.as(gtk.Widget).setSizeRequest(220, -1);
         _ = gtk.SearchEntry.signals.search_changed.connect(self.search, *Page, &onSearch, self, .{});

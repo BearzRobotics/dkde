@@ -358,7 +358,7 @@ On a regular Wayland-only system none of this applies.
 - **Logs.** Every program logs warnings and errors to stderr. Set
   `DKDE_LOG=debug` (or `info`, `warn`, `error`) to choose how much, and
   `DKDE_LOG_FILE=auto` to also write `~/.local/state/dkde/<program>.log`
-  (`dkde-session` does that by default; times are UTC). For GTK's own
+  (`dkde-session` does that by default; times are local). For GTK's own
   messages use `G_MESSAGES_DEBUG=all`. Example:
   `DKDE_LOG=debug dkde-panel 2>&1 | less`.
   Settings > System > For developers sets the same for programs started afterwards

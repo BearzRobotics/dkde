@@ -43,7 +43,117 @@ const Job = struct {
     /// file, not a pipe, so a long output cannot stall the command).
     capture: bool = false,
     out_fd: c_int = -1,
+    /// The password to keep as the unlocked session's when sudo accepts it (a copy, wiped at the end).
+    remember: ?[]u8 = null,
+    /// The password came from the unlocked session, so a refusal means it changed: lock and ask again.
+    from_session: bool = false,
 };
+
+// ---- the unlocked session -------------------------------------------------
+//
+// A padlock on the pages that need an administrator: unlocked once, the password is kept in this program's
+// memory (never written anywhere) and used for every action until it is locked again, by the padlock, after
+// `idle_seconds` without an action, or when the program ends. Each program has its own lock.
+
+const gpa = std.heap.c_allocator;
+pub const idle_seconds = 300;
+
+var session_password: ?[]u8 = null;
+var idle_timer: c_uint = 0;
+
+const Padlock = struct { button: *gtk.Button, parent: ?*gtk.Window };
+var padlocks: std.ArrayList(Padlock) = .empty;
+const Listener = struct { callback: *const fn (?*anyopaque) void, data: ?*anyopaque };
+var listeners: std.ArrayList(Listener) = .empty;
+
+pub fn isUnlocked() bool {
+    return session_password != null;
+}
+
+/// `callback(data)` runs whenever the lock opens or closes.
+pub fn onChange(callback: *const fn (?*anyopaque) void, data: ?*anyopaque) void {
+    listeners.append(gpa, .{ .callback = callback, .data = data }) catch {};
+}
+
+pub fn removeListener(callback: *const fn (?*anyopaque) void, data: ?*anyopaque) void {
+    var i: usize = 0;
+    while (i < listeners.items.len) {
+        if (listeners.items[i].callback == callback and listeners.items[i].data == data) _ = listeners.orderedRemove(i) else i += 1;
+    }
+}
+
+fn changed() void {
+    for (padlocks.items) |p| paintPadlock(p.button);
+    for (listeners.items) |l| l.callback(l.data);
+}
+
+fn restartIdle() void {
+    if (idle_timer != 0) _ = glib.Source.remove(idle_timer);
+    idle_timer = glib.timeoutAddSeconds(idle_seconds, onIdle, null);
+}
+
+fn onIdle(_: ?*anyopaque) callconv(.c) c_int {
+    idle_timer = 0;
+    lock();
+    return 0;
+}
+
+pub fn lock() void {
+    if (idle_timer != 0) _ = glib.Source.remove(idle_timer);
+    idle_timer = 0;
+    if (session_password) |p| {
+        @memset(p, 0);
+        gpa.free(p);
+        session_password = null;
+        changed();
+    }
+}
+
+var unlock_data: u8 = 0;
+
+fn unlockDone(_: *u8, _: Outcome, _: []const u8) void {}
+
+/// Asks for the password once and keeps it for the session.
+pub fn unlock(parent: ?*gtk.Window) void {
+    if (isUnlocked()) return;
+    const job = makeJob(parent, tr("Unlock administrator actions. The password is kept only in this program, for five minutes after the last action."), &.{"true"}, "", false, u8, unlockDone, &unlock_data) orelse return;
+    job.remember = gpa.dupe(u8, "") catch null;
+    prompt(job, null);
+}
+
+fn paintPadlock(button: *gtk.Button) void {
+    const open = isUnlocked();
+    button.setIconName(if (open) "changes-allow-symbolic" else "changes-prevent-symbolic");
+    button.as(gtk.Widget).setTooltipText(if (open) tr("Unlocked: administrator actions run without asking. Click to lock.") else tr("Locked: click to unlock administrator actions once, instead of typing the password for each."));
+    if (open) button.as(gtk.Widget).addCssClass("suggested-action") else button.as(gtk.Widget).removeCssClass("suggested-action");
+}
+
+fn onPadlock(button: *gtk.Button, parent: ?*gtk.Window) callconv(.c) void {
+    _ = button;
+    if (isUnlocked()) return lock();
+    unlock(parent);
+}
+
+fn onPadlockGone(widget: *gtk.Button, _: ?*anyopaque) callconv(.c) void {
+    var i: usize = 0;
+    while (i < padlocks.items.len) : (i += 1) {
+        if (padlocks.items[i].button == widget) {
+            _ = padlocks.swapRemove(i);
+            return;
+        }
+    }
+}
+
+/// The padlock button for a page's command bar: shows locked or unlocked, and toggles.
+pub fn padlock(parent: ?*gtk.Window) *gtk.Button {
+    const button = gtk.Button.new();
+    button.setHasFrame(0);
+    paintPadlock(button);
+    _ = gtk.Button.signals.clicked.connect(button, ?*gtk.Window, &onPadlock, parent, .{});
+    _ = gtk.Widget.signals.destroy.connect(button, ?*anyopaque, &onPadlockGone, null, .{});
+    padlocks.append(gpa, .{ .button = button, .parent = parent }) catch {};
+    return button;
+}
 
 extern fn write(fd: c_int, buf: [*]const u8, count: usize) isize;
 extern fn read(fd: c_int, buf: [*]u8, count: usize) isize;
@@ -101,8 +211,28 @@ fn start(
     callback: *const fn (*Data, Outcome, []const u8) void,
     data: *Data,
 ) void {
+    const job = makeJob(parent, reason, argv, stdin_data, capture, Data, callback, data) orelse return;
+    // Unlocked: no dialog. If sudo refuses the kept password (it changed), the lock closes and the dialog comes.
+    if (session_password) |pw| {
+        job.from_session = true;
+        restartIdle();
+        return attempt(job, pw);
+    }
+    prompt(job, null);
+}
+
+fn makeJob(
+    parent: ?*gtk.Window,
+    reason: []const u8,
+    argv: []const []const u8,
+    stdin_data: []const u8,
+    capture: bool,
+    comptime Data: type,
+    callback: *const fn (*Data, Outcome, []const u8) void,
+    data: *Data,
+) ?*Job {
     const a = std.heap.c_allocator;
-    const job = a.create(Job) catch return;
+    const job = a.create(Job) catch return null;
     const Thunk = struct {
         fn call(raw: *anyopaque, target: *const anyopaque, outcome: Outcome, message: []const u8) void {
             const f: *const fn (*Data, Outcome, []const u8) void = @ptrCast(@alignCast(target));
@@ -110,19 +240,19 @@ fn start(
         }
     };
 
-    const owned_argv = a.alloc([:0]u8, argv.len) catch return;
-    for (argv, 0..) |arg, i| owned_argv[i] = a.dupeSentinel(u8, arg, 0) catch return;
+    const owned_argv = a.alloc([:0]u8, argv.len) catch return null;
+    for (argv, 0..) |arg, i| owned_argv[i] = a.dupeSentinel(u8, arg, 0) catch return null;
     job.* = .{
         .parent = parent,
-        .reason = a.dupeSentinel(u8, reason, 0) catch return,
+        .reason = a.dupeSentinel(u8, reason, 0) catch return null,
         .argv = owned_argv,
-        .stdin_data = a.dupe(u8, stdin_data) catch return,
+        .stdin_data = a.dupe(u8, stdin_data) catch return null,
         .callback = Thunk.call,
         .target = @ptrCast(callback),
         .data = data,
         .capture = capture,
     };
-    prompt(job, null);
+    return job;
 }
 
 fn finish(job: *Job, outcome: Outcome, message: []const u8) void {
@@ -132,6 +262,10 @@ fn finish(job: *Job, outcome: Outcome, message: []const u8) void {
     const data = job.data;
     if (job.window) |w| w.destroy();
     if (job.out_fd >= 0) _ = close(job.out_fd);
+    if (job.remember) |r| {
+        @memset(r, 0);
+        a.free(r);
+    }
     @memset(job.stdin_data, 0); // it may hold a new account's password
     a.free(job.stdin_data);
     for (job.argv) |arg| a.free(arg);
@@ -307,6 +441,13 @@ fn attempt(job: *Job, password: []const u8) void {
     if (stdout_fd >= 0) _ = close(stdout_fd);
     job.stderr_fd = stderr_fd;
 
+    if (job.remember != null) {
+        if (job.remember) |old| {
+            @memset(old, 0);
+            a.free(old);
+        }
+        job.remember = a.dupe(u8, password) catch null;
+    }
     // Password line first, then whatever the command should read.
     writeAll(stdin_fd, password);
     writeAll(stdin_fd, "\n");
@@ -342,6 +483,19 @@ fn onChildExit(pid: glib.Pid, status: c_int, data: ?*anyopaque) callconv(.c) voi
     const stderr_text = std.mem.trim(u8, buf[0..len], " \t\r\n");
 
     if (status == 0) {
+        // The unlock job: sudo took the password, so the session keeps it.
+        if (job.remember) |r| {
+            if (r.len > 0) {
+                if (session_password) |old| {
+                    @memset(old, 0);
+                    gpa.free(old);
+                }
+                session_password = r;
+                job.remember = null;
+                restartIdle();
+                changed();
+            }
+        }
         if (job.capture and job.out_fd >= 0) {
             const a = std.heap.c_allocator;
             const size = lseek(job.out_fd, 0, 2);
@@ -363,6 +517,12 @@ fn onChildExit(pid: glib.Pid, status: c_int, data: ?*anyopaque) callconv(.c) voi
     const wrong = std.ascii.findIgnoreCase(stderr_text, "incorrect password") != null or
         std.ascii.findIgnoreCase(stderr_text, "sorry, try again") != null or
         std.ascii.findIgnoreCase(stderr_text, "authentication failure") != null;
+    if (wrong and job.from_session) {
+        // The kept password no longer works: close the lock and ask for it again.
+        job.from_session = false;
+        lock();
+        return prompt(job, tr("The password was not accepted. Enter it again."));
+    }
     if (wrong and job.attempts < max_attempts) {
         if (job.window) |w| w.as(gtk.Widget).setSensitive(1);
         return prompt(job, tr("Wrong password. Try again."));

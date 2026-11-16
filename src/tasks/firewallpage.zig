@@ -147,6 +147,8 @@ pub const Page = struct {
         const switcher = gtk.StackSwitcher.new();
         switcher.setStack(self.stack);
         bar.append(switcher.as(gtk.Widget));
+        bar.append(common.elevate.padlock(window).as(gtk.Widget));
+        common.elevate.onChange(onLockChanged, self);
         const load_button = gtk.Button.newWithLabel(t("Load…"));
         load_button.as(gtk.Widget).setTooltipText(t("Read the firewall's rules; needs the administrator password"));
         _ = gtk.Button.signals.clicked.connect(load_button, *Page, &onLoad, self, .{});
@@ -183,7 +185,7 @@ pub const Page = struct {
         self.status.setWrap(1);
         self.status.as(gtk.Widget).setMarginStart(12);
         self.status.as(gtk.Widget).setMarginTop(6);
-        self.status.setText(t("Choose Load… to read the firewall. Reading it needs the administrator password."));
+        self.status.setText(t("Unlock with the padlock (once, instead of for each action), or choose Load… to read the firewall. Reading it needs the administrator password."));
         root.append(self.status.as(gtk.Widget));
 
         if (is_ufw) {
@@ -238,7 +240,14 @@ pub const Page = struct {
         return self;
     }
 
+    /// The padlock opened: read the rules, without a password to type.
+    fn onLockChanged(data: ?*anyopaque) void {
+        const self: *Page = @ptrCast(@alignCast(data.?));
+        if (common.elevate.isUnlocked() and self.widget.getMapped() != 0) self.load();
+    }
+
     pub fn destroy(self: *Page) void {
+        common.elevate.removeListener(onLockChanged, self);
         self.guard.kill();
         self.list.destroy();
         for (self.service_names.items) |n| self.gpa.free(n);
@@ -249,6 +258,7 @@ pub const Page = struct {
 
     pub fn reload(self: *Page) void {
         if (glib.getenv("DKDE_DEBUG_FIREWALL") != null and self.ufw.rules.len == 0 and self.rows.len == 0) self.load();
+        if (common.elevate.isUnlocked()) self.load();
     }
 
     // ---- reading -------------------------------------------------------------------------

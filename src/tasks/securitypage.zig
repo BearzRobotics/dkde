@@ -137,6 +137,8 @@ pub const Page = struct {
         const switcher = gtk.StackSwitcher.new();
         switcher.setStack(self.stack);
         bar.append(switcher.as(gtk.Widget));
+        bar.append(common.elevate.padlock(window).as(gtk.Widget));
+        common.elevate.onChange(onLockChanged, self);
         const load_button = gtk.Button.newWithLabel(t("Load…"));
         load_button.as(gtk.Widget).setTooltipText(if (apparmor) t("Read the profiles and the recent refusals; needs the administrator password") else t("Read the settings and the recent refusals; the log needs the administrator password"));
         _ = gtk.Button.signals.clicked.connect(load_button, *Page, &onLoad, self, .{});
@@ -183,7 +185,7 @@ pub const Page = struct {
         self.status.as(gtk.Widget).setMarginStart(12);
         self.status.as(gtk.Widget).setMarginTop(6);
         self.status.as(gtk.Widget).setMarginBottom(4);
-        self.status.setText(t("Choose Load… to read the current state. Reading it needs the administrator password."));
+        self.status.setText(t("Unlock with the padlock (once, instead of for each action), or choose Load… to read the current state. Reading it needs the administrator password."));
         root.append(self.status.as(gtk.Widget));
 
         _ = self.stack.addTitled(self.first_list.widget, "first", if (apparmor) t("Profiles") else t("Settings"));
@@ -204,7 +206,14 @@ pub const Page = struct {
         return self;
     }
 
+    /// The padlock opened: read what the page shows, without a password to type.
+    fn onLockChanged(data: ?*anyopaque) void {
+        const self: *Page = @ptrCast(@alignCast(data.?));
+        if (common.elevate.isUnlocked() and self.widget.getMapped() != 0) self.load();
+    }
+
     pub fn destroy(self: *Page) void {
+        common.elevate.removeListener(onLockChanged, self);
         self.guard.kill();
         self.first_list.destroy();
         self.denial_list.destroy();
@@ -222,6 +231,7 @@ pub const Page = struct {
     /// Called when the page is shown: reads what needs no password.
     pub fn reload(self: *Page) void {
         if (glib.getenv("DKDE_DEBUG_SECURITY") != null and !self.loaded) return self.load();
+        if (common.elevate.isUnlocked()) return self.load();
         if (self.kind == .selinux) {
             common.proc.run(Page, self.guard, &.{"getenforce"}, onGetenforce);
             common.proc.run(Page, self.guard, &.{ "getsebool", "-a" }, onBooleans);
