@@ -869,6 +869,9 @@ fn manage(win: c.xcb_window_t) void {
                 cl.w += ins.l + ins.r;
                 cl.h += ins.t + ins.b;
             }
+            // A cascaded window that is wide or tall is pulled back inside the work area rather than hanging off it.
+            cl.x = @max(area.x, @min(cl.x, area.x + area.w - cl.w));
+            cl.y = @max(area.y, @min(cl.y, area.y + area.h - cl.h));
             cl.mon = @intCast(monitorOf(clientRect(cl)));
             // A transient window goes where its parent is.
             if (transient != 0) if (findClient(transient)) |parent| {

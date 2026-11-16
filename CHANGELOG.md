@@ -17,6 +17,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 - **Menus taller than the screen** (View) no longer show a sideways scrollbar, and the vertical one is slim with room left for it, so it does not cover the shortcut keys.
 
 ### Compositor and window manager shortcuts
+- dkde-wm no longer lets a cascaded wide window hang off the right or bottom edge of the screen.
 - Workspaces are now **Super+1…9** (Super+Shift+1…9 carries a window), layout toggle **Super+T**, float **Super+Shift+Space**, quit **Super+Shift+Escape**. They were Alt+digit and friends, which took keys programs use for their own menus and modes (the calculator's Alt+1…3).
 
 ### Screenshots
