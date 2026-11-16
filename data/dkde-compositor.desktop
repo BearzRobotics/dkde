@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=dkde (own compositor)
+Comment=The dkde desktop on dkde-compositor (experimental)
+Exec=env DKDE_COMPOSITOR=dkde-compositor dkde-session
+Type=Application
+DesktopNames=dkde

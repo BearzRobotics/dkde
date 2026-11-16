@@ -19,6 +19,10 @@
 #   PAM_FORM   system (Slackware, LFS, dkrescue-style system-auth) | debian   (default system)
 #   INIT       dinit | systemd | sysvinit | none   which service files to install (default dinit)
 #   GREETD_USER  the account greetd runs the greeter as           (default _greetd)
+#   COMPOSITOR yes | no   build and install dkde-compositor (wlroots)   (default yes)
+#   WM         yes | no   build and install dkde-wm (X11, XCB)          (default yes)
+#   WLROOTS    wlroots version for the compositor: 0.19 or 0.20  (default: whichever pkg-config finds)
+#   XCB_RANDR_PREFIX  folder with include/ and lib/ of libxcb-randr, if not system-wide
 #
 # See packaging/PACKAGING.md for the dependencies and what is installed.
 set -eu
@@ -37,6 +41,10 @@ FLAGS=${FLAGS:-}
 PAM_FORM=${PAM_FORM:-system}
 INIT=${INIT:-dinit}
 GREETD_USER=${GREETD_USER:-_greetd}
+COMPOSITOR=${COMPOSITOR:-yes}
+WM=${WM:-yes}
+WLROOTS=${WLROOTS:-}
+XCB_RANDR_PREFIX=${XCB_RANDR_PREFIX:-}
 
 # zig build install adds DESTDIR itself, so it must be in the environment.
 export DESTDIR
@@ -54,6 +62,26 @@ check() {
         pkg-config --exists "$m" 2>/dev/null || missing="$missing $m"
     done
     [ -z "$missing" ] || die "missing development files for:$missing (see packaging/PACKAGING.md)"
+    if [ "$COMPOSITOR" = yes ]; then
+        if [ -z "$WLROOTS" ]; then
+            for v in 0.19 0.20; do pkg-config --exists "wlroots-$v" 2>/dev/null && WLROOTS=$v; done
+        fi
+        [ -n "$WLROOTS" ] || die "dkde-compositor needs wlroots 0.19 or 0.20 development files (or COMPOSITOR=no)."
+        command -v wayland-scanner >/dev/null 2>&1 || die "dkde-compositor needs wayland-scanner (or COMPOSITOR=no)."
+        missing=""
+        for m in "wlroots-$WLROOTS" wayland-server xkbcommon pixman-1 libinput; do
+            pkg-config --exists "$m" 2>/dev/null || missing="$missing $m"
+        done
+        [ -z "$missing" ] || die "dkde-compositor: missing development files for:$missing (or COMPOSITOR=no)"
+    fi
+    if [ "$WM" = yes ]; then
+        missing=""
+        for m in xcb xkbcommon pangocairo cairo; do
+            pkg-config --exists "$m" 2>/dev/null || missing="$missing $m"
+        done
+        [ -n "$XCB_RANDR_PREFIX" ] || pkg-config --exists xcb-randr 2>/dev/null || missing="$missing xcb-randr"
+        [ -z "$missing" ] || die "dkde-wm: missing development files for:$missing (or WM=no; XCB_RANDR_PREFIX=DIR for a private libxcb-randr)"
+    fi
     [ -d zig-pkg ] || die "no zig-pkg/ directory: use the release tarball, or run 'zig build --fetch' once with a network."
 }
 
@@ -64,6 +92,24 @@ build() {
     # shellcheck disable=SC2086
     "$ZIG" build --release="$MODE" -Dcpu="$CPU" ${TARGET:+-Dtarget="$TARGET"} \
         --system zig-pkg --prefix "$PREFIX" $FLAGS install
+    # The compositor and the X11 window manager are separate Zig packages (so the
+    # main build needs neither wlroots nor X11); they share the same vendored
+    # dependencies and install into the same prefix.
+    if [ "$COMPOSITOR" = yes ]; then
+        say "building dkde-compositor (wlroots $WLROOTS)"
+        # shellcheck disable=SC2086
+        (cd src/compositor && "$ZIG" build --release="$MODE" -Dcpu="$CPU" ${TARGET:+-Dtarget="$TARGET"} \
+            -Dwlroots="$WLROOTS" ${XCB_RANDR_PREFIX:+-Dxcb-randr-prefix="$XCB_RANDR_PREFIX"} \
+            --system "$src/zig-pkg" --prefix "$PREFIX" $FLAGS install)
+        install -D -m 644 data/dkde-compositor.desktop "$DESTDIR$PREFIX/share/wayland-sessions/dkde-compositor.desktop"
+    fi
+    if [ "$WM" = yes ]; then
+        say "building dkde-wm"
+        # shellcheck disable=SC2086
+        (cd src/xwm && "$ZIG" build --release="$MODE" -Dcpu="$CPU" ${TARGET:+-Dtarget="$TARGET"} \
+            ${XCB_RANDR_PREFIX:+-Dxcb-randr-prefix="$XCB_RANDR_PREFIX"} \
+            --system "$src/zig-pkg" --prefix "$PREFIX" $FLAGS install)
+    fi
 }
 
 install_extras() {

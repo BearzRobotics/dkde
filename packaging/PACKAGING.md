@@ -32,7 +32,17 @@ Make one yourself from a clean checkout with `scripts/make-source-tarball.sh`.
 | Wayland client library | any | `wayland-client` | `libwayland-dev` |
 | wayland-protocols | any | | `wayland-protocols` |
 | pkg-config | any | | `pkg-config` |
+| wlroots, wayland-server, xkbcommon, pixman, libinput, `wayland-scanner` (for **dkde-compositor**; skip with `COMPOSITOR=no`) | wlroots 0.19 or 0.20 | `wlroots-0.19` or `wlroots-0.20` | `libwlroots-0.19-dev` (or the distro's), `libxkbcommon-dev`, `libpixman-1-dev`, `libinput-dev`, `libwayland-bin` |
+| libxcb, libxcb-randr, libxkbcommon, cairo, pango (for **dkde-wm**; skip with `WM=no`) | any | `xcb`, `xcb-randr`, `xkbcommon`, `pangocairo` | `libxcb1-dev`, `libxcb-randr0-dev`, `libxkbcommon-dev`, `libpango1.0-dev` |
 | C compiler / libc headers | for linking only | | `build-essential` (dkrescue: LLVM/Clang) |
+
+`dkde-compositor` (`src/compositor`) and `dkde-wm` (`src/xwm`) are separate Zig
+packages so the main build needs neither wlroots nor X11 headers.
+`packaging/build.sh` builds and installs both by default, from the same vendored
+`zig-pkg/`; `COMPOSITOR=no` or `WM=no` leaves one out (a split package can run
+the script twice, or take just those files from the stage). `WLROOTS=0.20`
+picks the wlroots version, `XCB_RANDR_PREFIX=DIR` a libxcb-randr that is not
+system-wide.
 
 The Zig dependencies are pinned by hash in `build.zig.zon` and vendored in the
 tarball: zig-gobject (GTK bindings), zig-wayland, libghostty-vt (the terminal
@@ -69,7 +79,8 @@ Things worth knowing:
 |---|---|
 | `$PREFIX/bin/` | `dkde-panel`, `dkde-session`, `dkde-greeter`, `dkde-greeter-session`, `dkde-greeter-start`, `dkde-setup`, `dkde-idle`, `dkde-pointer`, the apps (`dkde-term`, `-files`, `-settings`, `-edit`, `-calc`, `-calendar`, `-clock`, `-color`, `-charmap`, `-parted`, `-hex`, `-snip`, `-tasks`, `-view`) |
 | `$PREFIX/share/applications/` | the apps' `.desktop` files |
-| `$PREFIX/share/wayland-sessions/dkde.desktop` | the login-manager session entry |
+| `$PREFIX/share/wayland-sessions/dkde.desktop`, `dkde-compositor.desktop` | the login-manager session entries (labwc; dkde-compositor) |
+| `$PREFIX/share/xsessions/dkde-x11.desktop` | the X11 session entry (dkde-wm) |
 | `$PREFIX/share/dkde/` | defaults (`*.toml`, `style.css`), labwc config and keybindings, the service-file templates |
 | `/etc/greetd/config.toml`, `/etc/pam.d/greetd` | login screen (from `packaging/build.sh install`) |
 | `/etc/dinit.d/` | `greetd`, `seatd`, `dbus`, `wpa_supplicant`, `bluetooth`, `cupsd` (with `INIT=dinit`) |
@@ -104,6 +115,11 @@ dependencies). It needs `parted`, and util-linux's `lsblk` (with `-J`) and
 `losetup` (with `-P`, for disk image files), plus `sudo` to apply changes. A
 filesystem is offered only when its tools are installed (`e2fsprogs`,
 `dosfstools`, `xfsprogs`, `btrfs-progs`, `exfatprogs`, `ntfs-3g`, ...).
+
+With dkde-compositor and dkde-wm installed, labwc becomes optional: it is only
+the default of `dkde-session` (`DKDE_COMPOSITOR`, `compositor=` in
+`~/.config/dkde/session.conf`, or `--x11`). dkde-compositor also runs Xwayland
+(optional) for X11 programs. dkde-wm needs an X server (Xorg or Xvfb).
 
 **Not needed:** systemd, logind, polkit, libadwaita, X11,
 a D-Bus library, cron or any init-system timers. Calendar reminders run inside
