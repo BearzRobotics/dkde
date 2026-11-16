@@ -9,7 +9,7 @@ dkde-snip [--full | --region | --window | --gui] [--area X,Y,W,H] [--delay SECON
 dkde-snip --scroll-region X,Y,W,H
 
 # DESCRIPTION
-dkde-snip takes screenshots through the wlr-screencopy protocol. The whole output is captured first; for a region the picture is shown frozen and you drag a rectangle on it. If the compositor does not offer the protocol, or refuses it, the program says so and exits. Capturing a single window is not offered, because the protocols used give no window geometry.
+dkde-snip takes screenshots through the wlr-screencopy protocol, or by reading the root window on X11 (dkde-wm and other X11 desktops). The whole output is captured first; for a region the picture is shown frozen and you drag a rectangle on it. If the compositor does not offer the protocol, or refuses it, the program says so and exits. Capturing a single window is not offered, because the protocols used give no window geometry.
 
 Without a mode option the program opens its own window to choose from.
 
@@ -40,7 +40,7 @@ Operands are file names or URIs and are never interpreted as shell text.
 : Wait this long before capturing.
 
 --scroll-region X,Y,W,H
-: Take a scrolling capture of this region, driving the pointer through wlr-virtual-pointer. No picker is shown.
+: Take a scrolling capture of this region, driving the pointer through wlr-virtual-pointer (Wayland) or the XTEST extension (X11). No picker is shown.
 
 -h, --help
 : Print help to standard output and exit.

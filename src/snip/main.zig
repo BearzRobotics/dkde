@@ -25,6 +25,8 @@ const editor = @import("editor.zig");
 const wl = wayland.client.wl;
 const zwlr = wayland.client.zwlr;
 const wldesktop = @import("wldesktop");
+const x11desktop = @import("x11desktop");
+const gdkx11 = @import("gdkx114");
 
 
 const log = std.log.scoped(.snip);
@@ -72,6 +74,8 @@ const Snip = struct {
     desktop: common.desktop.Desktop = .{},
     vptr_manager: ?*zwlr.VirtualPointerManagerV1 = null,
     seat: ?*wl.Seat = null,
+    /// On X11 the wheel is turned through XTEST.
+    x11_pointer: ?x11desktop.pointer.Pointer = null,
     /// While a scrolling capture runs: frames go to the job, not to the picker.
     scroll: ?*ScrollJob = null,
 
@@ -85,7 +89,8 @@ const Snip = struct {
 
     fn create(allocator: std.mem.Allocator, app: *gtk.Application) !*Snip {
         const display = gdk.Display.getDefault() orelse return error.NoDisplay;
-        if (gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkwayland.WaylandDisplay.getGObjectType()) == 0) return error.NotWayland;
+        const wayland_display = gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkwayland.WaylandDisplay.getGObjectType()) != 0;
+        if (!wayland_display and gobject.typeCheckInstanceIsA(@ptrCast(@alignCast(display)), gdkx11.X11Display.getGObjectType()) == 0) return error.NotWayland;
 
         const self = try allocator.create(Snip);
         errdefer allocator.destroy(self);
@@ -96,7 +101,11 @@ const Snip = struct {
             .status = gtk.Label.new(common.tr("Choose what to capture")),
             .delay = gtk.SpinButton.newWithRange(0, 30, 1),
         };
-        {
+        if (!wayland_display) {
+            self.desktop = x11desktop.X11.create(allocator, ignoreChange, ignoreChange, self, null);
+            self.x11_pointer = x11desktop.pointer.Pointer.open();
+            if (!self.desktop.has(.screenshot_output)) log.warn("cannot capture the X screen", .{});
+        } else {
             const wl_display: *wl.Display = @ptrCast(gdkwayland.WaylandDisplay.getWlDisplay(@ptrCast(display)) orelse return error.NoDisplay);
             self.registry = try wl_display.getRegistry();
             self.registry.?.setListener(*Snip, registryEvent, self);
@@ -169,9 +178,12 @@ const Snip = struct {
 
     fn onDestroy(_: *gtk.ApplicationWindow, self: *Snip) callconv(.c) void {
         self.desktop.destroy();
+        if (self.x11_pointer) |p| p.close();
         if (self.registry) |r| r.destroy();
         self.allocator.destroy(self);
     }
+
+    fn ignoreChange(_: *anyopaque) void {}
 
     fn registryEvent(registry: *wl.Registry, event: wl.Registry.Event, self: *Snip) void {
         switch (event) {
@@ -442,6 +454,46 @@ const Snip = struct {
     }
 };
 
+/// What turns the wheel for a scrolling capture: a Wayland virtual pointer or the X server's XTEST.
+const Wheel = union(enum) {
+    wl: *zwlr.VirtualPointerV1,
+    x11: x11desktop.pointer.Pointer,
+
+    fn now() u32 {
+        return @truncate(@as(u64, @intCast(glib.getMonotonicTime())) / 1000);
+    }
+
+    fn moveTo(self: Wheel, x: i32, y: i32, out_w: i32, out_h: i32) void {
+        switch (self) {
+            .wl => |p| {
+                p.motionAbsolute(now(), @intCast(x), @intCast(y), @intCast(out_w), @intCast(out_h));
+                p.frame();
+            },
+            .x11 => |p| p.moveTo(x, y),
+        }
+    }
+
+    fn down(self: Wheel) void {
+        switch (self) {
+            .wl => |p| {
+                p.axisSource(.wheel);
+                p.axis(now(), .vertical_scroll, .fromInt(15));
+                p.axisDiscrete(now(), .vertical_scroll, .fromInt(15), 1);
+                p.frame();
+            },
+            .x11 => |p| p.wheelDown(),
+        }
+    }
+
+    /// The X connection belongs to the program; a virtual pointer to the job.
+    fn release(self: Wheel) void {
+        switch (self) {
+            .wl => |p| p.destroy(),
+            .x11 => {},
+        }
+    }
+};
+
 /// A scrolling capture: scroll the page under the region with a virtual
 /// pointer, capture after each step, and stitch the new rows onto the end.
 const ScrollJob = struct {
@@ -449,7 +501,7 @@ const ScrollJob = struct {
     rect: pure.Rect,
     out_w: i32,
     out_h: i32,
-    pointer: *zwlr.VirtualPointerV1,
+    pointer: Wheel,
     /// The stitched picture so far, tightly packed RGBA rows.
     stitched: std.ArrayList(u8) = .empty,
     /// The previous frame's crop, for finding how far the page moved.
@@ -466,28 +518,24 @@ const ScrollJob = struct {
     const settle_ms = 450;
 
     fn start(snip: *Snip, rect: pure.Rect, out_w: i32, out_h: i32) void {
-        const manager = snip.vptr_manager orelse return snip.fail(common.tr("This compositor does not allow scrolling windows for you (wlr-virtual-pointer is missing)."));
-        const seat = snip.seat orelse return snip.fail(common.tr("No input seat found."));
-        const job = snip.allocator.create(ScrollJob) catch return snip.fail("Out of memory");
-        job.* = .{
-            .snip = snip,
-            .rect = rect,
-            .out_w = out_w,
-            .out_h = out_h,
-            .pointer = manager.createVirtualPointer(seat) catch {
-                snip.allocator.destroy(job);
-                return snip.fail(common.tr("Could not create the virtual pointer."));
-            },
+        const wheel: Wheel = if (snip.x11_pointer) |p| .{ .x11 = p } else blk: {
+            const manager = snip.vptr_manager orelse return snip.fail(common.tr("This compositor does not allow scrolling windows for you (wlr-virtual-pointer is missing)."));
+            const seat = snip.seat orelse return snip.fail(common.tr("No input seat found."));
+            break :blk .{ .wl = manager.createVirtualPointer(seat) catch return snip.fail(common.tr("Could not create the virtual pointer.")) };
         };
+        const job = snip.allocator.create(ScrollJob) catch return snip.fail("Out of memory");
+        job.* = .{ .snip = snip, .rect = rect, .out_w = out_w, .out_h = out_h, .pointer = wheel };
         snip.scroll = job;
-        // Put the pointer over the region so the wheel reaches that window.
-        job.pointer.motionAbsolute(now(), @intCast(rect.x + @divTrunc(rect.w, 2)), @intCast(rect.y + @divTrunc(rect.h, 2)), @intCast(out_w), @intCast(out_h));
-        job.pointer.frame();
-        _ = glib.timeoutAdd(400, onCaptureTimer, job);
+        // A moment to let programs notice the new pointer before it moves; then it is put over the region so
+        // the wheel reaches that window.
+        _ = glib.timeoutAdd(300, onParkTimer, job);
     }
 
-    fn now() u32 {
-        return @truncate(@as(u64, @intCast(glib.getMonotonicTime())) / 1000);
+    fn onParkTimer(data: ?*anyopaque) callconv(.c) c_int {
+        const job: *ScrollJob = @ptrCast(@alignCast(data.?));
+        job.pointer.moveTo(job.rect.x + @divTrunc(job.rect.w, 2), job.rect.y + @divTrunc(job.rect.h, 2), job.out_w, job.out_h);
+        _ = glib.timeoutAdd(400, onCaptureTimer, job);
+        return 0;
     }
 
     fn onCaptureTimer(data: ?*anyopaque) callconv(.c) c_int {
@@ -501,15 +549,11 @@ const ScrollJob = struct {
     /// and the notch form of the event are sent because clients differ in
     /// which they listen to.
     fn scrollOnce(self: *ScrollJob) void {
-        const cx: u32 = @intCast(self.rect.x + @divTrunc(self.rect.w, 2));
-        const cy: u32 = @intCast(self.rect.y + @divTrunc(self.rect.h, 2));
+        const cx = self.rect.x + @divTrunc(self.rect.w, 2);
+        const cy = self.rect.y + @divTrunc(self.rect.h, 2);
         self.nudge = !self.nudge;
-        self.pointer.motionAbsolute(now(), cx + @intFromBool(self.nudge), cy, @intCast(self.out_w), @intCast(self.out_h));
-        self.pointer.frame();
-        self.pointer.axisSource(.wheel);
-        self.pointer.axis(now(), .vertical_scroll, .fromInt(15));
-        self.pointer.axisDiscrete(now(), .vertical_scroll, .fromInt(15), 1);
-        self.pointer.frame();
+        self.pointer.moveTo(cx + @intFromBool(self.nudge), cy, self.out_w, self.out_h);
+        self.pointer.down();
     }
 
     /// The region of a full-screen frame as tightly packed RGBA.
@@ -621,7 +665,7 @@ const ScrollJob = struct {
             const stride: usize = @intCast(pb.getRowstride());
             for (0..rows) |r| @memcpy(dst[r * stride ..][0 .. w * 4], self.stitched.items[r * w * 4 ..][0 .. w * 4]);
         }
-        self.pointer.destroy();
+        self.pointer.release();
         self.stitched.deinit(a);
         if (self.prev.len > 0) a.free(self.prev);
         snip.scroll = null;

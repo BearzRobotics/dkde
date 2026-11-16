@@ -19,6 +19,9 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 ### Compositor and window manager shortcuts
 - Workspaces are now **Super+1…9** (Super+Shift+1…9 carries a window), layout toggle **Super+T**, float **Super+Shift+Space**, quit **Super+Shift+Escape**. They were Alt+digit and friends, which took keys programs use for their own menus and modes (the calculator's Alt+1…3).
 
+### Screenshots
+- **dkde-snip works on X11** too (full screen, region and scrolling capture); the scrolling capture turns the wheel through XTEST. On a machine without a mouse the compositor now gives programs a pointer once a tool such as dkde-snip creates a virtual one, and scrolling screenshots were checked end to end on both display servers (a 400-line page stitched into one tall picture).
+
 ### Task Manager
 - **Page buttons wrap into rows** instead of a sideways scroll bar above each page: the buttons of Services, Users, Startup apps, Security and Firewall flow onto as many rows as the window width needs.
 - **Services page without the command line**: timers and sockets, dependencies and "needed by", the unit's definition, editing an override (or dinit's service file), reverting to the packaged definition, reset-failed (one or all) and daemon-reload.

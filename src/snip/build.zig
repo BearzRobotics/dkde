@@ -7,7 +7,7 @@ pub const menu_entry = true;
 
 pub fn configure(ctx: *const Ctx, mod: *std.Build.Module) void {
     ctx.gtk(mod);
-    ctx.imports(mod, &.{"cairo1"});
+    ctx.imports(mod, &.{ "cairo1", "gdkx114" });
     // Screen capture through wlr-screencopy.
     ctx.desktopApi(mod);
 }

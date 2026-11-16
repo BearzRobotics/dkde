@@ -1614,14 +1614,18 @@ fn onNewDecoration(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
 fn onNewVirtualKeyboard(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     const vk: *c.wlr_virtual_keyboard_v1 = @ptrCast(@alignCast(data));
     addKeyboard(&vk.keyboard.base, false);
-    var caps: u32 = c.WL_SEAT_CAPABILITY_POINTER | c.WL_SEAT_CAPABILITY_KEYBOARD;
-    caps |= 0;
-    c.wlr_seat_set_capabilities(server.seat, caps);
+    c.wlr_seat_set_capabilities(server.seat, c.WL_SEAT_CAPABILITY_POINTER | c.WL_SEAT_CAPABILITY_KEYBOARD);
 }
 
 fn onNewVirtualPointer(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     const event: *c.wlr_virtual_pointer_v1_new_pointer_event = @ptrCast(@alignCast(data));
     c.wlr_cursor_attach_input_device(server.cursor, &event.new_pointer.*.pointer.base);
+    // A machine with no real pointer (a tablet, a test) still gets a wl_pointer once a tool brings a virtual one.
+    // Programs see the new wl_pointer only after the focus is dropped, so the next motion enters them again.
+    if (server.seat.*.capabilities & c.WL_SEAT_CAPABILITY_POINTER == 0) c.wlr_seat_pointer_clear_focus(server.seat);
+    var caps: u32 = c.WL_SEAT_CAPABILITY_POINTER;
+    if (server.keyboards.items.len > 0) caps |= c.WL_SEAT_CAPABILITY_KEYBOARD;
+    c.wlr_seat_set_capabilities(server.seat, caps);
 }
 
 fn onRequestSetPrimary(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {

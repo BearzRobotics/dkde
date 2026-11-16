@@ -9,6 +9,7 @@
 const std = @import("std");
 pub const c = @import("c");
 pub const idle = @import("idle.zig");
+pub const pointer = @import("pointer.zig");
 const outputs_mod = @import("outputs.zig");
 const glib = @import("glib2");
 const core = @import("core");
