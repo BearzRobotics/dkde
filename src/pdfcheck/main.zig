@@ -27,7 +27,9 @@ const render = @import("pdfrender");
 const Diag = render.Diag;
 
 /// Events are logged at debug level, so they show only with -v.
-pub const std_options: std.Options = .{ .log_level = .warn };
+const core = @import("core");
+
+pub const std_options: std.Options = .{ .logFn = core.log.logFn, .log_level = .debug };
 
 extern fn open(path: [*:0]const u8, flags: c_int, ...) c_int;
 extern fn write(fd: c_int, buf: [*]const u8, count: usize) isize;

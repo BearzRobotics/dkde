@@ -70,12 +70,16 @@ pub const DeveloperPage = struct {
         _ = gtk.Button.signals.clicked.connect(open_dir, *DeveloperPage, &onOpenLogs, self, .{});
         const clear = gtk.Button.newWithLabel(t("Delete log files"));
         _ = gtk.Button.signals.clicked.connect(clear, *DeveloperPage, &onClearLogs, self, .{});
-        const copy = gtk.Button.newWithLabel(t("Copy diagnostics"));
-        copy.as(gtk.Widget).setTooltipText(t("Version, session, display server, backends and these settings, for a bug report"));
+        const copy = gtk.Button.newWithLabel(t("Copy report"));
+        copy.as(gtk.Widget).setTooltipText(t("Versions, session, tools present, these settings and the end of every log, for a bug report"));
         _ = gtk.Button.signals.clicked.connect(copy, *DeveloperPage, &onCopy, self, .{});
         row.append(open_dir.as(gtk.Widget));
         row.append(clear.as(gtk.Widget));
         row.append(copy.as(gtk.Widget));
+        const save = gtk.Button.newWithLabel(t("Save report"));
+        save.as(gtk.Widget).setTooltipText(t("Write the same report, with the end of every log, to report.txt in the log folder"));
+        _ = gtk.Button.signals.clicked.connect(save, *DeveloperPage, &onSave, self, .{});
+        row.append(save.as(gtk.Widget));
         page.append(row.as(gtk.Widget));
         self.status.setXalign(0);
         self.status.setWrap(1);
@@ -165,36 +169,108 @@ pub const DeveloperPage = struct {
         return std.fmt.bufPrintSentinel(&S.buf, "{s}/dkde", .{std.mem.span(glib.getUserStateDir())}, 0) catch "";
     }
 
-    fn onCopy(_: *gtk.Button, self: *DeveloperPage) callconv(.c) void {
+    /// Everything a bug report needs: versions, session, tools present, the settings, and the end of each log.
+    fn report(self: *DeveloperPage) std.ArrayList(u8) {
         var text: std.ArrayList(u8) = .empty;
-        defer text.deinit(gpa);
         const env = struct {
             fn get(name: [:0]const u8) []const u8 {
                 return if (glib.getenv(name)) |v| std.mem.span(v) else "(not set)";
             }
         };
-        text.print(gpa, "dkde {s}\nsession: {s}\nWAYLAND_DISPLAY: {s}\nDISPLAY: {s}\nXDG_CURRENT_DESKTOP: {s}\nXDG_SESSION_TYPE: {s}\n", .{
+        text.print(gpa, "dkde {s}\nsession: {s}\nGTK {d}.{d}.{d}, GLib {d}.{d}.{d}\n", .{
             build_options.version,
             @tagName(common.session.kind()),
-            env.get("WAYLAND_DISPLAY"),
-            env.get("DISPLAY"),
-            env.get("XDG_CURRENT_DESKTOP"),
-            env.get("XDG_SESSION_TYPE"),
-        }) catch return;
+            gtk.getMajorVersion(),
+            gtk.getMinorVersion(),
+            gtk.getMicroVersion(),
+            glib.MAJOR_VERSION,
+            glib.MINOR_VERSION,
+            glib.MICRO_VERSION,
+        }) catch return text;
+        var uts: std.c.utsname = undefined;
+        if (std.c.uname(&uts) == 0) text.print(gpa, "kernel: {s} {s} {s}\n", .{ std.mem.sliceTo(&uts.sysname, 0), std.mem.sliceTo(&uts.release, 0), std.mem.sliceTo(&uts.machine, 0) }) catch {};
+        for ([_][:0]const u8{ "WAYLAND_DISPLAY", "DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "LANG" }) |name| text.print(gpa, "{s}: {s}\n", .{ name, env.get(name) }) catch {};
+        for ([_][:0]const u8{ "DKDE_LOG", "DKDE_LOG_FILE", "DKDE_SESSION_COMPOSITOR", "DKDE_DATA_DIR", "GDK_BACKEND", "GSK_RENDERER", "GTK_THEME" }) |name| {
+            if (glib.getenv(name)) |v| text.print(gpa, "{s}={s}\n", .{ name, std.mem.span(v) }) catch {};
+        }
         const level = self.config.getString(gpa, "developer", "log-level", "default") catch null;
         defer if (level) |l| gpa.free(l);
-        text.print(gpa, "log level: {s}, log files: {}, GLib debug: {}\nlog folder: {s}\n", .{
+        text.print(gpa, "developer: log level {s}, log files {}, GLib debug {}\n", .{
             level orelse "default",
             self.config.getBool("developer", "log-files", false),
             self.config.getBool("developer", "glib-debug", false),
-            logDir(),
-        }) catch return;
-        for ([_][:0]const u8{ "DKDE_LOG", "DKDE_LOG_FILE", "DKDE_SESSION_COMPOSITOR", "DKDE_DATA_DIR", "GDK_BACKEND", "GTK_THEME" }) |name| {
-            if (glib.getenv(name)) |v| text.print(gpa, "{s}={s}\n", .{ name, std.mem.span(v) }) catch {};
+        }) catch {};
+
+        // Tools that stand behind the optional features.
+        text.appendSlice(gpa, "tools present:") catch {};
+        for ([_][:0]const u8{ "wpctl", "pactl", "nmcli", "bluetoothctl", "nft", "iptables", "ufw", "firewall-cmd", "swaylock", "gtklock", "wlr-randr", "xrandr", "labwc", "dkde-compositor", "dkde-wm", "Xwayland", "systemctl", "dinitctl" }) |tool| {
+            if (glib.findProgramInPath(tool)) |p| {
+                glib.free(p);
+                text.print(gpa, " {s}", .{tool}) catch {};
+            }
         }
+        text.append(gpa, '\n') catch {};
+
+        // The end of each log.
+        text.print(gpa, "\nlogs in {s}:\n", .{logDir()}) catch {};
+        const folder = gio.File.newForPath(logDirZ());
+        defer folder.as(gobject.Object).unref();
+        const list = folder.enumerateChildren("standard::name", .{}, null, null) orelse {
+            text.appendSlice(gpa, "(none)\n") catch {};
+            return text;
+        };
+        defer list.as(gobject.Object).unref();
+        while (list.nextFile(null, null)) |info| {
+            defer info.as(gobject.Object).unref();
+            const n = std.mem.span(info.getName());
+            if (!std.mem.endsWith(u8, n, ".log")) continue;
+            var buf: [600]u8 = undefined;
+            const path = std.fmt.bufPrintSentinel(&buf, "{s}/{s}", .{ logDir(), n }, 0) catch continue;
+            var contents: [*]u8 = undefined;
+            var length: usize = 0;
+            if (glib.fileGetContents(path, &contents, &length, null) == 0) continue;
+            defer glib.free(contents);
+            // The last 40 lines, at most 6 KB.
+            var start = length -| 6144;
+            var lines: usize = 0;
+            var k = length;
+            while (k > start) {
+                k -= 1;
+                if (contents[k] == '\n') {
+                    lines += 1;
+                    if (lines > 40) {
+                        start = k + 1;
+                        break;
+                    }
+                }
+            }
+            text.print(gpa, "--- {s} (last lines)\n{s}\n", .{ n, contents[start..length] }) catch {};
+        }
+        return text;
+    }
+
+    fn onCopy(_: *gtk.Button, self: *DeveloperPage) callconv(.c) void {
+        var text = self.report();
+        defer text.deinit(gpa);
         const z = gpa.dupeSentinel(u8, text.items, 0) catch return;
         defer gpa.free(z);
         self.window.window.as(gtk.Widget).getClipboard().setText(z);
-        self.say("Copied.");
+        self.say("Copied. Paste it into the bug report.");
+    }
+
+    fn onSave(_: *gtk.Button, self: *DeveloperPage) callconv(.c) void {
+        var text = self.report();
+        defer text.deinit(gpa);
+        _ = glib.mkdirWithParents(logDirZ(), 0o755);
+        var buf: [460]u8 = undefined;
+        const path = std.fmt.bufPrintSentinel(&buf, "{s}/report.txt", .{logDir()}, 0) catch return;
+        var err: ?*glib.Error = null;
+        if (glib.fileSetContents(path, text.items.ptr, @intCast(text.items.len), &err) == 0) {
+            self.say("The report could not be saved.");
+            if (err) |e| e.free();
+            return;
+        }
+        var msg: [500]u8 = undefined;
+        self.say(std.fmt.bufPrint(&msg, "Saved to {s}.", .{path}) catch "Saved.");
     }
 };

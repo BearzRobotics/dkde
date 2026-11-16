@@ -6,4 +6,5 @@ const Ctx = @import("../../build.zig").Ctx;
 pub fn configure(ctx: *const Ctx, mod: *std.Build.Module) void {
     ctx.gtk(mod);
     ctx.wayland(mod);
+    mod.addImport("core", ctx.core);
 }

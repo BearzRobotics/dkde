@@ -15,6 +15,7 @@ const layout = @import("layout.zig");
 const config = @import("config.zig");
 const workspaces = @import("workspaces.zig");
 const keys = @import("keys.zig");
+const developer = @import("developer.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -1856,7 +1857,11 @@ pub fn main(init: std.process.Init.Minimal) !void {
         }
     }
     loadEnvironmentFile();
-    c.wlr_log_init(if (std.c.getenv("DKDE_DEBUG") != null) c.WLR_DEBUG else c.WLR_INFO, null);
+    // Settings > For developers: the log level (wlroots has error, info and debug) and a log file.
+    const dev = developer.read_file();
+    developer.redirectStderr(dev, "dkde-compositor");
+    c.wlr_log_init(if (dev.debug()) c.WLR_DEBUG else if (dev.level == .err or dev.level == .warn) c.WLR_ERROR else c.WLR_INFO, null);
+    c._wlr_log(c.WLR_INFO, "dkde-compositor %s starting (log level %s)", version.ptr, @tagName(dev.level).ptr);
 
     const display = c.wl_display_create() orelse return error.NoDisplay;
     const backend = c.wlr_backend_autocreate(c.wl_display_get_event_loop(display), null) orelse return error.NoBackend;

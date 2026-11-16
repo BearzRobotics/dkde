@@ -8,4 +8,6 @@ pub fn configure(ctx: *const Ctx, mod: *std.Build.Module) void {
     // in a few megabytes (SPEC.md 5.12). Its dialog is dkde-polkit-ui.
     ctx.glibOnly(mod);
     mod.addImport("polkitproto", ctx.polkit_proto);
+    // Only for the shared logging (Settings > For developers).
+    mod.addImport("core", ctx.core);
 }

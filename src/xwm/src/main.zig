@@ -164,6 +164,13 @@ fn warn(comptime fmt: []const u8, args: anytype) void {
     std.debug.print(log_prefix ++ fmt ++ "\n", args);
 }
 
+/// Only with log level "debug" (Settings > For developers, or DKDE_DEBUG): what the window manager is doing.
+var debug_on = false;
+
+fn debugLog(comptime fmt: []const u8, args: anytype) void {
+    if (debug_on) std.debug.print(log_prefix ++ "debug: " ++ fmt ++ "\n", args);
+}
+
 // ---- small helpers --------------------------------------------------------------------------------------------
 
 fn findClient(win: c.xcb_window_t) ?*Client {
@@ -1450,6 +1457,17 @@ fn onButtonPress(ev: *const c.xcb_button_press_event_t) void {
 }
 
 fn handle(ev: *c.xcb_generic_event_t) void {
+    if (debug_on) {
+        const kind = ev.response_type & 0x7f;
+        switch (kind) {
+            c.XCB_MAP_REQUEST => debugLog("map request window 0x{x}", .{@as(*const c.xcb_map_request_event_t, @ptrCast(ev)).window}),
+            c.XCB_CONFIGURE_REQUEST => debugLog("configure request window 0x{x}", .{@as(*const c.xcb_configure_request_event_t, @ptrCast(ev)).window}),
+            c.XCB_UNMAP_NOTIFY => debugLog("unmap window 0x{x}", .{@as(*const c.xcb_unmap_notify_event_t, @ptrCast(ev)).window}),
+            c.XCB_DESTROY_NOTIFY => debugLog("destroy window 0x{x}", .{@as(*const c.xcb_destroy_notify_event_t, @ptrCast(ev)).window}),
+            c.XCB_CLIENT_MESSAGE => debugLog("client message to 0x{x}", .{@as(*const c.xcb_client_message_event_t, @ptrCast(ev)).window}),
+            else => {},
+        }
+    }
     switch (ev.response_type & 0x7f) {
         c.XCB_MAP_REQUEST => onMapRequest(@ptrCast(ev)),
         c.XCB_CONFIGURE_REQUEST => onConfigureRequest(@ptrCast(ev)),
@@ -1756,6 +1774,11 @@ pub fn main(init: std.process.Init.Minimal) !void {
         std.debug.print("dkde-wm: unknown option {s}\n", .{arg});
         std.process.exit(2);
     }
+    // Settings > For developers: a log file, and a debug trace of the events handled.
+    const dev = shared.developer.read_file();
+    shared.developer.redirectStderr(dev, "dkde-wm");
+    debug_on = dev.debug();
+    warn("{s} starting (log level {s})", .{ version, @tagName(dev.level) });
 
     var screen_num: c_int = 0;
     conn = c.xcb_connect(null, &screen_num) orelse {

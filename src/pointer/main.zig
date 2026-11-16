@@ -18,6 +18,9 @@
 const std = @import("std");
 const cli = @import("cli");
 const wayland = @import("wayland");
+const core = @import("core");
+
+pub const std_options: std.Options = .{ .logFn = core.log.logFn, .log_level = .debug };
 
 const wl = wayland.client.wl;
 const zwlr = wayland.client.zwlr;

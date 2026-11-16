@@ -29,6 +29,10 @@ const glib = @import("glib2");
 const gobject = @import("gobject2");
 const proto = @import("polkitproto");
 
+const core = @import("core");
+
+pub const std_options: std.Options = .{ .logFn = core.log.logFn, .log_level = .debug };
+
 const log = std.log.scoped(.polkit);
 
 const gpa = std.heap.c_allocator;

@@ -363,7 +363,9 @@ On a regular Wayland-only system none of this applies.
   `DKDE_LOG=debug dkde-panel 2>&1 | less`.
   Settings > System > For developers sets the same for programs started afterwards
   (`~/.config/dkde/developer.toml`, `[developer]` `log-level`, `log-files`, `glib-debug`);
-  the environment variables win.
+  the environment variables win. With log files on, everything a program prints on
+  stderr (crash traces, GTK warnings) goes to its log too, and dkde-compositor and
+  dkde-wm follow the same settings. **Save report** there writes `report.txt` for bug reports.
 - `dkde-pointer move 640 719 sleep 500 click` or `dkde-pointer tap super` drive the
   pointer and keyboard through the virtual-input protocols; it is a test aid for
   nested compositors (`chord ctrl+alt+t` presses a shortcut).

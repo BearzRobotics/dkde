@@ -11,6 +11,8 @@
 //! The Developer page of Settings writes the same choices to `developer.toml` ([developer] `log-level`,
 //! `log-files`, `glib-debug`), which programs started afterwards read when the environment names none.
 //!
+//! With a log file, stderr itself is sent to it, so a crash trace and GTK's own warnings are kept too.
+//!
 //! Lines go to stderr (which is lost when the session starts a program, hence
 //! the file) as "HH:MM:SS level(scope) program[pid]: message". GLib and GTK
 //! have their own switch: `G_MESSAGES_DEBUG=all` shows their debug messages.
@@ -21,6 +23,7 @@ extern fn getenv(name: [*:0]const u8) ?[*:0]const u8;
 extern fn open(path: [*:0]const u8, flags: c_int, ...) c_int;
 extern fn write(fd: c_int, buf: [*]const u8, count: usize) isize;
 extern fn close(fd: c_int) c_int;
+extern fn dup2(old: c_int, new: c_int) c_int;
 extern fn getpid() c_int;
 extern fn read(fd: c_int, buf: [*]u8, count: usize) isize;
 extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
@@ -32,6 +35,8 @@ const Settings = struct {
     level: std.log.Level = .warn,
     /// A descriptor, opened on the first message, or -1 for none, -2 for "not yet tried".
     fd: c_int = -2,
+    /// stderr itself goes to the file (a crash trace, GTK's own warnings), so lines are written once, to stderr.
+    redirected: bool = false,
 };
 
 var settings: Settings = .{};
@@ -105,6 +110,9 @@ fn init() void {
     } else if (dev.files) {
         settings.fd = openLogFile("auto");
     } else settings.fd = -1;
+    // With a log file, everything the program prints on stderr goes there too: a crash's stack trace and the
+    // toolkit's warnings are what a bug report needs most.
+    if (settings.fd >= 0 and dup2(settings.fd, 2) >= 0) settings.redirected = true;
 }
 
 fn openLogFile(spec: []const u8) c_int {
@@ -149,7 +157,7 @@ pub fn logFn(
     const line = buf[0 .. prefix.len + body.len];
 
     std.debug.print("{s}", .{line});
-    if (settings.fd >= 0) _ = write(settings.fd, line.ptr, line.len);
+    if (settings.fd >= 0 and !settings.redirected) _ = write(settings.fd, line.ptr, line.len);
 }
 
 /// Closes the log file; programs may call it just before they exit.

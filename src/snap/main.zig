@@ -17,6 +17,8 @@ const gtk = @import("gtk4");
 
 const labwc = common.labwc;
 const t = common.tr;
+pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
+
 const log = std.log.scoped(.snap);
 
 extern fn dlsym(handle: ?*anyopaque, name: [*:0]const u8) ?*anyopaque;
