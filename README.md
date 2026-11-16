@@ -361,6 +361,9 @@ On a regular Wayland-only system none of this applies.
   (`dkde-session` does that by default; times are UTC). For GTK's own
   messages use `G_MESSAGES_DEBUG=all`. Example:
   `DKDE_LOG=debug dkde-panel 2>&1 | less`.
+  Settings > System > For developers sets the same for programs started afterwards
+  (`~/.config/dkde/developer.toml`, `[developer]` `log-level`, `log-files`, `glib-debug`);
+  the environment variables win.
 - `dkde-pointer move 640 719 sleep 500 click` or `dkde-pointer tap super` drive the
   pointer and keyboard through the virtual-input protocols; it is a test aid for
   nested compositors (`chord ctrl+alt+t` presses a shortcut).

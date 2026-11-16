@@ -8,6 +8,9 @@
 //!     DKDE_LOG_FILE=/path/file.log     also append to this file
 //!     DKDE_LOG_FILE=auto               ... to $XDG_STATE_HOME/dkde/<program>.log
 //!
+//! The Developer page of Settings writes the same choices to `developer.toml` ([developer] `log-level`,
+//! `log-files`, `glib-debug`), which programs started afterwards read when the environment names none.
+//!
 //! Lines go to stderr (which is lost when the session starts a program, hence
 //! the file) as "HH:MM:SS level(scope) program[pid]: message". GLib and GTK
 //! have their own switch: `G_MESSAGES_DEBUG=all` shows their debug messages.
@@ -19,6 +22,8 @@ extern fn open(path: [*:0]const u8, flags: c_int, ...) c_int;
 extern fn write(fd: c_int, buf: [*]const u8, count: usize) isize;
 extern fn close(fd: c_int) c_int;
 extern fn getpid() c_int;
+extern fn read(fd: c_int, buf: [*]u8, count: usize) isize;
+extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 extern fn mkdir(path: [*:0]const u8, mode: c_uint) c_int;
 extern fn time(t: ?*i64) i64;
 extern const program_invocation_short_name: [*:0]const u8;
@@ -40,12 +45,66 @@ fn levelFromName(name: []const u8) ?std.log.Level {
     return null;
 }
 
+/// What developer.toml asks for.
+pub const Developer = struct {
+    level: ?std.log.Level = null,
+    files: bool = false,
+    glib_debug: bool = false,
+};
+
+/// Reads the `[developer]` keys out of the text of developer.toml. Only what logging needs, so no TOML library.
+pub fn parseDeveloper(text: []const u8) Developer {
+    var out: Developer = .{};
+    var in_group = false;
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |raw| {
+        const line = std.mem.trim(u8, raw, " \t\r");
+        if (line.len == 0 or line[0] == '#') continue;
+        if (line[0] == '[') {
+            in_group = std.mem.eql(u8, line, "[developer]");
+            continue;
+        }
+        if (!in_group) continue;
+        const eq = std.mem.indexOfScalar(u8, line, '=') orelse continue;
+        const key = std.mem.trim(u8, line[0..eq], " \t");
+        const value = std.mem.trim(u8, std.mem.trim(u8, line[eq + 1 ..], " \t"), "\"");
+        if (std.mem.eql(u8, key, "log-level")) out.level = levelFromName(value);
+        if (std.mem.eql(u8, key, "log-files")) out.files = std.mem.eql(u8, value, "true");
+        if (std.mem.eql(u8, key, "glib-debug")) out.glib_debug = std.mem.eql(u8, value, "true");
+    }
+    return out;
+}
+
+fn readDeveloper() Developer {
+    var path_buf: [400]u8 = undefined;
+    const path = if (getenv("XDG_CONFIG_HOME")) |c|
+        std.fmt.bufPrintSentinel(&path_buf, "{s}/dkde/developer.toml", .{std.mem.span(c)}, 0) catch return .{}
+    else if (getenv("HOME")) |h|
+        std.fmt.bufPrintSentinel(&path_buf, "{s}/.config/dkde/developer.toml", .{std.mem.span(h)}, 0) catch return .{}
+    else
+        return .{};
+    const fd = open(path, 0); // O_RDONLY
+    if (fd < 0) return .{};
+    defer _ = close(fd);
+    var text: [2048]u8 = undefined;
+    const n = read(fd, &text, text.len);
+    if (n <= 0) return .{};
+    return parseDeveloper(text[0..@intCast(n)]);
+}
+
 fn init() void {
     read_env = true;
+    const dev = readDeveloper();
+    if (dev.level) |l| settings.level = l;
     if (getenv("DKDE_LOG")) |v| {
         if (levelFromName(std.mem.span(v))) |l| settings.level = l;
     }
-    if (getenv("DKDE_LOG_FILE")) |v| settings.fd = openLogFile(std.mem.span(v)) else settings.fd = -1;
+    if (dev.glib_debug) _ = setenv("G_MESSAGES_DEBUG", "all", 0);
+    if (getenv("DKDE_LOG_FILE")) |v| {
+        settings.fd = openLogFile(std.mem.span(v));
+    } else if (dev.files) {
+        settings.fd = openLogFile("auto");
+    } else settings.fd = -1;
 }
 
 fn openLogFile(spec: []const u8) c_int {
@@ -97,6 +156,13 @@ pub fn logFn(
 pub fn deinit() void {
     if (settings.fd >= 0) _ = close(settings.fd);
     settings.fd = -1;
+}
+
+test "developer.toml" {
+    const d = parseDeveloper("[other]\nlog-level = \"error\"\n[developer]\nlog-level = \"debug\"\nlog-files = true\nglib-debug = false\n");
+    try std.testing.expectEqual(std.log.Level.debug, d.level.?);
+    try std.testing.expect(d.files and !d.glib_debug);
+    try std.testing.expect(parseDeveloper("").level == null);
 }
 
 test "level names" {

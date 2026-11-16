@@ -20,6 +20,7 @@ const audio = common.audio;
 const users = @import("users.zig");
 const hwpages = @import("hwpages.zig");
 const aboutpage = @import("aboutpage.zig");
+const developerpage = @import("developerpage.zig");
 const regionpage = @import("regionpage.zig");
 const onlinepage = @import("onlinepage.zig");
 const termpreview = @import("termpreview.zig");
@@ -59,6 +60,7 @@ const pages = [_]Page{
     .{ .id = "datetime", .title = "Date & time", .icon = "preferences-system-time-symbolic", .category = 4, .desc = "Time zone, clock and calendar system" },
     .{ .id = "region", .title = "Language & region", .icon = "preferences-desktop-locale-symbolic", .category = 4, .desc = "Language, and how dates, numbers, currency and measurements are written" },
     .{ .id = "about", .title = "About", .icon = "help-about-symbolic", .category = 1, .desc = "This computer: name, system, processor, memory, storage" },
+    .{ .id = "developer", .title = "For developers", .icon = "applications-development-symbolic", .category = 1, .desc = "Logging, the GTK inspector and diagnostics for DKDE programs" },
     .{ .id = "online", .title = "Online accounts", .icon = "preferences-system-network-symbolic", .category = 5, .desc = "Optional online calendars for the calendar and its reminders" },
     .{ .id = "users", .title = "User", .icon = "avatar-default-symbolic", .category = 5, .desc = "Your account and the other accounts on this computer" },
 };
@@ -517,6 +519,8 @@ pub const SettingsWindow = struct {
                 hwpages.ShortcutsPage.build(self)
             else if (std.mem.eql(u8, id, "about"))
                 aboutpage.AboutPage.build(self)
+            else if (std.mem.eql(u8, id, "developer"))
+                developerpage.DeveloperPage.build(self)
             else if (std.mem.eql(u8, id, "region"))
                 regionpage.RegionPage.build(self)
             else if (std.mem.eql(u8, id, "online"))

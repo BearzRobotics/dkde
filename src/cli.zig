@@ -99,7 +99,11 @@ fn writeAll(fd: c_int, bytes: []const u8) void {
 pub fn handle(args: std.process.Args, info: Info) void {
     const argv = args.vector;
     switch (classify(argv, info)) {
-        .run => return,
+        .run => {
+            // Starts the program's logging (and its log file, when Settings > For developers asks for one).
+            std.log.scoped(.cli).debug("{s} {s} starting", .{ info.name, build_options.version });
+            return;
+        },
         .help => {
             var buf: [2048]u8 = undefined;
             var w: std.Io.Writer = .fixed(&buf);

@@ -11,6 +11,9 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 - **dkde-wm on several monitors**: a work area per monitor, windows open where the pointer is, tiling/maximize/snap per monitor; size hints honoured; title bars (accent colour, dark mode and font from dkde.toml, live) with minimize, maximize and close buttons (and resize edges) for windows that draw no frame of their own; `[windows] focus = "follow"`. Needs `libxcb-randr0-dev` and the cairo and pango development files to build.
 - **dkde-panel runs on X11**: bars are dock windows with struts, the wallpaper a desktop window, the Start menu a window beside the bar.
 
+### For developers
+- **Settings > System > For developers** (only DKDE programs are affected, and only those started after a change): log level, keeping each program's log in `~/.local/state/dkde/<program>.log`, GTK and GLib debug messages, GTK's inspector shortcut (Ctrl+Shift+I), open or delete the log folder, and **Copy diagnostics** (version, session, display server, settings) for a bug report. The choices are kept in `~/.config/dkde/developer.toml`; `DKDE_LOG` and `DKDE_LOG_FILE` in the environment still win. Every program now writes a "starting" line at debug level, so its log file exists as soon as it runs.
+
 ### Calculator
 - **Show Work in Programmer mode**: AND, OR and XOR lined up bit by bit, shifts, NOT, a negative answer as its two's complement (invert, add one), decimal to binary by repeated division, and grouping bits into hex and octal digits.
 - **Programmer mode fits a 720-pixel screen**, also with the tape open: tighter keys and base rows, a short tape there, and the calculator column scrolls when a screen is shorter still, so the keypad is never pushed off the bottom.
