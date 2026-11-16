@@ -85,7 +85,7 @@ sudo apt install labwc shared-mime-info papirus-icon-theme
 
 | Package | Why |
 |---|---|
-| labwc (0.9.3 or newer) | The compositor. Must offer `wlr-layer-shell`, `wlr-foreign-toplevel-management` and `wlr-screencopy`; `ext-workspace-v1` (virtual desktops) and `wlr-virtual-pointer` (scrolling screenshots) are used when present |
+| labwc (0.9.3 or newer) | The compositor. Must offer `wlr-layer-shell`, `wlr-foreign-toplevel-management` and `wlr-screencopy`; `ext-workspace-v1` (virtual desktops) and `wlr-virtual-pointer` (scrolling screenshots; on X11 the XTEST extension does it) are used when present |
 | shared-mime-info | Content types for the file manager and Open With |
 | papirus-icon-theme | Fallback icons (Fluent ships with dkde) |
 
