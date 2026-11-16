@@ -1026,7 +1026,13 @@ pub fn scrolled(bar: *gtk.Box) *gtk.Widget {
         if (flow.getChildAtIndex(index)) |cell| cell.as(gtk.Widget).setFocusable(0);
         index += 1;
     }
-    return flow.as(gtk.Widget);
+    // A FlowBox reports a least height (all in one column) taller than its natural one (wrapped), which GTK
+    // warns about on every layout. A scrolled window that never scrolls takes only the natural height.
+    const holder = gtk.ScrolledWindow.new();
+    holder.setPolicy(.never, .external);
+    holder.setPropagateNaturalHeight(1);
+    holder.setChild(flow.as(gtk.Widget));
+    return holder.as(gtk.Widget);
 }
 
 pub fn commandBar(title: [:0]const u8) *gtk.Box {
