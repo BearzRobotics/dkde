@@ -121,7 +121,7 @@ Initial required integrations:
 | `wlr-layer-shell` | Panels, launchers, desktop surfaces |
 | `wlr-foreign-toplevel-management` | Taskbar window tracking and management |
 | `ext-workspace-v1` | Workspace integration |
-| `wlr-screencopy` | Screenshot capture |
+| `wlr-screencopy` | Screenshot capture (X11: root-window capture; scrolling capture uses `wlr-virtual-pointer`, or XTEST on X11) |
 | `ext-idle-notify-v1` | Idle detection |
 | Virtual keyboard protocol | Software keyboard integration where appropriate |
 

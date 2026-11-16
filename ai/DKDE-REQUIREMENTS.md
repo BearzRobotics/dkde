@@ -46,7 +46,7 @@
 - **DKDE-046 (MUST):** Partition manager inspects a disposable disk image without root and defaults to non-destructive behavior.
 - **DKDE-047 (MUST):** Calculator evaluates documented deterministic expressions.
 - **DKDE-048 (MUST):** Clock and calendar provide their milestone-defined local functionality without depending on a notification daemon.
-- **DKDE-049 (MUST):** Screenshot utility uses a supported Wayland capture mechanism and reports a useful error when capture is unsupported or denied.
+- **DKDE-049 (MUST):** Screenshot utility uses a supported capture mechanism (a Wayland protocol, or the root window on X11) and reports a useful error when capture is unsupported or denied.
 - **DKDE-050 (MUST):** Help viewer opens bundled local documentation without network access.
 - **DKDE-051 (PLANNED):** Additional historical utilities (task manager, character map, color tools, PDF checker, setup/greeter and optional policy integration) remain in the feature inventory until individually triaged.
 
