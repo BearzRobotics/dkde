@@ -86,7 +86,7 @@ DKDE_TASKS_NEW
 
 # FILES
 ~/.config/dkde/tasks.toml
-: Settings: **update-speed** (high, normal, low or paused), **start-page**, **firewall-backend** (auto, firewalld, ufw, nft, iptables or none) and **security-module** (auto, apparmor, selinux or none), which replace what Task Manager detects (none hides the page; they apply at the next start), **rail-collapsed**, and the remembered window size. The Settings page writes them.
+: Settings: **update-speed** (high, normal, low or paused), **start-page**, **firewall-backend** (auto, firewalld, ufw, nft, iptables or none) and **security-module** (auto, apparmor, selinux or none), which replace what Task Manager detects (none hides the page; a change applies at once), **rail-collapsed**, and the remembered window size. The Settings page writes them.
 
 ~/.local/state/dkde/tasks.state
 : The columns shown on Processes and Details, their widths, the sort order and the grouping.

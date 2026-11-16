@@ -145,6 +145,7 @@ pub const TaskManager = struct {
     efficiency_button: ?*gtk.ToggleButton = null,
     syncing: bool = false,
     speed_dropdown: ?*gtk.DropDown = null,
+    start_dropdown: ?*gtk.DropDown = null,
 
     fn create(gpa: std.mem.Allocator, app: *gtk.Application) !*TaskManager {
         const self = try gpa.create(TaskManager);
@@ -178,26 +179,8 @@ pub const TaskManager = struct {
         _ = gtk.SearchEntry.signals.search_changed.connect(self.search, *TaskManager, &onSearchChanged, self, .{});
         header.setTitleWidget(self.search.as(gtk.Widget));
 
-        // The settings can override what is detected.
-        firewall_mod.forced = std.meta.stringToEnum(firewall_mod.firewall.Backend, self.configString("firewall-backend", "auto"));
-        security_mod.forced = std.meta.stringToEnum(security_mod.security.Kind, self.configString("security-module", "auto"));
-        // The Security page exists only where AppArmor or SELinux runs.
-        {
-            var n: usize = 0;
-            for (base_rail) |p| {
-                rail_buf[n] = p;
-                n += 1;
-            }
-            if (security_mod.detect() != .none) {
-                rail_buf[n] = .security;
-                n += 1;
-            }
-            if (firewall_mod.detect() != .none) {
-                rail_buf[n] = .firewall;
-                n += 1;
-            }
-            rail_pages = rail_buf[0..n];
-        }
+        self.readOverrides();
+        computeRail();
         self.buildRail();
         self.buildPages();
 
@@ -226,6 +209,75 @@ pub const TaskManager = struct {
         self.showPage(if (start == .settings) .processes else start);
         if (self.config.getBool("tasks", "rail-collapsed", false)) self.setRailCollapsed(true);
         return self;
+    }
+
+    /// What the settings say about the backends, instead of what is detected.
+    fn readOverrides(self: *TaskManager) void {
+        firewall_mod.forced = std.meta.stringToEnum(firewall_mod.firewall.Backend, self.configString("firewall-backend", "auto"));
+        security_mod.forced = std.meta.stringToEnum(security_mod.security.Kind, self.configString("security-module", "auto"));
+    }
+
+    /// The Security page exists only where AppArmor or SELinux runs (or is chosen), Firewall where there is a firewall.
+    fn computeRail() void {
+        var n: usize = 0;
+        for (base_rail) |p| {
+            rail_buf[n] = p;
+            n += 1;
+        }
+        if (security_mod.detect() != .none) {
+            rail_buf[n] = .security;
+            n += 1;
+        }
+        if (firewall_mod.detect() != .none) {
+            rail_buf[n] = .firewall;
+            n += 1;
+        }
+        rail_pages = rail_buf[0..n];
+    }
+
+    /// A backend was chosen in the settings: the Security and Firewall pages are made again for it, at once.
+    fn applyBackends(self: *TaskManager) void {
+        self.readOverrides();
+        if (self.security) |sp| {
+            self.stack.remove(sp.widget);
+            sp.destroy();
+            self.security = null;
+        }
+        if (self.firewall) |fp| {
+            self.stack.remove(fp.widget);
+            fp.destroy();
+            self.firewall = null;
+        }
+        computeRail();
+        self.makeBackendPages();
+        // The rail: the top rows again (the Settings row stays).
+        while (self.rail.getRowAtIndex(0)) |r| self.rail.remove(r.as(gtk.Widget));
+        const settings_label = self.rail_labels.items[self.rail_labels.items.len - 1];
+        self.rail_labels.clearRetainingCapacity();
+        for (rail_pages) |p| self.rail.append(self.railRow(p));
+        self.rail_labels.append(self.gpa, settings_label) catch {};
+        self.setRailCollapsed(self.config.getBool("tasks", "rail-collapsed", false));
+        if (self.start_dropdown) |dd| {
+            const names = gtk.StringList.new(null);
+            for (rail_pages) |p| names.append(p.title());
+            dd.setModel(names.as(gio.ListModel));
+            const current = std.meta.stringToEnum(PageId, self.configString("start-page", "processes")) orelse .processes;
+            dd.setSelected(@intCast(std.mem.indexOfScalar(PageId, rail_pages, current) orelse 0));
+        }
+    }
+
+    fn makeBackendPages(self: *TaskManager) void {
+        const a = self.gpa;
+        const kind = security_mod.detect();
+        if (kind != .none) {
+            self.security = security_mod.Page.create(a, self.window.as(gtk.Window), kind);
+            _ = self.stack.addNamed(self.security.?.widget, "security");
+        }
+        const fw_kind = firewall_mod.detect();
+        if (fw_kind != .none) {
+            self.firewall = firewall_mod.Page.create(a, self.window.as(gtk.Window), fw_kind);
+            _ = self.stack.addNamed(self.firewall.?.widget, "firewall");
+        }
     }
 
     fn configString(self: *TaskManager, key: [:0]const u8, default: []const u8) []const u8 {
@@ -346,10 +398,6 @@ pub const TaskManager = struct {
         self.users.on_show = onShowUser;
         self.services = services_mod.Page.create(a, self.window.as(gtk.Window), &self.sampler);
         self.startup = startup_mod.Page.create(a, self.window.as(gtk.Window));
-        const kind = security_mod.detect();
-        if (kind != .none) self.security = security_mod.Page.create(a, self.window.as(gtk.Window), kind);
-        const fw_kind = firewall_mod.detect();
-        if (fw_kind != .none) self.firewall = firewall_mod.Page.create(a, self.window.as(gtk.Window), fw_kind);
         self.perf.owner = self;
         self.perf.on_compact = onCompact;
 
@@ -363,8 +411,7 @@ pub const TaskManager = struct {
         _ = self.stack.addNamed(self.users.widget, "users");
         _ = self.stack.addNamed(self.tablePage(self.details, .details), "details");
         _ = self.stack.addNamed(self.services.widget, "services");
-        if (self.security) |sp| _ = self.stack.addNamed(sp.widget, "security");
-        if (self.firewall) |fp| _ = self.stack.addNamed(fp.widget, "firewall");
+        self.makeBackendPages();
         _ = self.stack.addNamed(self.settingsPage(), "settings");
     }
 
@@ -448,6 +495,7 @@ pub const TaskManager = struct {
         const current = std.meta.stringToEnum(PageId, self.configString("start-page", "processes")) orelse .processes;
         start.setSelected(@intCast(std.mem.indexOfScalar(PageId, rail_pages, current) orelse 0));
         _ = gobject.Object.signals.notify.connect(start, *TaskManager, &onStartChosen, self, .{ .detail = "selected" });
+        self.start_dropdown = start;
         settingRow(grid, 1, t("Default start page"), t("The page Task Manager opens on."), start.as(gtk.Widget));
 
         const shortcut = gtk.Label.new(t("Ctrl+Shift+Esc opens Task Manager, or brings it forward when it is open."));
@@ -460,13 +508,13 @@ pub const TaskManager = struct {
         const fw = gtk.DropDown.newFromStrings(@ptrCast(&fw_names));
         fw.setSelected(optionIndex(&fw_values, self.configString("firewall-backend", "auto")));
         _ = gobject.Object.signals.notify.connect(fw, *TaskManager, &onFirewallChosen, self, .{ .detail = "selected" });
-        settingRow(grid, 2, t("Firewall backend"), t("Which firewall the Firewall page manages. Automatic picks the one that is running. Applies the next time Task Manager starts."), fw.as(gtk.Widget));
+        settingRow(grid, 2, t("Firewall backend"), t("Which firewall the Firewall page manages. Automatic picks the one that is running. Applies at once."), fw.as(gtk.Widget));
 
         const sec_names = [_:null]?[*:0]const u8{ t("Automatic"), t("AppArmor"), t("SELinux"), t("None (hide the page)") };
         const sec = gtk.DropDown.newFromStrings(@ptrCast(&sec_names));
         sec.setSelected(optionIndex(&sec_values, self.configString("security-module", "auto")));
         _ = gobject.Object.signals.notify.connect(sec, *TaskManager, &onSecurityChosen, self, .{ .detail = "selected" });
-        settingRow(grid, 3, t("Security module"), t("Which mandatory access control the Security page manages. Applies the next time Task Manager starts."), sec.as(gtk.Widget));
+        settingRow(grid, 3, t("Security module"), t("Which mandatory access control the Security page manages. Applies at once."), sec.as(gtk.Widget));
         root.append(grid.as(gtk.Widget));
         return root.as(gtk.Widget);
     }
@@ -507,12 +555,14 @@ pub const TaskManager = struct {
         const i = dd.getSelected();
         if (i >= fw_values.len) return;
         self.config.setString("tasks", "firewall-backend", fw_values[i]) catch {};
+        self.applyBackends();
     }
 
     fn onSecurityChosen(dd: *gtk.DropDown, _: *gobject.ParamSpec, self: *TaskManager) callconv(.c) void {
         const i = dd.getSelected();
         if (i >= sec_values.len) return;
         self.config.setString("tasks", "security-module", sec_values[i]) catch {};
+        self.applyBackends();
     }
 
     fn onStartChosen(dd: *gtk.DropDown, _: *gobject.ParamSpec, self: *TaskManager) callconv(.c) void {
