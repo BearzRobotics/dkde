@@ -1000,15 +1000,33 @@ pub const Page = struct {
     }
 };
 
-/// The bar at the top of each page: its title on the left, its commands on the right.
-/// A command bar that scrolls sideways when the window is narrow, so it never holds the window wide.
+/// The command bar of a page, laid out in rows that wrap with the window's width instead of scrolling sideways:
+/// the title first, then the buttons. Call it after the buttons are added to `bar` (from `commandBar`); it
+/// takes them over.
 pub fn scrolled(bar: *gtk.Box) *gtk.Widget {
-    const sw = gtk.ScrolledWindow.new();
-    sw.setPolicy(.automatic, .never);
-    sw.setPropagateNaturalHeight(1);
-    sw.setMinContentWidth(120);
-    sw.setChild(bar.as(gtk.Widget));
-    return sw.as(gtk.Widget);
+    const flow = gtk.FlowBox.new();
+    flow.setSelectionMode(.none);
+    flow.setHomogeneous(0);
+    flow.setColumnSpacing(6);
+    flow.setRowSpacing(6);
+    flow.setMaxChildrenPerLine(64);
+    flow.setMinChildrenPerLine(1);
+    flow.setActivateOnSingleClick(0);
+    flow.as(gtk.Widget).addCssClass("dkde-command-bar");
+    var index: c_int = 0;
+    while (bar.as(gtk.Widget).getFirstChild()) |child| {
+        // The title stretched across the bar; in rows it takes only its own room.
+        child.setHexpand(0);
+        // Removing it from the bar would free it: hold it while it moves.
+        _ = child.as(gobject.Object).ref();
+        bar.remove(child);
+        flow.append(child);
+        child.as(gobject.Object).unref();
+        // The cells themselves are not controls: only the widgets inside take the keyboard.
+        if (flow.getChildAtIndex(index)) |cell| cell.as(gtk.Widget).setFocusable(0);
+        index += 1;
+    }
+    return flow.as(gtk.Widget);
 }
 
 pub fn commandBar(title: [:0]const u8) *gtk.Box {
