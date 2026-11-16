@@ -3,7 +3,9 @@
 //! `ext-idle-notify-v1` and reads `[power]` and `[menu]` of panel.toml, which it
 //! watches, so changes in Settings apply at once.
 //!
-//!   [power] lock-after, screen-off-after, sleep-after   minutes; 0 = never
+//!   [power] dim-after, lock-after, screen-off-after, sleep-after   minutes; 0 = never
+//!   [power] dim-level                                   percent the backlight is dimmed to (needs brightnessctl or light)
+//!   [power] battery-separate, <key>-battery             other times while running on the battery
 //!   [power] lock-before-sleep                           default true
 //!   [menu]  lock-command, sleep-command                 empty = detect
 
@@ -24,7 +26,7 @@ const log = std.log.scoped(.idle);
 
 extern fn system(command: [*:0]const u8) c_int;
 
-const Kind = enum { lock, screen_off, sleep };
+const Kind = enum { dim, lock, screen_off, sleep };
 
 const Idle = struct {
     allocator: std.mem.Allocator,
@@ -33,12 +35,18 @@ const Idle = struct {
     display: ?*wl.Display = null,
     x11: ?x11desktop.idle.Idle = null,
     /// X11: which actions have fired since the last input.
-    fired: [3]bool = .{ false, false, false },
+    fired: [4]bool = .{ false, false, false, false },
+    /// The backlight was dimmed by us and is to be restored when the user returns.
+    dimmed: bool = false,
     notifier: ?*ext.IdleNotifierV1 = null,
     seat: ?*wl.Seat = null,
     registry: ?*wl.Registry = null,
     desktop: core.desktop.Desktop = .{},
     notifications: std.ArrayList(*Watch) = .empty,
+    /// Running on a battery; read again every few seconds, and the timeouts are set up again when it changes.
+    on_battery: bool = false,
+    /// The backlight tool, when there is one, for dimming.
+    brightness: ?core.power.Brightness = null,
     /// Minutes are treated as seconds when set, so a test does not wait an hour.
     fast: bool = false,
 
@@ -58,8 +66,13 @@ const Idle = struct {
         }
     }
 
+    /// The timeout in minutes; on a battery, with separate times chosen, the "-battery" key.
     fn minutes(self: *Idle, key: [:0]const u8) u32 {
-        return @intCast(@max(0, self.config.getInt("power", key, 0)));
+        var buf: [64]u8 = undefined;
+        var zbuf: [72]u8 = undefined;
+        const chosen = core.power.timeoutKey(&buf, key, self.on_battery, self.config.getBool("power", "battery-separate", false));
+        const zkey = std.fmt.bufPrintSentinel(&zbuf, "{s}", .{chosen}, 0) catch return 0;
+        return @intCast(@max(0, self.config.getInt("power", zkey, 0)));
     }
 
     fn clearWatches(self: *Idle) void {
@@ -72,13 +85,14 @@ const Idle = struct {
 
     /// (Re)creates one notification per configured timeout.
     fn arm(self: *Idle) void {
-        self.fired = .{ false, false, false };
+        self.fired = .{ false, false, false, false };
         if (self.x11 != null) return;
         self.clearWatches();
         const notifier = self.notifier orelse return;
         const seat = self.seat orelse return;
         const scale: u32 = if (self.fast) 1000 else 60_000;
         const wanted = [_]struct { key: [:0]const u8, kind: Kind }{
+            .{ .key = "dim-after", .kind = .dim },
             .{ .key = "lock-after", .kind = .lock },
             .{ .key = "screen-off-after", .kind = .screen_off },
             .{ .key = "sleep-after", .kind = .sleep },
@@ -131,8 +145,45 @@ const Idle = struct {
         _ = system(line);
     }
 
+    /// The backlight level now, in percent.
+    fn brightnessPercent(self: *Idle) ?u32 {
+        const tool = self.brightness orelse return null;
+        var out: [*:0]u8 = undefined;
+        const command: [:0]const u8 = if (tool == .brightnessctl) "brightnessctl -m" else "light -G";
+        if (glib.spawnCommandLineSync(command, &out, null, null, null) == 0) return null;
+        const text = std.mem.span(out);
+        defer glib.free(out);
+        if (tool == .light) {
+            const value = std.fmt.parseFloat(f64, std.mem.trim(u8, text, " \n")) catch return null;
+            return @intFromFloat(@round(value));
+        }
+        // "device,class,current,percent%,max"
+        var fields = std.mem.splitScalar(u8, std.mem.trim(u8, text, " \n"), ',');
+        _ = fields.next();
+        _ = fields.next();
+        _ = fields.next();
+        const pct = std.mem.trimEnd(u8, fields.next() orelse return null, "%");
+        return std.fmt.parseInt(u32, pct, 10) catch null;
+    }
+
     fn run(self: *Idle, kind: Kind, idled: bool) void {
         switch (kind) {
+            .dim => {
+                const tool = self.brightness orelse return log.warn("cannot dim the screen: install brightnessctl (or light)", .{});
+                if (idled) {
+                    const level: u32 = @intCast(std.math.clamp(self.config.getInt("power", "dim-level", 30), 1, 100));
+                    // Never brighten a screen that is already dimmer than the dim level.
+                    if (self.brightnessPercent()) |now_pct| if (now_pct <= level) return;
+                    var buf: [96]u8 = undefined;
+                    log.info("dimming the screen to {d}%", .{level});
+                    self.shell(core.power.dimCommand(&buf, tool, level));
+                    self.dimmed = true;
+                } else if (self.dimmed) {
+                    log.info("restoring the screen brightness", .{});
+                    self.shell(core.power.restoreCommand(tool));
+                    self.dimmed = false;
+                }
+            },
             .lock => if (idled) {
                 const cmd = self.lockCommand() orelse return log.warn("no lock command: install swaylock or set [menu] lock-command", .{});
                 defer self.allocator.free(cmd);
@@ -192,6 +243,7 @@ const Idle = struct {
         const idle_ms = x.idleMs() orelse return 1;
         const scale: u32 = if (self.fast) 1000 else 60_000;
         const wanted = [_]struct { key: [:0]const u8, kind: Kind }{
+            .{ .key = "dim-after", .kind = .dim },
             .{ .key = "lock-after", .kind = .lock },
             .{ .key = "screen-off-after", .kind = .screen_off },
             .{ .key = "sleep-after", .kind = .sleep },
@@ -207,6 +259,18 @@ const Idle = struct {
                 self.fired[i] = false;
                 self.run(w.kind, false);
             }
+        }
+        return 1;
+    }
+
+    /// The machine moved between mains and battery: the timeouts may differ, so they are set up again.
+    fn onPowerPoll(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Idle = @ptrCast(@alignCast(data.?));
+        const now_on = core.power.onBattery();
+        if (now_on != self.on_battery) {
+            self.on_battery = now_on;
+            log.info("now on {s}", .{if (now_on) "the battery" else "mains power"});
+            self.arm();
         }
         return 1;
     }
@@ -229,6 +293,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
         .fast = glib.getenv("DKDE_IDLE_SECONDS") != null,
     };
     defer idle.config.deinit();
+    idle.on_battery = core.power.onBattery();
+    idle.brightness = core.power.detectBrightness(core.power.system_probe);
+    _ = glib.timeoutAddSeconds(15, Idle.onPowerPoll, &idle);
 
     // Under a Wayland compositor the idle notifier does the work; without one, on X11, the time since the
     // last input is polled.

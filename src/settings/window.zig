@@ -875,6 +875,7 @@ pub const SettingsWindow = struct {
         addRow(page, common.tr("Login"), gtk.Label.new(glib.getUserName()).as(gtk.Widget));
         const admin = common.user.currentUserIsAdmin(self.allocator);
         addRow(page, common.tr("Administrator (sudo)"), gtk.Label.new(if (admin) common.tr("Yes") else common.tr("No")).as(gtk.Widget));
+        addRowDesc(page, common.tr("Administrator padlock locks after (minutes)"), common.tr("After this long without an administrator action the padlock closes and the password is forgotten. 0 keeps it open until the program closes. Applies the next time it is unlocked."), self.spin(&self.shared, "security", "unlock-minutes", 0, 240, 5).as(gtk.Widget));
 
         // Accounts: every change asks for the administrator password.
         const heading = gtk.Label.new(common.tr("Accounts"));

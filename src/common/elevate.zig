@@ -16,7 +16,8 @@ const glib = @import("glib2");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 
-const tr = @import("core").i18n.tr;
+const core = @import("core");
+const tr = core.i18n.tr;
 const dialogs = @import("dialogs.zig");
 
 pub const Outcome = enum { ok, cancelled, failed };
@@ -56,7 +57,16 @@ const Job = struct {
 // `idle_seconds` without an action, or when the program ends. Each program has its own lock.
 
 const gpa = std.heap.c_allocator;
-pub const idle_seconds = 300;
+/// How long the unlocked session lasts after the last action: `[security] unlock-minutes` in dkde.toml
+/// (Settings > Accounts > User), 0 meaning until the program closes. Read each time the lock opens.
+var idle_seconds: c_uint = 300;
+
+fn readIdleSeconds() void {
+    var cfg = core.Config.load(gpa, "dkde.toml") catch return;
+    defer cfg.deinit();
+    const minutes = cfg.getInt("security", "unlock-minutes", 5);
+    idle_seconds = @intCast(std.math.clamp(minutes, 0, 1440) * 60);
+}
 
 var session_password: ?[]u8 = null;
 var idle_timer: c_uint = 0;
@@ -89,6 +99,8 @@ fn changed() void {
 
 fn restartIdle() void {
     if (idle_timer != 0) _ = glib.Source.remove(idle_timer);
+    idle_timer = 0;
+    if (idle_seconds == 0) return;
     idle_timer = glib.timeoutAddSeconds(idle_seconds, onIdle, null);
 }
 
@@ -116,7 +128,7 @@ fn unlockDone(_: *u8, _: Outcome, _: []const u8) void {}
 /// Asks for the password once and keeps it for the session.
 pub fn unlock(parent: ?*gtk.Window) void {
     if (isUnlocked()) return;
-    const job = makeJob(parent, tr("Unlock administrator actions. The password is kept only in this program, for five minutes after the last action."), &.{"true"}, "", false, u8, unlockDone, &unlock_data) orelse return;
+    const job = makeJob(parent, tr("Unlock administrator actions. The password is kept only in this program, until it is locked again (Settings > Accounts sets how long after the last action)."), &.{"true"}, "", false, u8, unlockDone, &unlock_data) orelse return;
     job.remember = gpa.dupe(u8, "") catch null;
     prompt(job, null);
 }
@@ -492,6 +504,7 @@ fn onChildExit(pid: glib.Pid, status: c_int, data: ?*anyopaque) callconv(.c) voi
                 }
                 session_password = r;
                 job.remember = null;
+                readIdleSeconds();
                 restartIdle();
                 changed();
             }

@@ -11,7 +11,13 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 - **dkde-wm on several monitors**: a work area per monitor, windows open where the pointer is, tiling/maximize/snap per monitor; size hints honoured; title bars (accent colour, dark mode and font from dkde.toml, live) with minimize, maximize and close buttons (and resize edges) for windows that draw no frame of their own; `[windows] focus = "follow"`. Needs `libxcb-randr0-dev` and the cairo and pango development files to build.
 - **dkde-panel runs on X11**: bars are dock windows with struts, the wallpaper a desktop window, the Start menu a window beside the bar.
 
+### Power
+- **Dim the screen** before it locks or turns off (Settings > Power & lock): the backlight goes down to a chosen level and comes back when you move; it never brightens a screen already dimmer than that. Needs `brightnessctl` (or `light`).
+- **Different times on battery**: one switch, then dim, lock, screen-off and sleep times for when the computer runs on its battery; `dkde-idle` notices the change of power source within 15 seconds.
+- **Lid and power button**: what closing the lid (on battery, on mains) and pressing the power button do, written to a login-manager drop-in (`50-dkde.conf`) through the administrator padlock. Not tried on a real machine.
+
 ### Administrator padlock
+- The padlock's timeout is a setting (Settings > Accounts > User, minutes; 0 keeps it open until the program closes).
 - **Unlock once**: Services, Security and Firewall in Task Manager have a padlock in the command bar. Click it, give the password once, and the pages read their information and run every action without asking again. The padlock shows open (blue) while unlocked; click it to lock. It locks by itself after five minutes without an action, or when Task Manager closes. The password lives only in that program's memory (never in a file, command line or environment); if sudo stops accepting it, the padlock closes and the dialog returns. Locked, everything works as before (a password per action).
 - Settings has the same padlock in its title bar, for the pages that change the system (time zone, network address, printers, accounts).
 - Log times are local time now, not UTC.

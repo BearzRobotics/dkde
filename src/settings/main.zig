@@ -65,6 +65,7 @@ test {
     _ = @import("netparse.zig");
     _ = @import("shortcut_toml.zig");
     _ = @import("sessionconf.zig");
+    _ = @import("powerextra.zig");
 }
 
 test {

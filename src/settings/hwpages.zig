@@ -22,6 +22,7 @@ const shortcut_toml = @import("shortcut_toml.zig");
 const np = @import("netparse.zig");
 const netpage = @import("netpage.zig");
 const win = @import("window.zig");
+const powerextra = @import("powerextra.zig");
 const SettingsWindow = win.SettingsWindow;
 
 const gpa = std.heap.c_allocator;
@@ -1629,9 +1630,16 @@ pub const PowerPage = struct {
         const lock_text = std.fmt.bufPrintSentinel(&buf, "Detected: {s}. dkde has no lock screen of its own, so it runs one you install (swaylock, gtklock or waylock).", .{lock_found orelse "none found"}, 0) catch "";
         _ = note(page, lock_text);
 
+        win.SettingsWindow.addRowDesc(page, common.tr("Dim the screen after (minutes idle)"), common.tr("Lowers the backlight before the lock and screen-off times; it comes back when you move. Needs brightnessctl (or light). 0 never."), window.spin(&window.panel, "power", "dim-after", 0, 600, 0).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("Dimmed brightness (%)"), common.tr("Never brightens a screen that is already dimmer than this."), window.spin(&window.panel, "power", "dim-level", 1, 100, 30).as(gtk.Widget));
         win.SettingsWindow.addRowDesc(page, common.tr("Lock after (minutes idle)"), common.tr("0 never locks. Needs dkde-idle running (the session starts it)."), window.spin(&window.panel, "power", "lock-after", 0, 600, 0).as(gtk.Widget));
-        win.SettingsWindow.addRowDesc(page, common.tr("Turn the screen off after (minutes)"), common.tr("Needs wlr-randr. 0 never."), window.spin(&window.panel, "power", "screen-off-after", 0, 600, 0).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("Turn the screen off after (minutes)"), common.tr("0 never."), window.spin(&window.panel, "power", "screen-off-after", 0, 600, 0).as(gtk.Widget));
         win.SettingsWindow.addRowDesc(page, common.tr("Sleep after (minutes)"), common.tr("0 never. The machine must be able to suspend without a password."), window.spin(&window.panel, "power", "sleep-after", 0, 1440, 0).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("Use different times on battery"), common.tr("When on, the four times below apply while the computer runs on its battery; the ones above apply on mains power."), window.toggle(&window.panel, "power", "battery-separate", false).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("On battery: dim after (minutes)"), common.tr("0 never."), window.spin(&window.panel, "power", "dim-after-battery", 0, 600, 0).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("On battery: lock after (minutes)"), common.tr("0 never."), window.spin(&window.panel, "power", "lock-after-battery", 0, 600, 0).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("On battery: screen off after (minutes)"), common.tr("0 never."), window.spin(&window.panel, "power", "screen-off-after-battery", 0, 600, 0).as(gtk.Widget));
+        win.SettingsWindow.addRowDesc(page, common.tr("On battery: sleep after (minutes)"), common.tr("0 never."), window.spin(&window.panel, "power", "sleep-after-battery", 0, 1440, 0).as(gtk.Widget));
         win.SettingsWindow.addRowDesc(page, common.tr("Lock before sleeping"), common.tr("So the machine wakes locked."), window.toggle(&window.panel, "power", "lock-before-sleep", true).as(gtk.Widget));
         win.SettingsWindow.addRowDesc(page, common.tr("Warn when the battery is at (%)"), common.tr("A notification while running on the battery. 0 turns the warnings off. A computer without a battery is never checked."), window.spin(&window.panel, "power", "low-battery", 0, 50, 15).as(gtk.Widget));
         win.SettingsWindow.addRowDesc(page, common.tr("Critical battery level (%)"), common.tr("A second warning that stays on screen. 30 seconds later, if the charger is still not plugged in, the action below runs."), window.spin(&window.panel, "power", "critical-battery", 0, 30, 5).as(gtk.Widget));
@@ -1640,6 +1648,7 @@ pub const PowerPage = struct {
         var sleep_buf: [160]u8 = undefined;
         const sleep_desc = std.fmt.bufPrintSentinel(&sleep_buf, "Detected: {s}. Leave empty to use it.", .{sleep_found orelse "none found"}, 0) catch "";
         win.SettingsWindow.addRowDesc(page, common.tr("Sleep command"), sleep_desc, window.textEntry(&window.panel, "menu", "sleep-command", "").as(gtk.Widget));
+        powerextra.Panel.add(window, page);
         return page;
     }
 };

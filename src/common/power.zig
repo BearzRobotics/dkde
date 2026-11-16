@@ -68,6 +68,63 @@ pub fn run(allocator: std.mem.Allocator, cfg: *const Config, key: [:0]const u8, 
     return true;
 }
 
+// ---- battery and dimming -------------------------------------------------------------------------------
+
+/// True when a battery reports "Discharging" (so the machine is running on it). `DKDE_SYSFS_ROOT` replaces /sys, for tests.
+pub fn onBattery() bool {
+    const root = if (glib.getenv("DKDE_SYSFS_ROOT")) |r| std.mem.span(r) else "/sys";
+    var n: u8 = 0;
+    while (n < 4) : (n += 1) {
+        var path_buf: [192]u8 = undefined;
+        const path = std.fmt.bufPrintSentinel(&path_buf, "{s}/class/power_supply/BAT{d}/status", .{ root, n }, 0) catch continue;
+        var contents: [*]u8 = undefined;
+        var len: usize = 0;
+        if (glib.fileGetContents(path, &contents, &len, null) == 0) continue;
+        defer glib.free(contents);
+        if (std.mem.startsWith(u8, std.mem.trim(u8, contents[0..len], " \n"), "Discharging")) return true;
+    }
+    return false;
+}
+
+/// The `[power]` key that holds a timeout: the ordinary one, or its "-battery" twin when the machine runs on
+/// a battery and the settings keep separate times for that.
+pub fn timeoutKey(buf: []u8, key: []const u8, on_battery: bool, separate: bool) []const u8 {
+    if (on_battery and separate) return std.fmt.bufPrint(buf, "{s}-battery", .{key}) catch key;
+    return key;
+}
+
+pub const Brightness = enum { brightnessctl, light };
+
+pub fn detectBrightness(p: Probe) ?Brightness {
+    if (p.has_program(p.context, "brightnessctl")) return .brightnessctl;
+    if (p.has_program(p.context, "light")) return .light;
+    return null;
+}
+
+/// The command that dims the backlight to `percent` (and remembers the old level), and the one that restores it.
+pub fn dimCommand(buf: []u8, tool: Brightness, percent: u32) []const u8 {
+    return switch (tool) {
+        .brightnessctl => std.fmt.bufPrint(buf, "brightnessctl -s set {d}%", .{percent}) catch "",
+        .light => std.fmt.bufPrint(buf, "light -O && light -S {d}", .{percent}) catch "",
+    };
+}
+
+pub fn restoreCommand(tool: Brightness) []const u8 {
+    return switch (tool) {
+        .brightnessctl => "brightnessctl -r",
+        .light => "light -I",
+    };
+}
+
+test "battery keys and dim commands" {
+    var buf: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("lock-after-battery", timeoutKey(&buf, "lock-after", true, true));
+    try std.testing.expectEqualStrings("lock-after", timeoutKey(&buf, "lock-after", true, false));
+    try std.testing.expectEqualStrings("lock-after", timeoutKey(&buf, "lock-after", false, true));
+    try std.testing.expectEqualStrings("brightnessctl -s set 30%", dimCommand(&buf, .brightnessctl, 30));
+    try std.testing.expectEqualStrings("brightnessctl -r", restoreCommand(.brightnessctl));
+}
+
 fn realHasProgram(_: ?*anyopaque, name: []const u8) bool {
     var buf: [64]u8 = undefined;
     const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{name}, 0) catch return false;
