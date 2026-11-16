@@ -1563,6 +1563,11 @@ pub const SettingsWindow = struct {
         _ = gtk.SpinButton.signals.value_changed.connect(ratio, *SettingsWindow, &onRatioChanged, self, .{});
         addRowDesc(page, common.tr("Main window width when tiling"), common.tr("Percent of the screen the first tiled window takes."), ratio.as(gtk.Widget));
 
+        const edge = gtk.Switch.new();
+        edge.setActive(@intFromBool(cfg.edge_snap));
+        _ = gtk.Switch.signals.state_set.connect(edge, *SettingsWindow, &onEdgeSnap, self, .{});
+        addRowDesc(page, common.tr("Snap windows dragged to a screen edge"), common.tr("Drop a window on the left or right edge for that half, on a corner for that quarter, on the top edge to maximize; a tinted outline shows where it will go. Super+Z offers more layouts."), edge.as(gtk.Widget));
+
         // Focus following the mouse is the X11 window manager's; the compositor focuses on click.
         if (common.session.kind() == .dkde_wm) {
             const focus = [_]?[*:0]const u8{ "Click to focus", "Focus follows the mouse", null };
@@ -1593,6 +1598,11 @@ pub const SettingsWindow = struct {
 
     fn onWindowLayoutPicked(drop: *gtk.DropDown, _: *gobject.ParamSpec, self: *SettingsWindow) callconv(.c) void {
         self.setCompositorValue("windows", "layout", if (drop.getSelected() == 1) "layout = \"tiling\"" else "layout = \"floating\"");
+    }
+
+    fn onEdgeSnap(_: *gtk.Switch, state: c_int, self: *SettingsWindow) callconv(.c) c_int {
+        self.setCompositorValue("windows", "edge-snap", if (state != 0) "edge-snap = true" else "edge-snap = false");
+        return 0;
     }
 
     fn onGapChanged(button: *gtk.SpinButton, self: *SettingsWindow) callconv(.c) void {

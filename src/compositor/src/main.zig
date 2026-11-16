@@ -59,6 +59,10 @@ const Server = struct {
     super_pending: bool = false,
     policy: layout.Policy = .floating,
     layout_options: layout.Options = .{},
+    /// Edge snapping while a window is dragged: on or off (compositor.toml), the zone under the pointer and its preview.
+    edge_snap: bool = true,
+    snap_zone: ?layout.EdgeZone = null,
+    snap_preview: ?*c.wlr_scene_rect = null,
     opened: usize = 0, // windows opened so far, for cascading
     keyboards: std.ArrayList(*Keyboard) = .empty,
 
@@ -1099,6 +1103,44 @@ fn arrangeLayers() void {
 fn resetCursorMode() void {
     server.cursor_mode = .passthrough;
     server.grabbed = null;
+    hideSnapPreview();
+}
+
+fn hideSnapPreview() void {
+    server.snap_zone = null;
+    if (server.snap_preview) |r| c.wlr_scene_node_set_enabled(&r.node, false);
+}
+
+/// While a window is dragged to a screen edge: shows where it would go (a tinted rectangle) when let go.
+fn updateSnapPreview() void {
+    if (!server.edge_snap) return;
+    var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
+    c.wlr_output_layout_get_box(server.output_layout, null, &box);
+    const whole: layout.Rect = .{ .x = box.x, .y = box.y, .w = box.width, .h = box.height };
+    const zone = layout.edgeZone(whole, @intFromFloat(server.cursor.*.x), @intFromFloat(server.cursor.*.y), 8, 80);
+    if (zone == null) return hideSnapPreview();
+    if (server.snap_zone != null and server.snap_zone.? == zone.?) return;
+    server.snap_zone = zone;
+    const area = workArea();
+    const rect = if (layout.zoneRegion(zone.?)) |r| layout.regionRect(area, r) else area;
+    if (server.snap_preview == null) {
+        // Premultiplied: a 30% blue over whatever is below.
+        const tint = [4]f32{ 0.063, 0.156, 0.267, 0.30 };
+        server.snap_preview = c.wlr_scene_rect_create(server.trees[3], rect.w, rect.h, &tint);
+    }
+    const preview = server.snap_preview orelse return;
+    c.wlr_scene_rect_set_size(preview, rect.w, rect.h);
+    c.wlr_scene_node_set_position(&preview.node, rect.x, rect.y);
+    c.wlr_scene_node_set_enabled(&preview.node, true);
+    c.wlr_scene_node_raise_to_top(&preview.node);
+}
+
+/// The button was let go after a drag: a window dropped on a screen edge snaps there.
+fn finishMove() void {
+    if (server.cursor_mode != .move) return;
+    const zone = server.snap_zone orelse return;
+    const t = server.grabbed orelse return;
+    if (layout.zoneRegion(zone)) |region| snapTo(t, region) else setMaximized(t, true);
 }
 
 fn beginGrab(t: *Toplevel, mode: CursorMode, edges: u32) void {
@@ -1130,6 +1172,7 @@ fn processCursorMotion(time: u32) void {
         .move => {
             if (server.grabbed) |t| {
                 c.wlr_scene_node_set_position(&t.tree.*.node, @intFromFloat(cursor.*.x - server.grab_x), @intFromFloat(cursor.*.y - server.grab_y));
+                updateSnapPreview();
             }
             return;
         },
@@ -1231,6 +1274,7 @@ fn onCursorButton(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     }
     _ = c.wlr_seat_pointer_notify_button(server.seat, event.time_msec, event.button, event.state);
     if (event.state == c.WL_POINTER_BUTTON_STATE_RELEASED) {
+        finishMove();
         resetCursorMode();
     } else if (windowAt(server.cursor.*.x, server.cursor.*.y)) |hit| {
         if (hit.toplevel) |t| focus(t);
@@ -1707,6 +1751,8 @@ fn loadConfig() void {
     workspaces.refresh();
     server.policy = cfg.policy;
     server.layout_options = cfg.options;
+    server.edge_snap = cfg.edge_snap;
+    if (!cfg.edge_snap) hideSnapPreview();
     // The policy changed: put windows where it says (or back where they were).
     if (was != cfg.policy) {
         if (cfg.policy == .floating) {

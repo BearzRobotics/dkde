@@ -30,6 +30,10 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 - **Programmer mode fits a 720-pixel screen**, also with the tape open: tighter keys and base rows, a short tape there, and the calculator column scrolls when a screen is shorter still, so the keypad is never pushed off the bottom.
 - **Menus taller than the screen** (View) no longer show a sideways scrollbar, and the vertical one is slim with room left for it, so it does not cover the shortcut keys.
 
+### Window snapping (compositor and window manager)
+- **Drag to an edge**: drop a window on the left or right edge for that half, on a corner for that quarter, on the top edge to maximize; a tinted outline (blue bars on X11) shows where it will go while you drag. Settings > Windows has a switch (`[windows] edge-snap` in compositor.toml). Super+Z still offers the other layouts (thirds, quarters, mixed).
+- **dkde-wm now moves and resizes windows that draw their own title bar** (`_NET_WM_MOVERESIZE`), which is every GTK 4 program; before, only Alt-drag worked on X11.
+
 ### Compositor and window manager shortcuts
 - dkde-wm no longer lets a cascaded wide window hang off the right or bottom edge of the screen.
 - Workspaces are now **Super+1…9** (Super+Shift+1…9 carries a window), layout toggle **Super+T**, float **Super+Shift+Space**, quit **Super+Shift+Escape**. They were Alt+digit and friends, which took keys programs use for their own menus and modes (the calculator's Alt+1…3).

@@ -43,6 +43,7 @@ const Atom = enum {
     _NET_DESKTOP_VIEWPORT,
     _NET_WORKAREA,
     _NET_WM_DESKTOP,
+    _NET_WM_MOVERESIZE,
     _NET_WM_STATE,
     _NET_WM_STATE_FULLSCREEN,
     _NET_WM_STATE_MAXIMIZED_VERT,
@@ -1157,6 +1158,71 @@ fn perform(action: keys.Action) void {
 
 // ---- pointer drags -----------------------------------------------------------------------------------------
 
+/// Edge snapping: while a window is dragged to a screen edge a blue outline (four thin windows, since there is
+/// no compositing here) shows where it will go; dropping it there snaps it.
+var snap_zone: ?layout.EdgeZone = null;
+var snap_bars: [4]c.xcb_window_t = .{ 0, 0, 0, 0 };
+
+fn snapBar(i: usize, r: layout.Rect) void {
+    if (snap_bars[i] == 0) {
+        snap_bars[i] = c.xcb_generate_id(conn);
+        _ = c.xcb_create_window(conn, c.XCB_COPY_FROM_PARENT, snap_bars[i], root, 0, 0, 1, 1, 0, c.XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.*.root_visual, c.XCB_CW_BACK_PIXEL | c.XCB_CW_OVERRIDE_REDIRECT, &[_]u32{ 0x3584e4, 1 });
+    }
+    _ = c.xcb_configure_window(conn, snap_bars[i], c.XCB_CONFIG_WINDOW_X | c.XCB_CONFIG_WINDOW_Y | c.XCB_CONFIG_WINDOW_WIDTH | c.XCB_CONFIG_WINDOW_HEIGHT | c.XCB_CONFIG_WINDOW_STACK_MODE, &[_]u32{ @bitCast(r.x), @bitCast(r.y), @intCast(@max(r.w, 1)), @intCast(@max(r.h, 1)), c.XCB_STACK_MODE_ABOVE });
+    _ = c.xcb_map_window(conn, snap_bars[i]);
+}
+
+fn hideSnapPreview() void {
+    snap_zone = null;
+    for (snap_bars) |w| if (w != 0) {
+        _ = c.xcb_unmap_window(conn, w);
+    };
+}
+
+fn zoneRect(zone: layout.EdgeZone, mon: usize) layout.Rect {
+    const work = monitors[mon].work;
+    return if (layout.zoneRegion(zone)) |region| layout.regionRect(work, region) else work;
+}
+
+fn updateSnapPreview(root_x: i32, root_y: i32) void {
+    if (!cfg.edge_snap) return;
+    const mon = monitorOf(.{ .x = root_x, .y = root_y, .w = 1, .h = 1 });
+    const zone = layout.edgeZone(monitors[mon].rect, root_x, root_y, 8, 80) orelse return hideSnapPreview();
+    if (snap_zone != null and snap_zone.? == zone) return;
+    snap_zone = zone;
+    const r = zoneRect(zone, mon);
+    const t: i32 = 4;
+    snapBar(0, .{ .x = r.x, .y = r.y, .w = r.w, .h = t });
+    snapBar(1, .{ .x = r.x, .y = r.y + r.h - t, .w = r.w, .h = t });
+    snapBar(2, .{ .x = r.x, .y = r.y, .w = t, .h = r.h });
+    snapBar(3, .{ .x = r.x + r.w - t, .y = r.y, .w = t, .h = r.h });
+    _ = c.xcb_flush(conn);
+}
+
+/// The button was let go: a dragged window dropped on a screen edge snaps there.
+fn finishDrag() void {
+    _ = c.xcb_ungrab_pointer(conn, c.XCB_CURRENT_TIME);
+    defer drag = null;
+    defer hideSnapPreview();
+    const d = drag orelse return;
+    const zone = snap_zone orelse return;
+    if (d.resize) return;
+    const cl = d.client;
+    if (layout.zoneRegion(zone)) |_| {
+        const r = zoneRect(zone, monitorFor(cl));
+        cl.x = r.x;
+        cl.y = r.y;
+        cl.w = r.w;
+        cl.h = r.h;
+        cl.floating = true;
+        cl.maximized = false;
+    } else {
+        cl.maximized = true;
+    }
+    cl.fullscreen = false;
+    arrange();
+}
+
 /// Alt + button on a window: left moves, right resizes from the nearest corner.
 fn beginDrag(ev: *const c.xcb_button_press_event_t) void {
     const cl = findClient(ev.child) orelse return;
@@ -1258,6 +1324,7 @@ fn dragMotion(root_x: i32, root_y: i32) void {
         cl.h = nh;
     }
     place(cl, .{ .x = cl.x, .y = cl.y, .w = cl.w, .h = cl.h });
+    if (!d.resize) updateSnapPreview(root_x, root_y);
     // Dragged onto another monitor: it belongs to that one now (tiling and maximizing follow).
     cl.mon = @intCast(monitorOf(clientRect(cl)));
     _ = c.xcb_flush(conn);
@@ -1390,6 +1457,22 @@ fn onClientMessage(ev: *const c.xcb_client_message_event_t) void {
         closeClient(cl);
     } else if (ev.type == atom(._NET_WM_DESKTOP)) {
         moveToWorkspace(cl, d[0]);
+    } else if (ev.type == atom(._NET_WM_MOVERESIZE)) {
+        // A program that draws its own title bar (every GTK 4 one) asks the window manager to move or resize it.
+        const dir = d[2];
+        const x: i32 = @bitCast(d[0]);
+        const y: i32 = @bitCast(d[1]);
+        if (dir == 11) {
+            finishDrag();
+        } else if (dir == 8 or dir <= 7) {
+            // 0..7: top-left, top, top-right, right, bottom-right, bottom, bottom-left, left.
+            const sxs = [_]i32{ -1, 0, 1, 1, 1, 0, -1, -1 };
+            const sys = [_]i32{ -1, -1, -1, 0, 1, 1, 1, 0 };
+            if (dir == 8) startDrag(cl, x, y, false, 1, 1) else startDrag(cl, x, y, true, sxs[dir], sys[dir]);
+            // The program let go of its pointer grab before asking; the window manager holds the pointer for the drag.
+            _ = c.xcb_grab_pointer(conn, 0, root, c.XCB_EVENT_MASK_BUTTON_RELEASE | c.XCB_EVENT_MASK_POINTER_MOTION, c.XCB_GRAB_MODE_ASYNC, c.XCB_GRAB_MODE_ASYNC, c.XCB_NONE, c.XCB_NONE, c.XCB_CURRENT_TIME);
+            _ = c.xcb_flush(conn);
+        }
     } else if (ev.type == atom(.WM_CHANGE_STATE)) {
         if (d[0] == 3) setMinimized(cl, true);
     } else if (ev.type == atom(._NET_WM_STATE)) {
@@ -1478,7 +1561,7 @@ fn handle(ev: *c.xcb_generic_event_t) void {
         c.XCB_KEY_PRESS => onKeyPress(@ptrCast(ev)),
         c.XCB_KEY_RELEASE => onKeyRelease(@ptrCast(ev)),
         c.XCB_BUTTON_PRESS => onButtonPress(@ptrCast(ev)),
-        c.XCB_BUTTON_RELEASE => drag = null,
+        c.XCB_BUTTON_RELEASE => finishDrag(),
         c.XCB_EXPOSE => {
             const e: *const c.xcb_expose_event_t = @ptrCast(ev);
             if (e.count == 0) if (findClient(e.window)) |cl| if (cl.frame != 0 and e.window == cl.frame) redrawFrame(cl);
@@ -1705,7 +1788,7 @@ fn publishSupport() void {
         ._NET_WM_STATE,                   ._NET_WM_STATE_FULLSCREEN,     ._NET_WM_STATE_MAXIMIZED_VERT,    ._NET_WM_STATE_MAXIMIZED_HORZ,
         ._NET_WM_STATE_HIDDEN,            ._NET_WM_WINDOW_TYPE,          ._NET_WM_WINDOW_TYPE_DOCK,        ._NET_WM_WINDOW_TYPE_DESKTOP,
         ._NET_WM_WINDOW_TYPE_DIALOG,      ._NET_WM_STRUT,                ._NET_WM_STRUT_PARTIAL,           ._NET_CLOSE_WINDOW,
-        ._NET_WM_NAME,                    ._NET_WM_STATE_SKIP_TASKBAR,   ._NET_WM_STATE_ABOVE,
+        ._NET_WM_NAME,                    ._NET_WM_STATE_SKIP_TASKBAR,   ._NET_WM_STATE_ABOVE,             ._NET_WM_MOVERESIZE,
     };
     var list: [supported.len]u32 = undefined;
     for (supported, 0..) |a, i| list[i] = atom(a);

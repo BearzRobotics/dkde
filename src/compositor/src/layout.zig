@@ -127,6 +127,47 @@ pub fn regionRect(area: Rect, region: @import("keys.zig").Region) Rect {
     };
 }
 
+/// Where a dragged window goes when the pointer is let go at the screen's edge (as in Windows): the left or
+/// right edge snaps to that half, a corner to that quarter, the top edge maximizes. The bottom edge does nothing.
+pub const EdgeZone = enum { maximize, left, right, top_left, top_right, bottom_left, bottom_right };
+
+pub fn edgeZone(box: Rect, x: i32, y: i32, margin: i32, corner: i32) ?EdgeZone {
+    const near_l = x < box.x + margin;
+    const near_r = x >= box.x + box.w - margin;
+    const near_t = y < box.y + margin;
+    if (near_l or near_r) {
+        if (y < box.y + corner) return if (near_l) .top_left else .top_right;
+        if (y >= box.y + box.h - corner) return if (near_l) .bottom_left else .bottom_right;
+        return if (near_l) .left else .right;
+    }
+    if (near_t) return .maximize;
+    return null;
+}
+
+/// The snap region a zone stands for; null for the top edge, which maximizes.
+pub fn zoneRegion(zone: EdgeZone) ?@import("keys.zig").Region {
+    return switch (zone) {
+        .maximize => null,
+        .left => .left_half,
+        .right => .right_half,
+        .top_left => .top_left,
+        .top_right => .top_right,
+        .bottom_left => .bottom_left,
+        .bottom_right => .bottom_right,
+    };
+}
+
+test "edge zones" {
+    const box = Rect{ .x = 0, .y = 0, .w = 1000, .h = 600 };
+    try std.testing.expectEqual(EdgeZone.left, edgeZone(box, 2, 300, 8, 80).?);
+    try std.testing.expectEqual(EdgeZone.right, edgeZone(box, 999, 300, 8, 80).?);
+    try std.testing.expectEqual(EdgeZone.maximize, edgeZone(box, 500, 3, 8, 80).?);
+    try std.testing.expectEqual(EdgeZone.top_left, edgeZone(box, 1, 10, 8, 80).?);
+    try std.testing.expectEqual(EdgeZone.bottom_right, edgeZone(box, 998, 590, 8, 80).?);
+    try std.testing.expect(edgeZone(box, 500, 300, 8, 80) == null);
+    try std.testing.expect(edgeZone(box, 500, 599, 8, 80) == null);
+}
+
 test "regions" {
     const area = Rect{ .x = 0, .y = 0, .w = 1000, .h = 600 };
     try std.testing.expectEqual(Rect{ .x = 500, .y = 0, .w = 500, .h = 600 }, regionRect(area, .right_half));

@@ -7,6 +7,7 @@
 //!   layout = "floating"      # or "tiling": how windows are placed
 //!   gap = 6                  # pixels between tiled windows and the screen edge
 //!   master_ratio = 0.55      # the master window's share of the width when tiling
+//!   edge-snap = true         # dragging a window to a screen edge snaps it (halves, quarters, top = maximize)
 //!   focus = "click"          # or "follow": focus follows the mouse (dkde-wm; the compositor always focuses on click)
 //!
 //!   [input]
@@ -47,6 +48,8 @@ pub const Config = struct {
     options: layout.Options = .{},
     /// Focus follows the mouse instead of a click.
     focus_follows_mouse: bool = false,
+    /// Dragging a window to a screen edge snaps it (left or right half, a corner quarter, the top edge maximizes).
+    edge_snap: bool = true,
     /// How many virtual desktops (1 to 9).
     workspaces: usize = 4,
     input: Input = .{},
@@ -157,6 +160,10 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
             }
         },
         else => try warnings.append(gpa, try gpa.dupe(u8, "[windows] focus: expected a string; using click")),
+    };
+    if (windows.get("edge-snap")) |v| switch (v) {
+        .boolean => |b| config.edge_snap = b,
+        else => try warnings.append(gpa, try gpa.dupe(u8, "[windows] edge-snap: expected true or false; using true")),
     };
     if (windows.get("gap")) |v| switch (v) {
         .integer => |i| {
