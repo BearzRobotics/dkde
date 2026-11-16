@@ -17,7 +17,7 @@ const layout = shared.layout;
 const keys = shared.keys;
 const config = shared.config;
 
-const version = "0.3.0";
+const version = "0.3.1";
 const gpa = std.heap.c_allocator;
 
 // ---- atoms ----------------------------------------------------------------------------------------------------

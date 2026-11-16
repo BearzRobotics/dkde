@@ -1958,7 +1958,7 @@ fn runAutostart() void {
 
 // ---- start ---------------------------------------------------------------------------------------------------
 
-const version = "0.3.0";
+const version = "0.3.1";
 
 const help_text =
     "dkde-compositor - DKDE's own Wayland compositor (experimental)\n\n" ++

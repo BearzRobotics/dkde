@@ -2,7 +2,7 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
-## Unreleased (branch `compositor`)
+## 0.3.1 (2026-11-15)
 
 ### Desktop on our own display servers (experimental, separate packages)
 - **dkde-compositor** (`src/compositor`, wlroots): a Wayland compositor with floating and tiling windows, workspaces, configurable shortcuts, layer-shell, taskbar and workspace protocols, output management, screen lock, idle, Xwayland and screen capture. See `src/compositor/README.md` and `dkde-compositor(1)`.
