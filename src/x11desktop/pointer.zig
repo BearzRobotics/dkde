@@ -4,6 +4,31 @@
 const std = @import("std");
 const c = @import("c");
 
+/// Asks dkde-wm to snap the focused window to region number `index` (an index of keys.Region: left-half is 0, and
+/// so on), by a client message to the root window. Opens its own connection; false when there is no X server.
+pub fn snapRegion(index: u32) bool {
+    var num: c_int = 0;
+    const conn = c.xcb_connect(null, &num) orelse return false;
+    defer c.xcb_disconnect(conn);
+    if (c.xcb_connection_has_error(conn) != 0) return false;
+    var it = c.xcb_setup_roots_iterator(c.xcb_get_setup(conn));
+    var i: c_int = 0;
+    while (i < num) : (i += 1) c.xcb_screen_next(&it);
+    const root = it.data.*.root;
+    const name = "_DKDE_SNAP_REGION";
+    const reply = c.xcb_intern_atom_reply(conn, c.xcb_intern_atom(conn, 0, name.len, name.ptr), null) orelse return false;
+    defer std.c.free(reply);
+    var ev = std.mem.zeroes(c.xcb_client_message_event_t);
+    ev.response_type = c.XCB_CLIENT_MESSAGE;
+    ev.format = 32;
+    ev.window = root;
+    ev.type = reply.*.atom;
+    ev.data.data32[0] = index;
+    _ = c.xcb_send_event(conn, 0, root, c.XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | c.XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY, @ptrCast(&ev));
+    _ = c.xcb_flush(conn);
+    return true;
+}
+
 pub const Pointer = struct {
     conn: *c.xcb_connection_t,
     root: c.xcb_window_t,

@@ -44,6 +44,7 @@ const Atom = enum {
     _NET_WORKAREA,
     _NET_WM_DESKTOP,
     _NET_WM_MOVERESIZE,
+    _DKDE_SNAP_REGION,
     _NET_WM_STATE,
     _NET_WM_STATE_FULLSCREEN,
     _NET_WM_STATE_MAXIMIZED_VERT,
@@ -1168,6 +1169,8 @@ var overlay_card: c.xcb_window_t = 0;
 var overlay_cells: [layout.snap_layouts.len]c.xcb_window_t = std.mem.zeroes([layout.snap_layouts.len]c.xcb_window_t);
 var overlay_zones: [layout.snap_layouts.len][4]c.xcb_window_t = std.mem.zeroes([layout.snap_layouts.len][4]c.xcb_window_t);
 var overlay_hover: ?layout.ZoneIndex = null;
+var snap_hit: ?layout.ZoneIndex = null;
+var snap_hit_mon: usize = 0;
 
 const color_card: u32 = 0x17171c;
 const color_cell: u32 = 0x292930;
@@ -1268,6 +1271,8 @@ fn updateSnapPreview(root_x: i32, root_y: i32) void {
     const hover = layout.overlayZoneAt(box, root_x, root_y);
     if (drop.overlay) showOverlay(box, hover) else if (overlay_on) hideOverlay();
     overlay_on = drop.overlay;
+    snap_hit = if (drop.overlay) hover else null;
+    snap_hit_mon = mon;
     const target = drop.target orelse {
         snap_target = null;
         for (snap_bars) |w| if (w != 0) {
@@ -1294,6 +1299,8 @@ fn updateSnapPreview(root_x: i32, root_y: i32) void {
 fn finishDrag() void {
     _ = c.xcb_ungrab_pointer(conn, c.XCB_CURRENT_TIME);
     defer drag = null;
+    const hit = snap_hit;
+    const hit_mon = snap_hit_mon;
     defer hideSnapPreview();
     const d = drag orelse return;
     const target = snap_target orelse return;
@@ -1313,6 +1320,13 @@ fn finishDrag() void {
     }
     cl.fullscreen = false;
     arrange();
+    // Dropped on a zone of the layout card: the other windows are offered for the zones still empty.
+    if (hit) |h| {
+        const m = monitors[hit_mon];
+        var buf: [128]u8 = undefined;
+        const line = std.fmt.bufPrint(&buf, "dkde-snap --assist {d},{d},{d},{d},{d},{d}", .{ h.i, h.j, m.work.x - m.rect.x, m.work.y - m.rect.y, m.work.w, m.work.h }) catch return;
+        runCommand(line);
+    }
 }
 
 
@@ -1541,6 +1555,8 @@ fn onClientMessage(ev: *const c.xcb_client_message_event_t) void {
     const d = ev.data.data32;
     if (ev.window == root) {
         if (ev.type == atom(._NET_CURRENT_DESKTOP)) switchWorkspace(d[0]);
+        // dkde-snap's snap assist: put the focused window in a region.
+        if (ev.type == atom(._DKDE_SNAP_REGION) and d[0] < std.enums.values(keys.Region).len) perform(.{ .snap = @enumFromInt(d[0]) });
         return;
     }
     const cl = findClient(ev.window) orelse return;

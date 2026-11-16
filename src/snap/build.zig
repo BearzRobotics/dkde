@@ -5,4 +5,7 @@ const Ctx = @import("../../build.zig").Ctx;
 
 pub fn configure(ctx: *const Ctx, mod: *std.Build.Module) void {
     ctx.gtk(mod);
+    // Snap assist lists the open windows through the shared desktop API.
+    ctx.desktopApi(mod);
+    ctx.imports(mod, &.{"gdkx114"});
 }

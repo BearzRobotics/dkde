@@ -31,6 +31,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 - **Menus taller than the screen** (View) no longer show a sideways scrollbar, and the vertical one is slim with room left for it, so it does not cover the shortcut keys.
 
 ### Window snapping (compositor and window manager)
+- **Snap assist**: after a window is dropped on a zone of the layout card, the zones still empty each list the other open windows; choose one and it goes there (Wayland and X11). It closes when every zone is filled or on Esc.
 - **Drag to an edge**: drop a window on the left or right edge for that half, on a corner for that quarter, on the top edge to maximize; a tinted outline (blue bars on X11) shows where it will go while you drag. Settings > Windows has a switch (`[windows] edge-snap` in compositor.toml). **Layout card at the top** (as in Windows 11): drag a window to the top of the screen and a card with the eight arrangements (halves, thirds, quarters, mixed) appears; move onto a zone, which lights up with an outline of where the window will go, and drop. Dropping on the very top edge still maximizes. Super+Z keeps offering the same layouts from the keyboard.
 - **dkde-wm now moves and resizes windows that draw their own title bar** (`_NET_WM_MOVERESIZE`), which is every GTK 4 program; before, only Alt-drag worked on X11.
 

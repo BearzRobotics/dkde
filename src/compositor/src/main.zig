@@ -62,6 +62,8 @@ const Server = struct {
     /// Edge snapping while a window is dragged: on or off (compositor.toml), the zone under the pointer and its preview.
     edge_snap: bool = true,
     snap_target: ?layout.Target = null,
+    /// The overlay zone the drop landed on (layout, zone), for snap assist.
+    snap_hit: ?layout.ZoneIndex = null,
     snap_preview: ?*c.wlr_scene_rect = null,
     /// The layout card shown at the top of the screen while dragging (built from scene rectangles).
     overlay_on: bool = false,
@@ -1113,6 +1115,7 @@ fn resetCursorMode() void {
 
 fn hideSnapPreview() void {
     server.snap_target = null;
+    server.snap_hit = null;
     server.overlay_on = false;
     if (server.snap_preview) |r| c.wlr_scene_node_set_enabled(&r.*.node, false);
     if (server.overlay_tree) |t| c.wlr_scene_node_set_enabled(&t.node, false);
@@ -1173,6 +1176,7 @@ fn updateSnapPreview() void {
     const y: i32 = @intFromFloat(server.cursor.*.y);
     const drop = layout.dropTarget(box, x, y, server.overlay_on);
     server.overlay_on = drop.overlay;
+    server.snap_hit = if (drop.overlay) layout.overlayZoneAt(box, x, y) else null;
     if (drop.overlay) showOverlay(box, layout.overlayZoneAt(box, x, y)) else if (server.overlay_tree) |t| c.wlr_scene_node_set_enabled(&t.node, false);
 
     const target = drop.target orelse {
@@ -1212,6 +1216,14 @@ fn finishMove() void {
     switch (target) {
         .region => |region| snapTo(t, region),
         .maximize => setMaximized(t, true),
+    }
+    // Dropped on a zone of the layout card: the other windows are offered for the zones still empty.
+    if (server.snap_hit) |hit| {
+        const box = server.overlay_box;
+        const area = workArea();
+        var buf: [128]u8 = undefined;
+        const line = std.fmt.bufPrint(&buf, "dkde-snap --assist {d},{d},{d},{d},{d},{d}", .{ hit.i, hit.j, area.x - box.x, area.y - box.y, area.w, area.h }) catch return;
+        runCommand(line);
     }
 }
 
