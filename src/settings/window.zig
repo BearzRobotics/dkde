@@ -141,7 +141,10 @@ pub const SettingsWindow = struct {
         window.as(gtk.Window).setTitle(common.tr("Settings"));
         window.as(gtk.Window).setDefaultSize(980, 680);
         window.as(gtk.Widget).addCssClass("dkde");
-        _ = common.header.create(window.as(gtk.Window), "preferences-system", true);
+        const header = common.header.create(window.as(gtk.Window), "preferences-system", true);
+        // The administrator padlock: unlock once for the pages that change the system (time zone, network
+        // address, printers, accounts) instead of typing the password for each change.
+        header.packEnd(common.elevate.padlock(window.as(gtk.Window)).as(gtk.Widget));
 
         const sidebar = gtk.ListBox.new();
         self.sidebar = sidebar;

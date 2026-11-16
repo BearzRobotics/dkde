@@ -13,6 +13,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 ### Administrator padlock
 - **Unlock once**: Services, Security and Firewall in Task Manager have a padlock in the command bar. Click it, give the password once, and the pages read their information and run every action without asking again. The padlock shows open (blue) while unlocked; click it to lock. It locks by itself after five minutes without an action, or when Task Manager closes. The password lives only in that program's memory (never in a file, command line or environment); if sudo stops accepting it, the padlock closes and the dialog returns. Locked, everything works as before (a password per action).
+- Settings has the same padlock in its title bar, for the pages that change the system (time zone, network address, printers, accounts).
 - Log times are local time now, not UTC.
 
 ### For developers
