@@ -1566,7 +1566,7 @@ pub const SettingsWindow = struct {
         const edge = gtk.Switch.new();
         edge.setActive(@intFromBool(cfg.edge_snap));
         _ = gtk.Switch.signals.state_set.connect(edge, *SettingsWindow, &onEdgeSnap, self, .{});
-        addRowDesc(page, common.tr("Snap windows dragged to a screen edge"), common.tr("Drop a window on the left or right edge for that half, on a corner for that quarter, on the top edge to maximize; a tinted outline shows where it will go. Super+Z offers more layouts."), edge.as(gtk.Widget));
+        addRowDesc(page, common.tr("Snap windows dragged to a screen edge"), common.tr("Drop a window on the left or right edge for that half, on a corner for that quarter, on the very top edge to maximize; a tinted outline shows where it will go. Drag to the top of the screen for a card of more layouts (thirds, mixed); Super+Z offers the same ones from the keyboard."), edge.as(gtk.Widget));
 
         // Focus following the mouse is the X11 window manager's; the compositor focuses on click.
         if (common.session.kind() == .dkde_wm) {

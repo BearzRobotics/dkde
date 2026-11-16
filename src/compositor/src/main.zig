@@ -61,8 +61,13 @@ const Server = struct {
     layout_options: layout.Options = .{},
     /// Edge snapping while a window is dragged: on or off (compositor.toml), the zone under the pointer and its preview.
     edge_snap: bool = true,
-    snap_zone: ?layout.EdgeZone = null,
+    snap_target: ?layout.Target = null,
     snap_preview: ?*c.wlr_scene_rect = null,
+    /// The layout card shown at the top of the screen while dragging (built from scene rectangles).
+    overlay_on: bool = false,
+    overlay_tree: ?*c.wlr_scene_tree = null,
+    overlay_box: layout.Rect = .{ .x = 0, .y = 0, .w = 0, .h = 0 },
+    overlay_zones: [layout.snap_layouts.len][4]?*c.wlr_scene_rect = std.mem.zeroes([layout.snap_layouts.len][4]?*c.wlr_scene_rect),
     opened: usize = 0, // windows opened so far, for cascading
     keyboards: std.ArrayList(*Keyboard) = .empty,
 
@@ -1107,22 +1112,85 @@ fn resetCursorMode() void {
 }
 
 fn hideSnapPreview() void {
-    server.snap_zone = null;
-    if (server.snap_preview) |r| c.wlr_scene_node_set_enabled(&r.node, false);
+    server.snap_target = null;
+    server.overlay_on = false;
+    if (server.snap_preview) |r| c.wlr_scene_node_set_enabled(&r.*.node, false);
+    if (server.overlay_tree) |t| c.wlr_scene_node_set_enabled(&t.node, false);
 }
 
-/// While a window is dragged to a screen edge: shows where it would go (a tinted rectangle) when let go.
+fn outputBoxAtCursor() layout.Rect {
+    var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
+    const out = c.wlr_output_layout_output_at(server.output_layout, server.cursor.*.x, server.cursor.*.y);
+    c.wlr_output_layout_get_box(server.output_layout, out, &box);
+    return .{ .x = box.x, .y = box.y, .w = box.width, .h = box.height };
+}
+
+fn sceneRect(parent: *c.wlr_scene_tree, r: layout.Rect, color: [4]f32) ?*c.wlr_scene_rect {
+    const rect = c.wlr_scene_rect_create(parent, r.w, r.h, &color) orelse return null;
+    c.wlr_scene_node_set_position(&rect.*.node, r.x, r.y);
+    return rect;
+}
+
+const zone_idle = [4]f32{ 0.55, 0.57, 0.62, 1 };
+const zone_hover = [4]f32{ 0.21, 0.52, 0.89, 1 };
+
+/// The card of layouts at the top of the screen, drawn from scene rectangles (built again when the output changes).
+fn showOverlay(box: layout.Rect, hover: ?layout.ZoneIndex) void {
+    if (server.overlay_tree != null and !std.meta.eql(server.overlay_box, box)) {
+        c.wlr_scene_node_destroy(&server.overlay_tree.?.node);
+        server.overlay_tree = null;
+        server.overlay_zones = std.mem.zeroes([layout.snap_layouts.len][4]?*c.wlr_scene_rect);
+    }
+    if (server.overlay_tree == null) {
+        const tree = c.wlr_scene_tree_create(server.trees[3]) orelse return;
+        const card = layout.overlayCard(box);
+        _ = sceneRect(tree, card, .{ 0.09, 0.09, 0.11, 0.95 });
+        for (layout.snap_layouts, 0..) |l, i| {
+            _ = sceneRect(tree, layout.overlayCell(card, i), .{ 0.16, 0.16, 0.19, 1 });
+            for (l, 0..) |_, j| server.overlay_zones[i][j] = sceneRect(tree, layout.overlayZone(card, i, j), zone_idle);
+        }
+        server.overlay_tree = tree;
+        server.overlay_box = box;
+    }
+    const tree = server.overlay_tree.?;
+    c.wlr_scene_node_set_enabled(&tree.node, true);
+    c.wlr_scene_node_raise_to_top(&tree.node);
+    for (layout.snap_layouts, 0..) |l, i| {
+        for (l, 0..) |_, j| {
+            const rect = server.overlay_zones[i][j] orelse continue;
+            const hot = if (hover) |h| h.i == i and h.j == j else false;
+            c.wlr_scene_rect_set_color(rect, if (hot) &zone_hover else &zone_idle);
+        }
+    }
+}
+
+/// While a window is dragged: the layout card when the pointer is at the top of the screen, and the outline of
+/// where the window would go if it were let go now (an edge, a corner, or the zone under the pointer).
 fn updateSnapPreview() void {
     if (!server.edge_snap) return;
-    var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
-    c.wlr_output_layout_get_box(server.output_layout, null, &box);
-    const whole: layout.Rect = .{ .x = box.x, .y = box.y, .w = box.width, .h = box.height };
-    const zone = layout.edgeZone(whole, @intFromFloat(server.cursor.*.x), @intFromFloat(server.cursor.*.y), 8, 80);
-    if (zone == null) return hideSnapPreview();
-    if (server.snap_zone != null and server.snap_zone.? == zone.?) return;
-    server.snap_zone = zone;
+    const box = outputBoxAtCursor();
+    const x: i32 = @intFromFloat(server.cursor.*.x);
+    const y: i32 = @intFromFloat(server.cursor.*.y);
+    const drop = layout.dropTarget(box, x, y, server.overlay_on);
+    server.overlay_on = drop.overlay;
+    if (drop.overlay) showOverlay(box, layout.overlayZoneAt(box, x, y)) else if (server.overlay_tree) |t| c.wlr_scene_node_set_enabled(&t.node, false);
+
+    const target = drop.target orelse {
+        server.snap_target = null;
+        if (server.snap_preview) |r| c.wlr_scene_node_set_enabled(&r.*.node, false);
+        return;
+    };
+    if (server.snap_target != null and std.meta.eql(server.snap_target.?, target)) {
+        // The card stays above the outline.
+        if (server.overlay_tree) |t| if (drop.overlay) c.wlr_scene_node_raise_to_top(&t.node);
+        return;
+    }
+    server.snap_target = target;
     const area = workArea();
-    const rect = if (layout.zoneRegion(zone.?)) |r| layout.regionRect(area, r) else area;
+    const rect = switch (target) {
+        .region => |r| layout.regionRect(area, r),
+        .maximize => area,
+    };
     if (server.snap_preview == null) {
         // Premultiplied: a 30% blue over whatever is below.
         const tint = [4]f32{ 0.063, 0.156, 0.267, 0.30 };
@@ -1130,17 +1198,21 @@ fn updateSnapPreview() void {
     }
     const preview = server.snap_preview orelse return;
     c.wlr_scene_rect_set_size(preview, rect.w, rect.h);
-    c.wlr_scene_node_set_position(&preview.node, rect.x, rect.y);
-    c.wlr_scene_node_set_enabled(&preview.node, true);
-    c.wlr_scene_node_raise_to_top(&preview.node);
+    c.wlr_scene_node_set_position(&preview.*.node, rect.x, rect.y);
+    c.wlr_scene_node_set_enabled(&preview.*.node, true);
+    c.wlr_scene_node_raise_to_top(&preview.*.node);
+    if (server.overlay_tree) |t| if (drop.overlay) c.wlr_scene_node_raise_to_top(&t.node);
 }
 
 /// The button was let go after a drag: a window dropped on a screen edge snaps there.
 fn finishMove() void {
     if (server.cursor_mode != .move) return;
-    const zone = server.snap_zone orelse return;
+    const target = server.snap_target orelse return;
     const t = server.grabbed orelse return;
-    if (layout.zoneRegion(zone)) |region| snapTo(t, region) else setMaximized(t, true);
+    switch (target) {
+        .region => |region| snapTo(t, region),
+        .maximize => setMaximized(t, true),
+    }
 }
 
 fn beginGrab(t: *Toplevel, mode: CursorMode, edges: u32) void {

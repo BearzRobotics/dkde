@@ -157,6 +157,113 @@ pub fn zoneRegion(zone: EdgeZone) ?@import("keys.zig").Region {
     };
 }
 
+// ---- the layout overlay at the top of the screen (as in Windows 11) -------------------------------------------
+
+const Region = @import("keys.zig").Region;
+
+/// The arrangements offered while a window is dragged to the top of the screen (the same ones Super+Z offers).
+pub const snap_layouts = [_][]const Region{
+    &.{ .left_half, .right_half },
+    &.{ .left_two_thirds, .right_third },
+    &.{ .left_third, .right_two_thirds },
+    &.{ .left_third, .middle_third, .right_third },
+    &.{ .top_left, .top_right, .bottom_left, .bottom_right },
+    &.{ .left_half, .top_right, .bottom_right },
+    &.{ .top_left, .bottom_left, .right_half },
+    &.{ .top_half, .bottom_half },
+};
+
+pub const overlay = struct {
+    pub const cols: i32 = 4;
+    pub const cell_w: i32 = 120;
+    pub const cell_h: i32 = 76;
+    pub const gap: i32 = 10;
+    pub const pad: i32 = 12;
+    /// The overlay appears when the pointer is this close to the top of the screen.
+    pub const reveal: i32 = 48;
+    /// The card sits this far below the top edge.
+    pub const top: i32 = 10;
+};
+
+/// The card that holds the thumbnails, centred at the top of `box` (an output).
+pub fn overlayCard(box: Rect) Rect {
+    const rows: i32 = @intCast((snap_layouts.len + overlay.cols - 1) / overlay.cols);
+    const w = overlay.cols * overlay.cell_w + (overlay.cols - 1) * overlay.gap + 2 * overlay.pad;
+    const h = rows * overlay.cell_h + (rows - 1) * overlay.gap + 2 * overlay.pad;
+    return .{ .x = box.x + @divFloor(box.w - w, 2), .y = box.y + overlay.top, .w = w, .h = h };
+}
+
+/// The thumbnail of layout `i` inside `card`.
+pub fn overlayCell(card: Rect, i: usize) Rect {
+    const col: i32 = @intCast(i % @as(usize, @intCast(overlay.cols)));
+    const row: i32 = @intCast(i / @as(usize, @intCast(overlay.cols)));
+    return .{
+        .x = card.x + overlay.pad + col * (overlay.cell_w + overlay.gap),
+        .y = card.y + overlay.pad + row * (overlay.cell_h + overlay.gap),
+        .w = overlay.cell_w,
+        .h = overlay.cell_h,
+    };
+}
+
+/// Zone `j` of layout `i` as drawn inside its thumbnail (a little smaller, so neighbours do not touch).
+pub fn overlayZone(card: Rect, i: usize, j: usize) Rect {
+    const cell = overlayCell(card, i);
+    const r = regionRect(cell, snap_layouts[i][j]);
+    return .{ .x = r.x + 2, .y = r.y + 2, .w = @max(r.w - 4, 1), .h = @max(r.h - 4, 1) };
+}
+
+fn inside(r: Rect, x: i32, y: i32) bool {
+    return x >= r.x and y >= r.y and x < r.x + r.w and y < r.y + r.h;
+}
+
+/// Which overlay zone (layout, zone) is under (x, y), if any.
+pub const ZoneIndex = struct { i: usize, j: usize };
+
+pub fn overlayZoneAt(box: Rect, x: i32, y: i32) ?ZoneIndex {
+    const card = overlayCard(box);
+    for (snap_layouts, 0..) |l, i| {
+        for (l, 0..) |_, j| {
+            if (inside(overlayZone(card, i, j), x, y)) return .{ .i = i, .j = j };
+        }
+    }
+    return null;
+}
+
+/// The snap region of the overlay zone under (x, y), if any.
+pub fn overlayHit(box: Rect, x: i32, y: i32) ?Region {
+    const hit = overlayZoneAt(box, x, y) orelse return null;
+    return snap_layouts[hit.i][hit.j];
+}
+
+pub const Target = union(enum) { region: Region, maximize };
+
+/// What dropping the dragged window at (x, y) would do, and whether the overlay shows. `overlay_was` keeps the
+/// card up while the pointer moves down onto it from the top edge.
+pub fn dropTarget(box: Rect, x: i32, y: i32, overlay_was: bool) struct { overlay: bool, target: ?Target } {
+    const card = overlayCard(box);
+    const held = Rect{ .x = card.x - 8, .y = box.y, .w = card.w + 16, .h = card.y + card.h + 8 - box.y };
+    const show = y < box.y + overlay.reveal or (overlay_was and inside(held, x, y));
+    if (show) if (overlayHit(box, x, y)) |region| return .{ .overlay = true, .target = .{ .region = region } };
+    const edge = edgeZone(box, x, y, 8, 80) orelse return .{ .overlay = show, .target = null };
+    return .{ .overlay = show, .target = if (zoneRegion(edge)) |r| .{ .region = r } else .maximize };
+}
+
+test "overlay hit testing" {
+    const box = Rect{ .x = 0, .y = 0, .w = 1280, .h = 720 };
+    const card = overlayCard(box);
+    // The first layout's left zone.
+    const z = overlayZone(card, 0, 0);
+    try std.testing.expectEqual(Region.left_half, overlayHit(box, z.x + 3, z.y + 3).?);
+    const second = overlayZone(card, 0, 1);
+    try std.testing.expectEqual(Region.right_half, dropTarget(box, second.x + 3, second.y + 3, true).target.?.region);
+    try std.testing.expect(dropTarget(box, second.x + 3, second.y + 3, true).overlay);
+    // Far from the top: no overlay, no target.
+    const away = dropTarget(box, 640, 400, false);
+    try std.testing.expect(!away.overlay and away.target == null);
+    // The very top, off the card: maximize.
+    try std.testing.expect(dropTarget(box, 100, 2, false).target.? == .maximize);
+}
+
 test "edge zones" {
     const box = Rect{ .x = 0, .y = 0, .w = 1000, .h = 600 };
     try std.testing.expectEqual(EdgeZone.left, edgeZone(box, 2, 300, 8, 80).?);

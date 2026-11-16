@@ -1158,70 +1158,163 @@ fn perform(action: keys.Action) void {
 
 // ---- pointer drags -----------------------------------------------------------------------------------------
 
-/// Edge snapping: while a window is dragged to a screen edge a blue outline (four thin windows, since there is
-/// no compositing here) shows where it will go; dropping it there snaps it.
-var snap_zone: ?layout.EdgeZone = null;
+/// Snapping while a window is dragged: a blue outline (four thin windows, since there is no compositing here)
+/// shows where it will go, and at the top of the screen a card of layouts (as in Windows 11) to drop it on.
+var snap_target: ?layout.Target = null;
 var snap_bars: [4]c.xcb_window_t = .{ 0, 0, 0, 0 };
+var overlay_on = false;
+var overlay_box: layout.Rect = .{ .x = 0, .y = 0, .w = 0, .h = 0 };
+var overlay_card: c.xcb_window_t = 0;
+var overlay_cells: [layout.snap_layouts.len]c.xcb_window_t = std.mem.zeroes([layout.snap_layouts.len]c.xcb_window_t);
+var overlay_zones: [layout.snap_layouts.len][4]c.xcb_window_t = std.mem.zeroes([layout.snap_layouts.len][4]c.xcb_window_t);
+var overlay_hover: ?layout.ZoneIndex = null;
+
+const color_card: u32 = 0x17171c;
+const color_cell: u32 = 0x292930;
+const color_zone: u32 = 0x8c919e;
+const color_hot: u32 = 0x3584e4;
+
+fn newPlate(color: u32, r: layout.Rect) c.xcb_window_t {
+    const w = c.xcb_generate_id(conn);
+    _ = c.xcb_create_window(conn, c.XCB_COPY_FROM_PARENT, w, root, @intCast(r.x), @intCast(r.y), @intCast(@max(r.w, 1)), @intCast(@max(r.h, 1)), 0, c.XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.*.root_visual, c.XCB_CW_BACK_PIXEL | c.XCB_CW_OVERRIDE_REDIRECT, &[_]u32{ color, 1 });
+    return w;
+}
+
+fn raise(w: c.xcb_window_t) void {
+    _ = c.xcb_configure_window(conn, w, c.XCB_CONFIG_WINDOW_STACK_MODE, &[_]u32{c.XCB_STACK_MODE_ABOVE});
+}
+
+fn paint(w: c.xcb_window_t, color: u32) void {
+    _ = c.xcb_change_window_attributes(conn, w, c.XCB_CW_BACK_PIXEL, &[_]u32{color});
+    _ = c.xcb_clear_area(conn, 0, w, 0, 0, 0, 0);
+}
+
+fn destroyOverlay() void {
+    if (overlay_card == 0) return;
+    _ = c.xcb_destroy_window(conn, overlay_card);
+    for (layout.snap_layouts, 0..) |l, i| {
+        _ = c.xcb_destroy_window(conn, overlay_cells[i]);
+        for (l, 0..) |_, j| _ = c.xcb_destroy_window(conn, overlay_zones[i][j]);
+    }
+    overlay_card = 0;
+}
+
+fn showOverlay(box: layout.Rect, hover: ?layout.ZoneIndex) void {
+    if (overlay_card != 0 and !std.meta.eql(overlay_box, box)) destroyOverlay();
+    if (overlay_card == 0) {
+        const card = layout.overlayCard(box);
+        overlay_card = newPlate(color_card, card);
+        for (layout.snap_layouts, 0..) |l, i| {
+            overlay_cells[i] = newPlate(color_cell, layout.overlayCell(card, i));
+            for (l, 0..) |_, j| overlay_zones[i][j] = newPlate(color_zone, layout.overlayZone(card, i, j));
+        }
+        overlay_box = box;
+        overlay_hover = null;
+    }
+    // Stacking order: card, then thumbnails, then zones; map and raise in that order.
+    _ = c.xcb_map_window(conn, overlay_card);
+    raise(overlay_card);
+    for (layout.snap_layouts, 0..) |l, i| {
+        _ = c.xcb_map_window(conn, overlay_cells[i]);
+        raise(overlay_cells[i]);
+        for (l, 0..) |_, j| {
+            const w = overlay_zones[i][j];
+            _ = c.xcb_map_window(conn, w);
+            raise(w);
+            const hot = if (hover) |h| h.i == i and h.j == j else false;
+            paint(w, if (hot) color_hot else color_zone);
+        }
+    }
+    overlay_hover = hover;
+}
+
+fn hideOverlay() void {
+    if (overlay_card == 0) return;
+    _ = c.xcb_unmap_window(conn, overlay_card);
+    for (layout.snap_layouts, 0..) |l, i| {
+        _ = c.xcb_unmap_window(conn, overlay_cells[i]);
+        for (l, 0..) |_, j| _ = c.xcb_unmap_window(conn, overlay_zones[i][j]);
+    }
+}
 
 fn snapBar(i: usize, r: layout.Rect) void {
-    if (snap_bars[i] == 0) {
-        snap_bars[i] = c.xcb_generate_id(conn);
-        _ = c.xcb_create_window(conn, c.XCB_COPY_FROM_PARENT, snap_bars[i], root, 0, 0, 1, 1, 0, c.XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.*.root_visual, c.XCB_CW_BACK_PIXEL | c.XCB_CW_OVERRIDE_REDIRECT, &[_]u32{ 0x3584e4, 1 });
-    }
+    if (snap_bars[i] == 0) snap_bars[i] = newPlate(color_hot, r);
     _ = c.xcb_configure_window(conn, snap_bars[i], c.XCB_CONFIG_WINDOW_X | c.XCB_CONFIG_WINDOW_Y | c.XCB_CONFIG_WINDOW_WIDTH | c.XCB_CONFIG_WINDOW_HEIGHT | c.XCB_CONFIG_WINDOW_STACK_MODE, &[_]u32{ @bitCast(r.x), @bitCast(r.y), @intCast(@max(r.w, 1)), @intCast(@max(r.h, 1)), c.XCB_STACK_MODE_ABOVE });
     _ = c.xcb_map_window(conn, snap_bars[i]);
 }
 
 fn hideSnapPreview() void {
-    snap_zone = null;
+    snap_target = null;
+    overlay_on = false;
     for (snap_bars) |w| if (w != 0) {
         _ = c.xcb_unmap_window(conn, w);
     };
+    hideOverlay();
 }
 
-fn zoneRect(zone: layout.EdgeZone, mon: usize) layout.Rect {
+fn targetRect(target: layout.Target, mon: usize) layout.Rect {
     const work = monitors[mon].work;
-    return if (layout.zoneRegion(zone)) |region| layout.regionRect(work, region) else work;
+    return switch (target) {
+        .region => |region| layout.regionRect(work, region),
+        .maximize => work,
+    };
 }
 
 fn updateSnapPreview(root_x: i32, root_y: i32) void {
     if (!cfg.edge_snap) return;
     const mon = monitorOf(.{ .x = root_x, .y = root_y, .w = 1, .h = 1 });
-    const zone = layout.edgeZone(monitors[mon].rect, root_x, root_y, 8, 80) orelse return hideSnapPreview();
-    if (snap_zone != null and snap_zone.? == zone) return;
-    snap_zone = zone;
-    const r = zoneRect(zone, mon);
-    const t: i32 = 4;
-    snapBar(0, .{ .x = r.x, .y = r.y, .w = r.w, .h = t });
-    snapBar(1, .{ .x = r.x, .y = r.y + r.h - t, .w = r.w, .h = t });
-    snapBar(2, .{ .x = r.x, .y = r.y, .w = t, .h = r.h });
-    snapBar(3, .{ .x = r.x + r.w - t, .y = r.y, .w = t, .h = r.h });
+    const box = monitors[mon].rect;
+    const drop = layout.dropTarget(box, root_x, root_y, overlay_on);
+    const hover = layout.overlayZoneAt(box, root_x, root_y);
+    if (drop.overlay) showOverlay(box, hover) else if (overlay_on) hideOverlay();
+    overlay_on = drop.overlay;
+    const target = drop.target orelse {
+        snap_target = null;
+        for (snap_bars) |w| if (w != 0) {
+            _ = c.xcb_unmap_window(conn, w);
+        };
+        _ = c.xcb_flush(conn);
+        return;
+    };
+    if (snap_target == null or !std.meta.eql(snap_target.?, target)) {
+        snap_target = target;
+        const r = targetRect(target, mon);
+        const t: i32 = 4;
+        snapBar(0, .{ .x = r.x, .y = r.y, .w = r.w, .h = t });
+        snapBar(1, .{ .x = r.x, .y = r.y + r.h - t, .w = r.w, .h = t });
+        snapBar(2, .{ .x = r.x, .y = r.y, .w = t, .h = r.h });
+        snapBar(3, .{ .x = r.x + r.w - t, .y = r.y, .w = t, .h = r.h });
+        // The card stays above the outline.
+        if (drop.overlay) showOverlay(box, hover);
+    }
     _ = c.xcb_flush(conn);
 }
 
-/// The button was let go: a dragged window dropped on a screen edge snaps there.
+/// The button was let go: a dragged window dropped on a screen edge or a layout zone snaps there.
 fn finishDrag() void {
     _ = c.xcb_ungrab_pointer(conn, c.XCB_CURRENT_TIME);
     defer drag = null;
     defer hideSnapPreview();
     const d = drag orelse return;
-    const zone = snap_zone orelse return;
+    const target = snap_target orelse return;
     if (d.resize) return;
     const cl = d.client;
-    if (layout.zoneRegion(zone)) |_| {
-        const r = zoneRect(zone, monitorFor(cl));
-        cl.x = r.x;
-        cl.y = r.y;
-        cl.w = r.w;
-        cl.h = r.h;
-        cl.floating = true;
-        cl.maximized = false;
-    } else {
-        cl.maximized = true;
+    switch (target) {
+        .region => {
+            const r = targetRect(target, monitorFor(cl));
+            cl.x = r.x;
+            cl.y = r.y;
+            cl.w = r.w;
+            cl.h = r.h;
+            cl.floating = true;
+            cl.maximized = false;
+        },
+        .maximize => cl.maximized = true,
     }
     cl.fullscreen = false;
     arrange();
 }
+
 
 /// Alt + button on a window: left moves, right resizes from the nearest corner.
 fn beginDrag(ev: *const c.xcb_button_press_event_t) void {
