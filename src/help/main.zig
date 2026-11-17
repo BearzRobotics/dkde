@@ -8,6 +8,7 @@ const std = @import("std");
 const cli = @import("cli");
 const glib = @import("glib2");
 const gio = @import("gio2");
+const gdk = @import("gdk4");
 const gobject = @import("gobject2");
 const gtk = @import("gtk4");
 const pango = @import("pango1");
@@ -17,6 +18,9 @@ const index = @import("index.zig");
 const render = @import("render.zig");
 
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
+
+/// The one help window, for the list rows' right-click handlers.
+var help_instance: ?*Help = null;
 
 const Help = struct {
     allocator: std.mem.Allocator,
@@ -104,6 +108,7 @@ const Help = struct {
         paned.setShrinkStartChild(0);
         window.setChild(paned.as(gtk.Widget));
 
+        help_instance = self;
         self.loadIndex();
         _ = gtk.ListView.signals.activate.connect(self.list, *Help, &onListActivate, self, .{});
         _ = gobject.Object.signals.notify.connect(self.browse, *Help, &onBrowse, self, .{ .detail = "selected" });
@@ -208,6 +213,7 @@ const Help = struct {
     }
 
     fn onDestroy(_: *gtk.ApplicationWindow, self: *Help) callconv(.c) void {
+        if (help_instance == self) help_instance = null;
         for (self.pages.items) |pg| self.allocator.destroy(pg.close);
         self.pages.deinit(self.allocator);
         self.arena.deinit();
@@ -296,6 +302,66 @@ const Help = struct {
         label.setEllipsize(.end);
         expander.setChild(label.as(gtk.Widget));
         item.setChild(expander.as(gtk.Widget));
+        // Right-click: open here or in a new tab.
+        const click = gtk.GestureClick.new();
+        click.as(gtk.GestureSingle).setButton(3);
+        _ = gtk.GestureClick.signals.pressed.connect(click, *gtk.TreeExpander, &onRowRightClick, expander, .{});
+        expander.as(gtk.Widget).addController(click.as(gtk.EventController));
+    }
+
+    const RowAction = struct { help: *Help, entry: usize, popover: *gtk.Popover, new_tab: bool };
+
+    fn onRowActionClicked(_: *gtk.Button, ctx: *RowAction) callconv(.c) void {
+        ctx.popover.popdown();
+        if (ctx.entry >= ctx.help.entries.len) return;
+        if (ctx.new_tab) _ = ctx.help.newTab();
+        ctx.help.openEntry(ctx.entry);
+    }
+
+    fn onRowActionDestroy(_: *gtk.Button, ctx: *RowAction) callconv(.c) void {
+        std.heap.c_allocator.destroy(ctx);
+    }
+
+    fn unparentIdle(data: ?*anyopaque) callconv(.c) c_int {
+        const popover: *gtk.Popover = @ptrCast(@alignCast(data.?));
+        popover.as(gtk.Widget).unparent();
+        return 0;
+    }
+
+    fn onPopoverClosed(popover: *gtk.Popover, _: *Help) callconv(.c) void {
+        // Unparenting inside the signal can crash GTK: do it when idle.
+        _ = glib.idleAdd(unparentIdle, popover);
+    }
+
+    fn onRowRightClick(gesture: *gtk.GestureClick, _: c_int, x: f64, y: f64, expander: *gtk.TreeExpander) callconv(.c) void {
+        _ = gesture;
+        const self = help_instance orelse return;
+        const row = expander.getListRow() orelse return;
+        const what = itemOf(row.getItem() orelse return) orelse return;
+        if (what != .entry or what.entry >= self.entries.len) return;
+        const popover = gtk.Popover.new();
+        popover.setHasArrow(0);
+        popover.as(gtk.Widget).setParent(expander.as(gtk.Widget));
+        const rect: gdk.Rectangle = .{ .f_x = @intFromFloat(x), .f_y = @intFromFloat(y), .f_width = 1, .f_height = 1 };
+        popover.setPointingTo(&rect);
+        _ = gtk.Popover.signals.closed.connect(popover, *Help, &onPopoverClosed, self, .{});
+        const box = gtk.Box.new(.vertical, 0);
+        inline for (.{ .{ "Open", false }, .{ "Open in new tab", true } }) |entry| {
+            const button = gtk.Button.newWithLabel(common.tr(entry[0]));
+            button.setHasFrame(0);
+            if (button.getChild()) |child| {
+                const l: *gtk.Label = @ptrCast(child);
+                l.setXalign(0);
+            }
+            if (std.heap.c_allocator.create(RowAction)) |ctx| {
+                ctx.* = .{ .help = self, .entry = what.entry, .popover = popover, .new_tab = entry[1] };
+                _ = gtk.Button.signals.clicked.connect(button, *RowAction, &onRowActionClicked, ctx, .{});
+                _ = gtk.Widget.signals.destroy.connect(button, *RowAction, &onRowActionDestroy, ctx, .{});
+            } else |_| {}
+            box.append(button.as(gtk.Widget));
+        }
+        popover.setChild(box.as(gtk.Widget));
+        popover.popup();
     }
 
     fn onItemBind(_: *gtk.SignalListItemFactory, obj: *gobject.Object, self: *Help) callconv(.c) void {
