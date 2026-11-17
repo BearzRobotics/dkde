@@ -161,6 +161,9 @@ const Calc = struct {
     /// The Learn view beside the panes (View > Learn); it does not replace the pane in view.
     learn_scroll: *gtk.ScrolledWindow,
     learn_open: bool = false,
+    /// The Learn view in a window of its own (for a second screen), and the box it sits in there.
+    learn_window: ?*gtk.Window = null,
+    learn_box: ?*gtk.Box = null,
     formula_list: *gtk.ListBox,
     formula_form: *gtk.Box,
     formula_search: *gtk.SearchEntry,
@@ -189,6 +192,7 @@ const Calc = struct {
     /// The calculator column, scrolled when it is taller than the screen allows.
     left_scroll: *gtk.ScrolledWindow = undefined,
     left_box: *gtk.Box = undefined,
+    side_scroll: *gtk.ScrolledWindow = undefined,
     /// The right-click menu of a history line, and which line it is for.
     row_popover: ?*gtk.Popover = null,
     history_scroll: *gtk.ScrolledWindow = undefined,
@@ -305,7 +309,7 @@ const Calc = struct {
 
         const win = self.window.as(gtk.Window);
         win.setTitle(t("Calculator"));
-        win.setDefaultSize(self.config.getInt("calc", "width", 380), self.config.getInt("calc", "height", 520));
+        win.setDefaultSize(-1, -1);
         self.window.as(gtk.Widget).addCssClass("dkde");
         _ = common.header.create(win, "accessories-calculator", true);
 
@@ -448,6 +452,7 @@ const Calc = struct {
         // The window grows to fit the pane, so it is not left half visible behind a scroll bar.
         side_scroll.setPropagateNaturalWidth(1);
         side_scroll.setChild(self.side.as(gtk.Widget));
+        self.side_scroll = side_scroll;
         side_scroll.as(gtk.Widget).setHexpand(1);
         body.append(side_scroll.as(gtk.Widget));
         // The Learn view stands beside whatever pane is open.
@@ -3668,6 +3673,54 @@ const Calc = struct {
         for (exprs) |e| if (!self.graph.has(e)) self.graph.plot(e, null);
     }
 
+    /// Learn moves to a window of its own and back. The calculator keeps the Geometry and Graph panes, so a
+    /// lesson on a second screen still draws its figure beside the calculator.
+    fn learnToggleWindow(ctx: *anyopaque) void {
+        const self: *Calc = @ptrCast(@alignCast(ctx));
+        if (self.learn_window) |w| return w.close();
+        const l = self.ensureLearn();
+        self.learn_scroll.setChild(null);
+        const box = gtk.Box.new(.vertical, 0);
+        inline for (.{ "setMarginTop", "setMarginBottom", "setMarginStart", "setMarginEnd" }) |m| @field(gtk.Widget, m)(box.as(gtk.Widget), 10);
+        box.append(l.widget());
+        const sc = gtk.ScrolledWindow.new();
+        sc.setPolicy(.never, .automatic);
+        sc.setChild(box.as(gtk.Widget));
+        const win = gtk.Window.new();
+        win.setTitle(t("Learn"));
+        win.setDefaultSize(480, 720);
+        win.as(gtk.Widget).addCssClass("dkde");
+        win.setChild(sc.as(gtk.Widget));
+        _ = gtk.Window.signals.close_request.connect(win, *Calc, &onLearnWindowClose, self, .{});
+        self.learn_window = win;
+        self.learn_box = box;
+        self.learn_scroll.as(gtk.Widget).setVisible(0);
+        self.learn_open = true;
+        common.menubar.setChecked(self.window, "learn", true);
+        self.fitLayout();
+        self.window.as(gtk.Window).setDefaultSize(-1, -1);
+        win.present();
+    }
+
+    /// The lessons came in: the window takes the size the full view needs.
+    fn learnLoaded(ctx: *anyopaque) void {
+        const self: *Calc = @ptrCast(@alignCast(ctx));
+        self.window.as(gtk.Window).setDefaultSize(-1, -1);
+    }
+
+    /// Closing the Learn window puts the view back beside the calculator.
+    fn onLearnWindowClose(_: *gtk.Window, self: *Calc) callconv(.c) c_int {
+        const l = self.learn orelse return 0;
+        if (self.learn_box) |box| box.remove(l.widget());
+        self.learn_scroll.setChild(l.widget());
+        self.learn_window = null;
+        self.learn_box = null;
+        self.learn_scroll.as(gtk.Widget).setVisible(@intFromBool(self.learn_open));
+        self.fitLayout();
+        self.window.as(gtk.Window).setDefaultSize(-1, -1);
+        return 0;
+    }
+
     /// A lesson step asks for a mode (programmer with a base and word size, say); the panel is rebuilt to match.
     fn learnSetMode(ctx: *anyopaque, mode: []const u8, base: u8, bits: u8) void {
         const self: *Calc = @ptrCast(@alignCast(ctx));
@@ -3690,7 +3743,7 @@ const Calc = struct {
 
     fn ensureLearn(self: *Calc) *learn_mod.Learn {
         if (self.learn) |l| return l;
-        const l = learn_mod.Learn.create(self.gpa, .{ .ctx = self, .run = learnRun, .clear = learnClear, .show_canvas = learnShowCanvas, .use_calc = learnUseCalc, .graph = learnGraph, .set_mode = learnSetMode }) catch @panic("learn");
+        const l = learn_mod.Learn.create(self.gpa, .{ .ctx = self, .run = learnRun, .clear = learnClear, .show_canvas = learnShowCanvas, .use_calc = learnUseCalc, .graph = learnGraph, .set_mode = learnSetMode, .toggle_window = learnToggleWindow, .loaded = learnLoaded }) catch @panic("learn");
         self.learn = l;
         self.learn_scroll.setChild(l.widget());
         return l;
@@ -3699,7 +3752,10 @@ const Calc = struct {
     /// Shows or hides the Learn view. The other panes stay as they are.
     fn setLearn(self: *Calc, on: bool) void {
         self.learn_open = on;
-        self.learn_scroll.as(gtk.Widget).setVisible(@intFromBool(on));
+        self.learn_scroll.as(gtk.Widget).setVisible(@intFromBool(on and self.learn_window == null));
+        if (self.learn_window) |w| {
+            if (on) w.present() else w.close();
+        }
         if (on) self.ensureLearn().start();
         common.menubar.setChecked(self.window, "learn", on);
         self.fitLayout();
@@ -3709,18 +3765,22 @@ const Calc = struct {
     /// With a pane or Learn beside it the calculator keeps to its own size (smaller keys, no growing), so the
     /// room goes to the pane; alone it fills the window as before.
     fn fitLayout(self: *Calc) void {
-        const beside = self.pane != .none or self.learn_open;
-        const win = self.window.as(gtk.Widget);
-        if (beside) win.addCssClass("dkde-calc-panes") else win.removeCssClass("dkde-calc-panes");
+        const beside = self.pane != .none or (self.learn_open and self.learn_window == null);
+        // The keys are always slim and never stretch with the window (a big window gets room for panes, not
+        // bigger keys); alone, the calculator sits in the middle of whatever width it is given.
+        self.window.as(gtk.Widget).addCssClass("dkde-calc-panes");
         self.left_scroll.as(gtk.Widget).setHexpand(@intFromBool(!beside));
-        self.keypad.as(gtk.Widget).setVexpand(@intFromBool(!beside));
-        self.left_box.as(gtk.Widget).setValign(if (beside) .start else .fill);
+        self.keypad.as(gtk.Widget).setVexpand(0);
+        self.left_box.as(gtk.Widget).setValign(.start);
+        self.left_box.as(gtk.Widget).setHalign(if (beside) .fill else .center);
     }
 
     fn showPane(self: *Calc, pane: Pane) void {
         self.pane = pane;
         const w = self.side.as(gtk.Widget);
         w.setVisible(@intFromBool(pane != .none));
+        // The scrolled window around the panes goes too, or it leaves an empty grey strip.
+        self.side_scroll.as(gtk.Widget).setVisible(@intFromBool(pane != .none));
         if (pane != .none) self.side.setVisibleChildName(@tagName(pane));
         inline for (.{ "history", "units", "currency", "dates", "graph", "geometry", "formulas", "steps", "functions" }) |name| {
             common.menubar.setChecked(self.window, "pane-" ++ name, std.mem.eql(u8, @tagName(pane), name));
@@ -4240,6 +4300,7 @@ const Calc = struct {
     // ---- closing -------------------------------------------------------------------------
 
     fn onCloseRequest(_: *gtk.Window, self: *Calc) callconv(.c) c_int {
+        if (self.learn_window) |w| w.close();
         if (!self.finished) {
             self.finished = true;
             const w = self.window.as(gtk.Widget);

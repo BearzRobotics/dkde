@@ -28,6 +28,7 @@
 
 const std = @import("std");
 const toml = @import("toml");
+const common = @import("common");
 const figure = @import("figure.zig");
 
 const Allocator = std.mem.Allocator;
@@ -36,6 +37,10 @@ pub const Loaded = struct {
     arena: std.heap.ArenaAllocator,
     lessons: []figure.Lesson = &.{},
     problems: []const []const u8 = &.{},
+    /// The file of each lesson, and whether the lesson is read in full. Lessons from the index cache
+    /// have only their id, course, book and title until `ensureFull` reads the file.
+    paths: []const []const u8 = &.{},
+    full: []bool = &.{},
 
     pub fn deinit(self: *Loaded) void {
         self.arena.deinit();
@@ -153,7 +158,7 @@ pub fn parseLesson(arena: Allocator, text: []const u8, source: []const u8, probl
     };
 }
 
-const Entry = struct { lesson: figure.Lesson, order: i64 };
+const Entry = struct { lesson: figure.Lesson, order: i64, path: []const u8 = "" };
 
 /// The order subjects are taught in; others follow alphabetically.
 pub fn courseRank(name: []const u8) usize {
@@ -181,8 +186,16 @@ pub fn load(gpa: Allocator, io: std.Io, dirs: []const []const u8) Loaded {
     for (dirs) |dir| loadDir(arena, io, dir, 1, &entries, &problems);
     std.mem.sort(Entry, entries.items, {}, lessThan);
     const lessons = arena.alloc(figure.Lesson, entries.items.len) catch return out;
-    for (entries.items, 0..) |e, i| lessons[i] = e.lesson;
+    const paths = arena.alloc([]const u8, entries.items.len) catch return out;
+    const full = arena.alloc(bool, entries.items.len) catch return out;
+    for (entries.items, 0..) |e, i| {
+        lessons[i] = e.lesson;
+        paths[i] = e.path;
+        full[i] = true;
+    }
     out.lessons = lessons;
+    out.paths = paths;
+    out.full = full;
     out.problems = problems.items;
     return out;
 }
@@ -201,11 +214,134 @@ fn loadDir(arena: Allocator, io: std.Io, path: []const u8, depth: u8, entries: *
                     problem(arena, problems, "{s}: {s}", .{ full, @errorName(e) });
                     continue;
                 };
-                if (parseLesson(arena, text, full, problems)) |r| entries.append(arena, .{ .lesson = r.lesson, .order = r.order }) catch {};
+                if (parseLesson(arena, text, full, problems)) |r| entries.append(arena, .{ .lesson = r.lesson, .order = r.order, .path = full }) catch {};
             },
             else => {},
         }
     }
+}
+
+// ---- the index cache ----------------------------------------------------------------------------
+//
+// Reading every lesson file at each start is slow. The first time the lessons are read, a small index
+// (file, id, course, book, title: one line each) is written to the cache folder; after that the index is
+// read instead, and a lesson's file is read only when the lesson is opened. The index is tied to the
+// program version, and "Refresh lessons" in the Learn view makes a new one (for lessons you added).
+
+const index_magic = "dkde-learn-index 1";
+
+fn clean(arena: Allocator, text: []const u8) []const u8 {
+    const out = arena.dupe(u8, text) catch return text;
+    for (out) |*c| if (c.* == '\t' or c.* == '\n' or c.* == '\r') {
+        c.* = ' ';
+    };
+    return out;
+}
+
+/// The lessons of a written index, or null when it is missing, from another version, or unreadable.
+pub fn loadIndex(gpa: Allocator, io: std.Io, cache_path: []const u8, version: []const u8) ?Loaded {
+    var out: Loaded = .{ .arena = std.heap.ArenaAllocator.init(gpa) };
+    const arena = out.arena.allocator();
+    const text = std.Io.Dir.cwd().readFileAlloc(io, cache_path, arena, .limited(8 << 20)) catch {
+        out.arena.deinit();
+        return null;
+    };
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    const header = lines.next() orelse {
+        out.arena.deinit();
+        return null;
+    };
+    var want_buf: [128]u8 = undefined;
+    const want = std.fmt.bufPrint(&want_buf, "{s} {s}", .{ index_magic, version }) catch {
+        out.arena.deinit();
+        return null;
+    };
+    if (!std.mem.eql(u8, header, want)) {
+        out.arena.deinit();
+        return null;
+    }
+    var lessons: std.ArrayList(figure.Lesson) = .empty;
+    var paths: std.ArrayList([]const u8) = .empty;
+    while (lines.next()) |line| {
+        if (line.len == 0) continue;
+        var f = std.mem.splitScalar(u8, line, '\t');
+        const path = f.next() orelse continue;
+        const id = f.next() orelse continue;
+        const course = f.next() orelse continue;
+        const book = std.fmt.parseInt(u8, f.next() orelse continue, 10) catch continue;
+        const title = f.next() orelse continue;
+        lessons.append(arena, .{ .id = id, .course = course, .book = book, .title = title, .statement = "", .steps = &.{}, .exercises = &.{}, .proof = "" }) catch {
+            out.arena.deinit();
+            return null;
+        };
+        paths.append(arena, path) catch {
+            out.arena.deinit();
+            return null;
+        };
+    }
+    if (lessons.items.len == 0) {
+        out.arena.deinit();
+        return null;
+    }
+    const full = arena.alloc(bool, lessons.items.len) catch {
+        out.arena.deinit();
+        return null;
+    };
+    @memset(full, false);
+    out.lessons = lessons.items;
+    out.paths = paths.items;
+    out.full = full;
+    return out;
+}
+
+/// Writes the index of loaded lessons (in their order) to `cache_path`.
+pub fn writeIndex(gpa: Allocator, io: std.Io, cache_path: []const u8, version: []const u8, loaded: *const Loaded) void {
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var out: std.ArrayList(u8) = .empty;
+    out.print(arena, "{s} {s}\n", .{ index_magic, version }) catch return;
+    for (loaded.lessons, 0..) |l, i| {
+        if (i >= loaded.paths.len) break;
+        out.print(arena, "{s}\t{s}\t{s}\t{d}\t{s}\n", .{ clean(arena, loaded.paths[i]), clean(arena, l.id), clean(arena, l.course), l.book, clean(arena, l.title) }) catch return;
+    }
+    _ = io;
+    if (std.fs.path.dirname(cache_path)) |dir| common.fsio.makePath(dir) catch {};
+    common.fsio.writeFileAtomic(cache_path, out.items) catch {};
+}
+
+/// Reads lesson `i` in full when it was loaded from the index. The lesson keeps its stub when the file is gone.
+pub fn ensureFull(loaded: *Loaded, io: std.Io, i: usize) void {
+    if (i >= loaded.lessons.len or i >= loaded.full.len or loaded.full[i]) return;
+    loaded.full[i] = true;
+    const arena = loaded.arena.allocator();
+    const text = std.Io.Dir.cwd().readFileAlloc(io, loaded.paths[i], arena, .limited(1 << 20)) catch return;
+    var problems: std.ArrayList([]const u8) = .empty;
+    if (parseLesson(arena, text, loaded.paths[i], &problems)) |r| loaded.lessons[i] = r.lesson;
+}
+
+test "an index is written and read back, and a lesson is read in full on demand" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = common.fsio.io();
+    const base = try tmp.dir.realPathFileAlloc(io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(base);
+    const lesson_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/a.toml", .{base});
+    defer std.testing.allocator.free(lesson_path);
+    try common.fsio.writeFileAtomic(lesson_path, "id = \"T.1\"\ncourse = \"Test\"\nbook = 2\ntitle = \"A test\"\nstatement = \"Do it.\"\n[[step]]\ntext = \"Start.\"\n");
+    var first = load(std.testing.allocator, io, &.{base});
+    defer first.deinit();
+    try std.testing.expectEqual(@as(usize, 1), first.lessons.len);
+    const index_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/index", .{base});
+    defer std.testing.allocator.free(index_path);
+    writeIndex(std.testing.allocator, io, index_path, "1.0", &first);
+    try std.testing.expect(loadIndex(std.testing.allocator, io, index_path, "2.0") == null);
+    var second = loadIndex(std.testing.allocator, io, index_path, "1.0").?;
+    defer second.deinit();
+    try std.testing.expectEqualStrings("A test", second.lessons[0].title);
+    try std.testing.expectEqual(@as(usize, 0), second.lessons[0].steps.len);
+    ensureFull(&second, io, 0);
+    try std.testing.expectEqual(@as(usize, 1), second.lessons[0].steps.len);
 }
 
 test "a lesson file is read, and its drawing lines too" {

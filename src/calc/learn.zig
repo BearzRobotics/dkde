@@ -30,6 +30,10 @@ pub const Hooks = struct {
     graph: *const fn (ctx: *anyopaque, exprs: []const []const u8) void,
     /// A step asks for a calculator mode, base and word size (0 keeps the current one).
     set_mode: *const fn (ctx: *anyopaque, mode: []const u8, base: u8, bits: u8) void,
+    /// Move the Learn view into a window of its own, or back beside the calculator.
+    toggle_window: *const fn (ctx: *anyopaque) void,
+    /// The lessons are listed and the view is filled in (the window may need to grow to fit it).
+    loaded: *const fn (ctx: *anyopaque) void,
 };
 
 const Group = struct { course: []const u8, book: u8 };
@@ -41,6 +45,13 @@ pub const Learn = struct {
     loaded: lessonfile.Loaded,
     lessons: []const figure.Lesson,
     root: *gtk.Box,
+    /// "Loading lessons..." shows here while the lessons are read; the rest of the view is `content`.
+    loading: *gtk.Box,
+    content: *gtk.Box,
+    names: *gtk.StringList,
+    refresh_button: *gtk.Button,
+    /// start() was called before the lessons were ready.
+    want_start: bool = false,
     books: *gtk.DropDown,
     list: *gtk.ListBox,
     title: *gtk.Label,
@@ -79,35 +90,18 @@ pub const Learn = struct {
 
     pub fn create(gpa: std.mem.Allocator, hooks: Hooks) !*Learn {
         const self = try gpa.create(Learn);
-        var dirs: std.ArrayList([]const u8) = .empty;
-        defer {
-            for (dirs.items) |d| gpa.free(d);
-            dirs.deinit(gpa);
-        }
-        lessonDirs(gpa, &dirs);
-        const loaded = lessonfile.load(gpa, common.fsio.io(), dirs.items);
-        for (loaded.problems) |p| std.log.warn("lesson: {s}", .{p});
-        // The courses and books that have lessons, in teaching order.
-        var groups: std.ArrayList(Group) = .empty;
+        // The courses and books that have lessons, in teaching order, are filled in when the lessons are read.
         const names = gtk.StringList.new(null);
-        for (loaded.lessons) |l| {
-            var seen = false;
-            for (groups.items) |g| {
-                if (g.book == l.book and std.mem.eql(u8, g.course, l.course)) seen = true;
-            }
-            if (seen) continue;
-            try groups.append(gpa, .{ .course = l.course, .book = l.book });
-            var z: [96]u8 = undefined;
-            const euclid = std.mem.eql(u8, l.course, "Euclid");
-            const zt = (if (euclid and l.book == 0) std.fmt.bufPrintSentinel(&z, "Euclid: Foundations", .{}, 0) else if (euclid) std.fmt.bufPrintSentinel(&z, "Euclid: Book {s}", .{roman(l.book)}, 0) else if (l.book <= 1) std.fmt.bufPrintSentinel(&z, "{s}", .{l.course}, 0) else std.fmt.bufPrintSentinel(&z, "{s}: unit {d}", .{ l.course, l.book }, 0)) catch "Lessons";
-            names.append(zt);
-        }
         self.* = .{
             .gpa = gpa,
             .hooks = hooks,
-            .loaded = loaded,
-            .lessons = loaded.lessons,
+            .loaded = .{ .arena = std.heap.ArenaAllocator.init(gpa) },
+            .lessons = &.{},
             .root = gtk.Box.new(.vertical, 6),
+            .loading = gtk.Box.new(.horizontal, 8),
+            .content = gtk.Box.new(.vertical, 6),
+            .names = names,
+            .refresh_button = gtk.Button.newFromIconName("view-refresh-symbolic"),
             .books = gtk.DropDown.new(names.as(@import("gio2").ListModel), null),
             .list = gtk.ListBox.new(),
             .title = gtk.Label.new(""),
@@ -117,16 +111,36 @@ pub const Learn = struct {
             .back = gtk.Button.newWithLabel(t("◀ Back")),
             .next = gtk.Button.newWithLabel(t("Next step ▶")),
             .all = gtk.Button.newWithLabel(t("Show all")),
-            .groups = groups,
             .session = .{ .gpa = gpa },
             .exercise_box = gtk.Box.new(.vertical, 6),
         };
 
         const heading = gtk.Label.new(t("Learn"));
         heading.setXalign(0);
+        heading.as(gtk.Widget).setHexpand(1);
         heading.as(gtk.Widget).addCssClass("heading");
-        self.root.append(heading.as(gtk.Widget));
-        self.root.append(self.books.as(gtk.Widget));
+        const top = gtk.Box.new(.horizontal, 6);
+        top.append(heading.as(gtk.Widget));
+        self.refresh_button.as(gtk.Widget).setTooltipText(t("Refresh lessons (after adding lesson files of your own)"));
+        self.refresh_button.as(gtk.Widget).addCssClass("flat");
+        _ = gtk.Button.signals.clicked.connect(self.refresh_button, *Learn, &onRefresh, self, .{});
+        top.append(self.refresh_button.as(gtk.Widget));
+        const pop = gtk.Button.newFromIconName("window-new-symbolic");
+        pop.as(gtk.Widget).setTooltipText(t("Open Learn in its own window, or put it back"));
+        pop.as(gtk.Widget).addCssClass("flat");
+        _ = gtk.Button.signals.clicked.connect(pop, *Learn, &onPop, self, .{});
+        top.append(pop.as(gtk.Widget));
+        self.root.append(top.as(gtk.Widget));
+        const spinner = gtk.Spinner.new();
+        spinner.start();
+        self.loading.append(spinner.as(gtk.Widget));
+        self.loading.append(gtk.Label.new(t("Loading lessons...")).as(gtk.Widget));
+        self.loading.as(gtk.Widget).setMarginTop(12);
+        self.root.append(self.loading.as(gtk.Widget));
+        self.content.as(gtk.Widget).setVisible(0);
+        self.content.as(gtk.Widget).setVexpand(1);
+        self.root.append(self.content.as(gtk.Widget));
+        self.content.append(self.books.as(gtk.Widget));
         _ = gobject.Object.signals.notify.connect(self.books, *Learn, &onBook, self, .{ .detail = "selected" });
 
         self.list.setSelectionMode(.browse);
@@ -136,26 +150,26 @@ pub const Learn = struct {
         list_scroll.setMinContentHeight(110);
         list_scroll.setMaxContentHeight(150);
         list_scroll.setPolicy(.never, .automatic);
-        self.root.append(list_scroll.as(gtk.Widget));
+        self.content.append(list_scroll.as(gtk.Widget));
 
         self.title.setXalign(0);
         self.title.setWrap(1);
         self.title.setMaxWidthChars(40);
         self.title.as(gtk.Widget).addCssClass("heading");
-        self.root.append(self.title.as(gtk.Widget));
+        self.content.append(self.title.as(gtk.Widget));
         self.statement.setXalign(0);
         self.statement.setWrap(1);
         self.statement.setMaxWidthChars(40);
         self.statement.setSelectable(1);
         self.statement.as(gtk.Widget).addCssClass("dim-label");
-        self.root.append(self.statement.as(gtk.Widget));
+        self.content.append(self.statement.as(gtk.Widget));
 
         const steps_scroll = gtk.ScrolledWindow.new();
         steps_scroll.setChild(self.steps_box.as(gtk.Widget));
         steps_scroll.setMinContentHeight(160);
         steps_scroll.as(gtk.Widget).setVexpand(1);
         steps_scroll.setPolicy(.never, .automatic);
-        self.root.append(steps_scroll.as(gtk.Widget));
+        self.content.append(steps_scroll.as(gtk.Widget));
 
         const buttons = gtk.Box.new(.horizontal, 6);
         _ = gtk.Button.signals.clicked.connect(self.back, *Learn, &onBack, self, .{});
@@ -165,25 +179,28 @@ pub const Learn = struct {
         buttons.append(self.back.as(gtk.Widget));
         buttons.append(self.next.as(gtk.Widget));
         buttons.append(self.all.as(gtk.Widget));
-        self.root.append(buttons.as(gtk.Widget));
+        self.content.append(buttons.as(gtk.Widget));
 
         self.proof.setXalign(0);
         self.proof.setWrap(1);
         self.proof.setMaxWidthChars(40);
         self.proof.as(gtk.Widget).setVisible(0);
-        self.root.append(self.proof.as(gtk.Widget));
+        self.content.append(self.proof.as(gtk.Widget));
 
         self.exercise_box.as(gtk.Widget).setVisible(0);
-        self.root.append(self.exercise_box.as(gtk.Widget));
+        self.content.append(self.exercise_box.as(gtk.Widget));
 
-        self.fillList();
-        self.ready = true;
+        self.beginLoad(false);
         return self;
     }
 
     /// Called when the view is shown: draws the lesson that is selected (dev aid: DKDE_LEARN_LESSON=I.1
     /// opens that lesson, DKDE_LEARN_STEPS=n shows n steps).
     pub fn start(self: *Learn) void {
+        if (!self.ready) {
+            self.want_start = true;
+            return;
+        }
         if (std.c.getenv("DKDE_LEARN_LESSON")) |want_z| {
             const want = std.mem.span(want_z);
             for (self.lessons, 0..) |lesson, i| if (std.mem.eql(u8, lesson.id, want)) {
@@ -215,12 +232,122 @@ pub const Learn = struct {
         self.gpa.destroy(self);
     }
 
+    /// Lesson `i`, read from its file first when it came from the index.
+    fn lessonAt(self: *Learn, i: usize) figure.Lesson {
+        lessonfile.ensureFull(&self.loaded, common.fsio.io(), i);
+        return self.loaded.lessons[i];
+    }
+
+    const Job = struct {
+        learn: *Learn,
+        dirs: []const []const u8,
+        cache: []const u8,
+        force: bool,
+        result: lessonfile.Loaded = undefined,
+    };
+
+    fn cachePath(a: std.mem.Allocator) ?[]u8 {
+        return std.fmt.allocPrint(a, "{s}/dkde/calc-learn-index", .{std.mem.span(@import("glib2").getUserCacheDir())}) catch null;
+    }
+
+    /// Reads the lessons on a thread (from the index when there is one, else from every file, and writes the
+    /// index), with "Loading lessons..." showing meanwhile.
+    fn beginLoad(self: *Learn, force: bool) void {
+        const a = std.heap.c_allocator;
+        self.ready = false;
+        self.loading.as(gtk.Widget).setVisible(1);
+        self.content.as(gtk.Widget).setVisible(0);
+        self.refresh_button.as(gtk.Widget).setSensitive(0);
+        const job = a.create(Job) catch return;
+        var dirs: std.ArrayList([]const u8) = .empty;
+        lessonDirs(a, &dirs);
+        job.* = .{ .learn = self, .dirs = dirs.items, .cache = if (std.c.getenv("DKDE_LEARN_DIR") != null) "" else (cachePath(a) orelse ""), .force = force };
+        const thread = std.Thread.spawn(.{}, loadThread, .{job}) catch {
+            // No thread: read them here (the message does not show, but it works).
+            loadThread(job);
+            return;
+        };
+        thread.detach();
+    }
+
+    fn loadThread(job: *Job) void {
+        const a = std.heap.c_allocator;
+        const io = common.fsio.io();
+        const version = @import("build_options").version;
+        if (!job.force and job.cache.len > 0) {
+            if (lessonfile.loadIndex(a, io, job.cache, version)) |l| {
+                job.result = l;
+                _ = @import("glib2").idleAdd(finishIdle, job);
+                return;
+            }
+        }
+        job.result = lessonfile.load(a, io, job.dirs);
+        if (job.cache.len > 0) lessonfile.writeIndex(a, io, job.cache, version, &job.result);
+        _ = @import("glib2").idleAdd(finishIdle, job);
+    }
+
+    fn finishIdle(data: ?*anyopaque) callconv(.c) c_int {
+        const job: *Job = @ptrCast(@alignCast(data.?));
+        const a = std.heap.c_allocator;
+        job.learn.finish(job.result);
+        for (job.dirs) |d| a.free(d);
+        a.free(job.dirs);
+        if (job.cache.len > 0) a.free(job.cache);
+        a.destroy(job);
+        return 0; // G_SOURCE_REMOVE
+    }
+
+    /// The lessons are read: list them and show the view.
+    fn finish(self: *Learn, loaded: lessonfile.Loaded) void {
+        self.loaded.deinit();
+        self.loaded = loaded;
+        self.lessons = self.loaded.lessons;
+        for (self.loaded.problems) |p| std.log.warn("lesson: {s}", .{p});
+        self.current = null;
+        self.shown = 0;
+        self.groups.clearRetainingCapacity();
+        self.names.splice(0, self.names.as(@import("gio2").ListModel).getNItems(), null);
+        for (self.lessons) |l| {
+            var seen = false;
+            for (self.groups.items) |g| {
+                if (g.book == l.book and std.mem.eql(u8, g.course, l.course)) seen = true;
+            }
+            if (seen) continue;
+            self.groups.append(self.gpa, .{ .course = l.course, .book = l.book }) catch continue;
+            var z: [96]u8 = undefined;
+            const euclid = std.mem.eql(u8, l.course, "Euclid");
+            const zt = (if (euclid and l.book == 0) std.fmt.bufPrintSentinel(&z, "Euclid: Foundations", .{}, 0) else if (euclid) std.fmt.bufPrintSentinel(&z, "Euclid: Book {s}", .{roman(l.book)}, 0) else if (l.book <= 1) std.fmt.bufPrintSentinel(&z, "{s}", .{l.course}, 0) else std.fmt.bufPrintSentinel(&z, "{s}: unit {d}", .{ l.course, l.book }, 0)) catch "Lessons";
+            self.names.append(zt);
+        }
+        self.books.setSelected(0);
+        self.fillList();
+        self.ready = true;
+        self.loading.as(gtk.Widget).setVisible(0);
+        self.content.as(gtk.Widget).setVisible(1);
+        self.refresh_button.as(gtk.Widget).setSensitive(1);
+        self.hooks.loaded(self.hooks.ctx);
+        if (self.want_start) {
+            self.want_start = false;
+            self.start();
+        }
+    }
+
+    fn onPop(_: *gtk.Button, self: *Learn) callconv(.c) void {
+        self.hooks.toggle_window(self.hooks.ctx);
+    }
+
+    fn onRefresh(_: *gtk.Button, self: *Learn) callconv(.c) void {
+        self.want_start = true;
+        self.beginLoad(true);
+    }
+
     fn roman(n: u8) []const u8 {
         const table = [_][]const u8{ "", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII" };
         return if (n < table.len) table[n] else "?";
     }
 
     fn onBook(_: *gtk.DropDown, _: *gobject.ParamSpec, self: *Learn) callconv(.c) void {
+        if (!self.ready) return;
         self.fillList();
     }
 
@@ -261,7 +388,7 @@ pub const Learn = struct {
 
     /// Draws the first `count` steps from an empty canvas.
     fn replay(self: *Learn, count: usize) void {
-        const lesson = self.lessons[self.current orelse return];
+        const lesson = self.lessonAt(self.current orelse return);
         self.hooks.clear(self.hooks.ctx);
         const n = @min(count, lesson.steps.len);
         var drawn = false;
@@ -281,7 +408,7 @@ pub const Learn = struct {
     }
 
     fn refresh(self: *Learn) void {
-        const lesson = self.lessons[self.current orelse return];
+        const lesson = self.lessonAt(self.current orelse return);
         var buf: [400]u8 = undefined;
         self.title.setText(std.fmt.bufPrintSentinel(&buf, "{s}  {s}", .{ lesson.id, lesson.title }, 0) catch "");
         var sbuf: [2048]u8 = undefined;
@@ -465,7 +592,7 @@ pub const Learn = struct {
     }
 
     fn onNext(_: *gtk.Button, self: *Learn) callconv(.c) void {
-        const lesson = self.lessons[self.current orelse return];
+        const lesson = self.lessonAt(self.current orelse return);
         if (self.shown >= lesson.steps.len) return;
         const step = lesson.steps[self.shown];
         self.hooks.run(self.hooks.ctx, step.ops);
@@ -480,7 +607,7 @@ pub const Learn = struct {
     }
 
     fn onAll(_: *gtk.Button, self: *Learn) callconv(.c) void {
-        const lesson = self.lessons[self.current orelse return];
+        const lesson = self.lessonAt(self.current orelse return);
         self.replay(lesson.steps.len);
     }
 };

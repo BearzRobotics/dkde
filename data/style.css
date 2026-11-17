@@ -1122,6 +1122,15 @@ window.dkde-calc-panes .dkde-calc-equals label {
   font-size: 14pt;
 }
 
+/* The rows of buttons in the side panes are slim, and their flow-box cells have no frame. */
+.dkde-calc-compact-row flowboxchild {
+  padding: 0;
+}
+.dkde-calc-compact-row button {
+  min-height: 24px;
+  padding: 2px 10px;
+}
+
 /* Programmer mode stacks the bases and the bits above a two-part keypad; tighter rows keep it all on a
    720-pixel screen, with the tape open too. */
 window.dkde-calc-compact .dkde-calc-key {

@@ -94,7 +94,7 @@ pub const Graph = struct {
         const area = self.area.as(gtk.Widget);
         area.setVexpand(1);
         area.setHexpand(1);
-        area.setSizeRequest(360, 300);
+        area.setSizeRequest(240, 200);
         area.addCssClass("dkde-calc-graph");
         self.area.setDrawFunc(onDraw, self, null);
 
@@ -127,17 +127,24 @@ pub const Graph = struct {
 
         self.root.append(self.list.as(gtk.Widget));
 
-        const buttons = gtk.Box.new(.horizontal, 6);
+        // The buttons wrap onto a second line when the pane is narrow, instead of running off the edge.
+        const buttons = gtk.FlowBox.new();
+        buttons.setSelectionMode(.none);
+        buttons.setHomogeneous(0);
+        buttons.setMaxChildrenPerLine(4);
+        buttons.setColumnSpacing(6);
+        buttons.setRowSpacing(4);
+        buttons.as(gtk.Widget).addCssClass("dkde-calc-compact-row");
         const add = gtk.Button.newWithLabel(t("Add Function"));
         _ = gtk.Button.signals.clicked.connect(add, *Graph, &onAdd, self, .{});
         const reset = gtk.Button.newWithLabel(t("Reset View"));
         _ = gtk.Button.signals.clicked.connect(reset, *Graph, &onReset, self, .{});
         const save = gtk.Button.newWithLabel(t("Save…"));
         _ = gtk.Button.signals.clicked.connect(save, *Graph, &onSave, self, .{});
-        buttons.append(add.as(gtk.Widget));
-        buttons.append(self.buildScale());
-        buttons.append(reset.as(gtk.Widget));
-        buttons.append(save.as(gtk.Widget));
+        buttons.insert(add.as(gtk.Widget), -1);
+        buttons.insert(self.buildScale(), -1);
+        buttons.insert(reset.as(gtk.Widget), -1);
+        buttons.insert(save.as(gtk.Widget), -1);
         self.root.append(buttons.as(gtk.Widget));
 
         self.addCurve("");
