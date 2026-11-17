@@ -1,0 +1,29 @@
+id = "VII.4"
+book = 7
+order = 4
+title = "A part or parts"
+statement = "Any number is either a part or parts of any number, the less of the greater."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, BC be two numbers, and let BC be the less. I say that BC is either a part or parts of A. For A, BC are either prime to one another or not. (Here A is 9 and BC is 3 on one pair; 12 and 4 on another.)"
+draw = [
+  "clear",
+  "point BC 0 0",
+  "point bc 6 0",
+  "segment BC bc blue",
+  "point A 0 -0.9",
+  "point a 2 -0.9",
+  "segment A a red",
+  "point D 0 -1.8",
+  "point d 4.5 -1.8",
+  "segment D d green",
+  "point E 0 -2.7",
+  "point e 1.5 -2.7",
+  "segment E e orange",
+]
+
+[[step]]
+text = "First let A, BC be prime to one another. Then if BC be divided into the units in it, each unit in BC will be some part of A. So that BC is parts of A. Next let A, BC not be prime to one another. Then BC either measures A or does not. If BC measures A, BC is a part of A. If not, let the greatest common measure D of A, BC be taken (VII.2), and let BC be divided into numbers equal to D, namely BE, EF, FC. Now since D measures A, D is a part of A. But D is equal to each of BE, EF, FC. Therefore each of BE, EF, FC is also a part of A. So that BC is parts of A. Therefore any number is either a part or parts of any number, the less of the greater."
+draw = [
+]

@@ -1,0 +1,29 @@
+id = "VII.20"
+book = 7
+order = 20
+title = "The least numbers in a ratio"
+statement = "The least numbers of those which have the same ratio with them measure those which have the same ratio the same number of times, the greater the greater and the less the less."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let CD, EF be the least numbers of those which have the same ratio with A, B (here CD = 3, EF = 2; A = 9, B = 6). I say that CD measures A the same number of times that EF measures B."
+draw = [
+  "clear",
+  "point CD 0 0",
+  "point cd 1.5 0",
+  "segment CD cd blue",
+  "point EF 0 -0.9",
+  "point ef 1 -0.9",
+  "segment EF ef red",
+  "point A 0 -1.8",
+  "point a 4.5 -1.8",
+  "segment A a green",
+  "point B 0 -2.7",
+  "point b 3 -2.7",
+  "segment B b orange",
+]
+
+[[step]]
+text = "CD is not parts of A. For if it is possible, let it be so. Then EF is also the same parts of B that CD is of A (VII definition 20 and VII.13 reversed). Therefore, as many parts of A as there are in CD, so many parts of B are there in EF. Let CD be divided into the parts of A, CG, GD, and EF into the parts of B, EH, HF. Then the multitude of CG, GD is equal to the multitude of EH, HF. Now, since the numbers CG, GD are equal to one another, and the numbers EH, HF are also equal to one another, and the multitude of CG, GD is equal to the multitude of EH, HF, therefore, as CG is to EH, so is GD to HF. Therefore, as one of the antecedents is to one of the consequents, so will all the antecedents be to all the consequents (VII.12). Therefore, as CG is to EH, so is CD to EF. Therefore CG, EH are in the same ratio with CD, EF, being less than they, which is impossible, for by hypothesis CD, EF are the least numbers of those which have the same ratio with them. Therefore CD is not parts of A; therefore it is a part of A (VII.4). And EF is the same part of B that CD is of A. Therefore CD measures A the same number of times that EF measures B."
+draw = [
+]

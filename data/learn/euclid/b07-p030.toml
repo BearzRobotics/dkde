@@ -1,0 +1,29 @@
+id = "VII.30"
+book = 7
+order = 30
+title = "A prime measuring a product"
+statement = "If two numbers by multiplying one another make some number, and any prime number measure the product, it will also measure one of the original numbers."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "For let two numbers A, B by multiplying one another make C, and let any prime number D measure C (here 3 times 5 is 15 and the prime 5 measures 15). I say that D measures one of the numbers A, B."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 2 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 7.5 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 2.5 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "For let it not measure A. Now D is prime. Therefore A, D are prime to one another (VII.29). Let D measure C according to E. Since D measures C according to E, D by multiplying E has made C. But, further, A by multiplying B has made C. Therefore the product of D, E is equal to the product of A, B. Therefore, as D is to A, so is B to E (VII.19). But D, A are prime, primes are also least (VII.21), and the least measure the numbers which have the same ratio the same number of times, the greater the greater and the less the less, that is, the antecedent the antecedent and the consequent the consequent (VII.20). Therefore D measures B. Similarly we can also show that, if D does not measure B, it will measure A. Therefore D measures one of the numbers A, B."
+draw = [
+]

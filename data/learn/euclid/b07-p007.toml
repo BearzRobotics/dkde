@@ -1,0 +1,35 @@
+id = "VII.7"
+book = 7
+order = 7
+title = "A part taken from a part"
+statement = "If a number be that part of a number which a number taken away is of a number taken away, the remainder will also be the same part of the remainder that the whole is of the whole."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "For let the number AB be that part of the number CD which AE taken away is of CF taken away (here AB = 15 and CD = 9 are in the ratio 5 : 3, and AE = 10 and CF = 6 likewise; the numbers are drawn as bars). Let AB be that part of CD that AE is of CF. I say that the remainder EB is also the same part of the remainder FD that the whole AB is of the whole CD."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 7.5 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 4.5 -0.9",
+  "segment CD cd red",
+  "point AE 0 -1.8",
+  "point ae 5 -1.8",
+  "segment AE ae green",
+  "point CF 0 -2.7",
+  "point cf 3 -2.7",
+  "segment CF cf orange",
+  "point EB 0 -3.6",
+  "point eb 2.5 -3.6",
+  "segment EB eb purple",
+  "point FD 0 -4.5",
+  "point fd 1.5 -4.5",
+  "segment FD fd teal",
+]
+
+[[step]]
+text = "Whatever part AE is of CF, the same part let EB be of CG. Then, since AE is the same part of CF that EB is of CG, AE is the same part of CF that AB is of GF (VII.5). But AE is the same part of CF that AB is of CD, by hypothesis. Therefore AB is the same part of GF that it is of CD. Therefore GF is equal to CD. Take away CF from each. Then GC is equal to FD. Since AE is the same part of CF that EB is of GC, and GC is equal to FD, AE is the same part of CF that EB is of FD. But AE is the same part of CF that AB is of CD. Therefore EB is the same part of FD that AB is of CD."
+draw = [
+]

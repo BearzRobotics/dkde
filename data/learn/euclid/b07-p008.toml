@@ -1,0 +1,35 @@
+id = "VII.8"
+book = 7
+order = 8
+title = "Parts taken from parts"
+statement = "If a number be the same parts of a number that a number taken away is of a number taken away, the remainder will also be the same parts of the remainder that the whole is of the whole."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let the number AB be the same parts of the number CD that AE taken away is of CF taken away. I say that the remainder EB is also the same parts of the remainder FD that the whole AB is of the whole CD."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 10 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 6 -0.9",
+  "segment CD cd red",
+  "point AE 0 -1.8",
+  "point ae 5 -1.8",
+  "segment AE ae green",
+  "point CF 0 -2.7",
+  "point cf 3 -2.7",
+  "segment CF cf orange",
+  "point EB 0 -3.6",
+  "point eb 5 -3.6",
+  "segment EB eb purple",
+  "point FD 0 -4.5",
+  "point fd 3 -4.5",
+  "segment FD fd teal",
+]
+
+[[step]]
+text = "Let GH be made equal to AB. Then whatever parts GH is of CD, the same parts is AE of CF. Let GH be divided into the parts of CD, GK, KH, and AE into the parts of CF, AL, LE. Then the multitude of GK, KH is equal to the multitude of AL, LE. Since whatever part GK is of CD, the same part is AL of CF, and CD is greater than CF, GK is also greater than AL. Let GM be made equal to AL. Then whatever part GK is of CD, the same part is GM of CF. Therefore the remainder MK is the same part of the remainder FD that the whole GK is of the whole CD (VII.7). Again, whatever part KH is of CD, the same part is EL of CF; and CD is greater than CF, so KH is greater than EL. Let KN be made equal to EL. Then NH is the same part of FD that KH is of CD. So MK and NH are the same parts of FD that GH is of CD. But GH is equal to AB, and MK, NH together are equal to EB, since GM is equal to AL and KN to LE. Therefore EB is the same parts of FD that AB is of CD."
+draw = [
+]

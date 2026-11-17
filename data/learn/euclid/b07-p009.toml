@@ -1,0 +1,29 @@
+id = "VII.9"
+book = 7
+order = 9
+title = "Alternately, a part"
+statement = "If a number be a part of a number, and another be the same part of another, alternately also, whatever part or parts the first is of the third, the same part, or the same parts, will the second be of the fourth."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "For let a number A be a part of a number BC, and another number D the same part of another EF that A is of BC. I say that, alternately also, whatever part or parts A is of D, the same part or parts is BC of EF."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.5 0",
+  "segment A a blue",
+  "point BC 0 -0.9",
+  "point bc 4.5 -0.9",
+  "segment BC bc red",
+  "point D 0 -1.8",
+  "point d 2 -1.8",
+  "segment D d green",
+  "point EF 0 -2.7",
+  "point ef 6 -2.7",
+  "segment EF ef orange",
+]
+
+[[step]]
+text = "Since whatever part A is of BC, the same part is D of EF, as many numbers as there are in BC equal to A, so many are there in EF equal to D. Let BC be divided into BG, GC equal to A, and EF into EH, HF equal to D. Then the multitude of BG, GC is equal to the multitude of EH, HF. Now since BG, GC are equal to one another, and EH, HF are also equal to one another, and the multitude of BG, GC is equal to the multitude of EH, HF, whatever part or parts BG is of EH, the same part or the same parts is GC of HF, so that also the sum BC is the same part or the same parts of the sum EF that BG is of EH (VII.5, 6). But BG is equal to A, and EH to D. Therefore whatever part or parts A is of D, the same part or the same parts is BC of EF."
+draw = [
+]

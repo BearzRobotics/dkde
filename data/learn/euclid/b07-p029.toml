@@ -1,0 +1,26 @@
+id = "VII.29"
+book = 7
+order = 29
+title = "A prime is prime to what it does not measure"
+statement = "Any prime number is prime to any number which it does not measure."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A be a prime number, and let it not measure B (here 7 and 12). I say that B, A are prime to one another."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 3.5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 6 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 0.5 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "For if B, A are not prime to one another, some number will measure them. Let C measure them. Since C measures B, and A does not measure B, C is not the same with A. Now, since C measures B, A, it also measures A, which is prime, though it is not the same with it, which is impossible. Therefore no number will measure B, A. Therefore A, B are prime to one another."
+draw = [
+]

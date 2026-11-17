@@ -1,0 +1,29 @@
+id = "VII.16"
+book = 7
+order = 16
+title = "Multiplication is commutative"
+statement = "If two numbers by multiplying one another make certain numbers, the numbers so produced will be equal to one another."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B be two numbers, and let A by multiplying B make C, and B by multiplying A make D. I say that C is equal to D. (Here 3 times 5 and 5 times 3 are both 15.)"
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 2.5 -0.9",
+  "segment B b red",
+  "point AB 0 -1.8",
+  "point ab 7.5 -1.8",
+  "segment AB ab green",
+  "point BA 0 -2.7",
+  "point ba 7.5 -2.7",
+  "segment BA ba orange",
+]
+
+[[step]]
+text = "Since A by multiplying B has made C, B measures C according to the units in A. But the unit E also measures the number A according to the units in it. Therefore the unit E measures A the same number of times that B measures C. Therefore, alternately, the unit E measures the number B the same number of times that A measures C (VII.15). Again, since B by multiplying A has made D, A measures D according to the units in B. But the unit E measures B according to the units in it. Therefore the unit E measures B the same number of times that A measures D. But the unit E measured B the same number of times that A measures C. Therefore A measures each of the numbers C, D the same number of times. Therefore C is equal to D."
+draw = [
+]

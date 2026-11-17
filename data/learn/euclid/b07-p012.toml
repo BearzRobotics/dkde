@@ -1,0 +1,35 @@
+id = "VII.12"
+book = 7
+order = 12
+title = "Proportional numbers: sums"
+statement = "If there be as many numbers as we please in proportion, then as one of the antecedents is to one of the consequents, so will all the antecedents be to all the consequents."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B, C, D be as many numbers as we please in proportion, so that A is to B as C is to D. I say that A is to B as A, C together are to B, D together. (Here 2 : 3 = 4 : 6 = 6 : 9, and 2 + 4 + 6 : 3 + 6 + 9 = 2 : 3.)"
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.5 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 3 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 3 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 4.5 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "If A is equal to B, C is also equal to D, and so A, C together are equal to B, D together, and the ratios are the same. If A is a part or parts of B, then C is the same part or parts of D (VII definition 20). Therefore A, C together are the same part or parts of B, D together that A is of B (VII.5, 6). Therefore, as A is to B, so are A, C together to B, D together."
+draw = [
+]

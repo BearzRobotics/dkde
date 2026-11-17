@@ -1,0 +1,29 @@
+id = "VII.31"
+book = 7
+order = 31
+title = "A composite number has a prime measure"
+statement = "Any composite number is measured by some prime number."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A be a composite number (here 12). I say that A is measured by some prime number."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 6 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 3 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.5 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 1 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "For since A is composite, some number will measure it. Let a number B measure it. Now, if B is prime, that which was enjoined will have been done. But if it is composite, some number will measure it. Let a number C measure it. Then, since C measures B, and B measures A, C also measures A. And, if C is prime, that which was enjoined will have been done. But if it is composite, some number will measure it. Thus, if the investigation be continued in this way, some prime number will be found which will measure the number before it, which will also measure A. For, if it is not found, an infinite series of numbers will measure the number A, each of which is less than the other, which is impossible in numbers. Therefore some prime number will be found which will measure the one before it, which will also measure A. Therefore any composite number is measured by some prime number."
+draw = [
+]

@@ -1,0 +1,32 @@
+id = "VII.35"
+book = 7
+order = 35
+title = "Common multiples are multiples of the least"
+statement = "If two numbers measure any number, the least number measured by them will also measure the same."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "For let two numbers A, B measure any number CD, and let E be the least that they measure (here 4 and 6 measure 36, and the least is 12). I say that E also measures CD."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 3 -0.9",
+  "segment B b red",
+  "point CD 0 -1.8",
+  "point cd 6 -1.8",
+  "segment CD cd green",
+  "point EF 0 -2.7",
+  "point ef 18 -2.7",
+  "segment EF ef orange",
+  "point C 0 -3.6",
+  "point c 6 -3.6",
+  "segment C c purple",
+]
+
+[[step]]
+text = "For if E does not measure CD, let E, measuring DF, leave CF less than itself. Now, since A, B measure E, and E measures DF, A, B will also measure DF. But they also measure the whole CD. Therefore they will also measure the remainder CF, which is less than E, which is impossible. Therefore E cannot fail to measure CD. Therefore E measures CD."
+draw = [
+]

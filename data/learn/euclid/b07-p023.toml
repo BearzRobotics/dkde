@@ -1,0 +1,26 @@
+id = "VII.23"
+book = 7
+order = 23
+title = "A measure of one is prime to the other"
+statement = "If two numbers be prime to one another, the number which measures the one of them will be prime to the remaining number."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B be two numbers prime to one another (here 9 and 8), and let any number C measure A (here 3). I say that C, B are also prime to one another."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 4.5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 4 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.5 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "For if C, B are not prime to one another, some number will measure C, B. Let D measure them. Since D measures C, and C measures A, D also measures A. But it also measures B. Therefore D measures A, B, which are prime to one another, which is impossible. Therefore C, B cannot but be prime to one another."
+draw = [
+]

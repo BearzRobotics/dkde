@@ -1,0 +1,23 @@
+id = "VII.32"
+book = 7
+order = 32
+title = "A number is prime or measured by a prime"
+statement = "Any number either is prime or is measured by some prime number."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A be any number. I say that A either is prime or is measured by some prime number."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 6 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1 -0.9",
+  "segment B b red",
+]
+
+[[step]]
+text = "If A is prime, that which was enjoined will have been done. But if it is composite, some prime number will measure it (VII.31). Therefore any number either is prime or is measured by some prime number."
+draw = [
+]

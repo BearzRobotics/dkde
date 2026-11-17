@@ -1,0 +1,29 @@
+id = "VII.3"
+book = 7
+order = 3
+title = "The greatest common measure of three numbers"
+statement = "Given three numbers not prime to one another, to find their greatest common measure."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B, C be the three given numbers not prime to one another (here 24, 36, 60). It is required to find the greatest common measure of A, B, C. Let the greatest common measure of the two numbers A, B be taken (VII.2), and let it be D (here 12)."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 12 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 18 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 30 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 6 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Then D either measures C or does not. First let it measure it. Since it measures A, B, it is a common measure of A, B, C. And it is the greatest, for D is the greatest common measure of A, B. But if D does not measure C, then, since C, D are not prime to one another (each is measured by some number, since A, B, C are not prime to one another and anything measuring A, B, C measures D), let the greatest common measure E of C, D be taken. Since E measures D, and D measures A, B, E also measures A, B. But it also measures C. Therefore E is a common measure of A, B, C. I say next that it is also the greatest. For if not, let some number F, greater than E, measure A, B, C. Since F measures A, B, it measures the greatest common measure D of A, B. But it also measures C. Therefore F measures C, D, and so measures the greatest common measure E of C, D, the greater the less, which is impossible. Therefore E is the greatest common measure of A, B, C."
+draw = [
+]

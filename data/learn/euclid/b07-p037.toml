@@ -1,0 +1,26 @@
+id = "VII.37"
+book = 7
+order = 37
+title = "A measured number has a named part"
+statement = "If a number be measured by any number, the number which is measured will have a part called by the same name as the measuring number."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "For let a number A be measured by any number B (here 12 is measured by 3). I say that A has a part called by the same name as B (a third)."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 6 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.5 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "For, as many times as B measures A, so many units let there be in C. Since B measures A according to the units in C, and the unit D also measures C according to the units in it, the unit D measures the number C the same number of times that B measures A. Therefore, alternately, the unit D measures the number B the same number of times that C measures A (VII.15). Therefore, whatever part the unit D is of the number B, the same part is C of A. But the unit D is a part of the number B called by the same name as it. Therefore C is also a part of A called by the same name as B. So that A has a part C which is called by the same name as B."
+draw = [
+]

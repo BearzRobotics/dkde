@@ -1,0 +1,29 @@
+id = "VII.1"
+book = 7
+order = 1
+title = "Prime to one another (the Euclidean algorithm)"
+statement = "Two unequal numbers being set out, and the less being continually subtracted in turn from the greater, if the number which is left never measures the one before it until an unit is left, the original numbers will be prime to one another."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let two unequal numbers AB, CD be set out (here 17 and 5), and let the less be continually subtracted in turn from the greater. 17 less 5 three times leaves 2; 5 less 2 twice leaves 1, and a unit is left. I say that AB, CD are prime to one another, that is, that an unit alone measures both AB and CD."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 8.5 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 2.5 -0.9",
+  "segment CD cd red",
+  "point R1 0 -1.8",
+  "point r1 1 -1.8",
+  "segment R1 r1 green",
+  "point R2 0 -2.7",
+  "point r2 0.5 -2.7",
+  "segment R2 r2 orange",
+]
+
+[[step]]
+text = "For if AB, CD are not prime to one another, some number will measure them. Let a number E measure them. Then CD, measuring BF, leaves AF less than itself; AF, measuring DG, leaves GC less than itself; and GC, measuring FH, leaves a unit HA. Since E measures CD, and CD measures BF, E also measures BF. But E measures the whole AB. Therefore it will also measure the remainder AF. And AF measures DG; therefore E also measures DG. But it measures the whole DC. Therefore it will also measure the remainder CG. And CG measures FH; therefore E also measures FH. But it measures the whole FA. Therefore it will also measure the remaining unit AH, though it is a number, which is impossible. Therefore no number measures the numbers AB, CD. Therefore AB, CD are prime to one another."
+draw = [
+]

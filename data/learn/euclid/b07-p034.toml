@@ -1,0 +1,29 @@
+id = "VII.34"
+book = 7
+order = 34
+title = "The least common multiple of two numbers"
+statement = "Given two numbers, to find the least number which they measure."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B be the two given numbers (here 4 and 6). It is required to find the least number which they measure."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 3 -0.9",
+  "segment B b red",
+  "point DE 0 -1.8",
+  "point de 6 -1.8",
+  "segment DE de green",
+  "point C 0 -2.7",
+  "point c 1 -2.7",
+  "segment C c orange",
+]
+
+[[step]]
+text = "A, B are either prime to one another or not. First let A, B be prime to one another, and let A by multiplying B make C. Then B by multiplying A has also made C (VII.16). Therefore A, B measure C. I say that it is also the least number which they measure. For if not, A, B will measure some number which is less than C. Let them measure D. Then, as many times as A measures D, so many units let there be in E, and, as many times as B measures D, so many units let there be in F. Therefore A by multiplying E has made D, and B by multiplying F has made D. Therefore the product of A, E is equal to the product of B, F. Therefore, as A is to B, so is F to E (VII.19). But A, B are prime, primes are also least (VII.21), and the least measure the numbers which have the same ratio the same number of times, the greater the greater and the less the less (VII.20). Therefore B measures E, as the consequent the consequent. And, since A by multiplying B, E has made C, D, as B is to E, so is C to D (VII.17). But B measures E. Therefore C also measures D, the greater the less, which is impossible. Therefore A, B do not measure any number which is less than C. Therefore C is the least that is measured by A, B. Next, let A, B not be prime to one another, and let F, E, the least numbers of those which have the same ratio with A, B, be taken (VII.33). Then the product of A, E is equal to the product of B, F (VII.19). Let A by multiplying E make C. Then B by multiplying F also makes C. Therefore A, B measure C. I say next that it is also the least number which they measure. For if not, A, B will measure some number D which is less than C. And, as many times as A measures D, so many units let there be in G, and, as many times as B measures D, so many units let there be in H. Then A by multiplying G has made D, and B by multiplying H has made D. Therefore, as A is to B, so is H to G. But, as A is to B, so is F to E. Therefore also, as F is to E, so is H to G. But F, E are least, and the least measure the numbers which have the same ratio the same number of times, the greater the greater and the less the less. Therefore E measures G. And since A by multiplying E, G has made C, D, as E is to G, so is C to D. But E measures G. Therefore C also measures D, the greater the less, which is impossible. Therefore A, B will not measure any number which is less than C. Therefore C is the least that is measured by A, B."
+draw = [
+]

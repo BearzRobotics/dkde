@@ -1,0 +1,29 @@
+id = "VII.39"
+book = 7
+order = 39
+title = "The least number with given parts"
+statement = "To find the number which is the least that will have given parts."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B, C be the given parts (here a half, a third and a quarter; the numbers naming them are 2, 3, 4). It is required to find the number which is the least that will have the parts A, B, C."
+draw = [
+  "clear",
+  "point DEF 0 0",
+  "point def 6 0",
+  "segment DEF def blue",
+  "point A 0 -0.9",
+  "point a 1 -0.9",
+  "segment A a red",
+  "point B 0 -1.8",
+  "point b 1.5 -1.8",
+  "segment B b green",
+  "point C 0 -2.7",
+  "point c 2 -2.7",
+  "segment C c orange",
+]
+
+[[step]]
+text = "Let D, E, F be numbers called by the same name as the parts A, B, C, and let G, the least number measured by D, E, F, be taken (VII.36; here G is 12). Therefore G has parts called by the same name as D, E, F (VII.37). But A, B, C are parts called by the same name as D, E, F. Therefore G has the parts A, B, C. I say next that it is also the least number that has them. For if not, there will be some number less than G which will have the parts A, B, C. Let it be H. Since H has the parts A, B, C, H will be measured by numbers called by the same name as the parts A, B, C (VII.38). But D, E, F are numbers called by the same name as the parts A, B, C. Therefore H is measured by D, E, F. And it is less than G, which is impossible. Therefore there will be no number less than G which will have the parts A, B, C."
+draw = [
+]

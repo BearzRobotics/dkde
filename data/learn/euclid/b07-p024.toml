@@ -1,0 +1,29 @@
+id = "VII.24"
+book = 7
+order = 24
+title = "A product prime to a number"
+statement = "If two numbers be prime to any number, their product also will be prime to the same."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "For let two numbers A, B be prime to any number C (here 3 and 5 are prime to 8), and let A by multiplying B make D. I say that C, D are prime to one another."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 2.5 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 7.5 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "For if C, D are not prime to one another, some number will measure C, D. Let E measure them. Now, since C, A are prime to one another, and some number E measures C, A, E are prime to one another (VII.23). Whatever number E measures D, let it measure D according to F. Then F also measures D according to the units in E. Therefore E by multiplying F has made D. But, further, A by multiplying B has made D. Therefore the product of E, F is equal to the product of A, B. But if the product of the extremes be equal to that of the means, the four numbers are proportional (VII.19). Therefore, as E is to A, so is B to F. But A, E are prime to one another, and numbers prime to one another are also the least of those which have the same ratio (VII.21), and the least numbers measure those which have the same ratio the same number of times (VII.20). Therefore E measures B. But it also measures C. Therefore E measures B, C, which are prime to one another, which is impossible. Therefore no number will measure the numbers C, D. Therefore C, D are prime to one another."
+draw = [
+]

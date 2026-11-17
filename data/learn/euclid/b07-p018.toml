@@ -1,0 +1,32 @@
+id = "VII.18"
+book = 7
+order = 18
+title = "Two numbers multiplying a number"
+statement = "If two numbers by multiplying any number make certain numbers, the numbers so produced will have the same ratio as the multiplied."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let two numbers A, B by multiplying any number C make D, E. I say that A is to B as D is to E. (Here 3 times 4 is 12 and 5 times 4 is 20; and 3 : 5 = 12 : 20.)"
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 2.5 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 6 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 10 -3.6",
+  "segment E e purple",
+]
+
+[[step]]
+text = "Since A by multiplying C has made D, C by multiplying A has also made D (VII.16). For the same reason C by multiplying B has made E. Therefore the number C by multiplying the two numbers A, B has made D, E. Therefore, as A is to B, so is D to E (VII.17)."
+draw = [
+]

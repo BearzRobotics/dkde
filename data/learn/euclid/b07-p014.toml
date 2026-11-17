@@ -1,0 +1,35 @@
+id = "VII.14"
+book = 7
+order = 14
+title = "Ex aequali"
+statement = "If there be as many numbers as we please, and others equal to them in multitude, which taken two and two are in the same ratio, they will also be in the same ratio ex aequali."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let there be as many numbers as we please A, B, C, and others equal to them in multitude D, E, F, which taken two and two are in the same ratio, so that A is to B as D is to E, and B is to C as E is to F. I say that ex aequali A is to C as D is to F. (Here 2 : 3 = 4 : 6 and 3 : 6 = 6 : 12.)"
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.5 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 3 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 2 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 3 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 6 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Since A is to B as D is to E, alternately A is to D as B is to E (VII.13). Again, since B is to C as E is to F, alternately B is to E as C is to F. But B is to E as A is to D. Therefore also A is to D as C is to F, and alternately A is to C as D is to F."
+draw = [
+]

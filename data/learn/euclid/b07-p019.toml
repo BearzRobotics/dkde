@@ -1,0 +1,35 @@
+id = "VII.19"
+book = 7
+order = 19
+title = "Proportion and products"
+statement = "If four numbers be proportional, the number produced from the first and fourth will be equal to the number produced from the second and third; and, if the number produced from the first and fourth be equal to that produced from the second and third, the four numbers will be proportional."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B, C, D be four numbers in proportion, so that A is to B as C is to D, and let A by multiplying D make E, and B by multiplying C make F. I say that E is equal to F. (Here 2 times 6 is 12 and 3 times 4 is 12.)"
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.5 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 3 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 6 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 6 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Let A by multiplying C make G. Since A by multiplying C has made G, and by multiplying D has made E, the number A by multiplying the two numbers C, D has made G, E. Therefore, as C is to D, so is G to E (VII.17). But as C is to D, so is A to B. Therefore also, as A is to B, so is G to E. Again, since A by multiplying C has made G, but, further, B by multiplying C has made F, the two numbers A, B by multiplying a certain number C have made G, F. Therefore, as A is to B, so is G to F (VII.18). But, further, as A is to B, so is G to E. Therefore G has the same ratio to each of the numbers E, F. Therefore E is equal to F. Conversely, let E be equal to F. I say that A is to B as C is to D. With the same construction, since E is equal to F, G has to E the same ratio as it has to F. But, as G is to E, so is C to D, and, as G is to F, so is A to B. Therefore, as A is to B, so is C to D."
+draw = [
+]

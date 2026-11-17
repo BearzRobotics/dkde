@@ -1,0 +1,29 @@
+id = "VII.2"
+book = 7
+order = 2
+title = "The greatest common measure of two numbers"
+statement = "Given two numbers not prime to one another, to find their greatest common measure."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let AB, CD be the two given numbers not prime to one another (here 48 and 18). It is required to find the greatest common measure of AB, CD. Subtract the less from the greater in turn: 48 less 18 twice leaves 12; 18 less 12 leaves 6; and 6 measures 12 exactly."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 24 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 9 -0.9",
+  "segment CD cd red",
+  "point CE 0 -1.8",
+  "point ce 6 -1.8",
+  "segment CE ce green",
+  "point EB 0 -2.7",
+  "point eb 3 -2.7",
+  "segment EB eb orange",
+]
+
+[[step]]
+text = "If CD measures AB, then, since it also measures itself, CD is a common measure of AB, CD, and it is the greatest, since no greater number than CD will measure CD. But if CD does not measure AB, then, some number being left over from AB, CD, the remainder will measure the one before it. For a unit will not be left, otherwise AB, CD would be prime to one another, which is contrary to the hypothesis. Let CD, measuring BE, leave EA less than itself, and EA, measuring DF, leave FC less than itself, and let CF measure AE. Since CF measures AE, and AE measures DF, CF will also measure DF. But it also measures itself. Therefore it will also measure the whole CD. And CD measures BE. Therefore CF also measures BE. And it also measures EA. Therefore it measures the whole BA. Therefore CF is a common measure of AB, CD. I say next that it is also the greatest. For if not, there is some number greater than CF which measures AB, CD. Let it be G. Since G measures CD, and CD measures BE, G also measures BE. But it also measures the whole BA. Therefore it will also measure the remainder AE. And AE measures DF; therefore G will also measure DF. But it also measures the whole DC. Therefore it will also measure the remainder CF, the greater the less, which is impossible. Therefore CF is the greatest common measure of AB, CD."
+draw = [
+]

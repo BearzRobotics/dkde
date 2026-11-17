@@ -1,0 +1,29 @@
+id = "VII.6"
+book = 7
+order = 6
+title = "The same parts of the sum"
+statement = "If a number be parts of a number, and another be the same parts of another, the sum will also be the same parts of the sum that the one is of the one."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let the number AB be parts of the number C, and another number DE the same parts of another number F that AB is of C. I say that the sum of AB, DE is also the same parts of the sum of C, F that AB is of C. (Here 9 is three fifths of 15, and 12 is three fifths of 20; and so 21 is three fifths of 35.)"
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 7.5 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 10 -0.9",
+  "segment CD cd red",
+  "point E 0 -1.8",
+  "point e 4.5 -1.8",
+  "segment E e green",
+  "point F 0 -2.7",
+  "point f 6 -2.7",
+  "segment F f orange",
+]
+
+[[step]]
+text = "Since AB is parts of C, AB is divided into as many parts of C as AB is parts of C. Let AB be divided into the parts of C, AG, GB, and DE into the parts of F, DH, HE. Then the multitude of AG, GB is equal to the multitude of DH, HE. Since whatever part AG is of C, the same part is DH of F, whatever part AG is of C, the same part is the sum of AG, DH of the sum of C, F (VII.5). For the same reason, whatever part GB is of C, the same part is the sum of GB, HE of the sum of C, F. Therefore whatever parts AB is of C, the same parts is the sum of AB, DE of the sum of C, F."
+draw = [
+]

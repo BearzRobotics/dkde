@@ -1,0 +1,29 @@
+id = "VII.10"
+book = 7
+order = 10
+title = "Alternately, parts"
+statement = "If a number be parts of a number, and another be the same parts of another, alternately also, whatever parts or part the first is of the third, the same parts or the same part will the second be of the fourth."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let the number AB be parts of the number C, and another number DE the same parts of another F. I say that, alternately also, whatever parts or part AB is of DE, the same parts or the same part is C of F. (Here 6 is two thirds of 9, and 8 is two thirds of 12; alternately 6 is three quarters of 8, and 9 is three quarters of 12.)"
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 3 0",
+  "segment AB ab blue",
+  "point C 0 -0.9",
+  "point c 4.5 -0.9",
+  "segment C c red",
+  "point DE 0 -1.8",
+  "point de 4 -1.8",
+  "segment DE de green",
+  "point F 0 -2.7",
+  "point f 6 -2.7",
+  "segment F f orange",
+]
+
+[[step]]
+text = "Since AB is the same parts of C that DE is of F, as many parts of C as there are in AB, so many parts of F are there in DE. Let AB be divided into the parts of C, AG, GB, and DE into the parts of F, DH, HE. Then the multitude of AG, GB is equal to the multitude of DH, HE. Since whatever part AG is of C, the same part is DH of F, alternately, whatever part or parts AG is of DH, the same part or the same parts is C of F (VII.9). For the same reason, whatever part or parts GB is of HE, the same part or the same parts is C of F. Therefore, whatever part or parts the whole AB is of the whole DE, the same part or the same parts is C of F (VII.5, 6)."
+draw = [
+]

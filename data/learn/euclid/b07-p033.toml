@@ -1,0 +1,35 @@
+id = "VII.33"
+book = 7
+order = 33
+title = "The least numbers in a given ratio"
+statement = "Given as many numbers as we please, to find the least of those which have the same ratio with them."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B, C be the given numbers, as many as we please (here 6, 9, 15). It is required to find the least of those which have the same ratio with A, B, C."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 3 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 4.5 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 7.5 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 1 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 1.5 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 2.5 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "A, B, C are either prime to one another or not. If they are prime to one another, they are the least of those which have the same ratio with them (VII.21). But if not, let the greatest common measure D of A, B, C be taken (VII.3), and let A, B, C measure the numbers E, F, G respectively according to the units in D (here D = 3 and E, F, G are 2, 3, 5). Since D measures A, B, C according to the units in E, F, G, E, F, G also measure A, B, C according to the units in D. Therefore E, F, G measure A, B, C the same number of times, so E, F, G are in the same ratio with A, B, C (VII definition 20). I say next that they are the least of those which have the same ratio with them. For if not, there will be numbers less than E, F, G which are in the same ratio with A, B, C. Let them be H, K, L. Then H measures A the same number of times that K, L measure B, C. Let H measure A according to the units in M. Then K, L also measure B, C according to the units in M. And since H measures A according to the units in M, M also measures A according to the units in H. For the same reason M also measures B, C according to the units in K, L. Therefore M measures A, B, C. And since H measures A according to the units in M, H by multiplying M has made A. For the same reason E by multiplying D has made A. Therefore the product of E, D is equal to the product of H, M. Therefore, as E is to H, so is M to D. But E is greater than H. Therefore M is also greater than D. And it measures A, B, C, which is impossible, for D is the greatest common measure of A, B, C. Therefore there cannot be any numbers less than E, F, G which are in the same ratio with A, B, C. Therefore E, F, G are the least of those which have the same ratio with A, B, C."
+draw = [
+]

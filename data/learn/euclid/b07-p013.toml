@@ -1,0 +1,29 @@
+id = "VII.13"
+book = 7
+order = 13
+title = "Alternately"
+statement = "If four numbers be proportional, they will also be proportional alternately."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let the four numbers A, B, C, D be proportional, so that A is to B as C is to D. I say that they will also be proportional alternately, so that A is to C as B is to D. (Here 2 : 3 = 4 : 6 and 2 : 4 = 3 : 6.)"
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.5 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 3 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Since A is to B as C is to D, A is the same part or parts of B that C is of D. Therefore, alternately, A is the same part or parts of C that B is of D (VII.9, 10). Therefore, as A is to C, so is B to D."
+draw = [
+]

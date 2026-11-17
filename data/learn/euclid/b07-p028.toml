@@ -1,0 +1,26 @@
+id = "VII.28"
+book = 7
+order = 28
+title = "The sum of primes"
+statement = "If two numbers be prime to one another, the sum will also be prime to each of them; and, if the sum of two numbers be prime to any one of them, the original numbers will also be prime to one another."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "For let two numbers AB, BC prime to one another be added (here 5 and 3). I say that the sum AC is also prime to each of the numbers AB, BC."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 2.5 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 1.5 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 4 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "For if CA, AB are not prime to one another, some number will measure CA, AB. Let D measure them. Then, since D measures CA, AB, it will also measure the remainder BC. But it also measures BA. Therefore D measures AB, BC, which are prime to one another, which is impossible. Therefore no number will measure the numbers CA, AB. Therefore CA, AB are prime to one another. For the same reason AC, CB are also prime to one another. Therefore CA is prime to each of the numbers AB, BC. Conversely, if CA, AB are prime to one another, then AB, BC are also prime to one another: for if some number D measured AB, BC, it would measure the whole CA and AB, which are prime to one another, which is impossible."
+draw = [
+]

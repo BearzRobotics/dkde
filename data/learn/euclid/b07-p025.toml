@@ -1,0 +1,26 @@
+id = "VII.25"
+book = 7
+order = 25
+title = "A square prime to a number"
+statement = "If two numbers be prime to one another, the product of one of them into itself will be prime to the remaining one."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B be two numbers prime to one another (here 3 and 8), and let A by multiplying itself make C. I say that B, C are prime to one another."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 4 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4.5 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "For let D be made equal to A. Since A, B are prime to one another, and A is equal to D, D, B are also prime to one another. Therefore each of the numbers D, A is prime to B. Therefore the product of D, A will also be prime to B (VII.24). But the number which is the product of D, A is C. Therefore C, B are prime to one another."
+draw = [
+]

@@ -1,0 +1,26 @@
+id = "VII.22"
+book = 7
+order = 22
+title = "The least numbers are prime"
+statement = "The least numbers of those which have the same ratio with them are prime to one another."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B be the least numbers of those which have the same ratio with them. I say that A, B are prime to one another."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 0.5 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "For if they are not prime to one another, some number will measure them. Let some number C measure them. Let A be C times D, and B be C times E. Since C by multiplying D has made A, and C by multiplying E has made B, C by multiplying D, E has made A, B. Therefore, as D is to E, so is A to B (VII.17). Therefore D, E are in the same ratio with A, B, being less than they, which is impossible. Therefore no number will measure the numbers A, B. Therefore A, B are prime to one another."
+draw = [
+]

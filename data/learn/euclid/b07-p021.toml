@@ -1,0 +1,29 @@
+id = "VII.21"
+book = 7
+order = 21
+title = "Prime numbers are least"
+statement = "Numbers prime to one another are the least of those which have the same ratio with them."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B be numbers prime to one another (here 3 and 2). I say that A, B are the least of those which have the same ratio with them."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1 -0.9",
+  "segment B b red",
+  "point CD 0 -1.8",
+  "point cd 4.5 -1.8",
+  "segment CD cd green",
+  "point EF 0 -2.7",
+  "point ef 3 -2.7",
+  "segment EF ef orange",
+]
+
+[[step]]
+text = "For if not, there will be some numbers less than A, B which are in the same ratio with A, B. Let them be C, D. Since the least numbers of those which have the same ratio measure those which have the same ratio the same number of times, the greater the greater and the less the less (VII.20), C measures A the same number of times that D measures B. Let C measure A as many times as there are units in E. Then D also measures B according to the units in E. And since C measures A according to the units in E, E also measures A according to the units in C. For the same reason E also measures B according to the units in D. Therefore E measures A, B, which are prime to one another, which is impossible. Therefore there will be no numbers less than A, B which are in the same ratio with A, B. Therefore A, B are the least of those which have the same ratio with them."
+draw = [
+]

@@ -1,0 +1,32 @@
+id = "VII.36"
+book = 7
+order = 36
+title = "The least common multiple of three numbers"
+statement = "Given three numbers, to find the least number which they measure."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B, C be the three given numbers (here 2, 3, 4). It is required to find the least number which they measure."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.5 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 3 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 6 -3.6",
+  "segment E e purple",
+]
+
+[[step]]
+text = "Let D, the least number measured by the two numbers A, B, be taken (VII.34). Then C either measures D or does not measure it. First let it measure it. But A, B also measure D. Therefore A, B, C measure D. I say that it is also the least. For if not, A, B, C will measure some number which is less than D. Let them measure E. Since A, B, C measure E, therefore A, B also measure E. Therefore the least number measured by A, B will also measure E (VII.35). But D is the least number measured by A, B. Therefore D will measure E, the greater the less, which is impossible. Therefore A, B, C will not measure any number which is less than D. Therefore A, B, C measure D as the least. Again, let C not measure D, and let E, the least number measured by C, D, be taken. Since A, B measure D, and D measures E, A, B also measure E. But C also measures E. Therefore A, B, C measure E. I say next that it is also the least. For if not, A, B, C will measure some number F which is less than E. Since A, B, C measure F, A, B also measure F. Therefore the least number measured by A, B will also measure F. But D is the least number measured by A, B. Therefore D measures F. But C also measures F. Therefore D, C measure F, so that the least number measured by D, C will also measure F. But E is the least number measured by C, D. Therefore E measures F, the greater the less, which is impossible. Therefore A, B, C will not measure any number which is less than E. Therefore E is the least that is measured by A, B, C."
+draw = [
+]

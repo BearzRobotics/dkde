@@ -1,0 +1,29 @@
+id = "VII.15"
+book = 7
+order = 15
+title = "The unit and the numbers"
+statement = "If a unit measure any number, and another number measure any other number the same number of times, alternately also, the unit will measure the third number the same number of times that the second measures the fourth."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "For let a unit A measure any number BC, and let another number D measure any other number EF the same number of times. I say that, alternately also, the unit A measures the number D the same number of times that BC measures EF. (Here 1 measures 4 four times; 3 measures 12 four times; alternately 1 measures 3 as often as 4 measures 12.)"
+draw = [
+  "clear",
+  "point DEF 0 0",
+  "point def 2 0",
+  "segment DEF def blue",
+  "point A 0 -0.9",
+  "point a 0.5 -0.9",
+  "segment A a red",
+  "point BGC 0 -1.8",
+  "point bgc 6 -1.8",
+  "segment BGC bgc green",
+  "point H 0 -2.7",
+  "point h 1.5 -2.7",
+  "segment H h orange",
+]
+
+[[step]]
+text = "Since the unit A measures the number BC the same number of times that D measures EF, as many units as there are in BC, so many numbers equal to D are there in EF. Let BC be divided into its units BG, GH, HC, and EF into the numbers EK, KL, LF equal to D. Then the multitude of the units BG, GH, HC is equal to the multitude of the numbers EK, KL, LF. And since the units BG, GH, HC are equal to one another, and the numbers EK, KL, LF are also equal to one another, while the multitude of the units is equal to the multitude of the numbers, the unit BG will be to the number EK as the unit GH is to the number KL, and the unit HC to the number LF. Therefore, as one of the antecedents is to one of the consequents, so will all the antecedents be to all the consequents (VII.12). Therefore, as the unit BG is to the number EK, so is BC to EF. But the unit BG is equal to the unit A, and the number EK to the number D. Therefore, as the unit A is to the number D, so is BC to EF. Therefore the unit A measures the number D the same number of times that BC measures EF."
+draw = [
+]

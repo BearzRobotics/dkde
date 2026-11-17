@@ -1,0 +1,26 @@
+id = "VII.38"
+book = 7
+order = 38
+title = "A part names its measure"
+statement = "If a number have any part whatever, it will be measured by a number called by the same name as the part."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "For let a number A have any part whatever, B, and let C be a number called by the same name as the part B (here B is a third of A, and C is 3). I say that C measures A."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 6 0",
+  "segment A a blue",
+  "point D 0 -0.9",
+  "point d 1.5 -0.9",
+  "segment D d red",
+  "point B 0 -1.8",
+  "point b 2 -1.8",
+  "segment B b green",
+]
+
+[[step]]
+text = "For, since B is a part of A called by the same name as C, and the unit D is also a part of C called by the same name as it, therefore, whatever part the unit D is of the number C, the same part is B of A. Therefore, alternately, whatever part or parts the unit D is of B, the same part or parts is C of A (VII.15). Therefore the unit D measures the number B the same number of times that C measures A. Therefore C measures A."
+draw = [
+]

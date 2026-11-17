@@ -1,0 +1,35 @@
+id = "VII.27"
+book = 7
+order = 27
+title = "Squares and cubes of primes"
+statement = "If two numbers be prime to one another, and each by multiplying itself make a certain number, the products will be prime to one another; and if the original numbers by multiplying the products make certain numbers, the latter will also be prime to one another, and this always happens with the extremes."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let A, B be two numbers prime to one another (here 2 and 3), and let A by multiplying itself make C, and by multiplying C make D, and let B by multiplying itself make E, and by multiplying E make F. I say that C, E are prime to one another, and D, F are prime to one another."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.5 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 4.5 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 4 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 13.5 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "For, since A, B are prime to one another, and A by multiplying itself has made C, C, B are prime to one another (VII.25). Since, then, C, B are prime to one another, and B by multiplying itself has made E, C, E are prime to one another. Again, since A, B are prime to one another, and B by multiplying itself has made E, A, E are prime to one another. Since, then, the two numbers A, C are prime to the two numbers B, E, both to each, the product of A, C is prime to the product of B, E (VII.26). And the product of A, C is D, and the product of B, E is F. Therefore D, F are prime to one another."
+draw = [
+]

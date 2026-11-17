@@ -1,0 +1,29 @@
+id = "VII.5"
+book = 7
+order = 5
+title = "The same part of the sum"
+statement = "If a number be part of a number, and another be the same part of another, the sum will also be the same part of the sum that the one is of the one."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "For let a number A be a part of BC, and another D the same part of another EF that A is of BC. I say that the sum of A, D is also the same part of the sum of BC, EF that A is of BC. (Here A = 4 is a third of BC = 12, and D = 5 is a third of EF = 15; and so 9 is a third of 27.)"
+draw = [
+  "clear",
+  "point BC 0 0",
+  "point bc 6 0",
+  "segment BC bc blue",
+  "point EF 0 -0.9",
+  "point ef 10 -0.9",
+  "segment EF ef red",
+  "point A 0 -1.8",
+  "point a 2 -1.8",
+  "segment A a green",
+  "point D 0 -2.7",
+  "point d 2.5 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Since whatever part A is of BC, the same part is D of EF, as many numbers as there are in BC equal to A, so many are there in EF equal to D. Let BC be divided into the numbers equal to A, namely BG, GC, and EF into the numbers equal to D, namely EH, HF. Then the multitude of BG, GC will be equal to the multitude of EH, HF. And since BG is equal to A, and EH to D, BG, EH together are equal to A, D together. For the same reason GC, HF together are equal to A, D together. Therefore as many numbers as there are in BC equal to A, so many are there in BC, EF together equal to A, D together. Therefore whatever part A is of BC, the same part is the sum of A, D of the sum of BC, EF."
+draw = [
+]

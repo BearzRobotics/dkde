@@ -1,0 +1,35 @@
+id = "VII.11"
+book = 7
+order = 11
+title = "Whole to whole"
+statement = "If, as a whole is to a whole, so is a number subtracted to a number subtracted, the remainder will also be to the remainder as the whole to the whole."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number, so that \"measures\" means \"fits a whole number of times\"."
+
+[[step]]
+text = "Let the whole AB be to the whole CD as the part subtracted AE is to the part subtracted CF. I say that the remainder EB is to the remainder FD as the whole AB is to the whole CD. (Here 12 : 8 = 6 : 4 = 6 : 4.)"
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 6 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 4 -0.9",
+  "segment CD cd red",
+  "point AE 0 -1.8",
+  "point ae 3 -1.8",
+  "segment AE ae green",
+  "point CF 0 -2.7",
+  "point cf 2 -2.7",
+  "segment CF cf orange",
+  "point EB 0 -3.6",
+  "point eb 3 -3.6",
+  "segment EB eb purple",
+  "point FD 0 -4.5",
+  "point fd 2 -4.5",
+  "segment FD fd teal",
+]
+
+[[step]]
+text = "Since AB is to CD as AE is to CF, whatever part or parts AB is of CD, the same part or parts is AE of CF. Therefore also the remainder EB is the same part or parts of the remainder FD that AB is of CD (VII.7, 8). Therefore, as EB is to FD, so is AB to CD."
+draw = [
+]
