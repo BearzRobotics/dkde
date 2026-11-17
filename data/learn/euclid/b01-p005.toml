@@ -1,0 +1,69 @@
+id = "I.5"
+book = 1
+order = 6
+title = "Base angles of an isosceles triangle"
+statement = "In isosceles triangles the angles at the base are equal to one another, and, if the equal straight lines be produced further, the angles under the base will be equal to one another."
+proof = "Therefore in isosceles triangles the angles at the base are equal to one another, and, if the equal straight lines be produced further, the angles under the base will be equal to one another. Q.E.D."
+
+[[step]]
+text = "Let ABC be an isosceles triangle having the side AB equal to the side AC. Let the straight lines BD and CE be produced further in a straight line with AB and AC (postulate 2). It is required to prove that the angle ABC is equal to the angle ACB, and the angle CBD to the angle BCE."
+draw = [
+  "clear",
+  "point A 0 3",
+  "point B -2 0",
+  "point C 2 0",
+  "point D -3 -1.5",
+  "point E 3 -1.5",
+  "segment A B",
+  "segment A C",
+  "segment B C",
+  "segment B D",
+  "segment C E",
+]
+
+[[step]]
+text = "Let a point F be taken at random on BD. From AE the greater let AG be cut off equal to AF the less (I.3). Let the straight lines FC and GB be joined (postulate 1)."
+draw = [
+  "point F -2.67 -1",
+  "point G 2.67 -1",
+  "segment F C orange",
+  "segment G B orange",
+]
+
+[[step]]
+text = "Since AF is equal to AG, and AB to AC, the two sides FA, AC are equal to the two sides GA, AB, respectively, and they contain a common angle, the angle FAG. Therefore the base FC is equal to the base GB, the triangle AFC is equal to the triangle AGB, and the remaining angles equal the remaining angles respectively, namely those which the equal sides subtend (I.4): the angle ACF to the angle ABG, and the angle AFC to the angle AGB."
+draw = [
+  "polygon A F C blue fill",
+  "polygon A G B red fill",
+]
+
+[[step]]
+text = "Since the whole AF is equal to the whole AG, and in these AB is equal to AC, the remainder BF is equal to the remainder CG (common notion 3). But FC was also proved equal to GB. So the two sides BF, FC are equal to the two sides CG, GB respectively, and the angle BFC is equal to the angle CGB, while the base BC is common to them. Therefore the triangle BFC is equal to the triangle CGB, and the remaining angles equal the remaining angles, namely those which the equal sides subtend (I.4). Therefore the angle FBC is equal to the angle GCB, and the angle BCF to the angle CBG."
+draw = [
+  "clear",
+  "point A 0 3",
+  "point B -2 0",
+  "point C 2 0",
+  "point D -3 -1.5",
+  "point E 3 -1.5",
+  "point F -2.67 -1",
+  "point G 2.67 -1",
+  "segment A B",
+  "segment A C",
+  "segment B C",
+  "segment B D",
+  "segment C E",
+  "segment F C orange",
+  "segment G B orange",
+  "polygon B F C teal fill",
+  "polygon C G B purple fill",
+]
+
+[[step]]
+text = "Since the whole angle ABG was proved equal to the angle ACF, and in these the angle CBG is equal to the angle BCF, the remaining angle ABC is equal to the remaining angle ACB (common notion 3), and they are at the base of the triangle ABC. But the angle FBC was also proved equal to the angle GCB, and they are under the base."
+draw = [
+  "angle A B C green fill",
+  "angle A C B green fill",
+  "angle F B C red",
+  "angle G C B red",
+]
