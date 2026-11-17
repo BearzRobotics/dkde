@@ -59,6 +59,7 @@ fn measure(ink: Ink, n: Node, scale: f64) Metrics {
             m.w += pad(ink, t, scale) * 2;
             return m;
         },
+        .empty => return .{ .w = ink.em(scale) * 0.7, .asc = ink.em(scale) * 0.85, .desc = 0 },
         .row => |items| {
             var m: Metrics = .{ .w = 0, .asc = 0, .desc = 0 };
             for (items) |x| {
@@ -112,6 +113,18 @@ fn draw(ink: Ink, cr: *cairo.Context, n: Node, x: f64, base: f64, scale: f64) f6
             var cx = x;
             for (items) |c| cx += draw(ink, cr, c, cx, base, scale);
             return cx - x;
+        },
+        .empty => {
+            // A dashed box to type into.
+            const w = ink.em(scale) * 0.7;
+            const h = ink.em(scale) * 0.85;
+            const dashes = [_]f64{ 2, 2 };
+            cr.setDash(&dashes, 2, 0);
+            cr.setLineWidth(1);
+            cr.rectangle(x + 1.5, base - h + 0.5, w - 3, h - 1);
+            cr.stroke();
+            cr.setDash(&.{}, 0, 0);
+            return w;
         },
         .sup => |s| {
             const m = measure(ink, n, scale);

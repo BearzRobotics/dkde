@@ -18,6 +18,8 @@ pub const Node = union(enum) {
     sqrt: *Node,
     /// Parentheses around content (kept so that grouping is still visible).
     group: *Node,
+    /// An empty pair of parentheses: a box waiting for something to be typed (the fraction template).
+    empty,
 };
 
 const Kind = enum { number, ident, single_letter, group, call, root, other };
@@ -214,6 +216,7 @@ const Parser = struct {
             self.i += seqLen(c);
         }
         try self.flush(&items, &plain_start, self.i);
+        if (in_group and items.items.len == 0) return .empty;
         if (items.items.len == 1) return items.items[0];
         return .{ .row = try items.toOwnedSlice(self.arena) };
     }
@@ -235,7 +238,7 @@ pub fn parse(arena: Allocator, text: []const u8) Allocator.Error!Node {
 /// Does the tree hold anything that is drawn other than as a line of text?
 pub fn isStacked(n: Node) bool {
     return switch (n) {
-        .text => false,
+        .text, .empty => false,
         .row => |items| for (items) |x| {
             if (isStacked(x)) break true;
         } else false,
@@ -248,6 +251,7 @@ pub fn isStacked(n: Node) bool {
 pub fn plain(n: Node, out: *std.ArrayList(u8), a: Allocator) Allocator.Error!void {
     switch (n) {
         .text => |t| try out.appendSlice(a, t),
+        .empty => {},
         .row => |items| for (items) |x| try plain(x, out, a),
         .frac => |f| {
             try plain(f.num.*, out, a);
@@ -280,6 +284,7 @@ fn shape(a: Allocator, text: []const u8) ![]const u8 {
 fn dump(n: Node, out: *std.ArrayList(u8), a: Allocator) !void {
     switch (n) {
         .text => |t| try out.appendSlice(a, t),
+        .empty => try out.appendSlice(a, "_"),
         .row => |items| for (items) |x| try dump(x, out, a),
         .frac => |f| {
             try out.appendSlice(a, "[");
@@ -315,6 +320,15 @@ test "a fraction is stacked" {
     try std.testing.expectEqualStrings("[x+1|x−1]", try shape(a, "(x+1)/(x−1)"));
     try std.testing.expectEqualStrings("[[1|2]|3]", try shape(a, "1/2/3"));
     try std.testing.expectEqualStrings("[22|7]", try shape(a, "22 / 7"));
+}
+
+test "the fraction template shows two empty boxes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    try std.testing.expectEqualStrings("[_|_]", try shape(a, "()/()"));
+    try std.testing.expectEqualStrings("[3|_]", try shape(a, "(3)/()"));
+    try std.testing.expect(isStacked(try parse(a, "()/()")));
 }
 
 test "units and plain lines are left alone" {

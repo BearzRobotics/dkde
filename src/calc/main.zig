@@ -48,7 +48,7 @@ const group_sep = "\u{202F}";
 const Mode = enum { standard, scientific, programmer };
 const Pane = enum { none, history, units, currency, dates, graph, formulas, steps, functions };
 
-const Cmd = enum { insert, enter, clear, back, negate, reciprocal, mc, mr, ms, mplus, mminus, plot };
+const Cmd = enum { insert, enter, clear, back, negate, reciprocal, mc, mr, ms, mplus, mminus, plot, fraction };
 
 const Spec = struct {
     label: [:0]const u8,
@@ -78,6 +78,7 @@ const standard_keys = [_][5]Spec{
     .{ k("4", "4"), k("5", "5"), k("6", "6"), op("−", "−"), op("x²", "²") },
     .{ k("1", "1"), k("2", "2"), k("3", "3"), op("+", "+"), op("%", "%") },
     .{ cmd("±", .negate, "Change the sign"), k("0", "0"), k(".", "."), .{ .label = "=", .insert = "=", .css = "dkde-calc-equals" }, enter_key },
+    .{ cmd("a/b", .fraction, "Fraction: type the top, press Tab, type the bottom (a number just before the cursor becomes the top)"), op("xʸ", "^"), op("|x|", "abs("), op("π", "π"), cmd("1/x", .reciprocal, "Reciprocal") },
 };
 
 const scientific_keys = [_][5]Spec{
@@ -766,6 +767,7 @@ const Calc = struct {
             .enter => self.calculate(),
             .clear => self.clear(),
             .back => self.backspace(),
+            .fraction => self.insertFraction(),
             .negate => if (self.rpn) self.rpnUnary("-rpnb", "negate") else self.wrapEntry("−(", ")", true),
             .reciprocal => if (self.rpn) self.rpnUnary("1/rpnb", "1/x") else self.wrapEntry("1/(", ")", false),
             .mc => {
@@ -820,6 +822,65 @@ const Calc = struct {
         var pos: c_int = editable.getPosition();
         editable.insertText(z, -1, &pos);
         editable.setPosition(pos);
+    }
+
+    /// The fraction template, like the n/d key of a TI: "()/()" with the cursor in the top. A number
+    /// just before the cursor becomes the top, and the cursor goes to the bottom. Tab moves between the
+    /// fields; the line above the entry shows them stacked.
+    fn insertFraction(self: *Calc) void {
+        if (self.rpn) return;
+        if (self.fresh) {
+            self.fresh = false;
+            self.setEntry(self.plain orelse "");
+            self.formula = null;
+            self.entry.as(gtk.Editable).setPosition(-1);
+        }
+        const editable = self.entry.as(gtk.Editable);
+        var s: c_int = 0;
+        var e: c_int = 0;
+        if (editable.getSelectionBounds(&s, &e) != 0) editable.deleteText(s, e);
+        const text = self.entryText();
+        const pos: usize = @intCast(@max(editable.getPosition(), 0));
+        const here = byteOf(text, pos);
+        var start = here;
+        while (start > 0 and (std.ascii.isDigit(text[start - 1]) or text[start - 1] == '.')) start -= 1;
+        var buf: [96]u8 = undefined;
+        if (start < here and here - start < 60) {
+            const top = text[start..here];
+            const template = std.fmt.bufPrintSentinel(&buf, "({s})/()", .{top}, 0) catch return;
+            const first = charsIn(text[0..start]);
+            editable.deleteText(@intCast(first), @intCast(pos));
+            var p: c_int = @intCast(first);
+            editable.insertText(template, -1, &p);
+            editable.setPosition(p - 1);
+        } else {
+            var p: c_int = @intCast(pos);
+            editable.insertText("()/()", -1, &p);
+            editable.setPosition(@as(c_int, @intCast(pos)) + 1);
+        }
+    }
+
+    /// Tab inside a fraction template: from the top to the bottom, from the bottom to after it.
+    fn fractionNext(self: *Calc) bool {
+        const text = self.entryText();
+        const editable = self.entry.as(gtk.Editable);
+        const here = byteOf(text, @intCast(@max(editable.getPosition(), 0)));
+        const close = std.mem.indexOfScalarPos(u8, text, here, ')') orelse return false;
+        const target = if (std.mem.startsWith(u8, text[close + 1 ..], "/(")) close + 3 else close + 1;
+        editable.setPosition(@intCast(charsIn(text[0..target])));
+        return true;
+    }
+
+    /// The byte offset of character number `chars` of `text`.
+    fn byteOf(text: []const u8, chars: usize) usize {
+        var i: usize = 0;
+        var n: usize = 0;
+        while (i < text.len and n < chars) : (n += 1) i += std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
+        return i;
+    }
+
+    fn charsIn(text: []const u8) usize {
+        return std.unicode.utf8CountCodepoints(text) catch text.len;
     }
 
     fn clear(self: *Calc) void {
@@ -3673,6 +3734,11 @@ const Calc = struct {
             },
             gdk.KEY_Escape => {
                 self.clear();
+                return 1;
+            },
+            gdk.KEY_Tab => if (in_main and plain_key and self.fractionNext()) return 1,
+            gdk.KEY_slash => if (in_main and state.control_mask and !state.alt_mask) {
+                self.insertFraction();
                 return 1;
             },
             gdk.KEY_Up, gdk.KEY_Down => if (in_main and plain_key) {
