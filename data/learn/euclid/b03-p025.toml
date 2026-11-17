@@ -1,0 +1,36 @@
+id = "III.25"
+book = 3
+order = 25
+title = "To complete a circle"
+statement = "Given a segment of a circle, to describe the complete circle of which it is a segment."
+proof = "Therefore, given a segment of a circle, the complete circle has been described, with E as centre. Being what it was required to do."
+
+[[step]]
+text = "Let ABC be the given segment of a circle. It is required to describe the complete circle, of which it is a segment. Let AC be bisected at D (I.10), let DB be drawn from D at right angles to AC (I.11), and let AB be joined."
+draw = [
+  "clear",
+  "point A -3 0",
+  "point C 3 0",
+  "point D 0 0",
+  "point B 0 1.854",
+  "segment A C black",
+  "segment D B red",
+  "segment A B black",
+]
+
+[[step]]
+text = "The angle ABD is either greater than, equal to, or less than the angle BAD. Let it be less. On the straight line BA, at the point A on it, let the angle BAE be constructed equal to the angle ABD (I.23). Let BD be drawn through to E, and let EC be joined."
+draw = [
+  "point E 0 -1.5",
+  "line B D black",
+  "segment A E green",
+  "segment E C green",
+  "angle A B D orange fill",
+  "angle B A E orange fill",
+]
+
+[[step]]
+text = "Since the angle ABE is equal to the angle BAE, the straight line EB is equal to EA (I.6). Since AD is equal to DC, and DE is common, the two sides AD, DE are equal to the two sides CD, DE, and the angle ADE is equal to the angle CDE, for each is right. Therefore the base AE is equal to the base CE (I.4). But AE was proved equal to BE. Therefore BE is also equal to CE. Therefore the three straight lines AE, EB, EC are equal to one another. Therefore the point E is the centre of the circle (III.9). If E is taken as centre and one of the straight lines AE, EB, EC as distance, a circle is described which will pass through the other points, and it is the complete circle."
+draw = [
+  "circle E B blue",
+]

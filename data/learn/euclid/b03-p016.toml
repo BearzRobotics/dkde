@@ -1,0 +1,32 @@
+id = "III.16"
+book = 3
+order = 16
+title = "The tangent at the end of a diameter"
+statement = "The straight line drawn at right angles to the diameter of a circle from its extremity will fall outside the circle, and into the space between the straight line and the circumference another straight line cannot be interposed; further, the angle of the semicircle is greater, and the remaining angle less, than any acute rectilineal angle."
+proof = "Therefore the straight line drawn at right angles to the diameter of a circle from its extremity touches the circle, and it touches the circle at one point only. Q.E.D."
+
+[[step]]
+text = "Let ABC be a circle about D as centre and AB as diameter. I say that the straight line drawn from A at right angles to AB from its extremity will fall outside the circle."
+draw = [
+  "clear",
+  "point D 0 0",
+  "point A -3 0",
+  "point B 3 0",
+  "circle D A blue",
+  "segment A B black",
+]
+
+[[step]]
+text = "For suppose it does not, but, if possible, let it fall within, as CA, and let DC be joined. Since DA is equal to DC, the angle DAC is equal to the angle ACD (I.5). But DAC is right. Therefore ACD is also right. So in the triangle ACD the two angles DAC, ACD are equal to two right angles, which is impossible (I.17). Therefore the straight line drawn from A at right angles to BA will not fall within the circle. Similarly it will not fall on the circumference. Therefore it falls outside."
+draw = [
+  "point E -3 3",
+  "line A E red",
+  "angle D A E orange fill",
+]
+
+[[step]]
+text = "I say next that into the space between the straight line AE and the circumference ACG another straight line cannot be interposed. For if possible, let FA be so interposed, and let DG be drawn from the point D perpendicular to FA (I.12). Since the angle AGD is right, and the angle DAG is less than a right angle, AD is greater than DG (I.19). But DA is equal to DH. Therefore DH is greater than DG, the less than the greater, which is impossible. Therefore no straight line can be interposed."
+draw = [
+  "point F -2.954 0.521",
+  "line A F green",
+]

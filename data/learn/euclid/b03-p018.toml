@@ -1,0 +1,26 @@
+id = "III.18"
+book = 3
+order = 18
+title = "A tangent is perpendicular to the radius"
+statement = "If a straight line touch a circle, and a straight line be drawn from the centre to the point of contact, the straight line so drawn will be perpendicular to the tangent."
+proof = "Therefore if a straight line touch a circle, and a straight line be drawn from the centre to the point of contact, the straight line so drawn will be perpendicular to the tangent. Q.E.D."
+
+[[step]]
+text = "For let a straight line DE touch the circle ABC at the point C. Let the centre F of the circle ABC be taken, and let FC be joined from F to C. I say that FC is perpendicular to DE."
+draw = [
+  "clear",
+  "point F 0 0",
+  "point C 0 3",
+  "point D -4 3",
+  "point E 4 3",
+  "circle F C blue",
+  "line D E red",
+  "segment F C green",
+]
+
+[[step]]
+text = "For if not, let FG be drawn from F perpendicular to DE (I.12). Since the angle FGC is right, the angle FCG is acute (I.17). And the greater angle is subtended by the greater side (I.19). Therefore FC is greater than FG. But FC is equal to FB. Therefore FB is greater than FG, the less than the greater, which is impossible. Therefore FG is not perpendicular to DE. Similarly we can show that neither is any other straight line except FC. Therefore FC is perpendicular to DE."
+draw = [
+  "point G 1.5 3",
+  "segment F G orange",
+]

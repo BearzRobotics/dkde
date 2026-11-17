@@ -1,0 +1,29 @@
+id = "III.28"
+book = 3
+order = 28
+title = "Equal chords cut off equal arcs"
+statement = "In equal circles equal straight lines cut off equal circumferences, the greater equal to the greater and the less to the less."
+proof = "Therefore in equal circles equal straight lines cut off equal circumferences, the greater equal to the greater and the less to the less. Q.E.D."
+
+[[step]]
+text = "Let ABC, DEF be equal circles, and in them let AB, DE be equal straight lines cutting off BC, EF as the greater circumferences and BG, EH as the less. I say that the greater circumference BAC is equal to the greater circumference EDF, and the less circumference BGC to EHF."
+draw = [
+  "clear",
+  "point G -5 0",
+  "point H 5 0",
+  "point A -5 3",
+  "point B -7.598 -1.5",
+  "point C -2.402 -1.5",
+  "point D 5 3",
+  "point E 2.402 -1.5",
+  "point F 7.598 -1.5",
+  "circle G A blue",
+  "circle H D blue",
+  "segment B C red",
+  "segment E F red",
+]
+
+[[step]]
+text = "Let the centres K, L of the circles be taken, and let AK, KB, DL, LE be joined. Since the circles are equal, the radii are equal. Thus the two sides AK, KB are equal to the two sides DL, LE, and the base AB is equal to the base DE. Therefore the angle AKB is equal to the angle DLE (I.8). But equal angles stand on equal circumferences when they are at the centres (III.26). Therefore the circumference AGB is equal to DHE. But the whole circle ABC is also equal to the whole circle DEF. Therefore the remaining circumference ACB is also equal to the remaining circumference DFE."
+draw = [
+]

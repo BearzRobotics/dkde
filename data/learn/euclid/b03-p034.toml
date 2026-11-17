@@ -1,0 +1,35 @@
+id = "III.34"
+book = 3
+order = 34
+title = "To cut off a segment containing a given angle"
+statement = "From a given circle to cut off a segment admitting an angle equal to a given rectilineal angle."
+proof = "Therefore from the given circle ABC the segment BDC has been cut off admitting the angle BDC equal to the given rectilineal angle at D. Being what it was required to do."
+
+[[step]]
+text = "Let ABC be the given circle, and the angle at D the given rectilineal angle (here 50 degrees). It is required to cut off from the circle ABC a segment admitting an angle equal to the given angle at D."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point B 0 -4",
+  "circle O B blue",
+]
+
+[[step]]
+text = "Let EF be drawn touching the circle ABC at the point B (III.17), and on the straight line FB, at the point B on it, let the angle FBC be constructed equal to the angle at D (I.23)."
+draw = [
+  "point E -5 -4",
+  "point F 5 -4",
+  "point C 3.939 0.695",
+  "line E F red",
+  "segment B C green",
+  "angle F B C orange fill",
+]
+
+[[step]]
+text = "Since a straight line EF touches the circle ABC, and BC is drawn across from the point of contact B, the angle FBC is equal to the angle BAC in the alternate segment of the circle (III.32). But the angle FBC is equal to the angle at D. Therefore the angle BAC in the segment BAC is equal to the angle at D. Therefore from the given circle ABC the segment BAC has been cut off admitting an angle equal to the given rectilineal angle at D."
+draw = [
+  "point A -3.759 1.368",
+  "segment B A black",
+  "segment A C black",
+  "angle B A C green fill",
+]

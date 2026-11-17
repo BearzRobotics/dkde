@@ -1,0 +1,36 @@
+id = "III.23"
+book = 3
+order = 23
+title = "Segments on the same line"
+statement = "On the same straight line there cannot be constructed two similar and unequal segments of circles on the same side."
+proof = "Therefore on the same straight line there cannot be constructed two similar and unequal segments of circles on the same side. Q.E.D."
+
+[[step]]
+text = "For, if possible, on the same straight line AB let two similar and unequal segments of circles, ACB, ADB, be constructed on the same side."
+draw = [
+  "clear",
+  "point A -3 0",
+  "point B 3 0",
+  "point P 0 -1",
+  "point Q 0 -2.5",
+  "circle P A blue",
+  "circle Q A red",
+  "segment A B black",
+]
+
+[[step]]
+text = "Let ACD be drawn through, and let CB, DB be joined."
+draw = [
+  "point C 0 2.162",
+  "point D 1.7 2.9",
+  "line A C black",
+  "segment C B black",
+  "segment D B black",
+]
+
+[[step]]
+text = "Since the segment ACB is similar to the segment ADB, and similar segments of circles contain equal angles (definition 11), the angle ACB is equal to the angle ADB, the exterior to the interior, which is impossible (I.16). Therefore on the same straight line there cannot be constructed two similar and unequal segments of circles on the same side."
+draw = [
+  "angle A C B orange fill",
+  "angle A D B green fill",
+]

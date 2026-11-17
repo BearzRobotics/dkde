@@ -1,0 +1,40 @@
+id = "III.15"
+book = 3
+order = 15
+title = "The diameter is the greatest chord"
+statement = "Of straight lines in a circle the diameter is greatest, and of the rest the nearer to the centre is always greater than the more remote."
+proof = "Therefore the diameter is greatest, and of the rest the nearer to the centre is always greater than the more remote. Q.E.D."
+
+[[step]]
+text = "Let ABCD be a circle, let AD be its diameter and E the centre, and let BC be nearer to the diameter AD, and FG more remote. I say that AD is greatest and BC greater than FG."
+draw = [
+  "clear",
+  "point E 0 0",
+  "point A -4 0",
+  "point D 4 0",
+  "point B -3.873 1",
+  "point C 3.873 1",
+  "point F -2.646 3",
+  "point G 2.646 3",
+  "point H 0 1",
+  "point K 0 3",
+  "circle E A blue",
+  "segment A D red",
+  "segment B C green",
+  "segment F G orange",
+  "segment E H black",
+  "segment E K black",
+]
+
+[[step]]
+text = "From the centre E let EH, EK be drawn perpendicular to BC, FG (I.12), and let EB, EC, EF be joined. Since AE is equal to EB, and ED to EC, AD is equal to EB, EC. But EB, EC are greater than BC (I.20). Therefore AD is also greater than BC."
+draw = [
+  "segment E B black",
+  "segment E C black",
+  "segment E F black",
+]
+
+[[step]]
+text = "And since BC is nearer to the centre than FG, EK is greater than EH. Now BC is double of BH and FG is double of FK, and the squares on EH, HB are equal to the squares on EK, KF, of which the square on EK is greater than the square on EH. Therefore the square on FK is less than the square on BH, so FK is less than BH, and FG is less than BC. Therefore the diameter AD is greatest, and BC is greater than FG."
+draw = [
+]

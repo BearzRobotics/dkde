@@ -1,0 +1,42 @@
+id = "III.35"
+book = 3
+order = 35
+title = "Intersecting chords"
+statement = "If in a circle two straight lines cut one another, the rectangle contained by the segments of the one is equal to the rectangle contained by the segments of the other."
+proof = "Therefore if in a circle two straight lines cut one another, the rectangle contained by the segments of the one is equal to the rectangle contained by the segments of the other. Q.E.D."
+
+[[step]]
+text = "In the circle ABCD let two straight lines AC, BD cut one another at the point E. I say that the rectangle contained by AE, EC is equal to the rectangle contained by DE, EB."
+draw = [
+  "clear",
+  "point F 0 0",
+  "point A -3.464 -2",
+  "point B -2.571 3.064",
+  "point C 2 3.464",
+  "point D 3.759 -1.368",
+  "point E -0.118 1.346",
+  "circle F A blue",
+  "segment A C red",
+  "segment B D green",
+]
+
+[[step]]
+text = "First, let AC, BD pass through the centre, so that E is the centre of the circle ABCD. Then AE, EC, DE, EB are all radii, so the rectangle AE, EC is equal to the rectangle DE, EB."
+draw = [
+]
+
+[[step]]
+text = "Next, let BD pass through the centre, and cut AC, not through the centre, at right angles at E. Then AE is equal to EC (III.3). Since the straight line BD has been cut into equal parts at F and into unequal parts at E, the rectangle BE, ED together with the square on EF is equal to the square on FB (II.5), that is, to the square on FA. But the squares on AE, EF are equal to the square on FA (I.47). Therefore the rectangle BE, ED together with the square on EF is equal to the squares on AE, EF. Take away the square on EF from each. Then the remaining rectangle contained by BE, ED is equal to the square on AE, that is, to the rectangle contained by AE, EC."
+draw = [
+]
+
+[[step]]
+text = "Next, let BD, passing through the centre, cut AC, not through the centre, not at right angles, and from the centre F let FG be drawn perpendicular to AC. Then AG is equal to GC (III.3). Since the straight line AC has been cut into equal parts at G and into unequal parts at E, the rectangle AE, EC together with the square on EG is equal to the square on GC (II.5). Add the square on GF to each. Then the rectangle AE, EC together with the squares on EG, GF is equal to the squares on CG, GF. But the squares on EG, GF equal the square on FE, and the squares on CG, GF equal the square on FC. Therefore the rectangle AE, EC together with the square on FE is equal to the square on FC, that is, on FB. But, as was shown, the rectangle BE, ED together with the square on FE is also equal to the square on FB. Therefore the rectangle AE, EC is equal to the rectangle BE, ED."
+draw = [
+]
+
+[[step]]
+text = "Last, let neither of the straight lines AC, BD pass through the centre. Let the centre F be taken, and through E let the diameter GEFH be drawn. Then the rectangle AE, EC is equal to the rectangle GE, EH, by the case just proved, and for the same reason the rectangle BE, ED is equal to the same rectangle GE, EH. Therefore the rectangle AE, EC is equal to the rectangle BE, ED."
+draw = [
+  "line F E black",
+]

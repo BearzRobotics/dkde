@@ -1,0 +1,41 @@
+id = "III.32"
+book = 3
+order = 32
+title = "The tangent and chord"
+statement = "If a straight line touch a circle, and from the point of contact there be drawn across, in the circle, a straight line cutting the circle, the angles which it makes with the tangent will be equal to the angles in the alternate segments of the circle."
+proof = "Therefore if a straight line touch a circle, and from the point of contact there be drawn across, in the circle, a straight line cutting the circle, the angles which it makes with the tangent will be equal to the angles in the alternate segments of the circle. Q.E.D."
+
+[[step]]
+text = "For let a straight line EF touch the circle ABCD at the point B, and from the point B let a straight line BD be drawn across in the circle ABCD cutting it. I say that the angles which BD makes with the tangent EF will be equal to the angles in the alternate segments of the circle: the angle FBD equal to the angle BAD, and the angle EBD to the angle BCD."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point B 0 -4",
+  "point E -5 -4",
+  "point F 5 -4",
+  "point D 3.064 2.571",
+  "point A -3.759 1.368",
+  "point C -3.277 -2.294",
+  "circle O B blue",
+  "line E F red",
+  "segment B D black",
+  "angle F B D orange fill",
+]
+
+[[step]]
+text = "From B let BA be drawn at right angles to EF (I.11), let a point C be taken at random on the circumference BD, and let AD, DC, CB be joined. Since a straight line EF touches the circle ABCD at B, and BA has been drawn from the point of contact at right angles to the tangent, the centre of the circle ABCD is on BA (III.19). Therefore BA is a diameter, and the angle ADB, being in a semicircle, is right (III.31). Therefore the remaining angles BAD, ABD are equal to one right angle (I.32)."
+draw = [
+  "segment B A green",
+  "segment A D green",
+  "angle A D B green fill",
+]
+
+[[step]]
+text = "But the angle ABF is also right. Therefore the angle ABF is equal to the angles BAD, ABD. Take away the angle ABD from each. Then the remaining angle DBF is equal to the angle BAD, which is in the alternate segment of the circle. Next, since ABCD is a quadrilateral in a circle, its opposite angles are equal to two right angles (III.22). But the angles DBF, DBE are also equal to two right angles (I.13). Therefore the angles DBF, DBE are equal to the angles BAD, BCD, of which BAD was proved equal to DBF. Therefore the remaining angle DBE is equal to the angle DCB in the alternate segment DCB of the circle."
+draw = [
+  "angle B A D orange fill",
+  "segment D C black",
+  "segment C B black",
+  "angle E B D purple fill",
+  "angle B C D purple fill",
+]

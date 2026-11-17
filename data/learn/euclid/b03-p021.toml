@@ -1,0 +1,37 @@
+id = "III.21"
+book = 3
+order = 21
+title = "Angles in the same segment"
+statement = "In a circle the angles in the same segment are equal to one another."
+proof = "Therefore in a circle the angles in the same segment are equal to one another. Q.E.D."
+
+[[step]]
+text = "Let ABCD be a circle, and let BAD, BED be angles in the same segment BAED. I say that the angles BAD, BED are equal to one another."
+draw = [
+  "clear",
+  "point F 0 0",
+  "point A 0.695 3.939",
+  "point B -3.464 -2",
+  "point D 3.464 -2",
+  "point E -2.571 3.064",
+  "circle F A blue",
+  "segment A B black",
+  "segment A D black",
+  "segment E B black",
+  "segment E D black",
+  "angle B A D orange fill",
+  "angle B E D orange fill",
+]
+
+[[step]]
+text = "Let the centre of the circle ABCD be taken, and let it be F. Let BF, FD be joined."
+draw = [
+  "segment B F green",
+  "segment F D green",
+  "angle B F D purple fill",
+]
+
+[[step]]
+text = "Since the angle BFD is at the centre, and the angle BAD at the circumference, and they have the same circumference BCD as base, the angle BFD is double of the angle BAD (III.20). For the same reason the angle BFD is also double of the angle BED. Therefore the angle BAD is equal to the angle BED."
+draw = [
+]

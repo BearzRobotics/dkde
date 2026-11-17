@@ -1,0 +1,35 @@
+id = "III.22"
+book = 3
+order = 22
+title = "Opposite angles of a cyclic quadrilateral"
+statement = "The opposite angles of quadrilaterals in circles are equal to two right angles."
+proof = "Therefore the opposite angles of quadrilaterals in circles are equal to two right angles. Q.E.D."
+
+[[step]]
+text = "Let ABCD be a circle, and let ABCD be a quadrilateral in it. I say that the opposite angles are equal to two right angles."
+draw = [
+  "clear",
+  "point E 0 0",
+  "point A -0.695 3.939",
+  "point B -3.759 -1.368",
+  "point C 2 -3.464",
+  "point D 3.464 2",
+  "circle E A blue",
+  "polygon A B C D teal",
+]
+
+[[step]]
+text = "Let AC, BD be joined."
+draw = [
+  "segment A C black",
+  "segment B D black",
+]
+
+[[step]]
+text = "Since in any triangle the three angles are equal to two right angles (I.32), the three angles CAB, ABC, BCA of the triangle ABC are equal to two right angles. But the angle CAB is equal to the angle BDC, for they are in the same segment BADC (III.21), and the angle ACB is equal to the angle ADB, for they are in the same segment ADCB. Therefore the whole angle ADC is equal to the angles BAC, ACB. Add the angle ABC to each. Then the angles ABC, BAC, ACB are equal to the angles ABC, ADC. But ABC, BAC, ACB are equal to two right angles. Therefore the angles ABC, ADC are also equal to two right angles. Similarly we can prove that the angles BAD, DCB are also equal to two right angles."
+draw = [
+  "angle A B C orange fill",
+  "angle C D A orange fill",
+  "angle B A D green fill",
+  "angle D C B green fill",
+]

@@ -1,0 +1,39 @@
+id = "III.20"
+book = 3
+order = 20
+title = "The angle at the centre is double"
+statement = "In a circle the angle at the centre is double of the angle at the circumference, when the angles have the same circumference as base."
+proof = "Therefore in a circle the angle at the centre is double of the angle at the circumference, when the angles have the same circumference as base. Q.E.D."
+
+[[step]]
+text = "Let ABC be a circle, let BEC be an angle at its centre, and BAC an angle at the circumference, and let them have the same circumference BC as base. I say that the angle BEC is double of the angle BAC."
+draw = [
+  "clear",
+  "point E 0 0",
+  "point A 0 4",
+  "point B -3.759 -1.368",
+  "point C 3.464 -2",
+  "circle E A blue",
+  "segment B E red",
+  "segment E C red",
+  "segment A B black",
+  "segment A C black",
+  "angle B E C orange fill",
+  "angle B A C green fill",
+]
+
+[[step]]
+text = "Let AE be joined and drawn through to F."
+draw = [
+  "point F 0 -4",
+  "line A E black",
+]
+
+[[step]]
+text = "Since EA is equal to EB, the angle EAB is equal to the angle EBA (I.5). Therefore the angles EAB, EBA are double of the angle EAB. But the angle BEF is equal to the angles EAB, EBA (I.32). Therefore the angle BEF is also double of the angle EAB. For the same reason the angle FEC is also double of the angle EAC. Therefore the whole angle BEC is double of the whole angle BAC."
+draw = [
+  "angle B E F orange fill",
+  "angle F E C orange fill",
+  "angle B A E green fill",
+  "angle E A C green fill",
+]

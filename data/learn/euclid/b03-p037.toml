@@ -1,0 +1,28 @@
+id = "III.37"
+book = 3
+order = 37
+title = "The converse: a tangent"
+statement = "If a point be taken outside a circle and from the point there fall on the circle two straight lines, if one of them cut the circle, and the other fall on it, and if further the rectangle contained by the whole of the straight line which cuts the circle and the straight line intercepted on it outside between the point and the convex circumference be equal to the square on the straight line which falls on the circle, the straight line which falls on it will touch the circle."
+proof = "Therefore if a point be taken outside a circle and from the point there fall on the circle two straight lines, if one of them cut the circle, and the other fall on it, and if further the rectangle contained by the whole of the straight line which cuts the circle and the straight line intercepted on it outside between the point and the convex circumference be equal to the square on the straight line which falls on the circle, the straight line which falls on it will touch the circle. Q.E.D."
+
+[[step]]
+text = "Let a point D be taken outside the circle ABC, and from D let the two straight lines DCA, DB fall on the circle ABC, DCA cutting it and DB falling on it, and let the rectangle AD, DC be equal to the square on DB. I say that DB touches the circle ABC."
+draw = [
+  "clear",
+  "point F 0 0",
+  "point A -3 0",
+  "point C 3 0",
+  "point D 7 0",
+  "point B 1.286 2.711",
+  "circle F C blue",
+  "segment D A red",
+  "segment D B green",
+]
+
+[[step]]
+text = "Let DE be drawn touching the circle ABC (III.17), let the centre F be taken, and let FE, FB, FD be joined. Then the angle FED is right (III.18). Since DE touches the circle ABC and DCA cuts it, the rectangle AD, DC is equal to the square on DE (III.36). But the rectangle AD, DC was also equal to the square on DB. Therefore the square on DE is equal to the square on DB, so DE is equal to DB. But FE is equal to FB. Therefore the two sides DE, EF are equal to the two sides DB, BF, and the base FD is common. Therefore the angle DEF is equal to the angle DBF (I.8). But the angle DEF is right. Therefore the angle DBF is also right. And FB produced is a diameter. But the straight line drawn at right angles to the diameter of a circle from its extremity touches the circle (III.16). Therefore DB touches the circle ABC."
+draw = [
+  "segment F B orange",
+  "segment F D orange",
+  "angle F B D green fill",
+]

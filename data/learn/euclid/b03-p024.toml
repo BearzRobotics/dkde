@@ -1,0 +1,27 @@
+id = "III.24"
+book = 3
+order = 24
+title = "Similar segments on equal lines"
+statement = "Similar segments of circles on equal straight lines are equal to one another."
+proof = "Therefore similar segments of circles on equal straight lines are equal to one another. Q.E.D."
+
+[[step]]
+text = "Let AEB, CFD be similar segments of circles on the equal straight lines AB, CD. I say that the segment AEB is equal to the segment CFD."
+draw = [
+  "clear",
+  "point A -8 0",
+  "point B -2 0",
+  "point C 2 0",
+  "point D 8 0",
+  "point P -5 -1",
+  "point Q 5 -1",
+  "circle P A blue",
+  "circle Q C red",
+  "segment A B black",
+  "segment C D black",
+]
+
+[[step]]
+text = "For if the segment AEB be applied to the segment CFD, and the point A be placed on C and the straight line AB on CD, the point B will also coincide with the point D, because AB is equal to CD. And, AB coinciding with CD, the segment AEB will also coincide with CFD. For if the straight line AB coincide with CD but the segment AEB do not coincide with CFD, it will either fall within it or outside it, or it will fall awry. Then a circle cuts a circle at more than two points, which is impossible (III.10). Therefore the segment AEB applied to CFD will not fail to coincide with it. Therefore it will coincide with it and be equal to it."
+draw = [
+]

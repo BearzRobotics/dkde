@@ -1,0 +1,26 @@
+id = "III.19"
+book = 3
+order = 19
+title = "The perpendicular at the point of contact passes through the centre"
+statement = "If a straight line touch a circle, and from the point of contact a straight line be drawn at right angles to the tangent, the centre of the circle will be on the straight line so drawn."
+proof = "Therefore if a straight line touch a circle, and from the point of contact a straight line be drawn at right angles to the tangent, the centre of the circle will be on the straight line so drawn. Q.E.D."
+
+[[step]]
+text = "For let a straight line DE touch the circle ABC at the point C, and from C let CA be drawn at right angles to DE. I say that the centre of the circle is on AC."
+draw = [
+  "clear",
+  "point C 0 3",
+  "point D -4 3",
+  "point E 4 3",
+  "point A 0 -3",
+  "line D E red",
+  "segment C A green",
+]
+
+[[step]]
+text = "For suppose not, but, if possible, let F be the centre, and let CF be joined. Since a straight line DE touches the circle ABC, and FC has been joined from the centre to the point of contact, FC is perpendicular to DE (III.18). Therefore the angle FCE is right. But the angle ACE is also right. Therefore the angle FCE is equal to the angle ACE, the less to the greater, which is impossible. Therefore F is not the centre of the circle ABC. Similarly we can prove that neither is any other point except one on AC."
+draw = [
+  "point F 1.2 0.9",
+  "circle F C blue",
+  "segment C F orange",
+]

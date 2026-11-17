@@ -1,0 +1,34 @@
+id = "III.30"
+book = 3
+order = 30
+title = "To bisect an arc"
+statement = "To bisect a given circumference."
+proof = "Therefore the given circumference has been bisected at the point D. Being what it was required to do."
+
+[[step]]
+text = "Let ADB be the given circumference. It is required to bisect the circumference ADB. Let AB be joined and bisected at C (I.10)."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point A -3.464 2",
+  "point B 3.464 2",
+  "point C 0 2",
+  "circle O A blue",
+  "segment A B black",
+]
+
+[[step]]
+text = "From the point C let CD be drawn at right angles to AB (I.11), and let AD, DB be joined."
+draw = [
+  "point D 0 4",
+  "segment C D red",
+  "segment A D green",
+  "segment D B green",
+]
+
+[[step]]
+text = "Since AC is equal to CB, and CD is common, the two sides AC, CD are equal to the two sides BC, CD, and the angle ACD is equal to the angle BCD, for each is right. Therefore the base AD is equal to the base DB (I.4). But equal straight lines cut off equal circumferences, the greater equal to the greater and the less to the less (III.28), and each of the circumferences AD, DB is less than a semicircle. Therefore the circumference AD is equal to the circumference DB. Therefore the given circumference has been bisected at the point D."
+draw = [
+  "angle A C D orange fill",
+  "angle D C B orange fill",
+]

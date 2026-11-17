@@ -1,0 +1,32 @@
+id = "III.36"
+book = 3
+order = 36
+title = "Tangent and secant"
+statement = "If a point be taken outside a circle and from it there fall on the circle two straight lines, and if one of them cut the circle and the other touch it, the rectangle contained by the whole of the straight line which cuts the circle and the straight line intercepted on it outside between the point and the convex circumference will be equal to the square on the tangent."
+proof = "Therefore if a point be taken outside a circle and from it there fall on the circle two straight lines, and if one of them cut the circle and the other touch it, the rectangle contained by the whole of the straight line which cuts the circle and the straight line intercepted on it outside between the point and the convex circumference will be equal to the square on the tangent. Q.E.D."
+
+[[step]]
+text = "Let D be a point taken outside the circle ABC, and from D let the two straight lines DCA, DB fall on the circle ABC, of which DCA cuts the circle and DB touches it. I say that the rectangle AD, DC is equal to the square on DB."
+draw = [
+  "clear",
+  "point F 0 0",
+  "point A -3 0",
+  "point C 3 0",
+  "point D 7 0",
+  "point B 1.286 2.711",
+  "circle F C blue",
+  "segment D A red",
+  "segment D B green",
+]
+
+[[step]]
+text = "Then DCA is either through the centre or not. Let it be through the centre F, and let FB be joined. Then the angle FBD is right (III.18). And since AC has been bisected at F and CD added to it, the rectangle AD, DC together with the square on FC is equal to the square on FD (II.6). But FC is equal to FB. Therefore the rectangle AD, DC together with the square on FB is equal to the square on FD. But the square on FD is equal to the squares on FB, BD (I.47), since the angle FBD is right. Therefore the rectangle AD, DC is equal to the square on DB."
+draw = [
+  "segment F B orange",
+  "angle F B D orange fill",
+]
+
+[[step]]
+text = "Next, let DCA not pass through the centre. From the centre E let EF be drawn perpendicular to AC, and let EB, EC, ED be joined. Then the angle EFD is right. And since a straight line EF through the centre cuts a straight line AC not through the centre at right angles, it also bisects it (III.3), so AF is equal to FC. Since AC has been bisected at F and CD added to it, the rectangle AD, DC together with the square on FC is equal to the square on FD (II.6). Add the square on FE to each. Then the rectangle AD, DC together with the squares on CF, FE is equal to the squares on DF, FE. But the square on EC is equal to the squares on CF, FE, and the square on ED to the squares on DF, FE. Therefore the rectangle AD, DC together with the square on EC is equal to the square on ED. But EC is equal to EB. Therefore the rectangle AD, DC together with the square on EB is equal to the square on ED. But the squares on EB, BD are equal to the square on ED, since the angle EBD is right. Therefore the rectangle AD, DC is equal to the square on DB."
+draw = [
+]

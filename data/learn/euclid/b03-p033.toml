@@ -1,0 +1,44 @@
+id = "III.33"
+book = 3
+order = 33
+title = "A segment containing a given angle"
+statement = "On a given straight line to describe a segment of a circle admitting an angle equal to a given rectilineal angle."
+proof = "Therefore on the given straight line AB the segment AKB of a circle has been described admitting an angle equal to the given angle at C. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given straight line, and the angle at C the given rectilineal angle (here 50 degrees). It is required to describe on the given straight line AB a segment of a circle admitting an angle equal to the angle at C."
+draw = [
+  "clear",
+  "point A -3 0",
+  "point B 3 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "On the straight line AB, at the point A on it, let the angle BAD be constructed equal to the angle at C (I.23), and from A let AE be drawn at right angles to DA (I.11)."
+draw = [
+  "point D 0.857 4.596",
+  "point E -7.596 3.857",
+  "segment A D red",
+  "segment A E green",
+  "angle B A D orange fill",
+]
+
+[[step]]
+text = "Let AB be bisected at G (I.10), and from G let GH be drawn at right angles to AB (I.11). Let HB be joined."
+draw = [
+  "point G 0 0",
+  "point H 0 -2.517",
+  "line G H black",
+  "segment H B black",
+]
+
+[[step]]
+text = "Since AG is equal to GB, and GH is common, the two sides AG, GH are equal to the two sides BG, GH, and the angle AGH is equal to the angle BGH. Therefore the base AH is equal to the base BH (I.4). Therefore the circle described with centre H and distance HA will also pass through B. Let it be described, and let it be ABE. Since AD is drawn from the extremity A of the diameter AE at right angles to AE, AD touches the circle ABE (III.16 corollary). Since a straight line AD touches the circle, and AB is drawn across from the point of contact A, the angle DAB is equal to the angle AKB in the alternate segment of the circle (III.32). But the angle DAB is equal to the angle at C. Therefore the angle AKB is also equal to the angle at C. Therefore on the given straight line AB the segment AKB of a circle has been described admitting the angle AKB equal to the given angle at C."
+draw = [
+  "circle H A blue",
+  "point K 0 -6.434",
+  "segment A K green",
+  "segment K B green",
+  "angle A K B green fill",
+]

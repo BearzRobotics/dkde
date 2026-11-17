@@ -1,0 +1,35 @@
+id = "III.31"
+book = 3
+order = 31
+title = "The angle in a semicircle"
+statement = "In a circle the angle in the semicircle is right, that in a greater segment less than a right angle, and that in a less segment greater than a right angle."
+proof = "Therefore in a circle the angle in the semicircle is right, that in a greater segment less than a right angle, and that in a less segment greater than a right angle. Q.E.D."
+
+[[step]]
+text = "Let ABCD be a circle, let BC be its diameter and E its centre, and let BA, AC, AD, DC be joined. I say that the angle BAC in the semicircle BAC is right."
+draw = [
+  "clear",
+  "point E 0 0",
+  "point B -4 0",
+  "point C 4 0",
+  "point A -1.368 3.759",
+  "circle E B blue",
+  "segment B C black",
+  "segment B A black",
+  "segment A C black",
+  "segment A E green",
+  "angle B A C orange fill",
+]
+
+[[step]]
+text = "Let AE be joined, and let BA be drawn through to F. Since BE is equal to EA, the angle ABE is equal to the angle BAE (I.5). Again, since CE is equal to EA, the angle ACE is equal to the angle CAE. Therefore the whole angle BAC is equal to the two angles ABC, ACB. But the angle FAC, exterior to the triangle ABC, is also equal to the two angles ABC, ACB (I.32). Therefore the angle BAC is also equal to the angle FAC. Therefore each is right (definition 10). Therefore the angle BAC in the semicircle BAC is right."
+draw = [
+  "point F 0.211 6.014",
+  "line B A black",
+  "angle F A C green fill",
+]
+
+[[step]]
+text = "The angle ABC in a segment ABC greater than a semicircle is less than a right angle, since in the triangle ABC the angle BAC is right, so the other two together are one right angle (I.32), and each is less. And the angle ADC in the segment ADC less than a semicircle is greater than a right angle, since ABCD is a quadrilateral in a circle and the opposite angles are equal to two right angles (III.22)."
+draw = [
+]

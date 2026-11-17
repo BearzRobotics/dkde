@@ -17,7 +17,7 @@ carries out the steps).
 | Foundations | Book I definitions (selection), the 5 postulates, the 5 common notions | | done (definitions: a selection) |
 | I | Triangles, parallels, area, Pythagoras | 48 | done (all 48) |
 | II | Geometric algebra | 14 | done (all 14) |
-| III | Circles | 37 | |
+| III | Circles | 37 | done (all 37) |
 | IV | Inscribed and circumscribed figures | 16 | |
 | V | Proportion (Eudoxus) | 25 | |
 | VI | Similar figures | 33 | |

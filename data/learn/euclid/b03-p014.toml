@@ -1,0 +1,43 @@
+id = "III.14"
+book = 3
+order = 14
+title = "Equal chords"
+statement = "In a circle equal straight lines are equally distant from the centre, and those which are equally distant from the centre are equal to one another."
+proof = "Therefore in a circle equal straight lines are equally distant from the centre, and those which are equally distant from the centre are equal to one another. Q.E.D."
+
+[[step]]
+text = "Let ABDC be a circle, and AB, CD equal straight lines in it. I say that AB, CD are equally distant from the centre."
+draw = [
+  "clear",
+  "point E 0 0",
+  "point A -3.464 -2",
+  "point B 3.464 -2",
+  "point C 2 3.464",
+  "point D 2 -3.464",
+  "circle E A blue",
+  "segment A B red",
+  "segment C D green",
+]
+
+[[step]]
+text = "Let the centre of the circle ABDC be taken (III.1), and let it be E. From E let EF, EG be drawn perpendicular to AB, CD (I.12), and let AE, EC be joined."
+draw = [
+  "point F 0 -2",
+  "point G 2 0",
+  "segment E F black",
+  "segment E G black",
+  "segment A E orange",
+  "segment E C orange",
+]
+
+[[step]]
+text = "Since a straight line EF through the centre cuts a straight line AB not through the centre at right angles, it also bisects it (III.3). Therefore AF is equal to FB, so AB is double of AF. For the same reason CD is double of CG. And AB is equal to CD. Therefore AF is equal to CG. Since AE is equal to EC, the square on AE is equal to the square on EC. But the squares on AF, FE are equal to the square on AE (I.47), and the squares on EG, GC are equal to the square on EC. Therefore the squares on AF, FE are equal to the squares on CG, GE, of which the square on AF is equal to the square on CG. Therefore the remaining square on FE is equal to the square on EG, so EF is equal to EG. But straight lines in a circle are said to be equally distant from the centre when the perpendiculars drawn to them from the centre are equal (definition). Therefore AB, CD are equally distant from the centre."
+draw = [
+  "angle A F E green fill",
+  "angle C G E green fill",
+]
+
+[[step]]
+text = "Next, let the straight lines AB, CD be equally distant from the centre, that is, let EF be equal to EG. I say that AB is also equal to CD. With the same construction we can prove that AB is double of AF and CD of CG. And since AE is equal to CE, the square on AE is equal to the square on CE. But the squares on EF, FA are equal to the square on AE, and the squares on EG, GC to the square on CE. Therefore the squares on EF, FA are equal to the squares on EG, GC, of which the square on EF is equal to the square on EG. Therefore the remaining square on AF is equal to the square on CG, so AF is equal to CG. And AB is double of AF, CD of CG. Therefore AB is equal to CD."
+draw = [
+]

@@ -1,0 +1,29 @@
+id = "III.29"
+book = 3
+order = 29
+title = "Equal arcs have equal chords"
+statement = "In equal circles equal circumferences are subtended by equal straight lines."
+proof = "Therefore in equal circles equal circumferences are subtended by equal straight lines. Q.E.D."
+
+[[step]]
+text = "Let ABC, DEF be equal circles, and in them let equal circumferences BGC, EHF be cut off, and let the straight lines BC, EF be joined. I say that BC is equal to EF."
+draw = [
+  "clear",
+  "point G -5 0",
+  "point H 5 0",
+  "point A -5 3",
+  "point B -7.598 -1.5",
+  "point C -2.402 -1.5",
+  "point D 5 3",
+  "point E 2.402 -1.5",
+  "point F 7.598 -1.5",
+  "circle G A blue",
+  "circle H D blue",
+  "segment B C red",
+  "segment E F red",
+]
+
+[[step]]
+text = "Let the centres of the circles be taken, and let them be K, L, and let BK, KC, EL, LF be joined. Since the circumference BGC is equal to the circumference EHF, the angle BKC is equal to the angle ELF (III.27). And since the circles ABC, DEF are equal, the radii are equal. Thus the two sides BK, KC are equal to the two sides EL, LF, and they contain equal angles. Therefore the base BC is equal to the base EF (I.4)."
+draw = [
+]

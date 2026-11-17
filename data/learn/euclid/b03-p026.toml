@@ -1,0 +1,44 @@
+id = "III.26"
+book = 3
+order = 26
+title = "Equal angles stand on equal arcs"
+statement = "In equal circles equal angles stand on equal circumferences, whether they stand at the centres or at the circumferences."
+proof = "Therefore in equal circles equal angles stand on equal circumferences, whether they stand at the centres or at the circumferences. Q.E.D."
+
+[[step]]
+text = "Let ABC, DEF be equal circles, and in them let there be equal angles, BGC, EHF at the centres G, H, and BAC, EDF at the circumferences. I say that the circumference BKC is equal to the circumference ELF."
+draw = [
+  "clear",
+  "point G -5 0",
+  "point H 5 0",
+  "point A -5 3",
+  "point B -7.598 -1.5",
+  "point C -2.402 -1.5",
+  "point D 5 3",
+  "point E 2.402 -1.5",
+  "point F 7.598 -1.5",
+  "circle G A blue",
+  "circle H D blue",
+  "segment B C red",
+  "segment E F red",
+  "angle B G C orange fill",
+  "angle E H F orange fill",
+  "segment A B black",
+  "segment A C black",
+  "segment D E black",
+  "segment D F black",
+]
+
+[[step]]
+text = "Let BC, EF be joined. Since the circles ABC, DEF are equal, the radii are equal. Thus the two straight lines BG, GC are equal to the two straight lines EH, HF, and the angle at G is equal to the angle at H. Therefore the base BC is equal to the base EF (I.4)."
+draw = [
+  "segment B G green",
+  "segment G C green",
+  "segment E H green",
+  "segment H F green",
+]
+
+[[step]]
+text = "And since the angle at A is equal to the angle at D, the segment BAC is similar to the segment EDF (definition 11), and they are on equal straight lines BC, EF. But similar segments of circles on equal straight lines are equal to one another (III.24). Therefore the segment BAC is equal to the segment EDF. But the whole circle ABC is also equal to the whole circle DEF. Therefore the remaining circumference BKC is equal to the remaining circumference ELF."
+draw = [
+]

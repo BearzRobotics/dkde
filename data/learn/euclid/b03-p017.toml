@@ -1,0 +1,35 @@
+id = "III.17"
+book = 3
+order = 17
+title = "A tangent from a point"
+statement = "From a given point to draw a straight line touching a given circle."
+proof = "Therefore from the given point A the straight line AB has been drawn touching the circle BCD. Being what it was required to do."
+
+[[step]]
+text = "Let A be the given point, and BCD the given circle. It is required to draw from A a straight line touching the circle."
+draw = [
+  "clear",
+  "point E 0 0",
+  "point A 7 0",
+  "point D 3 0",
+  "circle E D blue",
+]
+
+[[step]]
+text = "Let the centre E of the circle be taken, and let AE be joined. With centre E and distance EA let the circle AFG be described. From D let DF be drawn at right angles to EA (I.11), and let EF, AB be joined."
+draw = [
+  "circle E A orange",
+  "point F 3 6.325",
+  "point B 1.286 2.711",
+  "segment E A black",
+  "segment D F black",
+  "segment E F red",
+]
+
+[[step]]
+text = "I say that AB has been drawn from A touching the circle BCD. Since E is the centre of the circles BCD, AFG, EA is equal to EF and ED to EB. Therefore the two sides AE, EB are equal to the two sides FE, ED, and they contain a common angle at E. Therefore the base DF is equal to the base AB, the triangle DEF is equal to the triangle BEA, and the remaining angles are equal to the remaining angles (I.4). Therefore the angle EDF is equal to the angle EBA. But EDF is right. Therefore EBA is also right. Now EB is a radius, and the straight line drawn at right angles to the diameter of a circle from its extremity touches the circle (III.16 corollary). Therefore AB touches the circle BCD."
+draw = [
+  "segment A B green",
+  "angle E B A green fill",
+  "polygon E B A teal fill",
+]
