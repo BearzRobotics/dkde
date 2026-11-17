@@ -1,0 +1,36 @@
+id = "CS.30"
+course = "Computer Science"
+book = 6
+order = 1
+title = "Fixed-point numbers and BCD"
+statement = "Money and other exact decimals are best kept as whole numbers of the smallest unit; fixed point scales by a power of two; BCD stores each decimal digit in four bits."
+
+[[step]]
+text = "Idea: floats cannot hold 0.1 exactly, so money is kept in whole cents. $19.99 is 1999 cents; adding is exact integer addition and you only divide by 100 to display."
+calc = ["1999 + 501", "(1999 + 501)/100"]
+
+[[step]]
+text = "Fixed point puts the binary point at a fixed place. In Q8.8 a value is stored as round(x x 256) in 16 bits. 3.14159 is 804 (0x0324), which reads back as 804/256 = 3.140625. The step between values is 1/256 = 0.0039."
+calc = ["3.14159*256", "round(3.14159*256)", "804/256", "1/256"]
+
+[[step]]
+text = "Multiplying two Q8.8 numbers gives a Q16.16 result, so shift right 8 to get back: 3.140625 x 2.0 is 804 x 512 = 411648, shifted right 8 is 1608, which is 6.28125."
+calc = ["804*512", "shift(804*512,-8)", "1608/256"]
+
+[[step]]
+text = "BCD (binary-coded decimal) writes each decimal digit in four bits, so 1234 is 0001 0010 0011 0100 = 0x1234 (not the binary number 1234). tobcd does the change and frombcd undoes it."
+calc = ["tobcd(1234)", "0x1234", "frombcd(0x1234)", "tobcd(95)"]
+
+[[step]]
+text = "BCD wastes space (6 of 16 patterns per digit unused) but converts to and from text trivially and has no rounding for decimals, which is why calculators and finance hardware like it. A digit needs 4 bits, against log2(10) = 3.32 for the best packing."
+calc = ["log2(10)", "4/log2(10)"]
+
+[[exercise]]
+prompt = "What is 1.5 in Q8.8 (stored value)? (1.5 x 256)"
+answer = "1.5*256"
+hint = "Multiply by 2^8."
+
+[[exercise]]
+prompt = "What is 95 written in BCD, as a number? (tobcd(95))"
+answer = "tobcd(95)"
+hint = "9 then 5 in hex digits: 0x95."

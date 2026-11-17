@@ -1,0 +1,36 @@
+id = "CS.40"
+course = "Computer Science"
+book = 8
+order = 1
+title = "Amortised analysis"
+statement = "An operation that is occasionally expensive can still be cheap on average: appending to a dynamic array costs O(1) amortised, because doubling makes the copies rare."
+
+[[step]]
+text = "Idea: a dynamic array doubles its capacity when full. Most appends cost 1 write. Occasionally one copies the whole array. Total copying for n = 1024 appends: 1 + 2 + 4 + ... + 512 = 1023."
+calc = ["1 + 2 + 4 + 8 + 16 + 32 + 64 + 128 + 256 + 512", "2^10 - 1"]
+
+[[step]]
+text = "So 1024 appends cost 1024 writes plus 1023 copies: 2047 steps, about 2 per append. The cost per append, spread over all of them, is constant: amortised O(1)."
+calc = ["(1024 + 1023)/1024"]
+
+[[step]]
+text = "Growing by one each time instead copies 1 + 2 + ... + (n - 1) = n(n - 1)/2: 523776 copies for 1024 appends, about 512 per append. That is O(n) amortised, so growth must be geometric."
+calc = ["1024*1023/2", "1024*1023/2/1024"]
+
+[[step]]
+text = "Any factor g > 1 works. The copying cost per append is about 1/(g - 1): doubling gives 1, growing by 1.5 gives 2, and 1.25 gives 4. A bigger g wastes more unused space: at most g - 1 of the array can be empty."
+calc = ["1/(2 - 1)", "1/(1.5 - 1)", "1/(1.25 - 1)"]
+
+[[step]]
+text = "The same argument covers hash table resizing, a counter that flips bits (the total over n increments is under 2n bit flips), and splay trees. Amortised cost is the total over any sequence divided by the number of operations."
+calc = ["2*1024"]
+
+[[exercise]]
+prompt = "How many element copies does a doubling array make during 1024 appends? (2^10 - 1)"
+answer = "2^10 - 1"
+hint = "1 + 2 + 4 + ... + 512."
+
+[[exercise]]
+prompt = "How many copies does growing by one each time make over 1024 appends? (1024 x 1023 / 2)"
+answer = "1024*1023/2"
+hint = "1 + 2 + ... + 1023."

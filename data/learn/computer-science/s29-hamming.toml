@@ -1,0 +1,40 @@
+id = "CS.29"
+course = "Computer Science"
+book = 5
+order = 3
+title = "Error-correcting codes: Hamming"
+statement = "Extra check bits placed at positions 1, 2, 4, 8... let the receiver find and flip the one bad bit: the XOR of the positions of the one bits is the position of the error."
+
+[[step]]
+text = "Idea: parity (CS.7) detects an error but cannot say where. Hamming(7,4) sends 4 data bits with 3 check bits so that one wrong bit can be located and fixed. Positions are numbered 1 to 7; check bits sit at the powers of two, 1, 2 and 4."
+calc = ["4 + 3", "2^3 - 1"]
+
+[[step]]
+text = "Data 1011 goes in positions 3, 5, 6, 7. Check bit p1 covers positions 1, 3, 5, 7 (those with bit 0 set); p2 covers 2, 3, 6, 7; p4 covers 4, 5, 6, 7. Each is chosen so that the XOR of its group is 0."
+calc = ["1 xor 0 xor 1", "1 xor 1 xor 1", "0 xor 1 xor 1"]
+
+[[step]]
+text = "So p1 = 0, p2 = 1, p4 = 0, and the codeword in positions 1 to 7 is 0 1 1 0 0 1 1. The positions holding a 1 are 2, 3, 6, 7, and 2 xor 3 xor 6 xor 7 = 0: a good codeword has syndrome 0."
+calc = ["2 xor 3 xor 6 xor 7"]
+
+[[step]]
+text = "Now flip the bit at position 5 in transit. The received word has ones at positions 2, 3, 5, 6, 7. Its syndrome is 2 xor 3 xor 5 xor 6 xor 7 = 5, exactly the bad position. Flip position 5 back and the word is fixed."
+calc = ["2 xor 3 xor 5 xor 6 xor 7"]
+
+[[step]]
+text = "Why: each check bit covers the positions with a given bit set, so the syndrome's bits are the binary digits of the error position. With r check bits you can number 2^r - 1 positions, which is why Hamming(7,4) uses r = 3 and larger codes use 4 for 11 data bits (15, 11), 5 for 26 (31, 26) and so on."
+calc = ["2^4 - 1 - 4", "2^5 - 1 - 5"]
+
+[[step]]
+text = "Real memory (ECC RAM) uses a variant with one extra bit to also detect double errors: 64 data bits are stored with 8 check bits."
+calc = ["64 + 8", "8/64"]
+
+[[exercise]]
+prompt = "The received word has ones at positions 2, 3, 5, 6, 7. At which position is the error? (2 xor 3 xor 5 xor 6 xor 7)"
+answer = "2 xor 3 xor 5 xor 6 xor 7"
+hint = "2 xor 3 = 1; 1 xor 5 = 4; 4 xor 6 = 2; 2 xor 7 = 5."
+
+[[exercise]]
+prompt = "How many data bits fit in a Hamming(15, ...) code? (2^4 - 1 - 4)"
+answer = "2^4 - 1 - 4"
+hint = "15 positions minus 4 check bits."

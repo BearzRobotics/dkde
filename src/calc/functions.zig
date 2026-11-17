@@ -618,6 +618,115 @@ fn powmod(c: *const Ctx, a: []const Number) Error!Number {
     return whole(c, powModU(b, ee, mm));
 }
 
+// ---- bits, BCD and the bits of floats ----------------------------------------------------
+
+fn unsignedArg(x: Number) Error!u128 {
+    const v = try int(x);
+    if (v < 0) return error.Domain;
+    return @intCast(v);
+}
+
+/// The width a bit gate works in: the third argument, else the width of the larger input.
+fn gateWidth(a: u128, b: u128, args: []const Number) Error!u7 {
+    if (args.len == 3) {
+        const w = try int(args[2]);
+        if (w < 1 or w > 120) return error.Domain;
+        return @intCast(w);
+    }
+    const m = @max(a, b);
+    return @intCast(@max(1, 128 - @clz(m)));
+}
+
+fn gate(c: *const Ctx, args: []const Number, comptime op: enum { nand, nor, xnor }) Error!Number {
+    const x = try unsignedArg(args[0]);
+    const y = try unsignedArg(args[1]);
+    const w = try gateWidth(x, y, args);
+    const mask: u128 = (@as(u128, 1) << w) - 1;
+    const r: u128 = switch (op) {
+        .nand => ~(x & y),
+        .nor => ~(x | y),
+        .xnor => ~(x ^ y),
+    };
+    return whole(c, @intCast(r & mask));
+}
+
+fn nand(c: *const Ctx, a: []const Number) Error!Number {
+    return gate(c, a, .nand);
+}
+fn nor(c: *const Ctx, a: []const Number) Error!Number {
+    return gate(c, a, .nor);
+}
+fn xnor(c: *const Ctx, a: []const Number) Error!Number {
+    return gate(c, a, .xnor);
+}
+
+/// 1 when the number of one bits is odd.
+fn parity(c: *const Ctx, a: []const Number) Error!Number {
+    return whole(c, @popCount(try unsignedArg(a[0])) & 1);
+}
+
+/// How many bits the number needs (0 for 0).
+fn bitlen(c: *const Ctx, a: []const Number) Error!Number {
+    return whole(c, 128 - @clz(try unsignedArg(a[0])));
+}
+
+/// The decimal digits of a number written as hex digits: tobcd(1234) is 0x1234.
+fn tobcd(c: *const Ctx, a: []const Number) Error!Number {
+    var n = try unsignedArg(a[0]);
+    var out: u128 = 0;
+    var shift: u8 = 0;
+    while (n > 0) : (shift += 4) {
+        if (shift >= 120) return error.TooLarge;
+        out |= (n % 10) << @intCast(shift);
+        n /= 10;
+    }
+    return whole(c, @intCast(out));
+}
+
+/// The inverse: the hex digits of a number read as decimal digits.
+fn frombcd(c: *const Ctx, a: []const Number) Error!Number {
+    var n = try unsignedArg(a[0]);
+    var out: u128 = 0;
+    var place: u128 = 1;
+    while (n > 0) {
+        const d = n & 15;
+        if (d > 9) return error.Domain;
+        out += d * place;
+        place *= 10;
+        n >>= 4;
+    }
+    return whole(c, @intCast(out));
+}
+
+/// The 32 bits of x as a single-precision float, as a number.
+fn f32bits(c: *const Ctx, a: []const Number) Error!Number {
+    const f: f32 = @floatCast(fl(a[0]));
+    return whole(c, @as(u32, @bitCast(f)));
+}
+
+/// The value of 32 bits read as a single-precision float.
+fn f32value(_: *const Ctx, a: []const Number) Error!Number {
+    const v = try unsignedArg(a[0]);
+    if (v > std.math.maxInt(u32)) return error.Domain;
+    const f: f32 = @bitCast(@as(u32, @intCast(v)));
+    if (!std.math.isFinite(f)) return error.Domain;
+    return res(@as(f64, f));
+}
+
+/// The 64 bits of x as a double-precision float, as a number.
+fn f64bits(c: *const Ctx, a: []const Number) Error!Number {
+    return whole(c, @as(u64, @bitCast(fl(a[0]))));
+}
+
+/// The value of 64 bits read as a double-precision float.
+fn f64value(_: *const Ctx, a: []const Number) Error!Number {
+    const v = try unsignedArg(a[0]);
+    if (v > std.math.maxInt(u64)) return error.Domain;
+    const f: f64 = @bitCast(@as(u64, @intCast(v)));
+    if (!std.math.isFinite(f)) return error.Domain;
+    return res(f);
+}
+
 /// The x with a x = 1 (mod m), when a and m share no factor.
 fn modinv(c: *const Ctx, a: []const Number) Error!Number {
     return powmod(c, &.{ a[0], try num.fromInt(c.a, -1), a[1] });
@@ -1214,6 +1323,10 @@ const table = [_]Def{
     def("primepi", 1, 1, primepi),           def("totient", 1, 1, totient),         def("fibonacci", 1, 1, fibonacci),
     def("factorial2", 1, 1, factorial2),     def("hyperfactorial", 1, 1, hyperfactorial), def("superfactorial", 1, 1, superfactorial),
     def("derangements", 1, 1, derangements), def("bernoulli", 1, 1, bernoulli),     def("powmod", 3, 3, powmod),
+    def("nand", 2, 3, nand),                 def("nor", 2, 3, nor),                 def("xnor", 2, 3, xnor),
+    def("parity", 1, 1, parity),             def("bitlen", 1, 1, bitlen),           def("tobcd", 1, 1, tobcd),
+    def("frombcd", 1, 1, frombcd),           def("f32bits", 1, 1, f32bits),         def("f32", 1, 1, f32value),
+    def("f64bits", 1, 1, f64bits),           def("f64", 1, 1, f64value),
     def("modinv", 2, 2, modinv),             def("popcount", 1, 1, popcount),
     def("clip", 3, 3, clip),                 def("numerator", 1, 1, numerator),     def("denominator", 1, 1, denominator),
     def("div", 2, 2, div),                   def("rem", 2, 2, rem),                 def("neg", 1, 1, neg),

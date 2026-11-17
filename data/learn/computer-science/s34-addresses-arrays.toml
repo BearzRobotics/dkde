@@ -1,0 +1,36 @@
+id = "CS.34"
+course = "Computer Science"
+book = 7
+order = 1
+title = "Memory addresses and arrays"
+statement = "An array element's address is base + index x size; a two-dimensional array in row-major order adds row x columns."
+
+[[step]]
+text = "Idea: memory is numbered bytes. An array of 32-bit ints starting at address 0x1000 has element 0 at 0x1000, element 1 at 0x1004 and so on: address = base + i x 4."
+calc = ["0x1000 + 10*4", "(0x1000 + 10*4) to hex"]
+
+[[step]]
+text = "Pointer arithmetic is this multiplication done for you: p + 1 moves by sizeof(*p) bytes, not by 1."
+calc = ["0x1000 + 1*4", "0x1000 + 1*8"]
+
+[[step]]
+text = "A 2D array stored row by row (row-major): element (r, c) of a table with 5 columns is at index r x 5 + c. For (2, 3) that is 13, so with 4-byte ints the address is base + 52."
+calc = ["2*5 + 3", "0x1000 + (2*5 + 3)*4"]
+
+[[step]]
+text = "The distance between neighbours in a row is 4 bytes, but between vertically adjacent elements it is 5 x 4 = 20 bytes (the stride). Walking down a column jumps through memory, which is slow for caches (CS.36)."
+calc = ["5*4"]
+
+[[step]]
+text = "Bounds: an array of n items spans n x size bytes, from base to base + n x size - 1. One element past the end is the classic off-by-one bug."
+calc = ["0x1000 + 100*4 - 1", "100*4"]
+
+[[exercise]]
+prompt = "What is the address of element 10 of a 4-byte array that starts at 0x1000, as a decimal? (0x1000 + 10 x 4)"
+answer = "0x1000 + 10*4"
+hint = "4096 + 40."
+
+[[exercise]]
+prompt = "Which element index is (row 2, column 3) of a table with 5 columns, row-major? (2 x 5 + 3)"
+answer = "2*5 + 3"
+hint = "Rows before it, times the columns."

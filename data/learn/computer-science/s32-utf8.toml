@@ -1,0 +1,39 @@
+id = "CS.32"
+course = "Computer Science"
+book = 6
+order = 3
+title = "Unicode and UTF-8"
+statement = "Unicode gives every character a number (a code point); UTF-8 stores it in 1 to 4 bytes with the length in the first byte, so ASCII stays one byte."
+
+[[step]]
+text = "Idea: code point U+00E9 (e with an acute) is 233. UTF-8 uses 1 byte for 0 to 127 (plain ASCII), 2 bytes up to 2047, 3 bytes up to 65535, and 4 bytes up to 1114111 (U+10FFFF)."
+calc = ["0xE9", "2^7 - 1", "2^11 - 1", "2^16 - 1", "0x10FFFF"]
+
+[[step]]
+text = "Two-byte form: 110xxxxx 10xxxxxx, carrying 11 bits. For 0xE9: the high five bits (233 shifted right 6) go in the first byte after 0xC0, the low six bits after 0x80. That gives 0xC3 0xA9."
+calc = ["0xC0 or shift(0xE9,-6)", "0x80 or (0xE9 and 0x3F)"]
+
+[[step]]
+text = "Three-byte form: 1110xxxx 10xxxxxx 10xxxxxx, 16 bits. The euro sign U+20AC is 0xE2 0x82 0xAC."
+calc = ["0xE0 or shift(0x20AC,-12)", "0x80 or (shift(0x20AC,-6) and 0x3F)", "0x80 or (0x20AC and 0x3F)"]
+
+[[step]]
+text = "Four-byte form: 11110xxx then three 10xxxxxx, 21 bits. U+1F600 (a grinning face) is F0 9F 98 80."
+calc = ["0xF0 or shift(0x1F600,-18)", "0x80 or (shift(0x1F600,-12) and 0x3F)", "0x80 or (shift(0x1F600,-6) and 0x3F)", "0x80 or (0x1F600 and 0x3F)"]
+
+[[step]]
+text = "How many bytes a code point needs follows from its bit length, which bitlen gives: up to 7 bits is 1 byte, up to 11 bits is 2 bytes, up to 16 is 3, up to 21 is 4."
+calc = ["bitlen(0xE9)", "bitlen(0x20AC)", "bitlen(0x1F600)"]
+
+[[step]]
+text = "The design makes the first byte tell the length (0, 110, 1110, 11110) and continuation bytes always start 10, so a reader dropped into the middle of a file can find the next character. Text length in characters and in bytes differ, which is a classic source of bugs."
+
+[[exercise]]
+prompt = "How many bytes does U+20AC (the euro sign) take in UTF-8?"
+answer = "3"
+hint = "Between 2048 and 65535 means 3 bytes."
+
+[[exercise]]
+prompt = "What is the first byte of the euro sign, 0xE0 or shift(0x20AC, -12)?"
+answer = "0xE0 or shift(0x20AC,-12)"
+hint = "0x20AC shifted right 12 is 2."

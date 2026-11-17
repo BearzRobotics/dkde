@@ -1,0 +1,40 @@
+id = "CS.27"
+course = "Computer Science"
+book = 5
+order = 1
+title = "Logic gates and NAND"
+statement = "A computer is built from gates; NAND alone can build every other gate, so one kind of transistor circuit is enough."
+
+[[step]]
+text = "Idea: a gate takes bits and gives a bit. AND is 1 only if both inputs are 1; OR if either is; XOR if exactly one; NOT flips; NAND is NOT(AND), NOR is NOT(OR)."
+calc = ["1 and 1", "nand(1,1)", "nand(1,0)", "nor(0,0)", "nor(1,0)", "xnor(1,1)", "xnor(1,0)"]
+
+[[step]]
+text = "NAND is universal. NOT a = NAND(a, a): feed the same wire to both inputs. Try a = 1 and a = 0."
+calc = ["nand(1,1)", "nand(0,0)"]
+
+[[step]]
+text = "AND a b = NOT(NAND(a, b)) = NAND(NAND(a,b), NAND(a,b))."
+calc = ["nand(nand(1,1),nand(1,1))", "nand(nand(1,0),nand(1,0))"]
+
+[[step]]
+text = "OR a b = NAND(NOT a, NOT b), which is De Morgan's law again. Check a = 1, b = 0: NOT a is 0, NOT b is 1, and NAND(0, 1) is 1."
+calc = ["nand(nand(1,1),nand(0,0))", "nand(nand(0,0),nand(0,0))"]
+
+[[step]]
+text = "Gates work on whole numbers bit by bit. Give the width as a third argument: nand(12, 10, 8) is the eight-bit NOT of 12 AND 10 (1100 and 1010 = 1000, flipped to 11110111)."
+calc = ["nand(12,10,8)", "12 and 10", "255 - (12 and 10)"]
+
+[[step]]
+text = "Counting: n inputs have 2^n rows in the truth table, so there are 2^(2^n) different gates of n inputs. For 2 inputs that is 16 gates; all 16 can be built from NAND."
+calc = ["2^2", "2^(2^2)"]
+
+[[exercise]]
+prompt = "What is nand(1, 1)?"
+answer = "nand(1,1)"
+hint = "AND is 1, so NOT of it is 0."
+
+[[exercise]]
+prompt = "How many different two-input logic functions exist? (2^(2^2))"
+answer = "2^(2^2)"
+hint = "Four rows, two choices for each."

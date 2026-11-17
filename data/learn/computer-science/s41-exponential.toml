@@ -1,0 +1,36 @@
+id = "CS.41"
+course = "Computer Science"
+book = 8
+order = 2
+title = "Polynomial, exponential and why NP matters"
+statement = "Polynomial algorithms scale; exponential ones stop being usable at small sizes; no one knows whether problems whose answers are easy to check can all be solved quickly (P versus NP)."
+
+[[step]]
+text = "Idea: at 10^9 steps a second, n^3 with n = 1000 is 10^9 steps: one second. 2^n with n = 60 is 2^60 steps: more than 36 years."
+calc = ["1000^3 / 10^9", "2^60 / 10^9 / (86400*365.25)"]
+
+[[step]]
+text = "At n = 100 the 2^n algorithm needs 4 x 10^13 years, thousands of times the age of the universe. Faster computers do not help: 1000 times faster adds only 10 to the size we can handle (2^10 = 1024)."
+calc = ["2^100 / 10^9 / (86400*365.25)", "log2(1000)"]
+
+[[step]]
+text = "Examples. Brute-force satisfiability tries all 2^n assignments. The travelling salesman tries (n - 1)!/2 routes: for 20 cities that is 60 quadrillion, and for 10 cities 181440."
+calc = ["fact(19)/2", "fact(9)/2"]
+
+[[step]]
+text = "P is the problems a computer solves in polynomial time (sorting, shortest paths, primes). NP is those whose answer can be checked in polynomial time (a Sudoku is checked by looking; solving it is the hard part). Whether P = NP is open and a one-million-dollar prize problem."
+calc = ["2^20", "20^3"]
+
+[[step]]
+text = "Practical response: use heuristics, approximation, or exploit structure. SAT solvers handle millions of variables in practice, even though the worst case is exponential; and public-key cryptography is built on the guess that factoring is not polynomial."
+calc = ["2^128", "2^128 / 10^9 / (86400*365.25)"]
+
+[[exercise]]
+prompt = "How many routes does the travelling salesman problem have for 10 cities, (10 - 1)!/2?"
+answer = "fact(9)/2"
+hint = "Fix the start, divide by 2 for direction."
+
+[[exercise]]
+prompt = "How many assignments does a formula with 20 variables have? (2^20)"
+answer = "2^20"
+hint = "Two choices per variable."

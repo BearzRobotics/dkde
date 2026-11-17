@@ -1,0 +1,36 @@
+id = "CS.33"
+course = "Computer Science"
+book = 6
+order = 4
+title = "UTF-16 and surrogate pairs"
+statement = "UTF-16 stores most characters in 16 bits; those above U+FFFF are split into two 16-bit surrogates."
+
+[[step]]
+text = "Idea: code points up to 0xFFFF (except the reserved block 0xD800 to 0xDFFF) fit in one 16-bit unit. Above that, 20 bits are left over after subtracting 0x10000, and are split 10 + 10 into two surrogates."
+calc = ["0xFFFF", "0x10FFFF - 0x10000", "2^20 - 1"]
+
+[[step]]
+text = "Take U+1F600. Subtract 0x10000: 0xF600. The top ten bits are shift(0xF600, -10) = 0x3D and the low ten are 0xF600 and 0x3FF = 0x200."
+calc = ["0x1F600 - 0x10000", "shift(0xF600,-10)", "0xF600 and 0x3FF"]
+
+[[step]]
+text = "High surrogate = 0xD800 + 0x3D = 0xD83D. Low surrogate = 0xDC00 + 0x200 = 0xDE00. So the character is the two units D83D DE00."
+calc = ["0xD800 + 0x3D", "0xDC00 + 0x200"]
+
+[[step]]
+text = "To decode, reverse it: ((high - 0xD800) x 1024 + (low - 0xDC00)) + 0x10000."
+calc = ["((0xD83D - 0xD800)*1024 + (0xDE00 - 0xDC00)) + 0x10000", "0x1F600"]
+
+[[step]]
+text = "The surrogate ranges are 1024 high values and 1024 low values: 1024 x 1024 = 1048576 extra characters, which is where the 0x10FFFF upper limit of Unicode comes from."
+calc = ["1024*1024", "0x10000 + 1024*1024 - 1"]
+
+[[exercise]]
+prompt = "What is the high surrogate of U+1F600, 0xD800 + shift(0xF600, -10)?"
+answer = "0xD800 + shift(0xF600,-10)"
+hint = "0xF600 shifted right 10 is 0x3D."
+
+[[exercise]]
+prompt = "How many characters can surrogate pairs add? (1024 x 1024)"
+answer = "1024*1024"
+hint = "1024 highs times 1024 lows."

@@ -1,0 +1,40 @@
+id = "CS.28"
+course = "Computer Science"
+book = 5
+order = 2
+title = "Half and full adders"
+statement = "A CPU adds with gates: a full adder gives sum = a xor b xor carry-in and carry-out = majority of the three; chain n of them to add n-bit numbers."
+
+[[step]]
+text = "Idea: a half adder adds two bits. The sum bit is a xor b and the carry bit is a and b. So 1 + 1 gives sum 0 carry 1, which is binary 10."
+calc = ["1 xor 1", "1 and 1", "1 xor 0", "1 and 0"]
+
+[[step]]
+text = "A full adder also takes the carry-in c from the column on the right. Sum = a xor b xor c. Carry-out = (a and b) or (c and (a xor b)). For 1 + 1 + 1: sum 1, carry 1 (binary 11)."
+calc = ["1 xor 1 xor 1", "(1 and 1) or (1 and (1 xor 1))"]
+
+[[step]]
+text = "Chain four full adders to add 0110 and 0111. Column 0 (right): 0 + 1 gives sum 1, carry 0. Column 1: 1 + 1 gives 0, carry 1. Column 2: 1 + 1 + 1 gives 1, carry 1. Column 3: 0 + 0 + 1 gives 1, carry 0. Result 1101."
+calc = ["0b0110 + 0b0111", "0b1101"]
+
+[[step]]
+text = "This ripple-carry adder is slow: the carry must pass through every column, so an n-bit add takes about n gate delays. Carry-lookahead adders compute the carries in parallel in about log2(n) delays."
+calc = ["32", "log2(32)"]
+
+[[step]]
+text = "Cost: a full adder is about 5 gates (2 XOR, 2 AND, 1 OR), so a 64-bit ripple adder is 64 x 5 = 320 gates."
+calc = ["64*5"]
+
+[[step]]
+text = "Overflow: the carry out of the top column says an unsigned add overflowed. For signed numbers overflow happens when the two operands have the same sign and the result has the other."
+calc = ["250 + 10", "(250 + 10) and 255"]
+
+[[exercise]]
+prompt = "What is the sum bit of a full adder with a = 1, b = 1, carry-in = 1? (1 xor 1 xor 1)"
+answer = "1 xor 1 xor 1"
+hint = "1 xor 1 = 0, then 0 xor 1."
+
+[[exercise]]
+prompt = "How many gates are in a 64-bit ripple-carry adder if each full adder has 5? (64 x 5)"
+answer = "64*5"
+hint = "One full adder per bit."

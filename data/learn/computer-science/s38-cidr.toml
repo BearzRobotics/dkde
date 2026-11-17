@@ -1,0 +1,36 @@
+id = "CS.38"
+course = "Computer Science"
+book = 7
+order = 5
+title = "CIDR and subnet arithmetic"
+statement = "A /n network keeps n bits for the network and 32 - n for hosts; masking and filling the host bits give the network and broadcast addresses."
+
+[[step]]
+text = "Idea: 10.20.30.40/20 has 20 network bits and 12 host bits. That is 2^12 = 4096 addresses, 4094 usable (not the all-zeros network or the all-ones broadcast)."
+calc = ["32 - 20", "2^12", "2^12 - 2"]
+
+[[step]]
+text = "The mask has 20 ones: 255.255.240.0, since the third octet has 4 ones: 128+64+32+16 = 240."
+calc = ["256 - 2^(32 - 20 - 8)", "128 + 64 + 32 + 16"]
+
+[[step]]
+text = "Network address: AND the address with the mask octet by octet. Only the third octet changes: 30 and 240 = 16, so the network is 10.20.16.0."
+calc = ["30 and 240", "30 to binary", "240 to binary"]
+
+[[step]]
+text = "Broadcast: set all host bits to 1. The third octet is 16 + 15 = 31 and the fourth 255: 10.20.31.255. So the usable range is 10.20.16.1 to 10.20.31.254."
+calc = ["(30 and 240) or 15", "(30 and 240) + 15"]
+
+[[step]]
+text = "Splitting and joining: a /20 holds sixteen /24s (2^4) and four /22s. Two adjacent /21 blocks can be joined (summarised) into one /20 if they start at a multiple of the bigger size."
+calc = ["2^(24 - 20)", "2^(22 - 20)"]
+
+[[exercise]]
+prompt = "How many usable hosts does a /26 network have? (2^6 - 2)"
+answer = "2^6 - 2"
+hint = "6 host bits, minus network and broadcast."
+
+[[exercise]]
+prompt = "What is 77 and 248 (the network part of 77 under a /21 mask)?"
+answer = "77 and 248"
+hint = "01001101 and 11111000."

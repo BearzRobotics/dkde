@@ -1,0 +1,36 @@
+id = "CS.42"
+course = "Computer Science"
+book = 8
+order = 3
+title = "Recursion depth and the stack"
+statement = "Each call uses stack memory, so how deep a recursion goes matters as much as how long it takes."
+
+[[step]]
+text = "Idea: each active call has a frame on the stack (return address, arguments, local variables). A typical thread stack is 8 MiB. With 48-byte frames the deepest recursion is about 8 x 2^20 / 48 = 174762 calls."
+calc = ["8*2^20", "floor(8*2^20/48)"]
+
+[[step]]
+text = "Recursion that goes n deep for n items (summing a list, naive factorial) overflows the stack for large n. Recursion that halves (binary search, merge sort) goes only log2(n) deep: for a million items, 20 levels."
+calc = ["ceil(log2(10^6))"]
+
+[[step]]
+text = "Fibonacci written naively makes about 2F(n + 1) - 1 calls (CS.21) but is only n deep, so it is slow rather than a stack risk. The danger is depth, not call count."
+calc = ["2*fibonacci(31) - 1"]
+
+[[step]]
+text = "Tail calls: when the recursive call is the last thing done, the compiler can reuse the frame and turn the recursion into a loop: constant stack for any n. Languages such as Scheme guarantee it; C compilers often do it with optimisation."
+calc = ["8*2^20/48"]
+
+[[step]]
+text = "Fixes for deep recursion: rewrite as a loop, use an explicit stack in the heap (a million items of 8 bytes is 8 MB, which the heap allows), or increase the stack size."
+calc = ["10^6*8/10^6"]
+
+[[exercise]]
+prompt = "How deep can the recursion go with an 8 MiB stack and 48-byte frames? (floor(8 x 2^20 / 48))"
+answer = "floor(8*2^20/48)"
+hint = "8388608 divided by 48."
+
+[[exercise]]
+prompt = "How many levels does merge sort recurse for 10^6 items, ceil(log2(10^6))?"
+answer = "ceil(log2(10^6))"
+hint = "2^20 is about a million."

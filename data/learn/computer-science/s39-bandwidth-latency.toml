@@ -1,0 +1,36 @@
+id = "CS.39"
+course = "Computer Science"
+book = 7
+order = 6
+title = "Bandwidth, latency and the bandwidth-delay product"
+statement = "Latency is how long one bit takes; bandwidth is how many per second; the amount in flight, bandwidth x round-trip time, is what a sender must keep filling."
+
+[[step]]
+text = "Idea: a pipe has a length (latency) and a width (bandwidth). A 1 Gbit/s link with a 50 ms round trip can hold 10^9 x 0.05 = 50 million bits in flight (6.25 MB): the bandwidth-delay product (BDP)."
+calc = ["10^9 * 0.05", "10^9 * 0.05 / 8 / 10^6"]
+
+[[step]]
+text = "A TCP sender can have only one window of unacknowledged data in flight, so throughput is at most window / RTT. With the old 64 KiB window and 50 ms: 65536 x 8 / 0.05 = 10.5 Mbit/s, on a gigabit link."
+calc = ["65536*8/0.05", "65536*8/0.05/10^6"]
+
+[[step]]
+text = "To fill the link the window must be at least the BDP: 6.25 MB. That is why window scaling exists, and why long fat networks need big buffers."
+calc = ["10^9 * 0.05 / 8"]
+
+[[step]]
+text = "Time to fetch a file = latency + size / bandwidth. A 1 MB file (8 million bits) over 100 Mbit/s with 20 ms latency takes 0.02 + 8 x 10^6 / 10^8 = 0.02 + 0.08 = 0.1 s."
+calc = ["0.02 + 8*10^6/10^8"]
+
+[[step]]
+text = "For small requests latency dominates (a 1 KB reply is 8000 bits: 0.08 ms of transfer against 20 ms waiting), and for big transfers bandwidth does. So batching many small requests into one is a big win."
+calc = ["8000/10^8*1000", "20/(8000/10^8*1000)"]
+
+[[exercise]]
+prompt = "What is the bandwidth-delay product of 10^9 bits/s and a 0.05 s round trip, in bits? (10^9 x 0.05)"
+answer = "10^9*0.05"
+hint = "Bits in flight."
+
+[[exercise]]
+prompt = "What is the maximum throughput of a 65536-byte window over a 0.05 s round trip, in bits per second? (65536 x 8 / 0.05)"
+answer = "65536*8/0.05"
+hint = "Window divided by RTT."

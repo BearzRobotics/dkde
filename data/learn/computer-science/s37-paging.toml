@@ -1,0 +1,36 @@
+id = "CS.37"
+course = "Computer Science"
+book = 7
+order = 4
+title = "Paging and virtual memory"
+statement = "A virtual address is split into a page number (looked up in a table) and an offset (kept as is); the TLB caches the lookups."
+
+[[step]]
+text = "Idea: with 4 KiB pages the low 12 bits are the offset within a page and the rest is the page number. Virtual address 0x403A7C: page number = address >> 12, offset = address and 0xFFF."
+calc = ["2^12", "shift(0x403A7C,-12)", "0x403A7C and 0xFFF"]
+
+[[step]]
+text = "The page table maps page number to a physical frame. If page 0x403 lives in frame 0x1A, the physical address is 0x1A x 4096 + offset = 0x1AA7C."
+calc = ["0x1A*4096 + 0xA7C", "0x1AA7C"]
+
+[[step]]
+text = "A flat table for a 48-bit address space would need 2^36 entries of 8 bytes each: 512 GiB. So page tables are multi-level: four levels of 9 bits (512 entries of 8 bytes = one 4 KiB page each) plus the 12-bit offset make 48 bits."
+calc = ["2^36", "2^36*8/2^30", "4*9 + 12"]
+
+[[step]]
+text = "Each translation would cost extra memory reads, so the TLB caches recent ones. With a 98 percent hit rate, 1 ns TLB and 100 ns memory: a hit costs 101, a miss (one more memory read for the table) 201. Effective time = 0.98 x 101 + 0.02 x 201 = 103 ns."
+calc = ["0.98*101 + 0.02*201"]
+
+[[step]]
+text = "Bigger pages cut table size and TLB misses but waste memory inside the page (internal fragmentation, on average half a page per region)."
+calc = ["2^21", "4096/2"]
+
+[[exercise]]
+prompt = "What is the page number of address 0x403A7C with 4 KiB pages? (shift right 12)"
+answer = "shift(0x403A7C,-12)"
+hint = "0x403."
+
+[[exercise]]
+prompt = "What is the offset in the page? (0x403A7C and 0xFFF)"
+answer = "0x403A7C and 0xFFF"
+hint = "The low 12 bits."

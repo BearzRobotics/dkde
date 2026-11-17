@@ -1,0 +1,40 @@
+id = "CS.31"
+course = "Computer Science"
+book = 6
+order = 2
+title = "IEEE 754 up close"
+statement = "A float is sign, exponent and fraction; special exponent values make infinity, NaN, zero and tiny subnormal numbers; rounding picks the nearest stored value."
+
+[[step]]
+text = "Idea: the 32 bits of a float hold sign (1), exponent (8, bias 127) and fraction (23). The calculator shows them: f32bits(x) gives the bits of x as a number and f32(bits) turns bits back into a value."
+calc = ["f32bits(6.5)", "0x40D00000", "f32(0x40D00000)", "f32bits(1)", "f32bits(-2)"]
+
+[[step]]
+text = "1.0 is 0x3F800000: exponent field 127 (so 2^0) and fraction 0. 2.0 is 0x40000000 (exponent 128). Negative numbers set the top bit: -2.0 is 0xC0000000. Each step in the exponent field doubles the value."
+calc = ["f32bits(2)", "0x3F800000", "f32bits(-2)"]
+
+[[step]]
+text = "Special values use exponent field 255: all fraction bits zero is infinity (0x7F800000); any fraction bit set is NaN (not a number), such as 0x7FC00000. Exponent 0 and fraction 0 is zero."
+calc = ["0x7F800000", "0x7FC00000", "2^8 - 1"]
+
+[[step]]
+text = "Exponent field 0 with a non-zero fraction is a subnormal: no hidden leading 1, so numbers fade out smoothly instead of jumping to zero. The smallest normal float is 2^-126 and the smallest subnormal is 2^-149."
+calc = ["2^-126", "2^-149"]
+
+[[step]]
+text = "The largest float is (2 - 2^-23) x 2^127, about 3.4 x 10^38. A double is the same with 11 exponent bits (bias 1023) and 52 fraction bits."
+calc = ["(2 - 2^-23) * 2^127", "f64bits(1)", "0x3FF0000000000000"]
+
+[[step]]
+text = "Rounding: 0.1 is not a sum of powers of two, so it is stored as the nearest float: f32(f32bits(0.1)) is 0.10000000149. IEEE gives round-to-nearest-even by default, and also round toward zero, toward +infinity and toward -infinity. Errors of half a unit in the last place are unavoidable."
+calc = ["f32bits(0.1)", "f32(f32bits(0.1))", "f32(f32bits(0.1)) - 0.1"]
+
+[[exercise]]
+prompt = "What are the bits of the float 2.0, as a number? (f32bits(2))"
+answer = "f32bits(2)"
+hint = "0x40000000."
+
+[[exercise]]
+prompt = "What is the value of the smallest subnormal float? (2^-149)"
+answer = "2^-149"
+hint = "No hidden bit, fraction 1 at the bottom."

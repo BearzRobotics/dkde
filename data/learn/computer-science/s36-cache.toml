@@ -1,0 +1,35 @@
+id = "CS.36"
+course = "Computer Science"
+book = 7
+order = 3
+title = "Caches: lines, sets and hit rates"
+statement = "A cache splits an address into tag, index and offset; the average access time depends on the hit rate."
+
+[[step]]
+text = "Idea: a 32 KiB cache with 64-byte lines holds 512 lines. With 8 lines per set (8-way) that is 64 sets."
+calc = ["32768/64", "32768/64/8"]
+
+[[step]]
+text = "An address splits into offset (which byte in the line: log2(64) = 6 bits), index (which set: log2(64) = 6 bits) and tag (the rest). For address 0x12345678: offset = address and 63, index = (address >> 6) and 63, tag = address >> 12."
+calc = ["log2(64)", "0x12345678 and 63", "shift(0x12345678,-6) and 63", "shift(0x12345678,-12)"]
+
+[[step]]
+text = "Average memory access time = hit time + miss rate x miss penalty. With a 1 ns hit, 5 percent misses and a 100 ns penalty: 1 + 0.05 x 100 = 6 ns, six times slower than a hit."
+calc = ["1 + 0.05*100", "1 + 0.01*100"]
+
+[[step]]
+text = "Why sequential code is fast: reading 4-byte ints in order, one 64-byte line serves 16 of them, so the miss rate is 1/16 = 6.25 percent. Reading with a 64-byte stride misses every time: 100 percent."
+calc = ["64/4", "1/16"]
+
+[[step]]
+text = "The three kinds of miss: compulsory (first touch), capacity (the data is larger than the cache) and conflict (too many addresses map to one set). More associativity cuts conflicts."
+
+[[exercise]]
+prompt = "How many sets does a 32 KiB, 64-byte-line, 8-way cache have? (32768/64/8)"
+answer = "32768/64/8"
+hint = "Lines divided by ways."
+
+[[exercise]]
+prompt = "What is the average access time with a 1 ns hit, 5 percent misses and a 100 ns penalty? (1 + 0.05 x 100)"
+answer = "1 + 0.05*100"
+hint = "The miss penalty is paid 1 time in 20."
