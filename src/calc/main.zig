@@ -29,6 +29,7 @@ const dates = @import("dates.zig");
 const graph_mod = @import("graph.zig");
 const geometry_mod = @import("geometry.zig");
 const learn_mod = @import("learn.zig");
+const calccli = @import("calccli.zig");
 const simplify = @import("simplify.zig");
 const formulas = @import("formulas.zig");
 const calculus = @import("calculus.zig");
@@ -4182,7 +4183,9 @@ const Calc = struct {
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
 pub fn main(init: std.process.Init.Minimal) !void {
-    cli.handle(init.args, .{ .name = "dkde-calc", .summary = "Calculator" });
+    // Subcommands run without a window (calccli.zig) and take their own options.
+    if (calccli.dispatch(init.args)) |status| std.process.exit(status);
+    cli.handle(init.args, .{ .name = "dkde-calc", .summary = "Calculator", .usage = "[eval EXPR... | steps EXPR | render LESSON.toml -o FILE | check-lessons [DIR...]]" });
     try common.runapp.run("org.dkde.calc", Calc, init);
 }
 

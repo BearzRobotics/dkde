@@ -198,3 +198,56 @@ test "drawing lines are read" {
     try std.testing.expectError(error.BadColour, parseOp(a, "segment A B mauve"));
     try std.testing.expectError(error.BadNumber, parseOp(a, "point A x 1"));
 }
+
+/// The point names an operation needs to exist already (the ones it only refers to).
+pub fn uses(op: Op, out: *[8][]const u8) usize {
+    var n: usize = 0;
+    switch (op) {
+        .clear, .pt => {},
+        .seg => |o| {
+            out[0] = o.a;
+            out[1] = o.b;
+            n = 2;
+        },
+        .line => |o| {
+            out[0] = o.a;
+            out[1] = o.b;
+            n = 2;
+        },
+        .circle => |o| {
+            out[0] = o.c;
+            out[1] = o.t;
+            n = 2;
+        },
+        .poly => |o| {
+            for (o.names) |name| {
+                if (n == out.len) break;
+                out[n] = name;
+                n += 1;
+            }
+        },
+        .angle => |o| {
+            out[0] = o.a;
+            out[1] = o.v;
+            out[2] = o.c;
+            n = 3;
+        },
+        .cross => |o| {
+            out[0] = o.a0;
+            out[1] = o.a1;
+            out[2] = o.b0;
+            out[3] = o.b1;
+            n = 4;
+        },
+    }
+    return n;
+}
+
+/// The point an operation makes, if it makes one.
+pub fn defines(op: Op) ?[]const u8 {
+    return switch (op) {
+        .pt => |o| o.n,
+        .cross => |o| o.n,
+        else => null,
+    };
+}

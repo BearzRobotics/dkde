@@ -52,7 +52,7 @@ pub const Learn = struct {
 
     /// The folders lessons are read from: DKDE_LEARN_DIR, else the installed data, and always your own
     /// in ~/.local/share/dkde/learn.
-    fn lessonDirs(gpa: std.mem.Allocator, out: *std.ArrayList([]const u8)) void {
+    pub fn lessonDirs(gpa: std.mem.Allocator, out: *std.ArrayList([]const u8)) void {
         if (std.c.getenv("DKDE_LEARN_DIR")) |d| {
             out.append(gpa, gpa.dupe(u8, std.mem.span(d)) catch return) catch {};
             return;

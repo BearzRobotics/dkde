@@ -34,7 +34,20 @@ constructed crossings where Euclid constructs them), the statement, the steps an
 figure is looked at on screen before it is committed. Books VII to X are about numbers and lengths, not
 only figures: their steps use the same view with line segments standing for numbers.
 
-## Checking a lesson
+## Command line
+
+The calculator runs without a window for checking and for looking at figures:
+
+    dkde-calc check-lessons [DIR...]    load every lesson file and run every step; exit 1 on a problem
+    dkde-calc render data/learn/euclid/b01-p002.toml -o fig.png [--step N | --each] [--size WxH]
+    dkde-calc eval -v "1/3 + 1/6" "x = 5" "x^2 + 1"
+    dkde-calc steps "x^2 - 5x + 6 = 0"
+
+`check-lessons` catches a file that does not read, a step that draws from a point not drawn yet, a
+construction whose shapes do not cross, and a `calc` line that fails. `render` draws a lesson (all of it, one
+step, or every step as its own file) to PNG or SVG with the same code as the window.
+
+## Checking a lesson in the window
 
 `DKDE_LEARN_LESSON=I.2 DKDE_LEARN_STEPS=7 dkde-calc` (with `learn = true` and `pane = "geometry"` in
 calc.toml) opens that lesson with that many steps drawn, for a screenshot.
