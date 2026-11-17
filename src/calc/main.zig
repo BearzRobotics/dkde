@@ -27,6 +27,7 @@ const convert = @import("convert.zig");
 const rich = @import("rich.zig");
 const dates = @import("dates.zig");
 const graph_mod = @import("graph.zig");
+const geometry_mod = @import("geometry.zig");
 const simplify = @import("simplify.zig");
 const formulas = @import("formulas.zig");
 const calculus = @import("calculus.zig");
@@ -46,7 +47,7 @@ const t = common.tr;
 const group_sep = "\u{202F}";
 
 const Mode = enum { standard, scientific, programmer };
-const Pane = enum { none, history, units, currency, dates, graph, formulas, steps, functions };
+const Pane = enum { none, history, units, currency, dates, graph, geometry, formulas, steps, functions };
 
 const Cmd = enum { insert, enter, clear, back, negate, reciprocal, mc, mr, ms, mplus, mminus, plot, fraction };
 
@@ -152,6 +153,7 @@ const Calc = struct {
     history_list: *gtk.ListBox,
     vars_list: *gtk.ListBox,
     graph: *graph_mod.Graph,
+    geometry: *geometry_mod.Geometry,
     formula_list: *gtk.ListBox,
     formula_form: *gtk.Box,
     formula_search: *gtk.SearchEntry,
@@ -279,11 +281,13 @@ const Calc = struct {
             .history_list = gtk.ListBox.new(),
             .vars_list = gtk.ListBox.new(),
             .graph = undefined,
+            .geometry = undefined,
             .formula_list = gtk.ListBox.new(),
             .formula_form = gtk.Box.new(.vertical, 6),
             .formula_search = gtk.SearchEntry.new(),
         };
         self.graph = try graph_mod.Graph.create(gpa, &self.session);
+        self.geometry = try geometry_mod.Geometry.create(gpa, self, useGeometryValue);
         self.readSettings();
         self.loadState();
         self.loadManualRates();
@@ -409,6 +413,7 @@ const Calc = struct {
         _ = self.side.addNamed(self.buildCurrency(), "currency");
         _ = self.side.addNamed(self.buildDates(), "dates");
         _ = self.side.addNamed(self.graph.widget(), "graph");
+        _ = self.side.addNamed(self.geometry.widget(), "geometry");
         _ = self.side.addNamed(self.buildFormulas(), "formulas");
         _ = self.side.addNamed(self.buildSteps(), "steps");
         _ = self.side.addNamed(self.buildFunctions(), "functions");
@@ -532,6 +537,7 @@ const Calc = struct {
                 mb.checkKey("_Currency", "pane-currency", self.pane == .currency, "<Control>k"),
                 mb.checkKey("_Date Calculation", "pane-dates", self.pane == .dates, "<Control>e"),
                 mb.checkKey("_Graph", "pane-graph", self.pane == .graph, "<Control>g"),
+                mb.checkKey("G_eometry", "pane-geometry", self.pane == .geometry, "<Control><Shift>g"),
                 mb.checkKey("_Formulas", "pane-formulas", self.pane == .formulas, "<Control><Shift>f"),
                 mb.checkKey("Show _Work", "pane-steps", self.pane == .steps, "<Control>l"),
                 mb.checkKey("Fu_nctions", "pane-functions", self.pane == .functions, "<Control><Shift>y"),
@@ -3596,12 +3602,19 @@ const Calc = struct {
 
     // ---- panes and menus --------------------------------------------------------------------
 
+    /// A number clicked in the Geometry pane goes into the entry.
+    fn useGeometryValue(ctx: *anyopaque, text: []const u8) void {
+        const self: *Calc = @ptrCast(@alignCast(ctx));
+        self.insert(text);
+        _ = self.entry.as(gtk.Widget).grabFocus();
+    }
+
     fn showPane(self: *Calc, pane: Pane) void {
         self.pane = pane;
         const w = self.side.as(gtk.Widget);
         w.setVisible(@intFromBool(pane != .none));
         if (pane != .none) self.side.setVisibleChildName(@tagName(pane));
-        inline for (.{ "history", "units", "currency", "dates", "graph", "formulas", "steps", "functions" }) |name| {
+        inline for (.{ "history", "units", "currency", "dates", "graph", "geometry", "formulas", "steps", "functions" }) |name| {
             common.menubar.setChecked(self.window, "pane-" ++ name, std.mem.eql(u8, @tagName(pane), name));
         }
         self.config.setString("calc", "pane", @tagName(pane)) catch {};
@@ -4085,6 +4098,7 @@ const Calc = struct {
         for (self.formula_fields.items) |f| self.gpa.free(f.name);
         self.formula_fields.deinit(self.gpa);
         self.graph.destroy();
+        self.geometry.destroy();
         // The exchange rates: the table in use, the arena behind it, and the rates typed in by hand.
         quantity.setCurrencies(&.{});
         if (self.rate_arena) |*arena| arena.deinit();
@@ -4114,6 +4128,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
 test {
     _ = @import("typeset.zig");
+    _ = @import("geom.zig");
     _ = @import("num.zig");
     _ = @import("eval.zig");
     _ = @import("units.zig");
