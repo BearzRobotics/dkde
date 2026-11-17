@@ -1,0 +1,38 @@
+id = "I.20"
+book = 1
+order = 21
+title = "The triangle inequality"
+statement = "In any triangle two sides taken together in any manner are greater than the remaining one."
+proof = "Therefore in any triangle two sides taken together in any manner are greater than the remaining one. Q.E.D."
+
+[[step]]
+text = "Let ABC be a triangle. I say that in the triangle ABC two sides taken together in any manner are greater than the remaining one: BA, AC greater than BC."
+draw = [
+  "clear",
+  "point A 1 2",
+  "point B 0 0",
+  "point C 4 0",
+  "polygon A B C blue",
+]
+
+[[step]]
+text = "Let BA be drawn through to the point D, and let AD be made equal to CA (I.3). Let DC be joined."
+draw = [
+  "point D 2.612 5.225",
+  "segment A D orange",
+  "segment D C orange",
+]
+
+[[step]]
+text = "Since DA is equal to AC, the angle ADC is equal to the angle ACD (I.5). Therefore the angle BCD is greater than the angle ADC (common notion 5)."
+draw = [
+  "angle A D C green fill",
+  "angle A C D green fill",
+  "angle B C D red fill",
+]
+
+[[step]]
+text = "Since DCB is a triangle having the angle BCD greater than the angle BDC, and the greater angle is subtended by the greater side (I.19), DB is greater than BC. But DB is equal to BA, AC. Therefore BA, AC are greater than BC. Similarly the other pairs can be proved."
+draw = [
+  "segment B D red",
+]

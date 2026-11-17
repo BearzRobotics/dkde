@@ -1,0 +1,38 @@
+id = "I.10"
+book = 1
+order = 11
+title = "To bisect a line"
+statement = "To bisect a given finite straight line."
+proof = "Therefore the given finite straight line AB has been bisected at D. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given finite straight line. It is required to bisect it."
+draw = [
+  "clear",
+  "point A -3 0",
+  "point B 3 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "On AB let the equilateral triangle ABC be constructed (I.1)."
+draw = [
+  "point C 0 5.196",
+  "segment A C black",
+  "segment B C black",
+  "polygon A B C teal fill",
+]
+
+[[step]]
+text = "Let the angle ACB be bisected by the straight line CD (I.9)."
+draw = [
+  "point D 0 0",
+  "segment C D red",
+]
+
+[[step]]
+text = "Since AC is equal to CB, and CD is common, the two sides AC, CD are equal to the two sides BC, CD respectively. And the angle ACD is equal to the angle BCD. Therefore the base AD is equal to the base BD (I.4). Thus AB is bisected at D."
+draw = [
+  "segment A D green",
+  "segment D B green",
+]

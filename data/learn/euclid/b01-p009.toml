@@ -1,0 +1,43 @@
+id = "I.9"
+book = 1
+order = 10
+title = "To bisect an angle"
+statement = "To bisect a given rectilineal angle."
+proof = "Therefore the given rectilineal angle BAC has been bisected by the straight line AF. Being what it was required to do."
+
+[[step]]
+text = "Let the angle BAC be the given rectilineal angle. It is required to bisect it."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 4.83 1.294",
+  "point C -0.436 4.981",
+  "segment A B",
+  "segment A C",
+  "angle B A C blue fill",
+]
+
+[[step]]
+text = "Let a point D be taken at random on AB. Let AE be cut off from AC equal to AD (I.3), and let DE be joined."
+draw = [
+  "point D 2.898 0.776",
+  "point E -0.261 2.989",
+  "segment D E",
+]
+
+[[step]]
+text = "On DE let the equilateral triangle DEF be constructed (I.1), and let AF be joined."
+draw = [
+  "point F 3.234 4.619",
+  "segment D F orange",
+  "segment E F orange",
+  "polygon D E F teal fill",
+  "segment A F red",
+]
+
+[[step]]
+text = "Since AD is equal to AE, and AF is common, the two sides DA, AF are equal to the two sides EA, AF respectively. And the base DF is equal to the base EF. Therefore the angle DAF is equal to the angle EAF (I.8). Thus the angle BAC is bisected by AF."
+draw = [
+  "angle D A F green fill",
+  "angle F A E purple fill",
+]

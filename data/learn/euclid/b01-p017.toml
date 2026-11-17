@@ -1,0 +1,36 @@
+id = "I.17"
+book = 1
+order = 18
+title = "Two angles of a triangle"
+statement = "In any triangle two angles taken together in any manner are less than two right angles."
+proof = "Therefore in any triangle two angles taken together in any manner are less than two right angles. Q.E.D."
+
+[[step]]
+text = "Let ABC be a triangle. I say that two angles of the triangle ABC taken together in any manner are less than two right angles."
+draw = [
+  "clear",
+  "point A 0 3",
+  "point B -3 0",
+  "point C 2 0",
+  "polygon A B C blue",
+  "angle A B C orange fill",
+  "angle A C B green fill",
+]
+
+[[step]]
+text = "Let BC be produced to D."
+draw = [
+  "point D 5.5 0",
+  "segment C D black",
+]
+
+[[step]]
+text = "Since the angle ACD is an exterior angle of the triangle ABC, it is greater than the interior and opposite angle ABC (I.16)."
+draw = [
+  "angle A C D red fill",
+]
+
+[[step]]
+text = "Add the angle ACB to each. Then the angles ACD, ACB are greater than the angles ABC, BCA. But the angles ACD, ACB are equal to two right angles (I.13). Therefore the angles ABC, BCA are less than two right angles. Similarly we can prove that the angles BAC, ACB, and also CAB, ABC, are less than two right angles."
+draw = [
+]

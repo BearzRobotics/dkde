@@ -1,0 +1,39 @@
+id = "I.13"
+book = 1
+order = 14
+title = "Angles on a straight line"
+statement = "If a straight line stand on a straight line, it makes either two right angles or angles equal to two right angles."
+proof = "Therefore if a straight line stand on a straight line, it makes either two right angles or angles equal to two right angles. Q.E.D."
+
+[[step]]
+text = "Let any straight line AB stand on the straight line CD. I say that the angles CBA, ABD are either two right angles or equal to two right angles."
+draw = [
+  "clear",
+  "point C -4 0",
+  "point D 4 0",
+  "point B 0 0",
+  "point A 2.008 2.867",
+  "segment C D blue",
+  "segment B A red",
+  "angle C B A orange fill",
+  "angle A B D purple fill",
+]
+
+[[step]]
+text = "If the angle CBA is equal to the angle ABD, they are two right angles (definition 10)."
+draw = [
+]
+
+[[step]]
+text = "But if not, let BE be drawn from the point B at right angles to CD (I.11). Then the angles CBE, EBD are two right angles."
+draw = [
+  "point E 0 3.5",
+  "segment B E green",
+  "angle C B E teal",
+  "angle E B D teal",
+]
+
+[[step]]
+text = "Since the angle CBE is equal to the two angles CBA, ABE, add the angle EBD to each. Then the angles CBE, EBD are equal to the three angles CBA, ABE, EBD. Again the angle DBA is equal to the two angles DBE, EBA, and adding the angle ABC to each, the angles DBA, ABC are equal to the three angles DBE, EBA, ABC. But CBE, EBD were also shown equal to the same three angles. Things equal to the same thing are equal to one another (common notion 1). So CBE, EBD are equal to DBA, ABC. But CBE, EBD are two right angles. Therefore the angles DBA, ABC are equal to two right angles."
+draw = [
+]

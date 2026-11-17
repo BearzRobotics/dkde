@@ -1,0 +1,42 @@
+id = "I.22"
+book = 1
+order = 23
+title = "A triangle from three lines"
+statement = "Out of three straight lines, which are equal to three given straight lines, to construct a triangle: thus it is necessary that two of the straight lines taken together in any manner should be greater than the remaining one (I.20)."
+proof = "Therefore out of three straight lines KF, FG, GK, which are equal to the three given straight lines A, B, C, the triangle KFG has been constructed. Being what it was required to do."
+
+[[step]]
+text = "Let the three given straight lines be A, B, C, of which two taken together in any manner are greater than the remaining one. It is required to construct a triangle out of straight lines equal to A, B, C. Let there be set out a straight line DE, terminated at D but of infinite length towards E."
+draw = [
+  "clear",
+  "point D 0 0",
+  "point E 15 0",
+  "line D E black",
+]
+
+[[step]]
+text = "Let DF be made equal to A, FG equal to B, and GH equal to C (I.3)."
+draw = [
+  "point F 3 0",
+  "point G 7 0",
+  "point H 12 0",
+  "segment D F blue",
+  "segment F G red",
+  "segment G H green",
+]
+
+[[step]]
+text = "With centre F and distance FD let the circle DKL be described. Again, with centre G and distance GH let the circle KLH be described. Let KF, KG be joined."
+draw = [
+  "circle F D blue",
+  "circle G H green",
+  "cross K cc F D G H 1",
+  "segment K F blue",
+  "segment K G green",
+]
+
+[[step]]
+text = "Since F is the centre of the circle DKL, FD is equal to FK; but FD is equal to A, so KF is equal to A. Again, since G is the centre of the circle LKH, GH is equal to GK; but GH is equal to C, so GK is equal to C. And FG is also equal to B. Therefore the three straight lines KF, FG, GK are equal to A, B, C. Therefore the triangle KFG has been constructed."
+draw = [
+  "polygon K F G teal fill",
+]

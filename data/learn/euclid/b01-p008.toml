@@ -1,0 +1,43 @@
+id = "I.8"
+book = 1
+order = 9
+title = "Side, side, side"
+statement = "If two triangles have the two sides equal to two sides respectively, and have also the base equal to the base, they will also have the angles equal which are contained by the equal straight lines."
+proof = "Therefore if two triangles have the two sides equal to two sides respectively, and have also the base equal to the base, they will also have the angles equal which are contained by the equal straight lines. Q.E.D."
+
+[[step]]
+text = "Let ABC, DEF be two triangles having the two sides AB, AC equal to the two sides DE, DF respectively, that is AB to DE and AC to DF, and the base BC equal to the base EF. It is required to prove that the angle BAC is equal to the angle EDF."
+draw = [
+  "clear",
+  "point A -2.500 0",
+  "point B 1 0",
+  "point C -0.300 2.800",
+  "polygon A B C blue",
+  "point D 3 0",
+  "point E 6.500 0",
+  "point F 5.200 2.800",
+  "polygon D E F red",
+]
+
+[[step]]
+text = "If the triangle ABC be applied to the triangle DEF, with the point B placed on E and the straight line BC on EF, the point C will also coincide with F, because BC is equal to EF."
+draw = [
+  "segment B C green",
+  "segment E F green",
+]
+
+[[step]]
+text = "Then BA, AC will coincide with ED, DF. For if they did not, but fell as EG, GF on the same side, there would be constructed on the same straight line, from its extremities, two straight lines meeting in another point and equal to the first two respectively. But this is impossible (I.7)."
+draw = [
+  "segment A B blue",
+  "segment A C blue",
+  "segment D E red",
+  "segment D F red",
+]
+
+[[step]]
+text = "Therefore the sides coincide, and so the angle BAC coincides with the angle EDF and is equal to it (common notion 4). The same is true of the other angles."
+draw = [
+  "angle B A C green fill",
+  "angle E D F green fill",
+]

@@ -1,0 +1,38 @@
+id = "I.14"
+book = 1
+order = 15
+title = "Two straight lines making a straight line"
+statement = "If with any straight line, and at a point on it, two straight lines not lying on the same side make the adjacent angles equal to two right angles, the two straight lines will be in a straight line with one another."
+proof = "Therefore if with any straight line, and at a point on it, two straight lines not lying on the same side make the adjacent angles equal to two right angles, the two straight lines will be in a straight line with one another. Q.E.D."
+
+[[step]]
+text = "Let two straight lines BC, BD, not lying on the same side, make with the straight line AB, at the point B on it, the adjacent angles ABC, ABD equal to two right angles. I say that BD is in a straight line with CB."
+draw = [
+  "clear",
+  "point A 1.479 3.172",
+  "point B 0 0",
+  "point C -4 0",
+  "point D 3.913 -0.832",
+  "segment A B red",
+  "segment B C blue",
+  "segment B D blue",
+  "angle A B C orange fill",
+  "angle A B D purple fill",
+]
+
+[[step]]
+text = "For if BD is not in a straight line with BC, let BE be in a straight line with CB (postulate 2)."
+draw = [
+  "point E 4 0",
+  "segment B E green",
+]
+
+[[step]]
+text = "Since CBE is a straight line and AB stands on it, the angles CBA, ABE are equal to two right angles (I.13). But the angles CBA, ABD are also equal to two right angles. Take away CBA from both. Then the angle ABE is equal to the angle ABD, the less to the greater, which is impossible (common notion 3)."
+draw = [
+]
+
+[[step]]
+text = "Therefore BE is not in a straight line with CB. Similarly we can prove that no other is so but BD. Therefore CB is in a straight line with BD."
+draw = [
+]

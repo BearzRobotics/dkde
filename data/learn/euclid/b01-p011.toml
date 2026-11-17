@@ -1,0 +1,40 @@
+id = "I.11"
+book = 1
+order = 12
+title = "A perpendicular at a point on a line"
+statement = "To draw a straight line at right angles to a given straight line from a given point on it."
+proof = "Therefore the straight line CF has been drawn at right angles to the given straight line AB from the point C on it. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given straight line, and C a point on it. It is required to draw from C a straight line at right angles to AB."
+draw = [
+  "clear",
+  "point A -4 0",
+  "point B 4 0",
+  "point C 0 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "Let a point D be taken at random on AC. Let CE be made equal to CD (I.3)."
+draw = [
+  "point D -1.5 0",
+  "point E 1.5 0",
+]
+
+[[step]]
+text = "On DE let the equilateral triangle FDE be constructed (I.1), and let FC be joined."
+draw = [
+  "point F 0 2.598",
+  "segment D F black",
+  "segment E F black",
+  "polygon D E F teal fill",
+  "segment F C red",
+]
+
+[[step]]
+text = "Since DC is equal to CE, and CF is common, the two sides DC, CF are equal to the two sides EC, CF respectively. And the base DF is equal to the base FE. Therefore the angle DCF is equal to the angle ECF (I.8), and they are adjacent. But when a straight line standing on a straight line makes the adjacent angles equal to one another, each of the equal angles is right (definition 10). Therefore each of the angles DCF, FCE is right."
+draw = [
+  "angle D C F green fill",
+  "angle F C E green fill",
+]

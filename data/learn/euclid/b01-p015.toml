@@ -1,0 +1,42 @@
+id = "I.15"
+book = 1
+order = 16
+title = "Vertical angles"
+statement = "If two straight lines cut one another, they make the vertical angles equal to one another."
+proof = "Therefore if two straight lines cut one another, they make the vertical angles equal to one another. Q.E.D."
+
+[[step]]
+text = "Let the straight lines AB, CD cut one another at the point E. I say that the angle AEC is equal to the angle DEB, and the angle CEB to the angle AED."
+draw = [
+  "clear",
+  "point A 3.172 1.479",
+  "point B -3.172 -1.479",
+  "point C -1.479 3.172",
+  "point D 1.479 -3.172",
+  "point E 0 0",
+  "segment A B blue",
+  "segment C D red",
+  "angle A E C orange fill",
+  "angle D E B orange fill",
+]
+
+[[step]]
+text = "Since the straight line AE stands on the straight line CD making the angles CEA, AED, these angles are equal to two right angles (I.13). Again, since DE stands on the straight line AB making the angles AED, DEB, these angles are also equal to two right angles."
+draw = [
+  "angle C E A green",
+  "angle A E D green",
+  "angle A E D teal",
+  "angle D E B teal",
+]
+
+[[step]]
+text = "Therefore the angles CEA, AED are equal to the angles AED, DEB. Take away the angle AED from each. The remaining angle CEA is equal to the remaining angle BED (common notion 3)."
+draw = [
+]
+
+[[step]]
+text = "Similarly it can be proved that the angles CEB, DEA are also equal."
+draw = [
+  "angle C E B purple fill",
+  "angle A E D purple fill",
+]

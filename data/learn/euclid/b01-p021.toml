@@ -1,0 +1,39 @@
+id = "I.21"
+book = 1
+order = 22
+title = "Lines inside a triangle"
+statement = "If on one of the sides of a triangle, from its extremities, there be constructed two straight lines meeting within the triangle, the straight lines so constructed will be less than the remaining two sides of the triangle, but will contain a greater angle."
+proof = "Therefore if on one of the sides of a triangle, from its extremities, two straight lines be constructed meeting within the triangle, they will be less than the remaining two sides of the triangle, but will contain a greater angle. Q.E.D."
+
+[[step]]
+text = "On BC, one of the sides of the triangle ABC, let the two straight lines BD, DC be constructed from its extremities, meeting within the triangle. I say that BD, DC are less than the remaining two sides BA, AC, but contain an angle BDC greater than the angle BAC."
+draw = [
+  "clear",
+  "point A 0 4",
+  "point B -3 0",
+  "point C 3 0",
+  "polygon A B C blue",
+  "point D 0.5 1.5",
+  "segment B D red",
+  "segment D C red",
+]
+
+[[step]]
+text = "Let BD be drawn through to E."
+draw = [
+  "point E 1.541 1.946",
+  "segment D E black",
+]
+
+[[step]]
+text = "Since in any triangle two sides are greater than the remaining one (I.20), in the triangle ABE the two sides BA, AE are greater than BE. Add EC to each. Then BA, AC are greater than BE, EC. Again, in the triangle CED the sides CE, ED are greater than CD. Add DB to each. Then CE, EB are greater than CD, DB. But BA, AC were proved greater than BE, EC. Therefore BA, AC are much greater than BD, DC."
+draw = [
+  "segment A E orange",
+]
+
+[[step]]
+text = "Again, since in any triangle the exterior angle is greater than the interior and opposite angle (I.16), in the triangle CDE the exterior angle BDC is greater than the angle CED. Likewise in the triangle ABE the exterior angle CEB is greater than the angle BAC. But the angle BDC was proved greater than the angle CEB. Therefore the angle BDC is much greater than the angle BAC."
+draw = [
+  "angle B D C red fill",
+  "angle B A C green fill",
+]

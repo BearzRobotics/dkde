@@ -1,0 +1,44 @@
+id = "I.16"
+book = 1
+order = 17
+title = "The exterior angle"
+statement = "In any triangle, if one of the sides be produced, the exterior angle is greater than either of the interior and opposite angles."
+proof = "Similarly, if BC be bisected, the angle BCG, that is the angle ACD, can be proved greater than the angle ABC as well. Therefore in any triangle, if one of the sides be produced, the exterior angle is greater than either of the interior and opposite angles. Q.E.D."
+
+[[step]]
+text = "Let ABC be a triangle, and let one side BC be produced to D. I say that the exterior angle ACD is greater than either of the interior and opposite angles CBA, BAC."
+draw = [
+  "clear",
+  "point A 0 3",
+  "point B -3 0",
+  "point C 3 0",
+  "point D 6.5 0",
+  "polygon A B C blue",
+  "segment C D black",
+  "angle A C D red fill",
+  "angle C B A green",
+  "angle B A C green",
+]
+
+[[step]]
+text = "Let AC be bisected at E (I.10), and let BE be joined and produced in a straight line to F. Let EF be made equal to BE (I.3), let FC be joined, and let AC be drawn through to G."
+draw = [
+  "point E 1.5 1.5",
+  "point F 6 3",
+  "segment B F orange",
+  "segment F C orange",
+]
+
+[[step]]
+text = "Since AE is equal to EC, and BE to EF, the two sides AE, EB are equal to the two sides CE, EF respectively, and the angle AEB is equal to the angle FEC, for they are vertical angles (I.15). Therefore the base AB is equal to the base FC, the triangle ABE is equal to the triangle CFE, and the remaining angles are equal to the remaining angles respectively, namely those which the equal sides subtend (I.4). Therefore the angle BAE is equal to the angle ECF."
+draw = [
+  "polygon A B E purple fill",
+  "polygon C F E teal fill",
+]
+
+[[step]]
+text = "But the angle ECD is greater than the angle ECF (common notion 5). Therefore the angle ACD is greater than the angle BAE."
+draw = [
+  "angle E C F green fill",
+  "angle A C D red fill",
+]
