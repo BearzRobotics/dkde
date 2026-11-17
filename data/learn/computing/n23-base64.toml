@@ -1,0 +1,32 @@
+id = "N.23"
+course = "Computing"
+book = 5
+order = 3
+title = "Base64"
+statement = "Base64 writes bytes using 64 printable characters: every 3 bytes become 4 characters of 6 bits each."
+
+[[step]]
+text = "Idea: 6 bits give 2^6 = 64 values, so 6 bits fit one character from A-Z, a-z, 0-9, + and /. Three bytes are 24 bits, which is four 6-bit groups."
+calc = ["2^6", "3*8", "4*6"]
+
+[[step]]
+text = "Encode the text Man. Its bytes are 77, 97, 110. Joined as one 24-bit number: 77x65536 + 97x256 + 110 = 5071214 (hex 0x4D616E)."
+calc = ["77*65536 + 97*256 + 110", "0x4D616E"]
+
+[[step]]
+text = "Cut that into four 6-bit pieces: 19, 22, 5, 46. In the alphabet A=0 ... Z=25, a=26 ... z=51, those are T, W, F, u. So Man encodes as TWFu."
+calc = ["floor(5071214/2^18)", "floor(5071214/2^12) mod 64", "floor(5071214/64) mod 64", "5071214 mod 64"]
+
+[[step]]
+text = "Output is a third bigger than the input, because 3 bytes become 4 characters."
+calc = ["30/3*4"]
+
+[[exercise]]
+prompt = "How many base64 characters encode 30 bytes?"
+answer = "30/3*4"
+hint = "3 bytes make 4 characters."
+
+[[exercise]]
+prompt = "How many different values does one base64 character stand for?"
+answer = "2^6"
+hint = "6 bits."

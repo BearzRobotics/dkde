@@ -18,11 +18,11 @@ text = "Another way: take the biggest power of two that fits and subtract. 37 = 
 calc = ["37 to binary", "32 + 4 + 1"]
 
 [[exercise]]
-prompt = "Write 37 in binary (type just the digits)."
-answer = "100101"
+prompt = "Write 37 in binary. Type it with 0b in front, like 0b1011."
+answer = "0b100101"
 hint = "37 = 32 + 4 + 1."
 
 [[exercise]]
-prompt = "Write 20 in binary (type just the digits)."
-answer = "10100"
+prompt = "Write 20 in binary, with 0b in front."
+answer = "0b10100"
 hint = "16 + 4."

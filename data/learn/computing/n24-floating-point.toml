@@ -1,0 +1,32 @@
+id = "N.24"
+course = "Computing"
+book = 5
+order = 4
+title = "Floating point numbers"
+statement = "A float stores a sign, an exponent and a fraction: value = (-1)^sign x 1.fraction x 2^(exponent - bias)."
+
+[[step]]
+text = "Idea: scientific notation in binary. 6.5 is 110.1 in binary = 1.101 x 2^2. Single precision (32 bits) has 1 sign bit, 8 exponent bits (bias 127) and 23 fraction bits."
+calc = ["1 + 8 + 23"]
+
+[[step]]
+text = "Exponent field = 2 + 127 = 129 = 10000001. Fraction = .101 followed by zeros. Sign 0. Together: 0 10000001 10100000000000000000000, or 0x40D00000."
+calc = ["2 + 127", "129 to binary", "0x40D00000"]
+
+[[step]]
+text = "Going back: 2^(129 - 127) x (1 + 1/2 + 1/8) = 4 x 1.625 = 6.5."
+calc = ["2^(129-127) * (1 + 1/2 + 1/8)"]
+
+[[step]]
+text = "Because the fraction has finite bits, many numbers (like 0.1) are only approximated, and numbers beyond about 16 million lose whole units. A double has 11 exponent bits and 52 fraction bits."
+calc = ["2^24", "1 + 11 + 52"]
+
+[[exercise]]
+prompt = "A float has exponent field 130 and fraction .1 in binary. What is its value, 2^(130-127) x 1.5?"
+answer = "2^(130-127) * 1.5"
+hint = "2^3 x 1.5."
+
+[[exercise]]
+prompt = "Which exponent field stores 2^5, with bias 127?"
+answer = "5 + 127"
+hint = "Add the bias."

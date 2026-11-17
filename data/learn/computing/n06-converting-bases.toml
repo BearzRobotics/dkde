@@ -18,6 +18,11 @@ text = "Start grouping from the right, and pad the left end with zeros. This is 
 calc = ["0xFF to binary", "0xA5 to binary"]
 
 [[exercise]]
+prompt = "Write 0b10101111 as hex, with 0x in front."
+answer = "0xAF"
+hint = "Split into 1010 and 1111."
+
+[[exercise]]
 prompt = "How many bits are there in four hex digits?"
 answer = "4*4"
 hint = "Each hex digit is 4 bits."

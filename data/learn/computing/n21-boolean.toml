@@ -1,0 +1,32 @@
+id = "N.21"
+course = "Computing"
+book = 5
+order = 1
+title = "Boolean algebra and truth tables"
+statement = "Logic with two values: AND, OR and NOT (XOR), tabulated in a truth table and tied together by De Morgan's laws."
+
+[[step]]
+text = "Idea: with 1 for true and 0 for false, AND is 1 only when both are 1, OR is 1 when either is, XOR when exactly one is. The truth table lists every input pair."
+calc = ["0 and 0", "0 and 1", "1 and 0", "1 and 1"]
+
+[[step]]
+text = "OR and XOR the same way: OR gives 0,1,1,1 and XOR gives 0,1,1,0 for the four input pairs. NOT flips one bit: 1 xor 1 is 0, 0 xor 1 is 1."
+calc = ["0 or 1", "1 or 1", "1 xor 1", "0 xor 1"]
+
+[[step]]
+text = "De Morgan: NOT(a AND b) equals (NOT a) OR (NOT b). With a = 1 and b = 0, both sides are 1. Check each side with xor 1 for NOT."
+calc = ["(1 and 0) xor 1", "((1 xor 1) or (0 xor 1))"]
+
+[[step]]
+text = "n inputs give 2^n rows in the truth table: 2 inputs, 4 rows; 3 inputs, 8 rows."
+calc = ["2^2", "2^3"]
+
+[[exercise]]
+prompt = "How many rows does a truth table with 4 inputs have?"
+answer = "2^4"
+hint = "Two choices for each input."
+
+[[exercise]]
+prompt = "What is (1 and 0) xor 1? This is NOT(1 AND 0)."
+answer = "(1 and 0) xor 1"
+hint = "1 and 0 is 0; flip it."

@@ -23,6 +23,11 @@ answer = "0x2F"
 hint = "2x16 + 15."
 
 [[exercise]]
-prompt = "What is 0xC0 in decimal?"
-answer = "0xC0"
-hint = "12 x 16."
+prompt = "Write 200 in hex, with 0x in front. (200 = 12 x 16 + 8.)"
+answer = "0xC8"
+hint = "12 is C."
+
+[[exercise]]
+prompt = "Write 255 in hex, with 0x in front."
+answer = "0xFF"
+hint = "The biggest byte."

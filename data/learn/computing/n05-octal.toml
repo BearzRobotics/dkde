@@ -18,6 +18,11 @@ text = "Octal 755 as a plain number is 7x64 + 5x8 + 5 = 493."
 calc = ["0o755", "7*64 + 5*8 + 5", "493 to octal"]
 
 [[exercise]]
+prompt = "Write 8 in octal, with 0o in front."
+answer = "0o10"
+hint = "One eight and no ones."
+
+[[exercise]]
 prompt = "What is 0o644 in decimal?"
 answer = "0o644"
 hint = "6x64 + 4x8 + 4."
