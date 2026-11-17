@@ -1,0 +1,37 @@
+id = "XII.7"
+book = 12
+order = 7
+title = "A prism is three pyramids"
+statement = "Any prism which has a triangular base is divided into three pyramids equal to one another which have triangular bases."
+proof = "Therefore any prism which has a triangular base is divided into three pyramids equal to one another which have triangular bases. Corollary: any pyramid is a third part of the prism which has the same base with it and equal height. Q.E.D."
+
+[[step]]
+text = "Let there be a prism of which the triangle ABC is the base and DEF the opposite triangle. I say that the prism ABCDEF is divided into three pyramids equal to one another, which have triangular bases."
+draw = [
+  "clear",
+  "view3d",
+  "point A -3 -2 0",
+  "point B 3 -2 0",
+  "point C 0 3 0",
+  "point D -3 -2 4",
+  "point E 3 -2 4",
+  "point F 0 3 4",
+  "polygon A B C blue fill",
+  "polygon D E F blue fill",
+  "polygon A B E D green fill",
+  "polygon B C F E orange fill",
+  "polygon C A D F purple fill",
+]
+
+[[step]]
+text = "Let BD, EC, CD be joined. Since ABED is a parallelogram, and BD is its diameter, the triangle ABD is equal to the triangle EBD (I.34). Therefore the pyramid of which the triangle ABD is the base and the point C the vertex is equal to the pyramid of which the triangle DEB is the base and the point C the vertex (XII.5). But the pyramid of which the triangle DEB is the base and the point C the vertex is the same as the pyramid of which the triangle EBC is the base and the point D the vertex, for they are contained by the same planes. Therefore the pyramid with the base ABD and vertex C is equal to the pyramid with the base EBC and vertex D. Again, since FCBE is a parallelogram, and CE is its diameter, the triangle CEF is equal to the triangle CBE. Therefore the pyramid of which the triangle BCE is the base and the point D the vertex is equal to the pyramid of which the triangle ECF is the base and the point D the vertex. But the pyramid with base BCE and vertex D was proved equal to the pyramid with base ABD and vertex C. Therefore the pyramid with base CEF and vertex D is also equal to the pyramid with base ABD and vertex C. Therefore the prism ABCDEF has been divided into three pyramids equal to one another, which have triangular bases."
+draw = [
+  "segment B D red",
+  "segment E C red",
+  "segment C D red",
+]
+
+[[step]]
+text = "And since the pyramid with base ABD and vertex C is the same as the pyramid with base ABC and vertex D, for they are contained by the same planes, and the pyramid with base ABD and vertex C was proved a third part of the prism with the base ABC and the opposite triangle DEF, the pyramid with base ABC and vertex D is a third part of the prism with the same base ABC and the same height. (Corollary.) Hence any pyramid is a third part of the prism which has the same base with it and equal height."
+draw = [
+]

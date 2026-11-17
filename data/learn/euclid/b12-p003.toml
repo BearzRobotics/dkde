@@ -1,0 +1,41 @@
+id = "XII.3"
+book = 12
+order = 3
+title = "Dividing a pyramid"
+statement = "Any pyramid which has a triangular base is divided into two pyramids equal and similar to one another and similar to the whole and having triangular bases, and into two equal prisms; and the two prisms are greater than half of the whole pyramid."
+proof = "Therefore any pyramid which has a triangular base is divided into two pyramids equal and similar to one another and similar to the whole and having triangular bases, and into two equal prisms; and the two prisms are greater than half of the whole pyramid. Q.E.D."
+
+[[step]]
+text = "Let there be a pyramid of which the base is the triangle ABC and the vertex the point D. I say that the pyramid ABCD is divided into two pyramids equal to one another, having triangular bases and similar to the whole pyramid, and into two equal prisms; and the two prisms are greater than half of the whole pyramid."
+draw = [
+  "clear",
+  "view3d",
+  "point A -3 -2 0",
+  "point B 3 -2 0",
+  "point C 0 3 0",
+  "point D 0 0 5",
+  "polygon A B C teal fill",
+  "polygon D A B blue fill",
+  "polygon D B C red fill",
+  "polygon D A C green fill",
+]
+
+[[step]]
+text = "Let AB, BC, CA, AD, DB, DC be bisected at the points E, F, G, H, K, L, and let HE, EG, GH, HK, KL, LH, KF, FG be joined. Since AE is equal to EB, and AH to DH, EH is parallel to DB (VI.2). For the same reason HK is parallel to AB. Therefore HEBK is a parallelogram, so HK is equal to EB. But EB is equal to AE. Therefore AE is also equal to HK. But AH is also equal to HD. Therefore the two sides EA, AH are equal to the two sides KH, HD respectively, and the angle EAH is equal to the angle KHD. Therefore the base EH is equal to the base KD, and the triangle AEH is equal and similar to the triangle HKD. For the same reason the triangle AHG is also equal and similar to the triangle HLD. Since two straight lines meeting one another, EH, HG, are parallel to two straight lines meeting one another, KD, DL, not in the same plane, they will contain equal angles (XI.10). Therefore the angle EHG is equal to the angle KDL. And since the two straight lines EH, HG are equal to the two KD, DL respectively, the base EG is equal to the base KL, and the triangle EHG is equal and similar to the triangle KDL. Therefore the pyramid of which the triangle AEG is the base and the point H the vertex is equal and similar to the pyramid of which the triangle HKL is the base and the point D the vertex. And since HK has been drawn parallel to AB, one of the sides of the triangle ADB, the triangle ADB is equiangular with the triangle DHK, and they have their sides proportional. Therefore the triangle ADB is similar to the triangle DHK. For the same reason the triangle DBC is similar to the triangle DKL, and ADC to DHL, and ABC to AEG. Now the triangle HKL is similar to the triangle AEG, for the sides of the former are parallel to the sides of the latter. Therefore the pyramid of which the triangle ABC is the base and the point D the vertex is similar to the pyramid of which the triangle AEG is the base and the point H the vertex."
+draw = [
+  "point E -1.5 -1 2.5",
+  "point F -1.5 0.5 0",
+  "point G 0 -2 0",
+  "point H 0 1.5 2.5",
+  "point K 1.5 0.5 0",
+  "point L 1.5 -1 2.5",
+]
+
+[[step]]
+text = "Now the pyramid of which the triangle HKL is the base and the point D the vertex was proved similar to the pyramid of which the triangle AEG is the base and the point H the vertex; and these are similar to the whole. Next, since BF is equal to FC, the parallelogram EBFG is double of the triangle GFC (I.41). Since the triangles GFC, HKL are equal and similar, and the prism of which the parallelogram EBFG is the base and the straight line HK its opposite is equal to the prism of which the triangle GFC is the base and the triangle HKL its opposite (XI.39), the two prisms are equal to one another. And the pyramids of which the triangles AEG, HKL are the bases and the points H, D the vertices are equal. Therefore the whole pyramid ABCD is divided into two pyramids equal to one another and similar to the whole, and into two equal prisms. And since the prisms are greater than the two pyramids (the prism with the base BKFL... is greater than the pyramid with the same base and height, as the pyramid is a third of the prism), the two prisms are greater than half the whole pyramid."
+draw = [
+  "polygon E G H yellow fill",
+  "polygon H K L yellow fill",
+  "polygon K F L purple fill",
+  "polygon E F G purple fill",
+]

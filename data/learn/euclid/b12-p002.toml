@@ -1,0 +1,106 @@
+id = "XII.2"
+book = 12
+order = 2
+title = "Circles are as the squares on their diameters"
+statement = "Circles are to one another as the squares on the diameters."
+proof = "Therefore circles are to one another as the squares on the diameters. Q.E.D."
+
+[[step]]
+text = "Let ABCD, EFGH be circles, and BD, FH their diameters. I say that, as the circle ABCD is to the circle EFGH, so is the square on BD to the square on FH."
+draw = [
+  "clear",
+  "point _a0 -1.5 0",
+  "point _a1 -1.531 0.391",
+  "point _a2 -1.622 0.773",
+  "point _a3 -1.772 1.135",
+  "point _a4 -1.977 1.469",
+  "point _a5 -2.232 1.768",
+  "point _a6 -2.531 2.023",
+  "point _a7 -2.865 2.228",
+  "point _a8 -3.227 2.378",
+  "point _a9 -3.609 2.469",
+  "point _a10 -4 2.5",
+  "point _a11 -4.391 2.469",
+  "point _a12 -4.773 2.378",
+  "point _a13 -5.135 2.228",
+  "point _a14 -5.469 2.023",
+  "point _a15 -5.768 1.768",
+  "point _a16 -6.023 1.469",
+  "point _a17 -6.228 1.135",
+  "point _a18 -6.378 0.773",
+  "point _a19 -6.469 0.391",
+  "point _a20 -6.5 0",
+  "point _a21 -6.469 -0.391",
+  "point _a22 -6.378 -0.773",
+  "point _a23 -6.228 -1.135",
+  "point _a24 -6.023 -1.469",
+  "point _a25 -5.768 -1.768",
+  "point _a26 -5.469 -2.023",
+  "point _a27 -5.135 -2.228",
+  "point _a28 -4.773 -2.378",
+  "point _a29 -4.391 -2.469",
+  "point _a30 -4 -2.5",
+  "point _a31 -3.609 -2.469",
+  "point _a32 -3.227 -2.378",
+  "point _a33 -2.865 -2.228",
+  "point _a34 -2.531 -2.023",
+  "point _a35 -2.232 -1.768",
+  "point _a36 -1.977 -1.469",
+  "point _a37 -1.772 -1.135",
+  "point _a38 -1.622 -0.773",
+  "point _a39 -1.531 -0.391",
+  "point _b0 8 0",
+  "point _b1 7.951 0.626",
+  "point _b2 7.804 1.236",
+  "point _b3 7.564 1.816",
+  "point _b4 7.236 2.351",
+  "point _b5 6.828 2.828",
+  "point _b6 6.351 3.236",
+  "point _b7 5.816 3.564",
+  "point _b8 5.236 3.804",
+  "point _b9 4.626 3.951",
+  "point _b10 4 4",
+  "point _b11 3.374 3.951",
+  "point _b12 2.764 3.804",
+  "point _b13 2.184 3.564",
+  "point _b14 1.649 3.236",
+  "point _b15 1.172 2.828",
+  "point _b16 0.764 2.351",
+  "point _b17 0.436 1.816",
+  "point _b18 0.196 1.236",
+  "point _b19 0.049 0.626",
+  "point _b20 0 0",
+  "point _b21 0.049 -0.626",
+  "point _b22 0.196 -1.236",
+  "point _b23 0.436 -1.816",
+  "point _b24 0.764 -2.351",
+  "point _b25 1.172 -2.828",
+  "point _b26 1.649 -3.236",
+  "point _b27 2.184 -3.564",
+  "point _b28 2.764 -3.804",
+  "point _b29 3.374 -3.951",
+  "point _b30 4 -4",
+  "point _b31 4.626 -3.951",
+  "point _b32 5.236 -3.804",
+  "point _b33 5.816 -3.564",
+  "point _b34 6.351 -3.236",
+  "point _b35 6.828 -2.828",
+  "point _b36 7.236 -2.351",
+  "point _b37 7.564 -1.816",
+  "point _b38 7.804 -1.236",
+  "point _b39 7.951 -0.626",
+  "polygon _a0 _a1 _a2 _a3 _a4 _a5 _a6 _a7 _a8 _a9 _a10 _a11 _a12 _a13 _a14 _a15 _a16 _a17 _a18 _a19 _a20 _a21 _a22 _a23 _a24 _a25 _a26 _a27 _a28 _a29 _a30 _a31 _a32 _a33 _a34 _a35 _a36 _a37 _a38 _a39 blue fill",
+  "polygon _b0 _b1 _b2 _b3 _b4 _b5 _b6 _b7 _b8 _b9 _b10 _b11 _b12 _b13 _b14 _b15 _b16 _b17 _b18 _b19 _b20 _b21 _b22 _b23 _b24 _b25 _b26 _b27 _b28 _b29 _b30 _b31 _b32 _b33 _b34 _b35 _b36 _b37 _b38 _b39 orange fill",
+  "point O1 -4 0",
+  "point O2 4 0",
+]
+
+[[step]]
+text = "For if the circle ABCD is not to the circle EFGH as the square on BD is to the square on FH, then, as the square on BD is to the square on FH, so will the circle ABCD be either to some less area than the circle EFGH, or to a greater. First let it be to a less, S. Inscribe in the circle EFGH the square EFGH (IV.6). This square is greater than the half of the circle EFGH, since, if through the points E, F, G, H we draw tangents to the circle, the square EFGH is half the square circumscribed about the circle, and the circle is less than the circumscribed square. Bisect the circumferences EF, FG, GH, HE at the points K, L, M, N, and join EK, KF, FL, LG, GM, MH, HN, NE. Then each of the triangles EKF, FLG, GMH, HNE is greater than the half of the segment of the circle about it. Thus, bisecting the remaining circumferences and joining, and doing this continually, we shall leave some segments of the circle which will be less than the excess by which the circle EFGH exceeds the area S (X.1). Let the segments be left, and let the segments of the circle EFGH on EK, KF, FL, LG, GM, MH, HN, NE be less than the excess. Therefore the remaining polygon EKFLGMHN is greater than the area S."
+draw = [
+]
+
+[[step]]
+text = "Inscribe in the circle ABCD a polygon AXBOCPDR similar to the polygon EKFLGMHN. Therefore, as the square on BD is to the square on FH, so is the polygon AXBOCPDR to the polygon EKFLGMHN (XII.1). But also, as the square on BD is to the square on FH, so is the circle ABCD to the area S. Therefore also, as the circle ABCD is to the area S, so is the polygon AXBOCPDR to the polygon EKFLGMHN. Therefore, alternately, as the circle ABCD is to the polygon in it, so is the area S to the polygon EKFLGMHN. But the circle ABCD is greater than the polygon in it. Therefore the area S is also greater than the polygon EKFLGMHN. But it is also less, which is impossible. Therefore, as the square on BD is to the square on FH, so is not the circle ABCD to some area less than the circle EFGH. Similarly we can prove that neither is the circle EFGH to some area less than the circle ABCD as the square on FH is to the square on BD. I say next that neither is the circle ABCD to some area greater than the circle EFGH as the square on BD is to the square on FH. For, if possible, let it be so to a greater, S. Then, inversely, as the square on FH is to the square on BD, so is the area S to the circle ABCD. But as the area S is to the circle ABCD, so is the circle EFGH to some area less than the circle ABCD (since S is greater than EFGH). Therefore, as the square on FH is to the square on BD, so is the circle EFGH to some area less than the circle ABCD, which was proved impossible. Therefore, as the square on BD is to the square on FH, so is the circle ABCD to the circle EFGH."
+draw = [
+]

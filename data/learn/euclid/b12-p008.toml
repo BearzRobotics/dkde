@@ -1,0 +1,34 @@
+id = "XII.8"
+book = 12
+order = 8
+title = "Similar pyramids: triplicate ratio"
+statement = "Similar pyramids which have triangular bases are in the triplicate ratio of their corresponding sides."
+proof = "Therefore similar pyramids which have triangular bases are in the triplicate ratio of their corresponding sides. Q.E.D."
+
+[[step]]
+text = "Let there be similar and similarly situated pyramids of which the triangles ABC, DEF are the bases and the points G, H the vertices. I say that the pyramid ABCG has to the pyramid DEFH the ratio triplicate of that which BC has to EF. (Here the second pyramid is the first enlarged by one half.)"
+draw = [
+  "clear",
+  "view3d",
+  "point G -5 0 4",
+  "point A -8 -2 0",
+  "point B -3 -2 0",
+  "point C -5 3 0",
+  "polygon A B C blue fill",
+  "polygon G A B red fill",
+  "polygon G B C green fill",
+  "polygon G C A orange fill",
+  "point H 3 0 6",
+  "point D 0 -3 0",
+  "point E 4.5 -3 0",
+  "point F 2.25 1.5 0",
+  "polygon D E F blue fill",
+  "polygon H D E red fill",
+  "polygon H E F green fill",
+  "polygon H F D orange fill",
+]
+
+[[step]]
+text = "Complete the parallelepipedal solids BGML, EHQP on the straight lines BA, AC, AG and ED, DF, DH. Since the pyramid ABCG is similar to the pyramid DEFH, the angle ABC is equal to the angle DEF, the angle GBC to the angle HEF, and the angle ABG to the angle DEH; and as AB is to DE, so is BC to EF and BG to EH. Since, as AB is to DE, so is BC to EF, and the sides about the equal angles are proportional, the parallelogram BM is similar to the parallelogram EQ. For the same reason BN is similar to ER and BK to EO. Therefore the three parallelograms BM, BK, BN are similar to the three EQ, EO, ER. But the three BM, BK, BN are equal and similar to their opposites, and the three EQ, EO, ER to theirs. Therefore the solids BGML, EHQP are contained by similar planes equal in multitude. Therefore the solid BGML is similar to the solid EHQP. But similar parallelepipedal solids are in the triplicate ratio of their corresponding sides (XI.33). Therefore the solid BGML has to the solid EHQP the ratio triplicate of that which the corresponding side BC has to the corresponding side EF. But, as the solid BGML is to the solid EHQP, so is the pyramid ABCG to the pyramid DEFH, since the pyramid is the sixth part of the solid on account of the prism, being half of the solid, being three times the pyramid (XII.7). Therefore the pyramid ABCG also has to the pyramid DEFH the ratio triplicate of that which BC has to EF."
+draw = [
+]

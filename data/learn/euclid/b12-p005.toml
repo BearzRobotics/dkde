@@ -1,0 +1,34 @@
+id = "XII.5"
+book = 12
+order = 5
+title = "Pyramids of the same height: triangular bases"
+statement = "Pyramids which are of the same height and have triangular bases are to one another as the bases."
+proof = "Therefore pyramids which are of the same height and have triangular bases are to one another as the bases. Q.E.D."
+
+[[step]]
+text = "Let there be pyramids of the same height of which the triangles ABC, DEF are the bases and the points G, H the vertices. I say that, as the base ABC is to the base DEF, so is the pyramid ABCG to the pyramid DEFH."
+draw = [
+  "clear",
+  "view3d",
+  "point G -5 0 4",
+  "point A -8 -2 0",
+  "point B -3 -2 0",
+  "point C -5 3 0",
+  "polygon A B C blue fill",
+  "polygon G A B red fill",
+  "polygon G B C green fill",
+  "polygon G C A orange fill",
+  "point H 4 0 4",
+  "point D 1 -2 0",
+  "point E 8 -2 0",
+  "point F 3.5 2 0",
+  "polygon D E F blue fill",
+  "polygon H D E red fill",
+  "polygon H E F green fill",
+  "polygon H F D orange fill",
+]
+
+[[step]]
+text = "For, if not, the base ABC will be to the base DEF as the pyramid ABCG is to some solid either less than the pyramid DEFH or greater. First let it be to a less, namely the solid W. Let the pyramid DEFH be divided into two pyramids equal to one another and similar to the whole, and into two equal prisms. Then the two prisms are greater than the half of the whole pyramid (XII.3). Let the pyramids arising from the division be similarly divided, and let this be done continually until there are left some pyramids of the pyramid DEFH which are, in sum, less than the excess by which the pyramid DEFH exceeds the solid W (X.1). Let such be left, and let them be, say, DQRS, STUH. Therefore the remainder, the prisms in the pyramid DEFH, are greater than the solid W. Let the pyramid ABCG be divided similarly and a like number of times as the pyramid DEFH. Therefore, as the base ABC is to the base DEF, so are the prisms in the pyramid ABCG to the prisms in the pyramid DEFH (XII.4). But, as the base ABC is to the base DEF, so is the pyramid ABCG to the solid W. Therefore also, as the pyramid ABCG is to the solid W, so are the prisms in the pyramid ABCG to the prisms in the pyramid DEFH. Alternately, as the pyramid ABCG is to the prisms in it, so is the solid W to the prisms in the pyramid DEFH. But the pyramid ABCG is greater than the prisms in it. Therefore the solid W is also greater than the prisms in the pyramid DEFH. But it is also less, which is impossible. Therefore, as the base ABC is to the base DEF, so is not the pyramid ABCG to any solid less than the pyramid DEFH. Similarly it can be proved that neither is the base DEF to the base ABC as the pyramid DEFH is to any solid less than the pyramid ABCG. Nor, again, is it so to a greater solid, for the same reasoning applied to the inverted ratio gives an impossibility. Therefore, as the base ABC is to the base DEF, so is the pyramid ABCG to the pyramid DEFH."
+draw = [
+]

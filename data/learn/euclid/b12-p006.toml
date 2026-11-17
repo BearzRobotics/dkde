@@ -1,0 +1,44 @@
+id = "XII.6"
+book = 12
+order = 6
+title = "Pyramids of the same height: polygonal bases"
+statement = "Pyramids which are of the same height and have polygonal bases are to one another as the bases."
+proof = "Therefore pyramids which are of the same height and have polygonal bases are to one another as the bases. Q.E.D."
+
+[[step]]
+text = "Let there be pyramids of the same height of which the polygons ABCDE, FGHKL are the bases and the points M, N the vertices. I say that, as the base ABCDE is to the base FGHKL, so is the pyramid ABCDEM to the pyramid FGHKLN."
+draw = [
+  "clear",
+  "view3d",
+  "point M -5 0 4",
+  "point A -8 -2 0",
+  "point B -4 -3 0",
+  "point C -2 0 0",
+  "point D -5 2.5 0",
+  "point E -8 1 0",
+  "polygon A B C D E blue fill",
+  "polygon M A B red fill",
+  "polygon M B C green fill",
+  "polygon M C D orange fill",
+  "polygon M D E purple fill",
+  "polygon M E A teal fill",
+  "point N 4 0 4",
+  "point F 1 -2 0",
+  "point G 6 -2 0",
+  "point H 7 2 0",
+  "point K 2 2 0",
+  "polygon F G H K blue fill",
+  "polygon N F G red fill",
+  "polygon N G H green fill",
+  "polygon N H K orange fill",
+  "polygon N K F purple fill",
+]
+
+[[step]]
+text = "Let AC, AD, FH, FK be joined. Since ABCM, ACDM are two pyramids with triangular bases and the same height, they are to one another as their bases (XII.5). Therefore, as the base ABC is to the base ACD, so is the pyramid ABCM to the pyramid ACDM. And, componendo, as the base ABCD is to the base ACD, so is the pyramid ABCDM to the pyramid ACDM. But, as the base ACD is to the base ADE, so is the pyramid ACDM to the pyramid ADEM. Therefore, ex aequali, as the base ABCD is to the base ADE, so is the pyramid ABCDM to the pyramid ADEM, and again, componendo, as the base ABCDE is to the base ADE, so is the pyramid ABCDEM to the pyramid ADEM. Similarly, as the base FGHKL is to the base FGH, so is the pyramid FGHKLN to the pyramid FGHN. And since ADEM, FGHN are pyramids with triangular bases and the same height, as the base ADE is to the base FGH, so is the pyramid ADEM to the pyramid FGHN. Therefore, ex aequali, as the base ABCDE is to the base FGHKL, so is the pyramid ABCDEM to the pyramid FGHKLN."
+draw = [
+  "segment A C black",
+  "segment A D black",
+  "segment F H black",
+  "segment F K black",
+]

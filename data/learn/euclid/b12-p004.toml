@@ -1,0 +1,34 @@
+id = "XII.4"
+book = 12
+order = 4
+title = "Prisms in pyramids"
+statement = "If there be two pyramids of the same height with triangular bases, and each of them be divided into two pyramids equal to one another and similar to the whole, and into two equal prisms, then, as the base of the one pyramid is to the base of the other pyramid, so will all the prisms in the one pyramid be to all the prisms, being equal in multitude, in the other pyramid."
+proof = "Therefore, as the base of the one pyramid is to the base of the other pyramid, so will all the prisms in the one pyramid be to all the prisms, being equal in multitude, in the other pyramid. Q.E.D."
+
+[[step]]
+text = "Let there be two pyramids of the same height which have the triangular bases ABC, DEF and the vertices G, H, and let each of them be divided into two pyramids equal to one another and similar to the whole, and into two equal prisms (XII.3). I say that, as the base ABC is to the base DEF, so are all the prisms in the pyramid ABCG to all the prisms, being equal in multitude, in the pyramid DEFH."
+draw = [
+  "clear",
+  "view3d",
+  "point G -5 0 4",
+  "point A -8 -2 0",
+  "point B -3 -2 0",
+  "point C -5 3 0",
+  "polygon A B C blue fill",
+  "polygon G A B red fill",
+  "polygon G B C green fill",
+  "polygon G C A orange fill",
+  "point H 4 0 4",
+  "point D 1 -2 0",
+  "point E 8 -2 0",
+  "point F 3.5 2 0",
+  "polygon D E F blue fill",
+  "polygon H D E red fill",
+  "polygon H E F green fill",
+  "polygon H F D orange fill",
+]
+
+[[step]]
+text = "Since BX is equal to XC, and AL to LC, XL is parallel to AB, and the triangle ABC is similar to the triangle LXC. For the same reason the triangle DEF is similar to the triangle RVF. And since BC is double of CX and EF double of FV, as BC is to CX, so is EF to FV. And on BC, CX the similar and similarly situated rectilineal figures ABC, LXC are described, and on EF, FV the similar and similarly situated figures DEF, RVF. Therefore, as the triangle ABC is to the triangle LXC, so is the triangle DEF to the triangle RVF (VI.22). Therefore, alternately, as the triangle ABC is to the triangle DEF, so is the triangle LXC to the triangle RVF. But as the triangle LXC is to the triangle RVF, so is the prism of which the triangle LXC is the base and OMN the opposite to the prism of which the triangle RVF is the base and STU the opposite (XI.32, the bases being in the same ratio and the heights equal). Therefore, as the base ABC is to the base DEF, so is the prism in the pyramid ABCG to the prism in the pyramid DEFH, and so also the two prisms to the two prisms. And similarly, if the pyramids ABC, DEF be again divided, the prisms in them will be in the same ratio to one another. Therefore, as the base ABC is to the base DEF, so are all the prisms in the pyramid ABCG to all the prisms, being equal in multitude, in the pyramid DEFH."
+draw = [
+]

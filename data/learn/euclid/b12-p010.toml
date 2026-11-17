@@ -1,0 +1,107 @@
+id = "XII.10"
+book = 12
+order = 10
+title = "A cone is a third of its cylinder"
+statement = "Any cone is a third part of the cylinder which has the same base with it and equal height."
+proof = "Therefore any cone is a third part of the cylinder which has the same base with it and equal height. Q.E.D."
+
+[[step]]
+text = "For let a cone have the same base as a cylinder, namely the circle ABCD, and equal height. I say that the cone is a third part of the cylinder, that is, that the cylinder is triple of the cone."
+draw = [
+  "clear",
+  "view3d",
+  "point _b0 3 0 0",
+  "point _b1 2.954 0.521 0",
+  "point _b2 2.819 1.026 0",
+  "point _b3 2.598 1.5 0",
+  "point _b4 2.298 1.928 0",
+  "point _b5 1.928 2.298 0",
+  "point _b6 1.5 2.598 0",
+  "point _b7 1.026 2.819 0",
+  "point _b8 0.521 2.954 0",
+  "point _b9 0 3 0",
+  "point _b10 -0.521 2.954 0",
+  "point _b11 -1.026 2.819 0",
+  "point _b12 -1.5 2.598 0",
+  "point _b13 -1.928 2.298 0",
+  "point _b14 -2.298 1.928 0",
+  "point _b15 -2.598 1.5 0",
+  "point _b16 -2.819 1.026 0",
+  "point _b17 -2.954 0.521 0",
+  "point _b18 -3 0 0",
+  "point _b19 -2.954 -0.521 0",
+  "point _b20 -2.819 -1.026 0",
+  "point _b21 -2.598 -1.5 0",
+  "point _b22 -2.298 -1.928 0",
+  "point _b23 -1.928 -2.298 0",
+  "point _b24 -1.5 -2.598 0",
+  "point _b25 -1.026 -2.819 0",
+  "point _b26 -0.521 -2.954 0",
+  "point _b27 0 -3 0",
+  "point _b28 0.521 -2.954 0",
+  "point _b29 1.026 -2.819 0",
+  "point _b30 1.5 -2.598 0",
+  "point _b31 1.928 -2.298 0",
+  "point _b32 2.298 -1.928 0",
+  "point _b33 2.598 -1.5 0",
+  "point _b34 2.819 -1.026 0",
+  "point _b35 2.954 -0.521 0",
+  "polygon _b0 _b1 _b2 _b3 _b4 _b5 _b6 _b7 _b8 _b9 _b10 _b11 _b12 _b13 _b14 _b15 _b16 _b17 _b18 _b19 _b20 _b21 _b22 _b23 _b24 _b25 _b26 _b27 _b28 _b29 _b30 _b31 _b32 _b33 _b34 _b35 blue fill",
+  "point _t0 3 0 6",
+  "point _t1 2.954 0.521 6",
+  "point _t2 2.819 1.026 6",
+  "point _t3 2.598 1.5 6",
+  "point _t4 2.298 1.928 6",
+  "point _t5 1.928 2.298 6",
+  "point _t6 1.5 2.598 6",
+  "point _t7 1.026 2.819 6",
+  "point _t8 0.521 2.954 6",
+  "point _t9 0 3 6",
+  "point _t10 -0.521 2.954 6",
+  "point _t11 -1.026 2.819 6",
+  "point _t12 -1.5 2.598 6",
+  "point _t13 -1.928 2.298 6",
+  "point _t14 -2.298 1.928 6",
+  "point _t15 -2.598 1.5 6",
+  "point _t16 -2.819 1.026 6",
+  "point _t17 -2.954 0.521 6",
+  "point _t18 -3 0 6",
+  "point _t19 -2.954 -0.521 6",
+  "point _t20 -2.819 -1.026 6",
+  "point _t21 -2.598 -1.5 6",
+  "point _t22 -2.298 -1.928 6",
+  "point _t23 -1.928 -2.298 6",
+  "point _t24 -1.5 -2.598 6",
+  "point _t25 -1.026 -2.819 6",
+  "point _t26 -0.521 -2.954 6",
+  "point _t27 0 -3 6",
+  "point _t28 0.521 -2.954 6",
+  "point _t29 1.026 -2.819 6",
+  "point _t30 1.5 -2.598 6",
+  "point _t31 1.928 -2.298 6",
+  "point _t32 2.298 -1.928 6",
+  "point _t33 2.598 -1.5 6",
+  "point _t34 2.819 -1.026 6",
+  "point _t35 2.954 -0.521 6",
+  "polygon _t0 _t1 _t2 _t3 _t4 _t5 _t6 _t7 _t8 _t9 _t10 _t11 _t12 _t13 _t14 _t15 _t16 _t17 _t18 _t19 _t20 _t21 _t22 _t23 _t24 _t25 _t26 _t27 _t28 _t29 _t30 _t31 _t32 _t33 _t34 _t35 orange",
+  "point O 0 0 0",
+  "point V 0 0 6",
+  "point A 3 0 0",
+  "point C -3 0 0",
+  "point A2 3 0 6",
+  "point C2 -3 0 6",
+  "segment A A2 green",
+  "segment C C2 green",
+  "segment A V red",
+  "segment C V red",
+]
+
+[[step]]
+text = "For if the cylinder is not triple of the cone, the cylinder will be either greater than triple or less than triple of the cone. First let it be greater than triple, and let the square ABCD be inscribed in the circle ABCD (IV.6). The square ABCD is greater than the half of the circle ABCD. On the square ABCD let there be set up a prism of the same height as the cylinder. The prism so set up is greater than the half of the cylinder, since, if we circumscribe a square about the circle ABCD (IV.7) and set up on it a prism of the same height, the inscribed prism is half of the circumscribed, and the cylinder is less than the circumscribed prism. Bisect the circumferences AB, BC, CD, DA at the points E, F, G, H, and join AE, EB, BF, FC, CG, GD, DH, HA. Then each of the triangles AEB, BFC, CGD, DHA is greater than the half of the segment of the circle about it (XII.2). On each of the triangles set up prisms of the same height as the cylinder. Each of the prisms so set up is greater than the half of the part of the cylinder about it. Thus, by bisecting the circumferences that are left and joining straight lines, setting up on the triangles prisms of the same height as the cylinder, and doing this continually, we shall leave some segments of the cylinder which will be less than the excess by which the cylinder exceeds triple the cone (X.1). Let such segments be left, and let them be those on AE, EB, BF, FC, CG, GD, DH, HA. Therefore the remainder, the prism of which the polygon AEBFCGDH is the base and the height is the same as that of the cylinder, is greater than triple the cone."
+draw = [
+]
+
+[[step]]
+text = "But the prism of which the polygon AEBFCGDH is the base and the height the same as that of the cylinder is triple of the pyramid of which the polygon AEBFCGDH is the base and the vertex is the same as that of the cone (XII.7 corollary). Therefore the pyramid of which the polygon AEBFCGDH is the base and the vertex is the same as that of the cone is greater than the cone which has the circle ABCD as base, which is absurd, since it is inscribed in it. Therefore the cylinder is not greater than triple of the cone. I say next that neither is the cylinder less than triple of the cone. For, if possible, let the cylinder be less than triple of the cone. Then, inversely, the cone is greater than a third part of the cylinder. Let the square ABCD be inscribed in the circle ABCD; then the pyramid of which the square is the base and the vertex the same as that of the cone is greater than the half of the cone (as above, with the circumscribed square). Bisect the circumferences and so on until we leave some segments of the cone which are less than the excess by which the cone exceeds the third part of the cylinder. Then the pyramid with the polygon as base is greater than the third part of the cylinder. But the pyramid is a third part of the prism, which is inscribed in the cylinder. Therefore the prism inscribed in the cylinder is greater than the cylinder, which is absurd. Therefore the cylinder is neither greater nor less than triple of the cone; therefore it is triple of it."
+draw = [
+]

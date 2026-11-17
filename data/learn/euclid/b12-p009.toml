@@ -1,0 +1,34 @@
+id = "XII.9"
+book = 12
+order = 9
+title = "Equal pyramids: reciprocal bases and heights"
+statement = "In equal pyramids which have triangular bases the bases are reciprocally proportional to the heights; and those pyramids which have triangular bases and in which the bases are reciprocally proportional to the heights are equal."
+proof = "Therefore in equal pyramids which have triangular bases the bases are reciprocally proportional to the heights; and those pyramids which have triangular bases and in which the bases are reciprocally proportional to the heights are equal. Q.E.D."
+
+[[step]]
+text = "Let there be equal pyramids which have the triangular bases ABC, DEF and the vertices G, H. I say that in the pyramids ABCG, DEFH the bases are reciprocally proportional to the heights, that is, as the base ABC is to the base DEF, so is the height of the pyramid DEFH to the height of the pyramid ABCG."
+draw = [
+  "clear",
+  "view3d",
+  "point G -5 0 3",
+  "point A -8 -2 0",
+  "point B -3 -2 0",
+  "point C -5 3 0",
+  "polygon A B C blue fill",
+  "polygon G A B red fill",
+  "polygon G B C green fill",
+  "polygon G C A orange fill",
+  "point H 3 0 6",
+  "point D 0 -2 0",
+  "point E 4 -2 0",
+  "point F 2 1 0",
+  "polygon D E F blue fill",
+  "polygon H D E red fill",
+  "polygon H E F green fill",
+  "polygon H F D orange fill",
+]
+
+[[step]]
+text = "Complete the parallelepipedal solids BGML, EHQP. Since the pyramid ABCG is equal to the pyramid DEFH, and the solid BGML is six times the pyramid ABCG, and the solid EHQP is six times the pyramid DEFH, the solid BGML is equal to the solid EHQP. But in equal parallelepipedal solids the bases are reciprocally proportional to the heights (XI.34). Therefore, as the base BM is to the base EQ, so is the height of the solid EHQP to the height of the solid BGML. But, as the base BM is to the base EQ, so is the triangle ABC to the triangle DEF. Therefore, as the triangle ABC is to the triangle DEF, so is the height of the solid EHQP to the height of the solid BGML. But the height of the solid EHQP is the same as the height of the pyramid DEFH, and the height of the solid BGML is the same as the height of the pyramid ABCG. Therefore, as the base ABC is to the base DEF, so is the height of the pyramid DEFH to the height of the pyramid ABCG. The converse follows by reversing the argument."
+draw = [
+]
