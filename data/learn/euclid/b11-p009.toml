@@ -1,0 +1,33 @@
+id = "XI.9"
+book = 11
+order = 9
+title = "Parallels to the same line"
+statement = "Straight lines which are parallel to the same straight line and are not in the same plane with it are also parallel to one another."
+proof = "Therefore straight lines which are parallel to the same straight line and are not in the same plane with it are also parallel to one another. Q.E.D."
+
+[[step]]
+text = "Let each of the straight lines AB, CD be parallel to EF, not being in the same plane with it. I say that AB is parallel to CD."
+draw = [
+  "clear",
+  "view3d",
+  "point A -3 -3 0",
+  "point B -3 -3 4",
+  "point E 0 0 0",
+  "point F 0 0 4",
+  "point C 3 -2 0",
+  "point D 3 -2 4",
+  "segment A B blue",
+  "segment E F red",
+  "segment C D blue",
+]
+
+[[step]]
+text = "Let a point G be taken at random on EF, and from it let GH be drawn in the plane through EF, AB at right angles to EF, and GK in the plane through FE, CD at right angles to EF. Since EF is at right angles to each of the straight lines GH, GK, EF is also at right angles to the plane HGK through GH, GK (XI.4). And EF is parallel to AB. Therefore AB is also at right angles to the plane HGK (XI.8). For the same reason CD is also at right angles to the plane HGK. Therefore each of the straight lines AB, CD is at right angles to the plane HGK. But if two straight lines be at right angles to the same plane, the straight lines are parallel (XI.6). Therefore AB is parallel to CD."
+draw = [
+  "point G 0 0 2",
+  "point H -3 -3 2",
+  "point K 3 -2 2",
+  "segment G H green",
+  "segment G K green",
+  "polygon G H K teal fill",
+]

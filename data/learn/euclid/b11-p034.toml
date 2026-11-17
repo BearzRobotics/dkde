@@ -1,0 +1,46 @@
+id = "XI.34"
+book = 11
+order = 34
+title = "Equal solids: reciprocal bases and heights"
+statement = "In equal parallelepipedal solids the bases are reciprocally proportional to the heights; and those parallelepipedal solids in which the bases are reciprocally proportional to the heights are equal."
+proof = "Therefore in equal parallelepipedal solids the bases are reciprocally proportional to the heights; and those parallelepipedal solids in which the bases are reciprocally proportional to the heights are equal. Q.E.D."
+
+[[step]]
+text = "Let AB, CD be equal parallelepipedal solids (here one is 3 by 2 by 4 and the other 2 by 2 by 6). I say that in the parallelepipedal solids AB, CD the bases are reciprocally proportional to the heights, that is, that as the base EH is to the base NQ, so is the height of the solid CD to the height of the solid AB."
+draw = [
+  "clear",
+  "view3d",
+  "point A -7 -2 0",
+  "point B -4 -2 0",
+  "point C -4 0 0",
+  "point D -7 0 0",
+  "point E -7 -2 4",
+  "point F -4 -2 4",
+  "point G -4 0 4",
+  "point H -7 0 4",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+  "point I 0 -2 0",
+  "point J 2 -2 0",
+  "point K 2 0 0",
+  "point L 0 0 0",
+  "point M 0 -2 6",
+  "point N 2 -2 6",
+  "point O 2 0 6",
+  "point P 0 0 6",
+  "polygon I J K L purple fill",
+  "polygon M N O P teal fill",
+  "polygon I J N M orange fill",
+  "polygon J K O N yellow fill",
+  "polygon K L P O blue fill",
+  "polygon L I M P red fill",
+]
+
+[[step]]
+text = "First let the edges which stand up be at right angles to their bases. I say that as the base EH is to the base NQ, so is CM to AG. If the base EH is equal to the base NQ, then, since the solid AB is equal to the solid CD, CM is equal to AG, for parallelepipedal solids of the same height are to one another as their bases (XI.32). And, as the base EH is to the base NQ, so is CM to AG. If the bases are unequal, let EH be the greater. Since the solid AB is equal to the solid CD, CM is greater than AG. Let CT be made equal to AG, and let the parallelepipedal solid VC be completed on the base NQ with the height CT. Since the solid AB is equal to the solid CD, the solid CV is another solid, and equals have to the same the same ratio, as the solid AB is to the solid CV, so is the solid CD to the solid CV. But as the solid AB is to the solid CV, so is the base EH to the base NQ, for the solids AB, CV are of the same height; and as the solid CD is to the solid CV, so is the base MQ to the base TQ and so is CM to CT. Therefore as the base EH is to the base NQ, so is CM to CT, and CT is equal to AG. Therefore, as the base EH is to the base NQ, so is CM to AG. Therefore in the parallelepipedal solids AB, CD the bases are reciprocally proportional to the heights. The converse follows by reversing the argument."
+draw = [
+]

@@ -25,7 +25,7 @@ carries out the steps).
 | VIII | Continued proportion in numbers | 27 | |
 | IX | Numbers: primes are infinite, perfect numbers | 36 | |
 | X | Incommensurables | 115 | |
-| XI | Solid geometry | 39 | |
+| XI | Solid geometry | 39 | done (all 39, in the 3D view) |
 | XII | Areas and volumes by exhaustion | 18 | |
 | XIII | The five regular solids | 18 | |
 

@@ -1,0 +1,40 @@
+id = "XI.39"
+book = 11
+order = 39
+title = "Prisms on a parallelogram and a triangle"
+statement = "If there be two prisms of equal height, and one have a parallelogram as base and the other a triangle, and if the parallelogram be double of the triangle, the prisms will be equal."
+proof = "Therefore if there be two prisms of equal height, and one have a parallelogram as base and the other a triangle, and if the parallelogram be double of the triangle, the prisms will be equal. Q.E.D."
+
+[[step]]
+text = "Let ABCDEF, GHKLMN be two prisms of equal height, let one have the parallelogram AF as base and the other the triangle GHK, and let the parallelogram AF be double of the triangle GHK. I say that the prism ABCDEF is equal to the prism GHKLMN."
+draw = [
+  "clear",
+  "view3d",
+  "point A -7 -2 0",
+  "point B -3 -2 0",
+  "point C -3 0 0",
+  "point D -7 0 0",
+  "point A2 -7 -2 3",
+  "point B2 -3 -2 3",
+  "point C2 -3 0 3",
+  "point D2 -7 0 3",
+  "point G 0 -2 0",
+  "point H 2 -2 0",
+  "point K 2 0 0",
+  "point G2 0 -2 3",
+  "point H2 2 -2 3",
+  "point K2 2 0 3",
+  "polygon A B C D blue fill",
+  "polygon A2 B2 C2 D2 blue fill",
+  "polygon A B B2 A2 green fill",
+  "polygon B C C2 B2 orange fill",
+  "polygon G H K red fill",
+  "polygon G2 H2 K2 red fill",
+  "polygon G H H2 G2 purple fill",
+  "polygon H K K2 H2 teal fill",
+]
+
+[[step]]
+text = "Let the solids AG, GP be completed. Since the parallelogram AF is double of the triangle GHK, and the parallelogram HK is also double of the triangle GHK (I.34), the parallelogram AF is equal to the parallelogram HK. But parallelepipedal solids which are on equal bases and of the same height are equal to one another (XI.31). Therefore the solid AG is equal to the solid GP. But the solid AG is double of the prism ABCDEF, and the solid GP is double of the prism GHKLMN (XI.28). Therefore the prism ABCDEF is equal to the prism GHKLMN."
+draw = [
+]

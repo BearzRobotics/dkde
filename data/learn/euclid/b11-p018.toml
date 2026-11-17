@@ -1,0 +1,35 @@
+id = "XI.18"
+book = 11
+order = 18
+title = "Planes through a perpendicular"
+statement = "If a straight line be at right angles to any plane, all the planes through it will also be at right angles to the same plane."
+proof = "Therefore if a straight line be at right angles to any plane, all the planes through it will also be at right angles to the same plane. Q.E.D."
+
+[[step]]
+text = "Let any straight line AB be at right angles to the plane of reference. I say that all the planes through AB are also at right angles to the plane of reference."
+draw = [
+  "clear",
+  "view3d",
+  "point P -4 -3 0",
+  "point Q 4 -3 0",
+  "point R 4 3 0",
+  "point S -4 3 0",
+  "polygon P Q R S teal fill",
+  "point A 0 0 4",
+  "point B 0 0 0",
+  "point C -3 0 0",
+  "point D 3 0 0",
+  "point E -3 0 4",
+  "point G 3 0 4",
+  "polygon C D G E orange fill",
+  "segment A B red",
+  "segment C D blue",
+]
+
+[[step]]
+text = "Let a plane DE be drawn through AB, let CE be the common section of the plane DE and the plane of reference, let a point F be taken at random on CE, and from F let FG be drawn in the plane DE at right angles to CE (I.11). Since AB is at right angles to the plane of reference, AB is also at right angles to all the straight lines which meet it and are in the plane of reference. Therefore it is at right angles to CE, so that the angle ABF is right. But the angle GFB is also right. Therefore AB is parallel to FG (I.28). And AB is at right angles to the plane of reference. Therefore FG is also at right angles to the plane of reference (XI.8). Now a plane is at right angles to a plane when the straight lines drawn in one of the planes at right angles to the common section of the planes are at right angles to the remaining plane (definition 4). And any straight line FG, drawn in the plane DE at right angles to the common section CE, was proved to be at right angles to the plane of reference. Therefore the plane DE is at right angles to the plane of reference. Similarly it can be proved that all the planes through AB are at right angles to the plane of reference."
+draw = [
+  "point F 1 0 0",
+  "point Gg 1 0 3",
+  "segment F Gg green",
+]

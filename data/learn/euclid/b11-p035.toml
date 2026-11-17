@@ -1,0 +1,43 @@
+id = "XI.35"
+book = 11
+order = 35
+title = "Elevated lines containing equal angles"
+statement = "If there be two equal plane angles, and on their vertices there be set up elevated straight lines containing equal angles with the original straight lines respectively, and if on the elevated straight lines points be taken at random and perpendiculars be drawn from them to the planes in which the original angles are, and from the points so arising in the planes straight lines be joined to the vertices of the original angles, they will contain with the elevated straight lines equal angles."
+proof = "Therefore if there be two equal plane angles, and on their vertices there be set up elevated straight lines containing equal angles with the original straight lines respectively, and if on the elevated straight lines points be taken at random and perpendiculars be drawn from them to the planes in which the original angles are, and from the points so arising in the planes straight lines be joined to the vertices of the original angles, they will contain with the elevated straight lines equal angles. Q.E.D."
+
+[[step]]
+text = "Let BAC, EDF be two equal rectilineal angles, and from the points A, D let the elevated straight lines AG, DM be set up containing equal angles with BA, AC and ED, DF respectively, namely the angle MDE equal to the angle GAB, and MDF equal to GAC. Let points G, M be taken at random on AG, DM, let GL, MN be drawn from G, M perpendicular to the planes through BAC, EDF, meeting the planes at L, N, and let LA, ND be joined. I say that the angle GAL is equal to the angle MDN."
+draw = [
+  "clear",
+  "view3d",
+  "point P -4 -3 0",
+  "point Q 4 -3 0",
+  "point R 4 3 0",
+  "point S -4 3 0",
+  "polygon P Q R S teal fill",
+  "point A -2 0 0",
+  "point B -4 -1.5 0",
+  "point C -4 1.5 0",
+  "point G -1 0 3",
+  "point L -1 0 0",
+  "point D 2.5 0 0",
+  "point E 0.5 -1.5 0",
+  "point F 0.5 1.5 0",
+  "point M 3.5 0 3",
+  "point N 3.5 0 0",
+  "segment A B blue",
+  "segment A C blue",
+  "segment A G red",
+  "segment G L green",
+  "segment A L black",
+  "segment D E blue",
+  "segment D F blue",
+  "segment D M red",
+  "segment M N green",
+  "segment D N black",
+]
+
+[[step]]
+text = "Let AH be made equal to DM, and through H let HK be drawn parallel to GL. But GL is perpendicular to the plane through BAC. Therefore HK is also perpendicular to the plane through BAC (XI.8). From the points K, N let KC, NF, KB, NE be drawn perpendicular to the straight lines AC, DF, AB, DE, and let HC, CB, MF, FE be joined. Since the square on HA is equal to the squares on HK, KA, and the square on KA is equal to the squares on KC, CA, the square on HA is equal to the squares on HK, KC, CA. But the square on HC is equal to the squares on HK, KC. Therefore the square on HA is equal to the squares on HC, CA. Therefore the angle HCA is right. For the same reason the angle DFM is also right. Therefore the angle ACH is equal to the angle DFM. But the angle HAC is also equal to the angle MDF. Therefore MDF, HAC are two triangles having two angles equal to two angles and one side equal to one side, namely that subtending one of the equal angles, HA equal to DM. Therefore they will also have the remaining sides equal to the remaining sides (I.26). Therefore AC is equal to DF. Similarly we can prove that AB is equal to DE. Therefore the base BC is equal to the base EF, and the triangle ABC to the triangle DEF, so that the angle ABC is equal to the angle DEF. Similarly the angle ABK is equal to the angle DEN, and AK equal to DN, and hence KH equal to NM. Therefore the two sides AH, HK are equal to the two sides DM, MN, and contain right angles. Therefore the angle HAK is equal to the angle MDN. But HAK is the angle GAL, since HK is parallel to GL. Therefore the angle GAL is equal to the angle MDN."
+draw = [
+]

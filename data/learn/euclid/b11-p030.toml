@@ -1,0 +1,32 @@
+id = "XI.30"
+book = 11
+order = 30
+title = "Same base and height (edges not on the same lines)"
+statement = "Parallelepipedal solids which are on the same base and of the same height, and in which the extremities of the edges which stand up are not on the same straight lines, are equal to one another."
+proof = "Therefore parallelepipedal solids which are on the same base and of the same height, and in which the extremities of the edges which stand up are not on the same straight lines, are equal to one another. Q.E.D."
+
+[[step]]
+text = "Let the parallelepipedal solids CM, CN be on the same base AB and of the same height, but let the extremities of their edges which stand up, namely AF, AG, LM, LN, CD, CE, BH, BK, not be on the same straight lines. I say that the solid CM is equal to the solid CN."
+draw = [
+  "clear",
+  "view3d",
+  "point A -3 -2 0",
+  "point B 1 -2 0",
+  "point C 1 1 0",
+  "point D -3 1 0",
+  "point E -2 -2 3",
+  "point F 2 -2 3",
+  "point G 2 1 3",
+  "point H -2 1 3",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+]
+
+[[step]]
+text = "Let NK, DH be produced and meet one another at R, and let FM, GE be produced to P, Q, and let AO, LP, CQ, BR be joined. Then the solid CM, of which the base is the parallelogram ACBL and the opposite face FDHM, is equal to the solid CP, of which the base is the parallelogram ACBL and the opposite face OQRP, for they are on the same base ACBL and of the same height, and the extremities of their edges which stand up are on the same straight lines FP, DR (XI.29). But the solid CP is equal to the solid CN, for they are on the same base ACBL and of the same height, and the extremities of their edges are on the same straight lines GQ, NR (XI.29). Therefore the solid CM is also equal to the solid CN."
+draw = [
+]

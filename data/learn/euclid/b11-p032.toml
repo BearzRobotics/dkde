@@ -1,0 +1,46 @@
+id = "XI.32"
+book = 11
+order = 32
+title = "Solids of the same height"
+statement = "Parallelepipedal solids which are of the same height are to one another as their bases."
+proof = "Therefore parallelepipedal solids which are of the same height are to one another as their bases. Q.E.D."
+
+[[step]]
+text = "Let AB, CD be parallelepipedal solids of the same height. I say that parallelepipedal solids which are of the same height are to one another as their bases, that is, that as the base AE is to the base CF, so is the solid AB to the solid CD."
+draw = [
+  "clear",
+  "view3d",
+  "point A -7 -2 0",
+  "point B -4 -2 0",
+  "point C -2.5 0 0",
+  "point D -5.5 0 0",
+  "point E -7 -2 2.5",
+  "point F -4 -2 2.5",
+  "point G -2.5 0 2.5",
+  "point H -5.5 0 2.5",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+  "point I 0 -2 0",
+  "point J 5 -2 0",
+  "point K 5 0 0",
+  "point L 0 0 0",
+  "point M 0 -2 2.5",
+  "point N 5 -2 2.5",
+  "point O 5 0 2.5",
+  "point P 0 0 2.5",
+  "polygon I J K L purple fill",
+  "polygon M N O P teal fill",
+  "polygon I J N M orange fill",
+  "polygon J K O N yellow fill",
+  "polygon K L P O blue fill",
+  "polygon L I M P red fill",
+]
+
+[[step]]
+text = "For let FH be applied to FG, equal to AE, and in the angle FGH equal to the angle LCG (I.45), and let the parallelepipedal solid GK be completed on the base FH, with the same height as CD. Then the solid AB is equal to the solid GK, for they are on equal bases AE, FH and of the same height (XI.31). And since the parallelepipedal solid CK has been cut by the plane DG parallel to the opposite planes, as the base HF is to the base FC, so is the solid HD to the solid DC (XI.25). But the base HF is equal to the base AE, and the solid GK to the solid AB. Therefore, as the base AE is to the base CF, so is the solid AB to the solid CD."
+draw = [
+]

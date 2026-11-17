@@ -1,0 +1,46 @@
+id = "XI.27"
+book = 11
+order = 27
+title = "A similar parallelepiped on a line"
+statement = "On a given straight line to describe a parallelepipedal solid similar and similarly situated to a given parallelepipedal solid."
+proof = "Therefore on the given straight line AB the parallelepipedal solid similar and similarly situated to the given solid CD has been described. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given straight line and CD the given parallelepipedal solid. It is required to describe on the given straight line AB a parallelepipedal solid similar and similarly situated to the given solid CD."
+draw = [
+  "clear",
+  "view3d",
+  "point A -6 -2 0",
+  "point B -3 -2 0",
+  "point C -2 0 0",
+  "point D -5 0 0",
+  "point E -6 -2 2",
+  "point F -3 -2 2",
+  "point G -2 0 2",
+  "point H -5 0 2",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+]
+
+[[step]]
+text = "On the straight line AB, and at the point A on it, let there be constructed a solid angle contained by the angles BAH, HAK, KAB equal to the solid angle at C (XI.26), so that the angle BAH is equal to the angle ECG, the angle BAK to ECF, and the angle KAH to FCG. Let it be contrived that as EC is to CG, so is BA to AH, and, as GC is to CF, so is HA to AK (VI.12). Then ex aequali, as EC is to CF, so is BA to AK. Let the parallelogram HB and the solid AL be completed. Since, as EC is to CG, so is BA to AH, the sides about the equal angles ECG, BAH are proportional. Therefore the parallelogram HB is similar to the parallelogram GE. For the same reason the parallelogram KH is similar to the parallelogram GF, and FE to KB. Therefore three parallelograms of the solid CD are similar to three parallelograms of the solid AL. But the former three are equal and similar to their opposites, and the latter three to theirs. Therefore the whole solid CD is similar to the whole solid AL (XI definition 9). Therefore on the given straight line AB the solid AL has been described similar and similarly situated to the given parallelepipedal solid CD."
+draw = [
+  "point I 0 -2 0",
+  "point J 4.5 -2 0",
+  "point K 6 1 0",
+  "point L 1.5 1 0",
+  "point M 0 -2 3",
+  "point N 4.5 -2 3",
+  "point O 6 1 3",
+  "point P 1.5 1 3",
+  "polygon I J K L purple fill",
+  "polygon M N O P teal fill",
+  "polygon I J N M orange fill",
+  "polygon J K O N yellow fill",
+  "polygon K L P O blue fill",
+  "polygon L I M P red fill",
+]

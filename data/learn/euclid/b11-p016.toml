@@ -1,0 +1,35 @@
+id = "XI.16"
+book = 11
+order = 16
+title = "Sections of parallel planes"
+statement = "If two parallel planes be cut by any plane, their common sections are parallel."
+proof = "Therefore if two parallel planes be cut by any plane, their common sections are parallel. Q.E.D."
+
+[[step]]
+text = "For let the two parallel planes AB, CD be cut by the plane EFGH, and let their common sections with it be EF, GH. I say that EF is parallel to GH."
+draw = [
+  "clear",
+  "view3d",
+  "point A -4 -3 0",
+  "point B 4 -3 0",
+  "point Cc 4 3 0",
+  "point Dd -4 3 0",
+  "point A2 -4 -3 3",
+  "point B2 4 -3 3",
+  "point C2 4 3 3",
+  "point D2 -4 3 3",
+  "point E -3 0 0",
+  "point F 3 0 0",
+  "point G -3 0 3",
+  "point H 3 0 3",
+  "polygon A B Cc Dd teal fill",
+  "polygon A2 B2 C2 D2 purple fill",
+  "polygon E F H G orange fill",
+  "segment E F red",
+  "segment G H red",
+]
+
+[[step]]
+text = "For, if not, EF, GH when produced will meet either in the direction of F, H or of E, G. Let them be produced, as in the direction of F, H, and let them meet at K. Since EFK is in the plane AB, all the points on EFK are also in the plane AB. But K is one of the points on the straight line EFK. Therefore K is in the plane AB. For the same reason K is also in the plane CD. Therefore the planes AB, CD when produced will meet. But they do not meet, since they are by hypothesis parallel. Therefore the straight lines EF, GH when produced in the direction of F, H will not meet. Similarly we can prove that neither will EF, GH when produced in the direction of E, G meet. But straight lines which do not meet in either direction are parallel. Therefore EF is parallel to GH."
+draw = [
+]

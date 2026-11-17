@@ -1,0 +1,31 @@
+id = "XI.14"
+book = 11
+order = 14
+title = "Planes with the same perpendicular"
+statement = "Planes to which the same straight line is at right angles will be parallel."
+proof = "Therefore planes to which the same straight line is at right angles will be parallel. Q.E.D."
+
+[[step]]
+text = "Let any straight line AB be at right angles to each of the planes CD, EF. I say that the planes are parallel."
+draw = [
+  "clear",
+  "view3d",
+  "point C -4 -3 0",
+  "point D 4 -3 0",
+  "point E 4 3 0",
+  "point F -4 3 0",
+  "point G -4 -3 3",
+  "point H 4 -3 3",
+  "point K 4 3 3",
+  "point L -4 3 3",
+  "point A 0 0 0",
+  "point B 0 0 3",
+  "polygon C D E F teal fill",
+  "polygon G H K L orange fill",
+  "segment A B red",
+]
+
+[[step]]
+text = "For, if not, they will meet when produced. Let them meet; they will make a straight line as common section (XI.3). Let it be GH, and let any point K be taken at random on GH, and let AK, BK be joined. Since AB is at right angles to the plane EF, AB is also at right angles to BK, which is a straight line in the plane EF produced. Therefore the angle ABK is right. For the same reason the angle BAK is also right. Thus in the triangle ABK the two angles ABK, BAK are equal to two right angles, which is impossible (I.17). Therefore the planes CD, EF do not meet when produced. Therefore the planes CD, EF are parallel."
+draw = [
+]

@@ -1,0 +1,29 @@
+id = "XI.15"
+book = 11
+order = 15
+title = "Parallel planes from parallel lines"
+statement = "If two straight lines meeting one another be parallel to two straight lines meeting one another, not in the same plane, the planes through them are parallel."
+proof = "Therefore if two straight lines meeting one another be parallel to two straight lines meeting one another, not in the same plane, the planes through them are parallel. Q.E.D."
+
+[[step]]
+text = "For let the two straight lines AB, BC meeting one another be parallel to the two straight lines DE, EF meeting one another, not in the same plane. I say that the planes through AB, BC and DE, EF will not meet one another when produced."
+draw = [
+  "clear",
+  "view3d",
+  "point B -3 -2 0",
+  "point A 2 -2 0",
+  "point C -3 2 0",
+  "point H 2 2 0",
+  "point E -3 -2 3",
+  "point D 2 -2 3",
+  "point F -3 2 3",
+  "point K 2 2 3",
+  "polygon B A H C teal fill",
+  "polygon E D K F orange fill",
+  "segment B E red",
+]
+
+[[step]]
+text = "For let BG be drawn from the point B perpendicular to the plane through DE, EF (XI.11), and let it meet the plane at G. Through G let GH be drawn parallel to ED, and GK parallel to EF (I.31). Since BG is at right angles to the plane through DE, EF, it will make right angles with all the straight lines which meet it and are in the plane through DE, EF. But each of the straight lines GH, GK meets it and is in that plane. Therefore each of the angles BGH, BGK is right. And since BA is parallel to GH, the angles GBA, BGH are equal to two right angles (I.29). But BGH is right. Therefore GBA is also right, so that GB is at right angles to BA. For the same reason GB is also at right angles to BC. Since the straight line GB is set up at right angles to two straight lines BA, BC which cut one another, GB is also at right angles to the plane through BA, BC (XI.4). But it was also at right angles to the plane through GH, GK, that is, through DE, EF. Therefore BG is at right angles to each of the planes. But planes to which the same straight line is at right angles are parallel (XI.14). Therefore the plane through AB, BC is parallel to the plane through DE, EF."
+draw = [
+]

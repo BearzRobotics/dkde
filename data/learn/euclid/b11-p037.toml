@@ -1,0 +1,46 @@
+id = "XI.37"
+book = 11
+order = 37
+title = "Proportional lines and similar solids"
+statement = "If four straight lines be proportional, the parallelepipedal solids on them which are similar and similarly described will also be proportional; and, if the parallelepipedal solids on them which are similar and similarly described be proportional, the straight lines will themselves also be proportional."
+proof = "Therefore if four straight lines be proportional, the parallelepipedal solids on them which are similar and similarly described will also be proportional; and, if the parallelepipedal solids on them which are similar and similarly described be proportional, the straight lines will themselves also be proportional. Q.E.D."
+
+[[step]]
+text = "Let the four straight lines AB, CD, EF, GH be proportional, so that AB is to CD as EF is to GH, and let the similar and similarly situated parallelepipedal solids KA, LC, ME, NG be described on AB, CD, EF, GH. I say that, as KA is to LC, so is ME to NG."
+draw = [
+  "clear",
+  "view3d",
+  "point A -8 -2 0",
+  "point B -6 -2 0",
+  "point C -5 -0.5 0",
+  "point D -7 -0.5 0",
+  "point E -8 -2 2",
+  "point F -6 -2 2",
+  "point G -5 -0.5 2",
+  "point H -7 -0.5 2",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+  "point I -3 -2 0",
+  "point J 0 -2 0",
+  "point K 1.5 0.25 0",
+  "point L -1.5 0.25 0",
+  "point M -3 -2 3",
+  "point N 0 -2 3",
+  "point O 1.5 0.25 3",
+  "point P -1.5 0.25 3",
+  "polygon I J K L purple fill",
+  "polygon M N O P teal fill",
+  "polygon I J N M orange fill",
+  "polygon J K O N yellow fill",
+  "polygon K L P O blue fill",
+  "polygon L I M P red fill",
+]
+
+[[step]]
+text = "Since the solid KA is similar to LC, KA has to LC the ratio triplicate of that which AB has to CD (XI.33). For the same reason ME has to NG the ratio triplicate of that which EF has to GH. And AB is to CD as EF is to GH. Therefore, as AK is to LC, so is ME to NG. Conversely, let the solid AK be to the solid LC as the solid ME is to the solid NG. I say that the straight line AB is to CD as EF is to GH. For again, since KA has to LC the ratio triplicate of that which AB has to CD, and ME has to NG the ratio triplicate of that which EF has to GH, and KA is to LC as ME is to NG, therefore also, as AB is to CD, so is EF to GH."
+draw = [
+]

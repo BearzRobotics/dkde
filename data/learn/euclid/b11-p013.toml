@@ -1,0 +1,31 @@
+id = "XI.13"
+book = 11
+order = 13
+title = "One perpendicular only"
+statement = "From the same point two straight lines cannot be set up at right angles to the same plane on the same side."
+proof = "Therefore from the same point two straight lines cannot be set up at right angles to the same plane on the same side. Q.E.D."
+
+[[step]]
+text = "For, if possible, from the same point A let two straight lines AB, BC be set up at right angles to the plane of reference and on the same side."
+draw = [
+  "clear",
+  "view3d",
+  "point P -4 -3 0",
+  "point Q 4 -3 0",
+  "point R 4 3 0",
+  "point S -4 3 0",
+  "polygon P Q R S teal fill",
+  "point A 0 0 0",
+  "point B 0 0 4",
+  "point C 1.5 -0.5 3.5",
+  "segment A B red",
+  "segment A C blue",
+]
+
+[[step]]
+text = "Let a plane be drawn through BA, AC. It will cut the plane of reference in a straight line through A. Let it be DAE. Then AB, AC, DAE are in one plane. Since CA is at right angles to the plane of reference, it will also make right angles with all the straight lines which meet it and are in the plane. But DAE meets it and is in the plane of reference. Therefore the angle CAE is right. For the same reason the angle BAE is also right. Therefore the angle CAE is equal to the angle BAE, and they are in one plane, which is impossible. Therefore from the same point two straight lines cannot be set up at right angles to the same plane on the same side."
+draw = [
+  "point D -3 1 0",
+  "point E 3 -1 0",
+  "segment D E green",
+]

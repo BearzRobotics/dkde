@@ -1,0 +1,28 @@
+id = "XI.7"
+book = 11
+order = 7
+title = "The join of two parallels is in their plane"
+statement = "If there be two parallel straight lines, and points be taken at random on each of them, the straight line joining the two points is in the same plane with the parallel straight lines."
+proof = "Therefore if there be two parallel straight lines, and points be taken at random on each of them, the straight line joining the two points is in the same plane with the parallel straight lines. Q.E.D."
+
+[[step]]
+text = "Let AB, CD be two parallel straight lines, and let points E, F be taken at random on them respectively. I say that the straight line joined from E to F is in the same plane with the parallels."
+draw = [
+  "clear",
+  "view3d",
+  "point A -3 -2 0",
+  "point B 3 -2 1.2",
+  "point C -3 2 0.8",
+  "point D 3 2 2",
+  "point E -0.5 -2 0.4",
+  "point F 1 2 1.4",
+  "segment A B blue",
+  "segment C D blue",
+  "polygon A B D C teal fill",
+  "segment E F red",
+]
+
+[[step]]
+text = "For suppose it is not, but, if possible, let it be elevated, as EGF, and through EGF let a plane be drawn. It will make a section in the plane of the parallels, a straight line (XI.3). Let it be EF. Then two straight lines EGF, EF will enclose an area, which is impossible. Therefore the straight line joined from E to F is not elevated, and so lies in the plane through the parallels AB, CD."
+draw = [
+]

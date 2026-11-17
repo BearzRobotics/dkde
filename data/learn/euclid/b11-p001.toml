@@ -1,0 +1,35 @@
+id = "XI.1"
+book = 11
+order = 1
+title = "A line is wholly in a plane"
+statement = "A part of a straight line cannot be in the plane of reference, and a part in a plane more elevated."
+proof = "Therefore a part of a straight line cannot be in the plane of reference, and a part in a plane more elevated. Q.E.D."
+
+[[step]]
+text = "If possible, let AB, a part of the straight line ABC, be in the plane of reference (the floor), and the part BC in a plane more elevated."
+draw = [
+  "clear",
+  "view3d",
+  "point P -4 -4 0",
+  "point Q 4 -4 0",
+  "point R 4 4 0",
+  "point S -4 4 0",
+  "polygon P Q R S teal fill",
+  "point A -3 0 0",
+  "point B 0 0 0",
+  "point C 2.5 0 2.5",
+  "segment A B red",
+  "segment B C red",
+]
+
+[[step]]
+text = "Then there will be in the plane of reference some straight line continuous with AB in a straight line. Let it be BD. Then AB is a common segment of the two straight lines ABC, ABD, which is impossible, since if we describe a circle with centre B and distance AB, the diameters will be unequal (or the two straight lines would not be distinct in direction after their common part)."
+draw = [
+  "point D 3 0 0",
+  "segment B D blue",
+]
+
+[[step]]
+text = "Therefore a straight line cannot have a part in the plane of reference and a part elevated."
+draw = [
+]

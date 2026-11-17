@@ -1,0 +1,32 @@
+id = "XI.19"
+book = 11
+order = 19
+title = "The common section of two planes at right angles to a third"
+statement = "If two planes which cut one another be at right angles to any plane, their common section will also be at right angles to the same plane."
+proof = "Therefore if two planes which cut one another be at right angles to any plane, their common section will also be at right angles to the same plane. Q.E.D."
+
+[[step]]
+text = "For let the two planes AB, BC be at right angles to the plane of reference, and let their common section be BD. I say that BD is at right angles to the plane of reference."
+draw = [
+  "clear",
+  "view3d",
+  "point P -4 -3 0",
+  "point Q 4 -3 0",
+  "point R 4 3 0",
+  "point S -4 3 0",
+  "polygon P Q R S teal fill",
+  "point B 0 0 0",
+  "point D 0 0 4",
+  "point A1 -3 -2 0",
+  "point A2 -3 -2 4",
+  "point C1 3 -2 0",
+  "point C2 3 -2 4",
+  "polygon B A1 A2 D orange fill",
+  "polygon B C1 C2 D purple fill",
+  "segment B D red",
+]
+
+[[step]]
+text = "For suppose it is not, but, if possible, let DE be drawn from the point D in the plane AB at right angles to the straight line AD, and DF in the plane BC at right angles to CD. Since the plane AB is at right angles to the plane of reference, and DE has been drawn in the plane AB at right angles to AD, their common section, DE is at right angles to the plane of reference (definition 4). Similarly DF is also at right angles to the plane of reference. Therefore from the same point D two straight lines have been set up at right angles to the plane of reference on the same side, which is impossible (XI.13). Therefore no straight line except the common section DB of the planes AB, BC can be set up from the point D at right angles to the plane of reference."
+draw = [
+]

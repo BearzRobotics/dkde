@@ -1,0 +1,47 @@
+id = "XI.17"
+book = 11
+order = 17
+title = "Parallel planes cut lines proportionally"
+statement = "If two straight lines be cut by parallel planes, they will be cut in the same ratios."
+proof = "Therefore if two straight lines be cut by parallel planes, they will be cut in the same ratios. Q.E.D."
+
+[[step]]
+text = "Let the two straight lines AB, CD be cut by the parallel planes GH, KL, MN at the points A, E, B and C, F, D. I say that, as the straight line AE is to EB, so is CF to FD."
+draw = [
+  "clear",
+  "view3d",
+  "point P1 -4 -3 0",
+  "point P2 4 -3 0",
+  "point P3 4 3 0",
+  "point P4 -4 3 0",
+  "point Q1 -4 -3 2",
+  "point Q2 4 -3 2",
+  "point Q3 4 3 2",
+  "point Q4 -4 3 2",
+  "point R1 -4 -3 5",
+  "point R2 4 -3 5",
+  "point R3 4 3 5",
+  "point R4 -4 3 5",
+  "point A -2 -1 0",
+  "point E -1.2 -0.4 2",
+  "point B 0 0.5 5",
+  "point C 2 -2 0",
+  "point F 1.5 -1 2",
+  "point D 0.2 1 5",
+  "polygon P1 P2 P3 P4 teal fill",
+  "polygon Q1 Q2 Q3 Q4 orange fill",
+  "polygon R1 R2 R3 R4 purple fill",
+  "segment A B blue",
+  "segment C D red",
+]
+
+[[step]]
+text = "Let AC, AD, BD be joined, let AD meet the plane KL at O, and let EO, OF be joined. Since the two parallel planes KL, MN are cut by the plane EBDO, their common sections EO, BD are parallel (XI.16). For the same reason, since the two parallel planes GH, KL are cut by the plane AODC, their common sections AC, OF are parallel. And since EO has been drawn parallel to BD, one of the sides of the triangle ABD, as AE is to EB, so is AO to OD (VI.2). Again, since OF has been drawn parallel to AC, one of the sides of the triangle ADC, as AO is to OD, so is CF to FD. But it was proved that as AO is to OD, so is AE to EB. Therefore also, as AE is to EB, so is CF to FD (V.11)."
+draw = [
+  "point O -0.9 -0.5 2",
+  "segment A C black",
+  "segment A D black",
+  "segment B D black",
+  "segment E O black",
+  "segment O F black",
+]

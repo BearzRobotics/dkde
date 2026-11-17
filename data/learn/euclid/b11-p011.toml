@@ -1,0 +1,41 @@
+id = "XI.11"
+book = 11
+order = 11
+title = "A perpendicular to a plane from a point"
+statement = "From a given elevated point to draw a straight line perpendicular to a given plane."
+proof = "Therefore from the given elevated point A the straight line AG has been drawn perpendicular to the given plane. Being what it was required to do."
+
+[[step]]
+text = "Let A be the given elevated point, and the plane of reference the given plane. It is required to draw from the point A a straight line perpendicular to the plane of reference. Let any straight line BC be drawn at random in the plane of reference."
+draw = [
+  "clear",
+  "view3d",
+  "point P -4 -3 0",
+  "point Q 4 -3 0",
+  "point R 4 3 0",
+  "point S -4 3 0",
+  "polygon P Q R S teal fill",
+  "point A 1 0.5 4",
+  "point B -3 -1 0",
+  "point C 3 -1 0",
+  "segment B C blue",
+]
+
+[[step]]
+text = "Let AD be drawn from the point A perpendicular to BC (I.12). If AD is also perpendicular to the plane of reference, that which was prescribed is done. But if not, let DE be drawn from the point D in the plane of reference at right angles to BC (I.11), let AF be drawn from A perpendicular to DE (I.12), and through F let GH be drawn parallel to BC (I.31)."
+draw = [
+  "point D 1 -1 0",
+  "point E 1 2 0",
+  "point F 1 1.4 0",
+  "point G -3 1.4 0",
+  "point H 3 1.4 0",
+  "segment A D black",
+  "segment D E green",
+  "segment A F red",
+  "segment G H green",
+]
+
+[[step]]
+text = "Since BC is at right angles to each of DA, DE, BC is also at right angles to the plane through ED, DA (XI.4). And GH is parallel to BC. But, if two straight lines be parallel, and one of them be at right angles to any plane, the remaining one will also be at right angles to the same plane (XI.8). Therefore GH is at right angles to the plane through ED, DA. Therefore GH is also at right angles to all the straight lines which meet it and are in the plane through ED, DA. But AF meets it and is in the plane through ED, DA. Therefore GH is at right angles to FA, so that FA is also at right angles to HG. But AF is also at right angles to DE. Therefore AF is at right angles to each of the straight lines GH, DE. But if a straight line be set up at right angles to two straight lines which cut one another, at their point of section, it will also be at right angles to the plane through them (XI.4). Therefore FA is at right angles to the plane through ED, GH, that is, to the plane of reference. Therefore from the given elevated point A the straight line AF has been drawn perpendicular to the plane of reference."
+draw = [
+]

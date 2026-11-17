@@ -1,0 +1,34 @@
+id = "XI.3"
+book = 11
+order = 3
+title = "Two planes cut in a straight line"
+statement = "If two planes cut one another, their common section is a straight line."
+proof = "Therefore if two planes cut one another, their common section is a straight line. Q.E.D."
+
+[[step]]
+text = "Let two planes AB, BC cut one another, and let their common section be the line DB. I say that DB is a straight line."
+draw = [
+  "clear",
+  "view3d",
+  "point A -4 -3 0",
+  "point B 4 -3 0",
+  "point C 4 3 0",
+  "point D -4 3 0",
+  "point E -4 0 0",
+  "point F 4 0 0",
+  "point G 4 0 4",
+  "point H -4 0 4",
+  "polygon A B C D teal fill",
+  "polygon E F G H orange fill",
+]
+
+[[step]]
+text = "If not, from D to B in the plane AB let the straight line DEB be drawn, and in the plane BC the straight line DFB. Then the two straight lines DEB, DFB have the same extremities and clearly enclose an area, which is absurd (common notion, postulate 1: two straight lines do not enclose a space)."
+draw = [
+  "segment E F red",
+]
+
+[[step]]
+text = "Therefore DEB, DFB are not straight lines. Similarly we can prove that no other line joining D, B is a straight line except the common section of the planes AB, BC. Therefore the common section is a straight line."
+draw = [
+]

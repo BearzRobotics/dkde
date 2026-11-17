@@ -1,0 +1,46 @@
+id = "XI.33"
+book = 11
+order = 33
+title = "Similar parallelepipeds: the triplicate ratio"
+statement = "Similar parallelepipedal solids are to one another in the triplicate ratio of their corresponding sides."
+proof = "Therefore similar parallelepipedal solids are to one another in the triplicate ratio of their corresponding sides. Q.E.D."
+
+[[step]]
+text = "Let AB, CD be similar parallelepipedal solids, and let AE correspond to CF. I say that the solid AB has to the solid CD the ratio triplicate of that which AE has to CF. (Here the second box is the first enlarged one and a half times.)"
+draw = [
+  "clear",
+  "view3d",
+  "point A -7 -2 0",
+  "point B -5 -2 0",
+  "point C -4 -0.5 0",
+  "point D -6 -0.5 0",
+  "point E -7 -2 2",
+  "point F -5 -2 2",
+  "point G -4 -0.5 2",
+  "point H -6 -0.5 2",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+  "point I -2 -2 0",
+  "point J 1 -2 0",
+  "point K 2.5 0.25 0",
+  "point L -0.5 0.25 0",
+  "point M -2 -2 3",
+  "point N 1 -2 3",
+  "point O 2.5 0.25 3",
+  "point P -0.5 0.25 3",
+  "polygon I J K L purple fill",
+  "polygon M N O P teal fill",
+  "polygon I J N M orange fill",
+  "polygon J K O N yellow fill",
+  "polygon K L P O blue fill",
+  "polygon L I M P red fill",
+]
+
+[[step]]
+text = "Let AE, GE, HE be produced in a straight line with EF, EK, EL, and let EF be made equal to CF... and so on. Let EK be made equal to NF, and EL equal to FR, and let the parallelogram KF and the solid KP be completed. Since the two sides EF, FK are equal to the two sides CF, FN, and the angle KEF is equal to the angle NFC, the parallelogram KF is equal and similar to the parallelogram FN; and similarly the other planes. Therefore the solid KP is equal and similar to the solid CD. Let the parallelograms GF, QF and the solids EY, KO be completed. Since, by reason of the similarity, as AE is to CF, so is EG to FN and EH to FR, and FN is equal to EK and FR to EL, as AE is to EF, so are GE to EK and HE to EL. But as AE is to EF, so is the parallelogram AG to the parallelogram GF; as GE is to EK, so is GF to KF; and as HE is to EL, so is QE to KL. Therefore, as the parallelogram AG is to GF, so is GF to FK, and QE to KL. But as AG is to GF, so is the solid AB to the solid EY; as GF is to FK, so is the solid EY to the solid PF; and as QE is to KL, so is the solid PF to the solid KO (XI.25). Therefore, as the solid AB is to EY, so are EY to FP and FP to KO. But if four magnitudes be continuously proportional, the first has to the fourth the ratio triplicate of that which it has to the second. Therefore the solid AB has to KO the ratio triplicate of that which AB has to EY. But as AB is to EY, so is the parallelogram AG to GF, and the straight line AE to EF. Therefore the solid AB has to KO the ratio triplicate of that which AE has to EF. But the solid KO is equal to the solid CD, and EF to CF. Therefore the solid AB has to the solid CD the ratio triplicate of that which the corresponding side AE has to the corresponding side CF."
+draw = [
+]

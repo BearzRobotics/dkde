@@ -1,0 +1,44 @@
+id = "XI.4"
+book = 11
+order = 4
+title = "A line at right angles to a plane"
+statement = "If a straight line be set up at right angles to two straight lines which cut one another, at their common point of section, it will also be at right angles to the plane through them."
+proof = "Therefore if a straight line be set up at right angles to two straight lines which cut one another, at their common point of section, it will also be at right angles to the plane through them. Q.E.D."
+
+[[step]]
+text = "For let any straight line EF be set up at right angles to two straight lines AB, CD which cut one another at E, at the point E. I say that EF is also at right angles to the plane through AB, CD."
+draw = [
+  "clear",
+  "view3d",
+  "point A -4 0 0",
+  "point B 4 0 0",
+  "point C 0 -4 0",
+  "point D 0 4 0",
+  "point E 0 0 0",
+  "point F 0 0 4",
+  "polygon A C B D teal fill",
+  "segment A B blue",
+  "segment C D blue",
+  "segment E F red",
+]
+
+[[step]]
+text = "Let AE, EB, CE, ED be cut off equal to one another, and through E let any straight line GEH be drawn across in the plane through AB, CD. Let AD, CB be joined, and from any point G on GH let GF be drawn; join also AF, FD, FC, FB, FH."
+draw = [
+  "point G -2.5 2 0",
+  "point H 2.5 -2 0",
+  "segment G H green",
+  "segment A D black",
+  "segment C B black",
+  "segment F A black",
+  "segment F D black",
+  "segment F B black",
+  "segment F C black",
+  "segment F G black",
+  "segment F H black",
+]
+
+[[step]]
+text = "Since the two sides AE, ED are equal to the two sides BE, EC, and they contain equal angles, the base AD is equal to the base CB, and the triangle AED is equal to the triangle CEB (I.4). Therefore the angle DAG is equal to the angle EBH, and the angle AED to the angle BEH, so that AEG, BEH are two triangles having two angles equal to two angles and one side equal to one side. Therefore they will also have the remaining sides equal, so GE is equal to EH and AG to BH. And since AE is equal to EB and FE is at right angles, FA is equal to FB; for the same reason FC is equal to FD. Since AD is equal to BC and FA to FB, the two sides FA, AD are equal to the two sides FB, BC, and the base FD is equal to the base FC. Therefore the angle FAD is equal to the angle FBC. Again, since AG was proved equal to BH, and FA is equal to FB, the two sides FA, AG are equal to FB, BH, and the angles are equal; therefore the base FG is equal to the base FH. Since GE is equal to EH, and EF is common, and the base FG is equal to the base FH, the angle GEF is equal to the angle HEF (I.8). Therefore each of the angles GEF, HEF is right. Therefore FE is at right angles to GH, which is any straight line drawn through E in the plane. Similarly FE will make right angles with all the straight lines which meet it and are in the plane of reference. But a straight line is at right angles to a plane when it makes right angles with all the straight lines which meet it and are in that plane. Therefore FE is at right angles to the plane."
+draw = [
+]

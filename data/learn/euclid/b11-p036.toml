@@ -1,0 +1,46 @@
+id = "XI.36"
+book = 11
+order = 36
+title = "Three proportional lines and a solid"
+statement = "If three straight lines be proportional, the parallelepipedal solid formed out of the three straight lines is equal to the parallelepipedal solid on the mean, if it be equilateral and equiangular with the aforesaid solid."
+proof = "Therefore if three straight lines be proportional, the parallelepipedal solid formed out of the three straight lines is equal to the parallelepipedal solid on the mean, if it be equilateral and equiangular with the aforesaid solid. Q.E.D."
+
+[[step]]
+text = "Let A, B, C be three proportional straight lines, so that A is to B as B is to C (here 2, 4, 8, so the solid 2 by 4 by 8 has volume 64, and the cube on 4 has volume 64). I say that the solid formed out of A, B, C is equal to the equilateral solid on B equiangular with it."
+draw = [
+  "clear",
+  "view3d",
+  "point A -9 -2 0",
+  "point B -7 -2 0",
+  "point C -7 6 0",
+  "point D -9 6 0",
+  "point E -9 -2 4",
+  "point F -7 -2 4",
+  "point G -7 6 4",
+  "point H -9 6 4",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+  "point I 0 -2 0",
+  "point J 4 -2 0",
+  "point K 4 2 0",
+  "point L 0 2 0",
+  "point M 0 -2 4",
+  "point N 4 -2 4",
+  "point O 4 2 4",
+  "point P 0 2 4",
+  "polygon I J K L purple fill",
+  "polygon M N O P teal fill",
+  "polygon I J N M orange fill",
+  "polygon J K O N yellow fill",
+  "polygon K L P O blue fill",
+  "polygon L I M P red fill",
+]
+
+[[step]]
+text = "Let there be set out the solid angle at E contained by the angles DEG, GEF, FED, and let DE, GE, EF be each equal to B. Let the parallelepipedal solid EK be completed. Let LM be equal to A, and on the straight line LM, and at the point L on it, let a solid angle be constructed equal to the solid angle at E (XI.26), and let LN be made equal to B and LO equal to C. Since A is to B as B is to C, and A is equal to LM, B to each of LN, ED, and C to LO, therefore, as LM is to EG, so is DE to LO. Therefore the sides about the equal angles NLM, DEG are reciprocally proportional. Therefore the parallelogram MN is equal to the parallelogram DG (VI.14). Since the two plane angles DEG, NLM are equal and the elevated straight lines LO, EF are equal and contain equal angles with the original straight lines, the perpendiculars from O, F to the planes through NLM, DEG are equal to one another (XI.35). Therefore the solids LH, EK are of the same height. But parallelepipedal solids on equal bases and of the same height are equal to one another (XI.31). Therefore the solid HL is equal to the solid EK. And LH is the solid formed out of A, B, C, and EK the solid on B."
+draw = [
+]

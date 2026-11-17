@@ -1,0 +1,42 @@
+id = "XI.25"
+book = 11
+order = 25
+title = "Cutting a parallelepiped"
+statement = "If a parallelepipedal solid be cut by a plane which is parallel to the opposite planes, then, as the base is to the base, so will the solid be to the solid."
+proof = "Therefore if a parallelepipedal solid be cut by a plane which is parallel to the opposite planes, then, as the base is to the base, so will the solid be to the solid. Q.E.D."
+
+[[step]]
+text = "For let the parallelepipedal solid ABCD be cut by the plane FG which is parallel to the opposite planes RA, DH. I say that, as the base AEFV is to the base EHCF, so is the solid ABFU to the solid EGCD."
+draw = [
+  "clear",
+  "view3d",
+  "point A -3 -2 0",
+  "point B 3 -2 0",
+  "point C 3 1 0",
+  "point D -3 1 0",
+  "point E -3 -2 3.5",
+  "point F 3 -2 3.5",
+  "point G 3 1 3.5",
+  "point H -3 1 3.5",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+]
+
+[[step]]
+text = "Let AH be produced in each direction, let any number of straight lines AK, KL be made equal to AE, and any number HM, MN equal to EH, and let the parallelograms LP, KV, HW, MS and the solids LQ, KR, DM, MT be completed. Since the straight lines LK, KA, AE are equal to one another, the parallelograms LP, KV, EV are equal to one another, and so are KO, KB, AG, and LX, KQ, AR (for they are opposite). Similarly the parallelograms EC, HW, MS are equal to one another, and so are HG, HI, IN, and DH, MU, NT. Therefore three planes of the solids LQ, KR, AU are equal to three planes of one another, and the three planes are equal and similar to their opposites. Therefore the three solids LQ, KR, AU are equal to one another (XI definition 10). Similarly the three solids ED, DM, MT are equal to one another. Therefore, whatever multiple the base LF is of the base AF, that multiple also is the solid LU of the solid AU; and whatever multiple the base NF is of the base FH, that multiple also is the solid NU of the solid ED."
+draw = [
+  "point M -3 -2 1.4",
+  "point N 3 -2 1.4",
+  "point O 3 1 1.4",
+  "point Pp -3 1 1.4",
+  "polygon M N O Pp yellow fill",
+]
+
+[[step]]
+text = "If the base LF is equal to the base NF, the solid LU is also equal to the solid NU; if the base LF exceeds the base NF, the solid LU exceeds the solid NU; and if less, less. There being four magnitudes, the two bases AF, FH and the two solids AU, ED, equimultiples have been taken of the base AF and the solid AU, namely the base LF and the solid LU, and of the base FH and the solid ED, namely the base FN and the solid NU; and it has been proved that if the base LF exceeds the base FN, the solid LU exceeds the solid NU; if equal, equal; if less, less. Therefore, as the base AF is to the base FH, so is the solid AU to the solid ED (V, definition 5)."
+draw = [
+]

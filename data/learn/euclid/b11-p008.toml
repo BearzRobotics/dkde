@@ -1,0 +1,40 @@
+id = "XI.8"
+book = 11
+order = 8
+title = "A parallel to a perpendicular is perpendicular"
+statement = "If two straight lines be parallel, and one of them be at right angles to any plane, the remaining one will also be at right angles to the same plane."
+proof = "Therefore if two straight lines be parallel, and one of them be at right angles to any plane, the remaining one will also be at right angles to the same plane. Q.E.D."
+
+[[step]]
+text = "Let AB, CD be two parallel straight lines, and let one of them, AB, be at right angles to the plane of reference. I say that the remaining one, CD, will also be at right angles to the same plane."
+draw = [
+  "clear",
+  "view3d",
+  "point P -4 -3 0",
+  "point Q 4 -3 0",
+  "point R 4 3 0",
+  "point S -4 3 0",
+  "point B -1 0 0",
+  "point D 2 0.5 0",
+  "point A -1 0 3.5",
+  "point C 2 0.5 3.5",
+  "polygon P Q R S teal fill",
+  "segment A B red",
+  "segment C D red",
+  "segment B D blue",
+]
+
+[[step]]
+text = "For let AB, CD meet the plane of reference at the points B, D, and let BD be joined. Therefore AB, CD, BD are in one plane (XI.7). Let DE be drawn in the plane of reference at right angles to BD, let DE be made equal to AB, and let BE, AE, AD be joined. Since AB is at right angles to the plane of reference, AB is also at right angles to all the straight lines which meet it and are in the plane. Therefore each of the angles ABD, ABE is right. And since the straight line BD has fallen on the parallels AB, CD, the angles ABD, CDB are equal to two right angles. But ABD is right. Therefore CDB is also right. So CD is at right angles to BD."
+draw = [
+  "point E 1.2 -3 0",
+  "segment D E green",
+  "segment B E black",
+  "segment A E black",
+  "segment A D black",
+]
+
+[[step]]
+text = "Since AB is equal to DE, and BD is common, the two sides AB, BD are equal to the two sides ED, DB, and the angle ABD is equal to the angle EDB, for each is right. Therefore the base AD is equal to the base BE. Since AB is equal to DE, and BE to AD, the two sides AB, BE are equal to DE, AD and AE is common; therefore the angle ABE is equal to the angle EDA. But ABE is right; therefore EDA is also right. Therefore ED is at right angles to DA. But it is also at right angles to DB. Therefore ED is at right angles to the plane through BD, DA, and will make right angles with all the straight lines in that plane which meet it. But DC is in the plane through BD, DA, since AB, BD, DC are in one plane. Therefore ED is at right angles to DC. Therefore CD is also at right angles to DE. But CD is also at right angles to BD. Therefore CD is set up at right angles to the two straight lines DE, DB which cut one another, at the point of section D. So CD is at right angles to the plane through DE, DB (XI.4). But the plane through DE, DB is the plane of reference. Therefore CD is at right angles to the plane of reference."
+draw = [
+]

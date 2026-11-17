@@ -1,0 +1,25 @@
+id = "XI.26"
+book = 11
+order = 26
+title = "A solid angle equal to a given one"
+statement = "On a given straight line, and at a given point on it, to construct a solid angle equal to a given solid angle contained by three plane angles."
+proof = "Therefore on the given straight line AB, and at the point A on it, the solid angle at A has been constructed equal to the solid angle at D. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given straight line, A the given point on it, and the solid angle at D contained by the plane angles EDC, EDF, FDC. It is required to construct on the straight line AB, and at the point A on it, a solid angle equal to the solid angle at D."
+draw = [
+  "clear",
+  "view3d",
+  "point A 0 0 4",
+  "point B -3 -2 0",
+  "point C 3 -2 0",
+  "point D 0 3 0",
+  "polygon A B C blue fill",
+  "polygon A C D red fill",
+  "polygon A D B green fill",
+]
+
+[[step]]
+text = "Let a point F be taken at random on DF, let FG be drawn from F perpendicular to the plane through ED, DC (XI.11), and let it meet the plane at G. Let DG be joined, and construct at A on AB the angle BAL equal to the angle EDC, and the angle BAK equal to EDG (I.23), in the plane of reference. Let AK be made equal to DG, and from the point K let KH be set up at right angles to the plane through BAL (XI.12), and let KH be made equal to GF. Let HA be joined. I say that the solid angle at A, contained by the angles BAL, BAH, HAL, is equal to the solid angle at D, contained by the angles EDC, EDF, FDC. For if AB, DE are cut off equal, and HB, KB, FE, GE joined, then KH is equal to GF and KA to GD, and the angles at K, G are right; so AH is equal to DF. Similarly the other corresponding straight lines and angles are equal, so the solid angles are equal."
+draw = [
+]

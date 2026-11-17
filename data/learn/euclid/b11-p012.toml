@@ -1,0 +1,30 @@
+id = "XI.12"
+book = 11
+order = 12
+title = "A perpendicular to a plane at a point"
+statement = "To set up a straight line at right angles to a given plane from a given point in it."
+proof = "Therefore the straight line AB has been set up at right angles to the given plane from the point A in it. Being what it was required to do."
+
+[[step]]
+text = "Let the plane of reference be the given plane, and A the point in it. It is required to set up from the point A a straight line at right angles to the plane of reference. Let some elevated point B be conceived, and from B let BC be drawn perpendicular to the plane of reference (XI.11)."
+draw = [
+  "clear",
+  "view3d",
+  "point P -4 -3 0",
+  "point Q 4 -3 0",
+  "point R 4 3 0",
+  "point S -4 3 0",
+  "polygon P Q R S teal fill",
+  "point A -1.5 -1 0",
+  "point B 1.5 0 4",
+  "point C 1.5 0 0",
+  "segment B C red",
+  "segment A C blue",
+]
+
+[[step]]
+text = "Through the point A let AD be drawn parallel to BC (I.31). Since AD, CB are two parallel straight lines, and one of them, BC, is at right angles to the plane of reference, the remaining one, AD, is also at right angles to the plane of reference (XI.8). Therefore from the point A in the plane of reference AD has been set up at right angles to the plane."
+draw = [
+  "point D -1.5 -1 4",
+  "segment A D green",
+]

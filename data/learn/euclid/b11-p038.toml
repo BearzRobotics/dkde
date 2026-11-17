@@ -1,0 +1,44 @@
+id = "XI.38"
+book = 11
+order = 38
+title = "Bisected faces of a cube"
+statement = "If the sides of the opposite planes of a cube be bisected, and planes be carried through the points of section, the common section of the planes and the diameter of the cube bisect one another."
+proof = "Therefore if the sides of the opposite planes of a cube be bisected, and planes be carried through the points of section, the common section of the planes and the diameter of the cube bisect one another. Q.E.D."
+
+[[step]]
+text = "For let the sides of the opposite planes CF, AH of the cube AF be bisected at the points K, L, M, N, O, Q, P, R, and let the planes KN, OR be carried through the points of section. Let US be the common section of the planes, and DG a diameter of the cube AF. I say that UT is equal to TS, and DT to TG."
+draw = [
+  "clear",
+  "view3d",
+  "point A -2 -2 0",
+  "point B 2 -2 0",
+  "point C 2 2 0",
+  "point D -2 2 0",
+  "point E -2 -2 4",
+  "point F 2 -2 4",
+  "point G 2 2 4",
+  "point H -2 2 4",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+  "point I 0 -2 0",
+  "point J 2 0 0",
+  "point K 0 2 0",
+  "point L -2 0 0",
+  "point I2 0 -2 4",
+  "point J2 2 0 4",
+  "point K2 0 2 4",
+  "point L2 -2 0 4",
+  "point X 0 0 2",
+  "polygon I J K L yellow",
+  "polygon I2 J2 K2 L2 yellow",
+]
+
+[[step]]
+text = "Let DU, UE, BS, SG be joined. Since DO is parallel to PE, the alternate angles DOU, UPE are equal to one another (I.29). And since DO is equal to PE, and OU to UP, and they contain equal angles, the base DU is equal to the base UE, and the triangle DOU is equal to the triangle PUE, and the remaining angles are equal to the remaining angles. Therefore the angle OUD is equal to the angle PUE. Therefore DUE is a straight line (I.14). For the same reason BSG is also a straight line, and BS is equal to SG. Since CA is equal and parallel to DB, but CA is also equal and parallel to EG, DB is also equal and parallel to EG (XI.9). And the straight lines DE, BG join them. Therefore DE is parallel to BG (I.33). Therefore the angle EDT is equal to the angle BGT, for they are alternate (I.29), and the angle DTU is equal to the angle GTS (I.15). Therefore DTU, GTS are two triangles having two angles equal to two angles and one side equal to one side, namely that subtending one of the equal angles, DU equal to GS, for they are halves of DE, BG. Therefore they will also have the remaining sides equal to the remaining sides. Therefore DT is equal to TG, and UT to TS."
+draw = [
+  "segment D G red",
+]

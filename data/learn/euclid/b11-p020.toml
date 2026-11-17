@@ -1,0 +1,35 @@
+id = "XI.20"
+book = 11
+order = 20
+title = "Two plane angles of a solid angle"
+statement = "If a solid angle be contained by three plane angles, any two, taken together in any manner, are greater than the remaining one."
+proof = "Therefore if a solid angle be contained by three plane angles, any two, taken together in any manner, are greater than the remaining one. Q.E.D."
+
+[[step]]
+text = "Let the solid angle at A be contained by the three plane angles BAC, CAD, DAB. I say that any two of the angles BAC, CAD, DAB, taken together in any manner, are greater than the remaining one."
+draw = [
+  "clear",
+  "view3d",
+  "point A 0 0 4",
+  "point B -3 -2 0",
+  "point C 3 -2 0",
+  "point D 0 3 0",
+  "polygon A B C blue fill",
+  "polygon A C D red fill",
+  "polygon A D B green fill",
+]
+
+[[step]]
+text = "If the angles BAC, CAD, DAB are equal to one another, it is clear that any two are greater than the remaining one. But if not, let BAC be the greater, and on the straight line AB, and at the point A on it, let the angle BAE be constructed, in the plane through BA, AC, equal to the angle DAB (I.23). Let AE be made equal to AD, and let BEC, drawn through the point E, cut the straight lines AB, AC at the points B, C. Let DB, DC be joined."
+draw = [
+  "point E 0 -2 0",
+  "segment B C black",
+  "segment D B black",
+  "segment D C black",
+  "segment A E orange",
+]
+
+[[step]]
+text = "Since DA is equal to AE, and AB is common, the two sides DA, AB are equal to the two sides EA, AB, and the angle DAB is equal to the angle BAE. Therefore the base DB is equal to the base BE (I.4). And since in the triangle DBC the two sides BD, DC are greater than BC (I.20), and of these DB was proved equal to BE, DC is greater than the remainder EC. Since DA is equal to AE, and AC is common, but the base DC is greater than the base EC, the angle DAC is greater than the angle EAC (I.25). But the angle DAB was proved equal to the angle BAE. Therefore the angles DAB, DAC are greater than the angle BAC. Similarly we can prove that the remaining angles, taken together in pairs, are greater than the remaining one."
+draw = [
+]

@@ -1,0 +1,35 @@
+id = "XI.10"
+book = 11
+order = 10
+title = "Equal angles with parallel arms"
+statement = "If two straight lines meeting one another be parallel to two straight lines meeting one another, not in the same plane, they will contain equal angles."
+proof = "Therefore if two straight lines meeting one another be parallel to two straight lines meeting one another, not in the same plane, they will contain equal angles. Q.E.D."
+
+[[step]]
+text = "Let the two straight lines AB, BC meeting one another be parallel to the two straight lines DE, EF meeting one another, not in the same plane. I say that the angle ABC is equal to the angle DEF."
+draw = [
+  "clear",
+  "view3d",
+  "point B -3 -1 0",
+  "point A -0.5 -1 0",
+  "point C -3 2 0",
+  "point E 1 -1 2.5",
+  "point D 3.5 -1 2.5",
+  "point F 1 2 2.5",
+  "segment B A blue",
+  "segment B C blue",
+  "segment E D red",
+  "segment E F red",
+  "angle A B C blue fill",
+  "angle D E F red fill",
+]
+
+[[step]]
+text = "Let BA, BC, ED, EF be cut off equal to one another, and let AD, CF, BE, AC, DF be joined. Since BA is equal and parallel to ED, AD is equal and parallel to BE (I.33). For the same reason CF is equal and parallel to BE. Therefore each of AD, CF is equal and parallel to BE. But straight lines parallel to the same straight line and not in the same plane with it are parallel to one another (XI.9). Therefore AD is parallel and equal to CF. And AC, DF join them. Therefore AC is also equal and parallel to DF (I.33). Since the two sides AB, BC are equal to the two sides DE, EF, and the base AC is equal to the base DF, the angle ABC is equal to the angle DEF (I.8)."
+draw = [
+  "segment A D black",
+  "segment C F black",
+  "segment B E black",
+  "segment A C green",
+  "segment D F green",
+]

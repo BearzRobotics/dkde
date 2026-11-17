@@ -1,0 +1,40 @@
+id = "XI.6"
+book = 11
+order = 6
+title = "Two perpendiculars to a plane are parallel"
+statement = "If two straight lines be at right angles to the same plane, the straight lines will be parallel."
+proof = "Therefore if two straight lines be at right angles to the same plane, the straight lines will be parallel. Q.E.D."
+
+[[step]]
+text = "For let the two straight lines AB, CD be at right angles to the plane of reference. I say that AB is parallel to CD."
+draw = [
+  "clear",
+  "view3d",
+  "point P -4 -3 0",
+  "point Q 4 -3 0",
+  "point R 4 3 0",
+  "point S -4 3 0",
+  "point B -1 0 0",
+  "point D 2 0.5 0",
+  "point A -1 0 3.5",
+  "point C 2 0.5 3.5",
+  "polygon P Q R S teal fill",
+  "segment A B red",
+  "segment C D red",
+]
+
+[[step]]
+text = "For let them meet the plane of reference at the points B, D, let the straight line BD be joined, let DE be drawn in the plane of reference at right angles to BD, let DE be made equal to AB, and let BE, AE, AD be joined."
+draw = [
+  "point E 1.2 -3 0",
+  "segment B D blue",
+  "segment D E green",
+  "segment B E black",
+  "segment A E black",
+  "segment A D black",
+]
+
+[[step]]
+text = "Since AB is at right angles to the plane of reference, it will also make right angles with all the straight lines which meet it and are in the plane, so each of the angles ABD, ABE is right. For the same reason each of the angles CDB, CDE is right. Since AB is equal to DE, and BD is common, the two sides AB, BD are equal to the two sides ED, DB, and they contain right angles; therefore the base AD is equal to the base BE. Again, since AB is equal to DE, and BE to AD, the two sides AB, BE are equal to DE, AD, and AE is common; therefore the angle ABE is equal to the angle EDA. But ABE is right. Therefore EDA is also right. Therefore ED is at right angles to DA. But it is also at right angles to each of BD, DC. Therefore ED is set up at right angles to the three straight lines BD, DA, DC at their point of meeting. Therefore the three straight lines BD, DA, DC are in one plane (XI.5). But in whatever plane DB, DA are, in that plane is AB also. Therefore AB, BD, DC are in one plane. And each of the angles ABD, BDC is right. Therefore AB is parallel to CD (I.28)."
+draw = [
+]

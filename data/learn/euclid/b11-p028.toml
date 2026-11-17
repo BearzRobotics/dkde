@@ -1,0 +1,33 @@
+id = "XI.28"
+book = 11
+order = 28
+title = "A diagonal plane bisects the solid"
+statement = "If a parallelepipedal solid be cut by a plane through the diagonals of two of the opposite planes, the solid will be bisected by the plane."
+proof = "Therefore if a parallelepipedal solid be cut by a plane through the diagonals of two of the opposite planes, the solid will be bisected by the plane. Q.E.D."
+
+[[step]]
+text = "For let the parallelepipedal solid AB be cut by the plane CDEF through the diagonals CF, DE of two opposite planes. I say that the solid AB will be bisected by the plane CDEF."
+draw = [
+  "clear",
+  "view3d",
+  "point A -3 -2 0",
+  "point B 2 -2 0",
+  "point C 2 1 0",
+  "point D -3 1 0",
+  "point E -3 -2 3",
+  "point F 2 -2 3",
+  "point G 2 1 3",
+  "point H -3 1 3",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+]
+
+[[step]]
+text = "Since the triangle CGF is equal to the triangle CFB, and ADE to DEH (I.34), and the parallelogram CA is equal to the parallelogram EB, for they are opposite (XI.24), and GE is equal to CH, therefore the prism contained by the two triangles CGF, ADE and the three parallelograms GE, AC, CE is equal to the prism contained by the two triangles CFB, DEH and the three parallelograms CH, BE, CE. For they are contained by planes equal in multitude and in magnitude, and similarly situated. Therefore the solid AB is bisected by the plane CDEF."
+draw = [
+  "polygon A C G E yellow fill",
+]

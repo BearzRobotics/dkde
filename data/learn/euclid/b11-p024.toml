@@ -1,0 +1,37 @@
+id = "XI.24"
+book = 11
+order = 24
+title = "Opposite faces of a parallelepiped"
+statement = "If a solid be contained by parallel planes, the opposite planes in it are equal and parallelogrammic."
+proof = "Therefore if a solid be contained by parallel planes, the opposite planes in it are equal and parallelogrammic. Q.E.D."
+
+[[step]]
+text = "For let the solid CDHG be contained by the parallel planes AC, GF, AH, DF, BF, AE. I say that the opposite planes in it are equal and parallelogrammic."
+draw = [
+  "clear",
+  "view3d",
+  "point A -3 -2 0",
+  "point B 2 -2 0",
+  "point C 3.5 1 0",
+  "point D -1.5 1 0",
+  "point E -2.2 -1.4 3.5",
+  "point F 2.8 -1.4 3.5",
+  "point G 4.3 1.6 3.5",
+  "point H -0.7 1.6 3.5",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+]
+
+[[step]]
+text = "Since the two parallel planes BG, CE are cut by the plane AC, their common sections are parallel (XI.16). Therefore AB is parallel to DC. Again, since the two parallel planes BF, AE are cut by the plane AC, their common sections are parallel. Therefore BC is parallel to AD. But AB was also proved parallel to DC. Therefore AC is a parallelogram. Similarly we can prove that each of DE, FG, GB, BF, AE is a parallelogram."
+draw = [
+]
+
+[[step]]
+text = "Let AH, DF be joined. Since AB is parallel to DC, and BH to CF, the two straight lines AB, BH which meet one another are parallel to the two straight lines DC, CF which meet one another, not in the same plane. Therefore they will contain equal angles (XI.10). Therefore the angle ABH is equal to the angle DCF. Since the two sides AB, BH are equal to the two sides DC, CF (I.34), and the angle ABH is equal to the angle DCF, the base AH is equal to the base DF, and the triangle ABH is equal to the triangle DCF (I.4). And the parallelogram BG is double of the triangle ABH, and the parallelogram CE is double of the triangle DCF (I.34). Therefore the parallelogram BG is equal to the parallelogram CE. Similarly we can prove that AC is equal to GF, and AE to BF."
+draw = [
+]

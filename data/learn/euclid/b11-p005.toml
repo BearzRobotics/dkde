@@ -1,0 +1,34 @@
+id = "XI.5"
+book = 11
+order = 5
+title = "A line at right angles to three lines"
+statement = "If a straight line be set up at right angles to three straight lines which meet, at their common point of section, the three straight lines are in one plane."
+proof = "Therefore if a straight line be set up at right angles to three straight lines which meet, at their common point of section, the three straight lines are in one plane. Q.E.D."
+
+[[step]]
+text = "For let any straight line AB be set up at right angles to three straight lines BC, BD, BE at their point of meeting B. I say that BC, BD, BE are in one plane."
+draw = [
+  "clear",
+  "view3d",
+  "point A 0 0 4",
+  "point B 0 0 0",
+  "point C 4 0 0",
+  "point D -2 3.4 0",
+  "point E -2 -3.4 0",
+  "segment A B red",
+  "segment B C blue",
+  "segment B D blue",
+  "segment B E blue",
+]
+
+[[step]]
+text = "For suppose they are not, but, if possible, let BD, BC be in the plane of reference and BE elevated, and let the plane through AB, BE be produced. It will make as common section with the plane of reference a straight line (XI.3). Let it be BF. Therefore the three straight lines AB, BC, BF are in one plane, namely that drawn through AB, BC."
+draw = [
+  "point F -1 -3.5 0",
+  "segment B F green",
+]
+
+[[step]]
+text = "Since AB is at right angles to each of BD, BC, AB is also at right angles to the plane through BD, BC (XI.4). Therefore AB makes right angles with all the straight lines in that plane which meet it. But BF in the plane of BD, BC meets it. Therefore the angle ABF is right. But the angle ABE was supposed right. Therefore the angle ABF is equal to the angle ABE, though they are in one plane, which is impossible. Therefore BE is not elevated above the plane of reference. Therefore the three straight lines BC, BD, BE are in one plane."
+draw = [
+]

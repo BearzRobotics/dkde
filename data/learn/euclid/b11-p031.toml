@@ -1,0 +1,46 @@
+id = "XI.31"
+book = 11
+order = 31
+title = "Equal bases, same height"
+statement = "Parallelepipedal solids which are on equal bases and of the same height are equal to one another."
+proof = "Therefore parallelepipedal solids which are on equal bases and of the same height are equal to one another. Q.E.D."
+
+[[step]]
+text = "Let the parallelepipedal solids AE, CF be on equal bases AB, CD and of the same height. I say that the solid AE is equal to the solid CF."
+draw = [
+  "clear",
+  "view3d",
+  "point A -6 -2 0",
+  "point B -3 -2 0",
+  "point C -1.5 0 0",
+  "point D -4.5 0 0",
+  "point E -6 -2 2",
+  "point F -3 -2 2",
+  "point G -1.5 0 2",
+  "point H -4.5 0 2",
+  "polygon A B C D blue fill",
+  "polygon E F G H red fill",
+  "polygon A B F E green fill",
+  "polygon B C G F orange fill",
+  "polygon C D H G purple fill",
+  "polygon D A E H teal fill",
+  "point I 1 -2 0",
+  "point J 4 -2 0",
+  "point K 4 0 0",
+  "point L 1 0 0",
+  "point M 1 -2 2",
+  "point N 4 -2 2",
+  "point O 4 0 2",
+  "point P 1 0 2",
+  "polygon I J K L purple fill",
+  "polygon M N O P teal fill",
+  "polygon I J N M orange fill",
+  "polygon J K O N yellow fill",
+  "polygon K L P O blue fill",
+  "polygon L I M P red fill",
+]
+
+[[step]]
+text = "First let the edges which stand up, HK, BE, AG, LM, PQ, DF, CX, OR, be at right angles to the bases AB, CD, and let the straight line RT be placed in a straight line with CT. Construct at the point T on the straight line RT the angle RTS equal to the angle ABL (I.23), and make RT equal to AB and TS equal to BL. Let the base RS and the solid YU be completed. Since the two sides RT, TS are equal to the two sides AB, BL and contain equal angles, the parallelogram RS is equal and similar to the parallelogram HL. Since AB is equal to RT, and BE to TU, and they contain right angles, the parallelogram RU is equal and similar to the parallelogram AE. For the same reason LE is equal and similar to SU. Therefore three parallelograms of the solid AE are equal and similar to three parallelograms of the solid YU. But they are equal and similar to their opposites. Therefore the whole parallelepipedal solid AE is equal to the whole parallelepipedal solid YU (XI definition 10). Let DT, YS be drawn through and meet one another at ε, let aTb be drawn through T parallel to DC, let PD be produced to a, and let the solids YU... complete the construction. Then the solid YU is equal to the solid ε U... and so on, until the solid AE is shown equal to the solid CF, since the solids on the same base and of the same height whose edges stand up on the same straight lines are equal (XI.29, XI.30)."
+draw = [
+]

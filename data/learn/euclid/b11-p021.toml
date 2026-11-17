@@ -1,0 +1,46 @@
+id = "XI.21"
+book = 11
+order = 21
+title = "Plane angles of a solid angle"
+statement = "Any solid angle is contained by plane angles less than four right angles."
+proof = "Therefore any solid angle is contained by plane angles less than four right angles. Q.E.D."
+
+[[step]]
+text = "Let the solid angle at A be contained by the plane angles BAC, CAD, DAB. I say that the angles BAC, CAD, DAB are less than four right angles."
+draw = [
+  "clear",
+  "view3d",
+  "point A 0 0 4",
+  "point B -3 -2 0",
+  "point C 3 -2 0",
+  "point D 0 3 0",
+  "polygon A B C blue fill",
+  "polygon A C D red fill",
+  "polygon A D B green fill",
+]
+
+[[step]]
+text = "Let points B, C, D be taken at random on the straight lines AB, AC, AD, and let BC, CD, DB be joined. Since the solid angle at B is contained by the three plane angles CBA, ABD, CBD, any two of them are greater than the remaining one (XI.20). Therefore the angles CBA, ABD are greater than the angle CBD. For the same reason the angles BCA, ACD are greater than the angle BCD, and the angles CDA, ADB are greater than the angle CDB. Therefore the six angles CBA, ABD, BCA, ACD, CDA, ADB are greater than the three angles CBD, BCD, CDB. But the three angles CBD, BCD, CDB are equal to two right angles (I.32). Therefore the six angles CBA, ABD, BCA, ACD, CDA, ADB are greater than two right angles."
+draw = [
+  "segment B C black",
+  "segment C D black",
+  "segment D B black",
+]
+
+[[step]]
+text = "And since the three angles of each of the triangles ABC, ACD, ADB are equal to two right angles, the nine angles CBA, ACB, BAC, ACD, CDA, CAD, ADB, DBA, BAD are equal to six right angles; of these the six angles CBA, ACB, ACD, CDA, ADB, DBA are greater than two right angles. Therefore the remaining three angles BAC, CAD, DAB, containing the solid angle, are less than four right angles. The same holds for a solid angle contained by any number of plane angles, by dividing the base polygon into triangles in the same way."
+draw = [
+  "clear",
+  "view3d",
+  "point A 0 0 4",
+  "point B -3 -1 0",
+  "point C -1.5 -3 0",
+  "point D 2.5 -2.5 0",
+  "point E 3 1.5 0",
+  "point F -0.5 3 0",
+  "polygon A B C blue fill",
+  "polygon A C D red fill",
+  "polygon A D E green fill",
+  "polygon A E F orange fill",
+  "polygon A F B purple fill",
+]

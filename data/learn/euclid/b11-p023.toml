@@ -1,0 +1,30 @@
+id = "XI.23"
+book = 11
+order = 23
+title = "To construct a solid angle"
+statement = "To construct a solid angle out of three plane angles, two of which, taken together in any manner, are greater than the remaining one: thus the three angles must be less than four right angles."
+proof = "Therefore out of the three plane angles ABC, DEF, GHK the solid angle at O has been constructed. Being what it was required to do."
+
+[[step]]
+text = "Let the three given plane angles be ABC, DEF, GHK, of which two, taken together in any manner, are greater than the remaining one, and also all three together are less than four right angles. It is required to construct a solid angle out of angles equal to ABC, DEF, GHK."
+draw = [
+  "clear",
+  "view3d",
+  "point A 0 0 4",
+  "point B -3 -2 0",
+  "point C 3 -2 0",
+  "point D 0 3 0",
+  "polygon A B C blue fill",
+  "polygon A C D red fill",
+  "polygon A D B green fill",
+]
+
+[[step]]
+text = "Let AB, BC, DE, EF, GH, HK be cut off equal to one another, and let AC, DF, GK be joined. It is possible to construct a triangle out of straight lines equal to AC, DF, GK (XI.22). Let LNM be so constructed that AC is equal to LN, DF to NM, and GK to ML. About the triangle LNM let the circle LNM be described, let its centre be taken, and let it be X. Let LX, NX, MX be joined."
+draw = [
+]
+
+[[step]]
+text = "I say that AB is greater than LX. For if not, AB is either equal to LX or less. First let it be equal. Then the two sides AB, BC are equal to the two sides LX, XN, and the base AC is equal to the base LN. Therefore the angle ABC is equal to the angle LXN. For the same reason the angle DEF is equal to the angle NXM, and the angle GHK to MXL. Therefore the three angles LXN, NXM, MXL are equal to the three angles ABC, DEF, GHK. But the three angles LXN, NXM, MXL are equal to four right angles. Therefore the three angles ABC, DEF, GHK are equal to four right angles, contrary to the hypothesis. Next, if AB is less than LX, then the angles ABC, DEF, GHK are greater than LXN, NXM, MXL, that is, than four right angles, which is also contrary to the hypothesis. Therefore AB is greater than LX. Now from X let XO be set up at right angles to the plane of the circle LMN (XI.12), and let the square on OX be equal to the excess by which the square on AB is greater than the square on LX (this is possible since AB is greater than LX). Let OL, ON, OM be joined. Then the angles at X are right, so the square on LO is equal to the squares on LX, XO, that is, to the square on AB, and LO is equal to AB. Similarly NO, MO are equal to AB. Since the triangles OLN, ABC have the three sides equal, the angle LON is equal to the angle ABC; similarly NOM is equal to DEF, and MOL to GHK. Therefore out of the three plane angles LON, NOM, MOL, which are equal to the three given angles ABC, DEF, GHK, the solid angle at O has been constructed."
+draw = [
+]

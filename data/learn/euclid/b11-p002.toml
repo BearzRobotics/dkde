@@ -1,0 +1,35 @@
+id = "XI.2"
+book = 11
+order = 2
+title = "Crossing lines lie in one plane"
+statement = "If two straight lines cut one another, they are in one plane, and every triangle is in one plane."
+proof = "Therefore if two straight lines cut one another, they are in one plane, and every triangle is in one plane. Q.E.D."
+
+[[step]]
+text = "Let the two straight lines AB, CD cut one another at the point E. I say that AB, CD are in one plane, and every triangle is in one plane."
+draw = [
+  "clear",
+  "view3d",
+  "point A -3 -1 0",
+  "point B 3 1 1.2",
+  "point C -2 3 0.4",
+  "point D 2 -3 0.8",
+  "point E 0 0 0.5",
+  "segment A B blue",
+  "segment C D red",
+]
+
+[[step]]
+text = "Let points F, G be taken at random on EC, EB, and let CB, FG be joined and FH, GK drawn across. First I say that the triangle ECB is in one plane. For if part of the triangle ECB, namely FHC or GBK, is in the plane of reference and the rest in another, a part of one of the straight lines EC, EB will be in the plane of reference and a part in another. But this was proved impossible (XI.1). Therefore the triangle ECB is in one plane."
+draw = [
+  "point F -1 1.5 0.45",
+  "point G 1.5 0.5 0.8",
+  "segment C B green",
+  "segment F G green",
+  "polygon E C B teal fill",
+]
+
+[[step]]
+text = "Therefore the triangle ECB is in one plane. But in whatever plane the triangle ECB is, in that plane also is each of the straight lines EC, EB, and in whatever plane each of the straight lines EC, EB is, in that plane also are AB, CD. Therefore the straight lines AB, CD are in one plane, and every triangle is in one plane."
+draw = [
+]

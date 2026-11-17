@@ -1,0 +1,20 @@
+id = "XI.22"
+book = 11
+order = 22
+title = "A triangle from three plane angles"
+statement = "If there be three plane angles of which two, taken together in any manner, are greater than the remaining one, and they are contained by equal straight lines, it is possible to construct a triangle out of the straight lines joining the extremities of the equal straight lines."
+proof = "Therefore if there be three plane angles of which two, taken together in any manner, are greater than the remaining one, and they are contained by equal straight lines, it is possible to construct a triangle out of the straight lines joining the extremities of the equal straight lines. Q.E.D."
+
+[[step]]
+text = "Let there be three plane angles ABC, DEF, GHK, of which two, taken together in any manner, are greater than the remaining one, and let the straight lines AB, BC, DE, EF, GH, HK be equal. I say that it is possible to construct a triangle out of straight lines equal to AC, DF, GK."
+draw = [
+  "clear",
+  "point B -3 0 0",
+  "point A -4.5 2.6 0",
+  "point C -1.8 -2.2 0",
+]
+
+[[step]]
+text = "If the angles ABC, DEF, GHK are equal, then AC, DF, GK are equal, and a triangle can be constructed out of them. But if not, let them be unequal, and on the straight line HK, and at the point H on it, let the angle KHL be constructed equal to the angle ABC (I.23). Let HL be made equal to one of the straight lines AB, BC, DE, EF, GH, HK, and let KL, GL be joined. Since the two sides AB, BC are equal to the two sides KH, HL, and the angle at B is equal to the angle KHL, the base AC is equal to the base KL. And since the angles ABC, GHK are greater than the angle DEF, and the angle ABC is equal to the angle KHL, the angle GHL is greater than the angle DEF. Since the two sides GH, HL are equal to the two sides DE, EF, and the angle GHL is greater than the angle DEF, the base GL is greater than the base DF (I.24). But GK, KL are greater than GL (I.20). Therefore GK, KL, that is GK, AC, are much greater than DF. Similarly we can prove that AC, DF are greater than GK, and DF, GK greater than AC. Therefore a triangle can be constructed out of straight lines equal to AC, DF, GK."
+draw = [
+]
