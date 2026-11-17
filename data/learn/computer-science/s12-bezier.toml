@@ -1,0 +1,32 @@
+id = "CS.12"
+course = "Computer Science"
+book = 2
+order = 4
+title = "Bezier curves"
+statement = "A Bezier curve is built by repeated lerps between control points; the quadratic and cubic forms have simple polynomial formulas."
+
+[[step]]
+text = "Idea: three control points P0, P1, P2. Lerp P0 to P1 and P1 to P2 at the same t, then lerp those two results. That gives (1-t)^2 P0 + 2(1-t)t P1 + t^2 P2."
+calc = ["(1-0.5)^2*0 + 2*(1-0.5)*0.5*4 + 0.5^2*0"]
+
+[[step]]
+text = "The curve starts at P0 (t = 0), ends at P2 (t = 1), and is pulled toward P1 without touching it. With heights 0, 4, 0 the middle of the curve is at height 2."
+calc = ["0.5^2*0 + 2*0.5*0.5*4 + 0.5^2*0"]
+
+[[step]]
+text = "Cubic Beziers have four points: (1-t)^3 P0 + 3(1-t)^2 t P1 + 3(1-t)t^2 P2 + t^3 P3. These are what fonts and vector drawing use. The weights always add up to 1."
+calc = ["(1-0.5)^3 + 3*(1-0.5)^2*0.5 + 3*(1-0.5)*0.5^2 + 0.5^3"]
+
+[[step]]
+text = "With heights 0, 3, 3, 0 and t = 0.5 the curve is at 3 x 0.25 x 0.5 x 3 + 3 x 0.5 x 0.25 x 3 = 2.25."
+calc = ["3*(1-0.5)^2*0.5*3 + 3*(1-0.5)*0.5^2*3"]
+
+[[exercise]]
+prompt = "A quadratic Bezier has heights 0, 4, 0. What is it at t = 0.5?"
+answer = "2*0.5*0.5*4"
+hint = "Only the middle term counts."
+
+[[exercise]]
+prompt = "A cubic Bezier has heights 0, 3, 3, 0. What is it at t = 0.5?"
+answer = "3*0.5^2*0.5*3 + 3*0.5*0.5^2*3"
+hint = "The two middle weights are 3/8 each."

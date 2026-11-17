@@ -14,8 +14,8 @@ text = "A modular inverse of a mod n is a number x with a x = 1 mod n. It exists
 calc = ["gcd(3,7)", "(3*5) mod 7"]
 
 [[step]]
-text = "Finding it for 7 mod 40: run Euclid on 40 and 7: 40 = 5x7 + 5; 7 = 1x5 + 2; 5 = 2x2 + 1. Work back up writing 1 as a combination of 7 and 40: 1 = 5 - 2x2 = 5 - 2(7 - 5) = 3x5 - 2x7 = 3(40 - 5x7) - 2x7 = 3x40 - 17x7. So the inverse of 7 is -17, which is 23 mod 40."
-calc = ["40 - 5*7", "7 - 1*5", "5 - 2*2", "(7*23) mod 40", "-17 mod 40"]
+text = "Finding it for 7 mod 40: run Euclid on 40 and 7: 40 = 5x7 + 5; 7 = 1x5 + 2; 5 = 2x2 + 1. Work back up writing 1 as a combination of 7 and 40: 1 = 5 - 2x2 = 5 - 2(7 - 5) = 3x5 - 2x7 = 3(40 - 5x7) - 2x7 = 3x40 - 17x7. So the inverse of 7 is -17, which is 23 mod 40. The calculator does all of this with modinv(7, 40)."
+calc = ["modinv(7,40)", "40 - 5*7", "7 - 1*5", "5 - 2*2", "(7*23) mod 40", "-17 mod 40"]
 
 [[step]]
 text = "Why it matters: dividing by 7 modulo 40 means multiplying by 23. This is the key step in RSA and in checking hash functions that work modulo a prime."

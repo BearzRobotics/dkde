@@ -1,0 +1,33 @@
+id = "CS.11"
+course = "Computer Science"
+book = 2
+order = 3
+title = "Interpolation and easing"
+statement = "lerp(a, b, t) = a + (b - a) t slides smoothly from a to b as t goes from 0 to 1; reshaping t gives easing."
+
+[[step]]
+text = "Idea: t = 0 gives a, t = 1 gives b, t = 0.25 is a quarter of the way. lerp(0, 10, 0.25) = 0 + 10 x 0.25 = 2.5."
+calc = ["0 + (10 - 0)*0.25"]
+
+[[step]]
+text = "It works for anything numeric: a colour channel fading from 255 to 0 is 255 + (0 - 255) t, so at t = 0.4 it is 153. Positions, sizes, volumes: all the same formula."
+calc = ["255 + (0 - 255)*0.4"]
+
+[[step]]
+text = "Going backwards: where does 30 sit between 20 and 80? t = (30 - 20)/(80 - 20) = 1/6. That is the inverse of lerp."
+calc = ["(30 - 20)/(80 - 20)"]
+
+[[step]]
+text = "Easing bends t before the lerp. t^2 starts slowly; smoothstep 3t^2 - 2t^3 starts and ends slowly. At t = 0.25, smoothstep is 0.15625, less than the straight 0.25."
+calc = ["3*0.25^2 - 2*0.25^3", "3*0.5^2 - 2*0.5^3"]
+graph = ["x", "x^2", "3*x^2 - 2*x^3"]
+
+[[exercise]]
+prompt = "Slide from 20 to 80 with t = 0.75: 20 + (80 - 20) x 0.75. What do you get?"
+answer = "20 + (80 - 20)*0.75"
+hint = "Three quarters of 60 is 45."
+
+[[exercise]]
+prompt = "What is smoothstep at t = 0.25? (3t^2 - 2t^3)"
+answer = "3*0.25^2 - 2*0.25^3"
+hint = "0.1875 - 0.03125."

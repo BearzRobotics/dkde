@@ -1,0 +1,36 @@
+id = "CS.10"
+course = "Computer Science"
+book = 2
+order = 2
+title = "Rotation, scaling and translation"
+statement = "Graphics moves points with matrices: rotate by an angle, scale, or shift; one matrix can do all three."
+
+[[step]]
+text = "Idea: rotating the point (x, y) by an angle t about the origin gives (x cos t - y sin t, x sin t + y cos t). For t = 90 degrees, (3, 2) goes to (-2, 3)."
+calc = ["3*cos(90) - 2*sin(90)", "3*sin(90) + 2*cos(90)"]
+
+[[step]]
+text = "The same as a matrix times a column: the rotation matrix for 90 degrees times (3, 2)."
+calc = ["[[0,-1],[1,0]]*[[3],[2]]"]
+
+[[step]]
+text = "Rotating (4, 0) by 60 degrees gives (4 cos 60, 4 sin 60) = (2, 3.46). Lengths do not change: a rotation matrix has determinant 1."
+calc = ["4*cos(60)", "4*sin(60)", "det([[cos(30),-sin(30)],[sin(30),cos(30)]])"]
+
+[[step]]
+text = "Scaling multiplies each coordinate: the matrix [[2,0],[0,3]] stretches x by 2 and y by 3."
+calc = ["[[2,0],[0,3]]*[[1],[1]]"]
+
+[[step]]
+text = "Translation (shifting) is not a 2x2 matrix, so we add a third coordinate that is always 1. The matrix [[1,0,5],[0,1,3],[0,0,1]] shifts by (5, 3), and in this form rotations, scalings and shifts all multiply together into one matrix."
+calc = ["[[1,0,5],[0,1,3],[0,0,1]]*[[2],[2],[1]]"]
+
+[[exercise]]
+prompt = "Rotate (4, 0) by 60 degrees. What is the new x? (4 cos 60)"
+answer = "4*cos(60)"
+hint = "cos 60 = 1/2."
+
+[[exercise]]
+prompt = "Rotate (3, 2) by 90 degrees. What is the new x? (3 cos 90 - 2 sin 90)"
+answer = "3*cos(90) - 2*sin(90)"
+hint = "cos 90 is 0 and sin 90 is 1."

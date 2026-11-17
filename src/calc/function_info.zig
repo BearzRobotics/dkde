@@ -167,6 +167,8 @@ pub const all = [_]Info{
     .{ .category = "Number Theory", .names = &.{ "numerator" }, .title = "Numerator", .description = "", .args = &.{ "Number" } },
     .{ .category = "Number Theory", .names = &.{ "odd" }, .title = "Odd", .description = "", .args = &.{ "Number" } },
     .{ .category = "Number Theory", .names = &.{ "parallel" }, .title = "Parallel Sum", .description = "", .args = &.{  } },
+    .{ .category = "Number Theory", .names = &.{ "modinv", "modinverse" }, .title = "Modular Inverse", .description = "Returns x with a x = 1 (mod m). It exists only when a and m have no common factor.", .args = &.{ "Value (a)", "Modulus (m)" } },
+    .{ .category = "Number Theory", .names = &.{ "popcount", "bitcount" }, .title = "Bit Count", .description = "Returns the number of one bits in a whole number that is not negative.", .args = &.{ "Value" } },
     .{ .category = "Number Theory", .names = &.{ "powmod", "power_mod" }, .title = "Modular Exponentiation", .description = "Finds the modular inverse for negative exponents, and is otherwise equivalent to mod(a^b, c). For negative exponents the greatest common divisor…", .args = &.{ "Numerator", "Exponent", "Denominator" } },
     .{ .category = "Number Theory", .names = &.{ "prevprime" }, .title = "Previous Prime Number", .description = "Returns the largest prime number smaller than or equal to the specified number.", .args = &.{ "Value" } },
     .{ .category = "Number Theory", .names = &.{ "primePi", "primeπ", "prime_pi" }, .title = "Prime Counting Function", .description = "Returns the number of prime numbers less than or equal to the specified number.", .args = &.{ "Value" } },

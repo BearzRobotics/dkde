@@ -1,0 +1,39 @@
+id = "CS.15"
+course = "Computer Science"
+book = 3
+order = 1
+title = "Public-key cryptography with small numbers"
+statement = "RSA hides a message with modular exponentiation; undoing it needs the modular inverse of the public exponent, which needs the secret factors of n."
+
+[[step]]
+text = "Idea: pick two primes, p = 61 and q = 53. Publish n = p x q = 3233. Keep p and q secret: factoring a large n is hard."
+calc = ["61*53", "isprime(61)", "isprime(53)"]
+
+[[step]]
+text = "Work out phi = (p - 1)(q - 1) = 60 x 52 = 3120. Choose a public exponent e that shares no factor with phi: e = 17. The public key is (n, e) = (3233, 17)."
+calc = ["60*52", "gcd(17,3120)"]
+
+[[step]]
+text = "The private exponent d is the inverse of e mod phi: 17 x d = 1 mod 3120. The calculator finds it with modinv: d = 2753."
+calc = ["modinv(17,3120)", "(17*2753) mod 3120"]
+
+[[step]]
+text = "Encrypt a message m = 65: c = m^e mod n. powmod does it without ever writing the huge number."
+calc = ["powmod(65,17,3233)"]
+
+[[step]]
+text = "Decrypt: m = c^d mod n. The result is 65 again, because Euler's theorem makes the two exponents cancel."
+calc = ["powmod(2790,2753,3233)"]
+
+[[step]]
+text = "Anyone can encrypt with the public (n, e), but only someone who knows d (so p and q) can decrypt. Real keys use primes of hundreds of digits; these sizes are for learning only and are not secure."
+
+[[exercise]]
+prompt = "What is n for p = 61 and q = 53?"
+answer = "61*53"
+hint = "Multiply the primes."
+
+[[exercise]]
+prompt = "Find the inverse of 3 mod 20. (modinv(3,20))"
+answer = "modinv(3,20)"
+hint = "3 x 7 = 21."

@@ -18,8 +18,8 @@ text = "x and -x keeps only the lowest set bit: 12 and -12 is 4. Negative number
 calc = ["12 and -12", "40 and -40"]
 
 [[step]]
-text = "Counting ones (popcount): clear the lowest set bit repeatedly and count the steps. 22 is 10110: 22 -> 20 -> 16 -> 0, three steps, so three ones."
-calc = ["22 and 21", "20 and 19", "16 and 15"]
+text = "Counting ones (popcount): clear the lowest set bit repeatedly and count the steps. 22 is 10110: 22 -> 20 -> 16 -> 0, three steps, so three ones. The calculator has this built in as popcount."
+calc = ["22 and 21", "20 and 19", "16 and 15", "popcount(22)", "popcount(255)"]
 
 [[step]]
 text = "Swap without a temporary: a = a xor b, b = a xor b, a = a xor b. Since x xor x is 0 and x xor 0 is x, the values trade places."

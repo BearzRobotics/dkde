@@ -1,0 +1,36 @@
+id = "CS.9"
+course = "Computer Science"
+book = 2
+order = 1
+title = "Vectors, length and dot product"
+statement = "A vector is a list of numbers for a position or direction; its length is the square root of the sum of squares, and the dot product measures how much two vectors point the same way."
+
+[[step]]
+text = "Idea: the vector (3, 4) goes 3 right and 4 up. Its length is sqrt(3^2 + 4^2) = 5 (Pythagoras)."
+calc = ["norm([3,4])", "sqrt(3^2 + 4^2)"]
+
+[[step]]
+text = "To get a direction of length 1 (normalising), divide each part by the length: (3/5, 4/5) = (0.6, 0.8). Games and graphics do this all the time."
+calc = ["[3,4]/norm([3,4])"]
+
+[[step]]
+text = "The dot product multiplies matching parts and adds: (2, 3) . (4, -1) = 8 - 3 = 5. It also equals |a||b| cos(angle), so a dot of 0 means a right angle."
+calc = ["dot([2,3],[4,-1])", "dot([1,0],[0,1])"]
+
+[[step]]
+text = "Angle between two directions: acos of the dot divided by the lengths. (1, 0) and (1, 1) are 45 degrees apart."
+calc = ["acos(dot([1,0],[1,1])/(norm([1,0])*norm([1,1])))"]
+
+[[step]]
+text = "Lighting: a surface lit from direction l with normal n has brightness max(0, n . l), with both of length 1. Facing the light gives 1, sideways gives 0."
+calc = ["dot([0,1],[0,1])", "dot([0,1],[1,0])"]
+
+[[exercise]]
+prompt = "What is the dot product of (2, 3) and (4, -1)?"
+answer = "dot([2,3],[4,-1])"
+hint = "2x4 + 3x(-1)."
+
+[[exercise]]
+prompt = "What is the length of (6, 8)?"
+answer = "norm([6,8])"
+hint = "Twice (3, 4)."

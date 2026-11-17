@@ -1,0 +1,36 @@
+id = "CS.14"
+course = "Computer Science"
+book = 2
+order = 6
+title = "Random numbers from arithmetic"
+statement = "A pseudo-random generator is a formula like x -> (a x + c) mod m; it looks random but repeats exactly from the same seed."
+
+[[step]]
+text = "Idea: the linear congruential generator. Take a = 5, c = 3, m = 16 and start (the seed) at 7. The next value is (5 x 7 + 3) mod 16 = 38 mod 16 = 6."
+calc = ["(5*7 + 3) mod 16"]
+
+[[step]]
+text = "Keep feeding the answer back in: 6, then (5 x 6 + 3) mod 16 = 1, then 8, then 11. The sequence 7, 6, 1, 8, 11, ... looks scattered."
+calc = ["(5*6 + 3) mod 16", "(5*1 + 3) mod 16", "(5*8 + 3) mod 16"]
+
+[[step]]
+text = "Scale to the range 0 to 1 by dividing by m: 11/16 = 0.6875. For a number 1 to 6, use (x mod 6) + 1."
+calc = ["11/16", "(13 mod 6) + 1"]
+
+[[step]]
+text = "Period: the sequence repeats after at most m values. It uses all 16 only when c shares no factor with m, a - 1 is divisible by every prime factor of m, and by 4 if m is. Here 5 - 1 = 4 and c = 3 pass, so the period is the full 16."
+calc = ["gcd(3,16)", "(5 - 1) mod 4"]
+
+[[step]]
+text = "The same seed always gives the same sequence, which is useful for tests and replays. Real programs use bigger a and m: for example a = 1103515245, c = 12345, m = 2^31."
+calc = ["(1103515245*12345 + 12345) mod 2^31"]
+
+[[exercise]]
+prompt = "With a = 5, c = 3, m = 16 and x = 11, what is the next value?"
+answer = "(5*11 + 3) mod 16"
+hint = "58 mod 16."
+
+[[exercise]]
+prompt = "A generator produced 13. Which die face (1 to 6) is that, with (x mod 6) + 1?"
+answer = "(13 mod 6) + 1"
+hint = "13 mod 6 = 1."

@@ -32,7 +32,7 @@ const aliases = [_][2][]const u8{
     .{ "arcosh", "acosh" },    .{ "artanh", "atanh" },   .{ "sgn", "sign" },     .{ "int", "trunc" },
     .{ "binomial", "ncr" },    .{ "comb", "ncr" },       .{ "perm", "npr" },     .{ "factorial", "fact" },
     .{ "arcsec", "asec" },     .{ "arccsc", "acsc" },    .{ "arccot", "acot" },  .{ "arsech", "asech" },
-    .{ "arcsch", "acsch" },    .{ "arcoth", "acoth" },   .{ "fib", "fibonacci" }, .{ "prime", "isprime" },
+    .{ "arcsch", "acsch" },    .{ "arcoth", "acoth" },   .{ "fib", "fibonacci" }, .{ "prime", "isprime" }, .{ "bitcount", "popcount" }, .{ "modinverse", "modinv" },
 };
 
 pub fn canonical(name: []const u8) []const u8 {
@@ -616,6 +616,18 @@ fn powmod(c: *const Ctx, a: []const Number) Error!Number {
         ee = @intCast(-e);
     } else ee = @intCast(e);
     return whole(c, powModU(b, ee, mm));
+}
+
+/// The x with a x = 1 (mod m), when a and m share no factor.
+fn modinv(c: *const Ctx, a: []const Number) Error!Number {
+    return powmod(c, &.{ a[0], try num.fromInt(c.a, -1), a[1] });
+}
+
+/// The number of one bits in a whole number that is not negative.
+fn popcount(c: *const Ctx, a: []const Number) Error!Number {
+    const v = try int(a[0]);
+    if (v < 0) return error.Domain;
+    return whole(c, @popCount(@as(u128, @intCast(v))));
 }
 
 fn clip(c: *const Ctx, a: []const Number) Error!Number {
@@ -1202,6 +1214,7 @@ const table = [_]Def{
     def("primepi", 1, 1, primepi),           def("totient", 1, 1, totient),         def("fibonacci", 1, 1, fibonacci),
     def("factorial2", 1, 1, factorial2),     def("hyperfactorial", 1, 1, hyperfactorial), def("superfactorial", 1, 1, superfactorial),
     def("derangements", 1, 1, derangements), def("bernoulli", 1, 1, bernoulli),     def("powmod", 3, 3, powmod),
+    def("modinv", 2, 2, modinv),             def("popcount", 1, 1, popcount),
     def("clip", 3, 3, clip),                 def("numerator", 1, 1, numerator),     def("denominator", 1, 1, denominator),
     def("div", 2, 2, div),                   def("rem", 2, 2, rem),                 def("neg", 1, 1, neg),
     def("subtract", 2, 2, subtract),         def("even", 1, 1, even),               def("odd", 1, 1, odd),

@@ -1,0 +1,36 @@
+id = "CS.13"
+course = "Computer Science"
+book = 2
+order = 5
+title = "Normalised values, bytes and gamma"
+statement = "Colour and audio are stored as bytes (0 to 255) but computed as numbers from 0 to 1; screens add a gamma curve on top."
+
+[[step]]
+text = "Idea: a byte has 2^8 = 256 levels. To get 0 to 1, divide by 255. 51/255 = 0.2, and 128/255 = 0.502, about a half."
+calc = ["2^8", "51/255", "128/255"]
+
+[[step]]
+text = "Back to a byte: multiply by 255 and round. 0.2 x 255 = 51."
+calc = ["0.2*255", "0.5*255"]
+
+[[step]]
+text = "Memory: an RGBA pixel is 4 bytes. A 1920 by 1080 image takes 1920 x 1080 x 4 bytes."
+calc = ["1920*1080*4", "1920*1080*4 / 2^20"]
+
+[[step]]
+text = "Gamma: screens do not make light in proportion to the stored number. The sRGB value 0.5 is really only about 21 percent as much light as 1.0. To blend or average colours correctly, convert to linear light first: (c + 0.055)/1.055 to the power 2.4, then convert back afterwards."
+calc = ["((0.5+0.055)/1.055)^2.4"]
+
+[[step]]
+text = "This is why a 50-50 mix of black and white done on the stored values looks too dark: it should be about 0.73 in sRGB, not 0.5."
+calc = ["(0.5)^(1/2.2)"]
+
+[[exercise]]
+prompt = "What is 51/255?"
+answer = "51/255"
+hint = "51 is a fifth of 255."
+
+[[exercise]]
+prompt = "How many bytes does a 1920 by 1080 RGBA image take?"
+answer = "1920*1080*4"
+hint = "4 bytes per pixel."
