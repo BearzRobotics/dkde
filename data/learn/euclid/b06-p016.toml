@@ -1,0 +1,32 @@
+id = "VI.16"
+book = 6
+order = 16
+title = "Proportion and the rectangle"
+statement = "If four straight lines be proportional, the rectangle contained by the extremes is equal to the rectangle contained by the means; and, if the rectangle contained by the extremes be equal to the rectangle contained by the means, the four straight lines will be proportional."
+proof = "Therefore if four straight lines be proportional, the rectangle contained by the extremes is equal to the rectangle contained by the means; and, if the rectangle contained by the extremes be equal to the rectangle contained by the means, the four straight lines will be proportional. Q.E.D."
+
+[[step]]
+text = "Let the four straight lines AB, CD, E, F be proportional, so that AB is to CD as E is to F (here 6, 4, 3, 2). I say that the rectangle contained by AB, F is equal to the rectangle contained by CD, E."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 6 0",
+  "point C 0 2",
+  "point D 6 2",
+  "point G 8 0",
+  "point H 12 0",
+  "point K 8 3",
+  "point L 12 3",
+  "polygon A B D C blue fill",
+  "polygon G H L K red fill",
+]
+
+[[step]]
+text = "From the points A, C let AG, CH be drawn at right angles to AB, CD, and let AG be made equal to F, and CH equal to E. Let the parallelograms BG, DH be completed. Since AB is to CD as E is to F, and E is equal to CH, and F to AG, AB is to CD as CH is to AG. Therefore in the parallelograms BG, DH the sides about the equal angles are reciprocally proportional. But equiangular parallelograms in which the sides about the equal angles are reciprocally proportional are equal (VI.14). Therefore the parallelogram BG is equal to the parallelogram DH. And BG is the rectangle contained by AB, F, for AG is equal to F; and DH is the rectangle contained by CD, E, for E is equal to CH. Therefore the rectangle contained by AB, F is equal to the rectangle contained by CD, E."
+draw = [
+]
+
+[[step]]
+text = "Next, let the rectangle contained by AB, F be equal to the rectangle contained by CD, E. I say that the four straight lines will be proportional, so that AB is to CD as E is to F. With the same construction, since the rectangle AB, F is equal to the rectangle CD, E, the parallelogram BG is equal to the parallelogram DH, and they are equiangular. But in equal and equiangular parallelograms the sides about the equal angles are reciprocally proportional (VI.14). Therefore AB is to CD as CH is to AG. But CH is equal to E, and AG to F. Therefore AB is to CD as E is to F."
+draw = [
+]

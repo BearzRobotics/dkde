@@ -1,0 +1,32 @@
+id = "VI.17"
+book = 6
+order = 17
+title = "Three proportional lines"
+statement = "If three straight lines be proportional, the rectangle contained by the extremes is equal to the square on the mean; and, if the rectangle contained by the extremes be equal to the square on the mean, the three straight lines will be proportional."
+proof = "Therefore if three straight lines be proportional, the rectangle contained by the extremes is equal to the square on the mean; and, if the rectangle contained by the extremes be equal to the square on the mean, the three straight lines will be proportional. Q.E.D."
+
+[[step]]
+text = "Let the three straight lines A, B, C be proportional, so that A is to B as B is to C (here 2, 4, 8). I say that the rectangle contained by A, C is equal to the square on B."
+draw = [
+  "clear",
+  "point P 0 0",
+  "point Q 8 0",
+  "point R 8 2",
+  "point S 0 2",
+  "point T 10 0",
+  "point U 14 0",
+  "point V 14 4",
+  "point X 10 4",
+  "polygon P Q R S blue fill",
+  "polygon T U V X red fill",
+]
+
+[[step]]
+text = "Let D be made equal to B. Since A is to B as B is to C, and B is equal to D, A is to B as D is to C. But if four straight lines be proportional, the rectangle contained by the extremes is equal to the rectangle contained by the means (VI.16). Therefore the rectangle contained by A, C is equal to the rectangle contained by B, D. But the rectangle contained by B, D is the square on B, since B is equal to D. Therefore the rectangle contained by A, C is equal to the square on B."
+draw = [
+]
+
+[[step]]
+text = "Next, let the rectangle contained by A, C be equal to the square on B. I say that A is to B as B is to C. With the same construction, since the rectangle A, C is equal to the square on B, and the square on B is the rectangle B, D, the rectangle A, C is equal to the rectangle B, D. But if the rectangle contained by the extremes be equal to the rectangle contained by the means, the four straight lines are proportional (VI.16). Therefore A is to B as D is to C. But B is equal to D. Therefore A is to B as B is to C."
+draw = [
+]

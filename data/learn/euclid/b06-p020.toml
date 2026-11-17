@@ -1,0 +1,42 @@
+id = "VI.20"
+book = 6
+order = 20
+title = "Similar polygons"
+statement = "Similar polygons are divided into similar triangles, and into triangles equal in multitude and in the same ratio as the wholes, and the polygon has to the polygon a ratio duplicate of that which the corresponding side has to the corresponding side."
+proof = "Therefore similar polygons are divided into similar triangles, and into triangles equal in multitude and in the same ratio as the wholes, and the polygon has to the polygon a ratio duplicate of that which the corresponding side has to the corresponding side. Q.E.D."
+
+[[step]]
+text = "Let ABCDE, FGHKL be similar polygons, and let AB correspond to FG. I say that the polygons ABCDE, FGHKL are divided into similar triangles, equal in multitude and in the same ratio as the wholes, and the polygon ABCDE has to the polygon FGHKL a ratio duplicate of that which AB has to FG."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 3 0",
+  "point C 4 2",
+  "point D 2 3.5",
+  "point E -0.5 2",
+  "point F 7 0",
+  "point G 11.5 0",
+  "point H 13 3",
+  "point K 10 5.25",
+  "point L 6.25 3",
+  "polygon A B C D E blue fill",
+  "polygon F G H K L red fill",
+]
+
+[[step]]
+text = "Let BE, EC, GL, LH be joined. Since the polygon ABCDE is similar to the polygon FGHKL, the angle BAE is equal to the angle GFL, and BA is to AE as GF is to FL. Therefore the triangles ABE, FGL are equiangular (VI.6), and so similar; so the angle ABE is equal to the angle FGL. But the whole angle ABC is equal to the whole angle FGH, so the remaining angle EBC is equal to the angle LGH. And since the triangles ABE, FGL are similar, EB is to BA as LG is to GF; and by the similarity of the polygons, AB is to BC as FG is to GH. Therefore, ex aequali, EB is to BC as LG is to GH, and the sides about the equal angles EBC, LGH are proportional. Therefore the triangle EBC is equiangular with the triangle LGH (VI.6), and so similar. For the same reason the triangle ECD is also similar to the triangle LHK."
+draw = [
+  "segment B E green",
+  "segment E C green",
+  "segment G L green",
+  "segment L H green",
+]
+
+[[step]]
+text = "Therefore the similar polygons ABCDE, FGHKL have been divided into similar triangles, and equal in multitude. I say that they are also in the same ratio as the wholes, that is, the triangles are proportional, the antecedents being ABE, EBC, ECD and their consequents FGL, LGH, LHK, and the polygon has to the polygon a ratio duplicate of that of the corresponding side. Since the triangle ABE is similar to the triangle FGL, the triangle ABE has to the triangle FGL a ratio duplicate of that which BE has to GL (VI.19). Similarly the triangle BEC has to the triangle GLH a ratio duplicate of that which BE has to GL. Therefore, as the triangle ABE is to the triangle FGL, so is the triangle BEC to the triangle GLH, and so is the triangle ECD to the triangle LHK. Therefore, as one of the antecedents is to one of the consequents, so are all the antecedents to all the consequents (V.12). Therefore, as the triangle ABE is to the triangle FGL, so is the polygon ABCDE to the polygon FGHKL. But the triangle ABE has to the triangle FGL a ratio duplicate of that which the corresponding side AB has to the corresponding side FG. Therefore the polygon ABCDE also has to the polygon FGHKL a ratio duplicate of that which the corresponding side AB has to the corresponding side FG."
+draw = [
+  "polygon A B E teal fill",
+  "polygon F G L teal fill",
+  "polygon B C E orange fill",
+  "polygon G H L orange fill",
+]

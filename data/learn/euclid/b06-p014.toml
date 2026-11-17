@@ -1,0 +1,35 @@
+id = "VI.14"
+book = 6
+order = 14
+title = "Equal parallelograms: reciprocal sides"
+statement = "Equal parallelograms which have one angle equal to one angle have the sides about the equal angles reciprocally proportional; and those parallelograms which have one angle equal to one angle, and have the sides about the equal angles reciprocally proportional, are equal."
+proof = "Therefore equal parallelograms which have one angle equal to one angle have the sides about the equal angles reciprocally proportional; and those parallelograms which have one angle equal to one angle, and have the sides about the equal angles reciprocally proportional, are equal. Q.E.D."
+
+[[step]]
+text = "Let AB, BC be equal and equiangular parallelograms having the angles at B equal, and let DB, BE be placed in a straight line; therefore FB, BG are also in a straight line (I.14). (Here the first parallelogram is 4 by 3, the second 6 by 2.) I say that in AB, BC the sides about the equal angles are reciprocally proportional, that is, DB is to BE as GB is to BF."
+draw = [
+  "clear",
+  "point D -4 0",
+  "point B 0 0",
+  "point E 6 0",
+  "point F 0 3",
+  "point G 0 -2",
+  "point A -4 3",
+  "point C 6 -2",
+  "point H 6 3",
+  "polygon D B F A blue fill",
+  "polygon B E C G red fill",
+  "segment D E black",
+  "segment F G black",
+]
+
+[[step]]
+text = "Let the parallelogram FE be completed. Since the parallelogram AB is equal to the parallelogram BC, and FE is another area, AB is to FE as BC is to FE (V.7). But AB is to FE as DB is to BE (VI.1), and BC is to FE as GB is to BF. Therefore also DB is to BE as GB is to BF. Therefore in the parallelograms AB, BC the sides about the equal angles are reciprocally proportional."
+draw = [
+  "polygon B E H F orange",
+]
+
+[[step]]
+text = "Next, let GB be to BF as DB is to BE. I say that the parallelogram AB is equal to the parallelogram BC. Since DB is to BE as GB is to BF, and DB is to BE as the parallelogram AB is to the parallelogram FE, and GB is to BF as the parallelogram BC is to the parallelogram FE, the parallelogram AB is to FE as BC is to FE (V.11). Therefore the parallelogram AB is equal to the parallelogram BC (V.9)."
+draw = [
+]

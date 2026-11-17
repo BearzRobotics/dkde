@@ -1,0 +1,32 @@
+id = "VI.9"
+book = 6
+order = 9
+title = "To cut off a prescribed part"
+statement = "From a given straight line to cut off a prescribed part."
+proof = "Therefore from the given straight line AB the prescribed part AG has been cut off. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given straight line. It is required to cut off from AB a prescribed part. Let a third part be the prescribed part. Let a straight line AC be drawn from A containing with AB any angle."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 6 0",
+  "point C 3 5.196",
+  "segment A B blue",
+  "line A C black",
+]
+
+[[step]]
+text = "Let a point D be taken at random on AC, and let DE, EC be made equal to AD (I.3). Let BC be joined, and through D let DF be drawn parallel to it (I.31)."
+draw = [
+  "point D 1 1.732",
+  "point E 2 3.464",
+  "segment B C red",
+]
+
+[[step]]
+text = "Since FD has been drawn parallel to BC, one of the sides of the triangle ABC, then as CD is to DA, so is BF to FA (VI.2). But CD is double of DA. Therefore BF is also double of FA. Therefore BA is triple of AF. Therefore from the given straight line AB the prescribed third part AF has been cut off."
+draw = [
+  "point F 2 0",
+  "segment D F green",
+]

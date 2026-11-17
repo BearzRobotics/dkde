@@ -1,0 +1,37 @@
+id = "VI.24"
+book = 6
+order = 24
+title = "Parallelograms about the diameter"
+statement = "In any parallelogram the parallelograms about the diameter are similar both to the whole and to one another."
+proof = "Therefore in any parallelogram the parallelograms about the diameter are similar both to the whole and to one another. Q.E.D."
+
+[[step]]
+text = "Let ABCD be a parallelogram, and AC its diameter, and let EG, HK be parallelograms about AC. I say that each of the parallelograms EG, HK is similar to the whole ABCD and they are similar to one another."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 5 0",
+  "point C 6 3",
+  "point D 1 3",
+  "point E 0.4 1.2",
+  "point F 2 0",
+  "point G 2.4 1.2",
+  "point H 5.4 1.2",
+  "point K 3 3",
+  "polygon A B C D blue",
+  "segment A C black",
+  "polygon A F G E orange fill",
+  "polygon G H C K purple fill",
+  "segment E H black",
+  "segment F K black",
+]
+
+[[step]]
+text = "Since EG has been drawn parallel to BC, one of the sides of the triangle ABC, BE is to EA as CG is to GA (VI.2). Again, since GF has been drawn parallel to CD, one of the sides of the triangle ACD, CG is to GA as DF is to FA. But CG is to GA as BE is to EA. Therefore as BE is to EA, so is DF to FA. Therefore, componendo, as BA is to AE, so is DA to AF (V.18), and alternately as BA is to AD, so is EA to AF."
+draw = [
+]
+
+[[step]]
+text = "Therefore in the parallelograms ABCD, AEGF the sides about the common angle at A are proportional. Since GF is parallel to DC, the angle AFG is equal to the angle ADC, and the angle DCB is equal to the angle FGA, and the angle at A is common. Therefore the parallelogram ABCD is equiangular with the parallelogram AEGF. Therefore ABCD is similar to AEGF. For the same reason ABCD is also similar to the parallelogram GHCK. Therefore each of AEGF, GHCK is similar to ABCD. But figures similar to the same rectilineal figure are also similar to one another (VI.21). Therefore the parallelogram AEGF is also similar to the parallelogram GHCK."
+draw = [
+]

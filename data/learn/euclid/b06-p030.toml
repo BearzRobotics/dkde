@@ -1,0 +1,28 @@
+id = "VI.30"
+book = 6
+order = 30
+title = "Extreme and mean ratio"
+statement = "To cut a given finite straight line in extreme and mean ratio."
+proof = "Therefore the given straight line AB has been cut in extreme and mean ratio at F. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given finite straight line. It is required to cut AB in extreme and mean ratio."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 4 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "On AB let the square BC be described (I.46), and to AC let there be applied the parallelogram CD equal to BC and exceeding by the figure AD similar to BC (VI.29). Now BC is a square. Therefore AD is also a square. And since BC is equal to CD, take away CE from each. Then the remainder BF is equal to the remainder AD. But it is also equiangular with it. Therefore in BF, AD the sides about the equal angles are reciprocally proportional (VI.14). Therefore, as FE is to ED, so is AE to EB. But FE is equal to AB, and ED to AE. Therefore, as BA is to AE, so is AE to EB. And AB is greater than AE. Therefore AE is also greater than EB."
+draw = [
+  "point F 2.472 0",
+  "segment A F red",
+  "segment F B green",
+]
+
+[[step]]
+text = "Therefore the straight line AB has been cut in extreme and mean ratio at E, and AE is its greater segment. (Here the cut point is marked F.)"
+draw = [
+]

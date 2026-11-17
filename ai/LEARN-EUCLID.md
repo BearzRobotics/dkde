@@ -20,7 +20,7 @@ carries out the steps).
 | III | Circles | 37 | done (all 37) |
 | IV | Inscribed and circumscribed figures | 16 | done (all 16) |
 | V | Proportion (Eudoxus) | 25 | done (all 25; magnitudes are drawn as bars) |
-| VI | Similar figures | 33 | |
+| VI | Similar figures | 33 | done (all 33) |
 | VII | Number theory: gcd, primes | 39 | |
 | VIII | Continued proportion in numbers | 27 | |
 | IX | Numbers: primes are infinite, perfect numbers | 36 | |

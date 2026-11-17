@@ -1,0 +1,32 @@
+id = "VI.8"
+book = 6
+order = 8
+title = "The altitude of a right triangle"
+statement = "If in a right-angled triangle a perpendicular be drawn from the right angle to the base, the triangles adjoining the perpendicular are similar both to the whole and to one another."
+proof = "Therefore if in a right-angled triangle a perpendicular be drawn from the right angle to the base, the triangles adjoining the perpendicular are similar both to the whole and to one another. (Corollary: the perpendicular is a mean proportional between the segments of the base, and each side is a mean proportional between the base and the segment adjoining it.) Q.E.D."
+
+[[step]]
+text = "Let ABC be a right-angled triangle having the angle BAC right, and let AD be drawn from A perpendicular to BC. I say that each of the triangles ABD, ADC is similar to the whole ABC and, further, they are similar to one another."
+draw = [
+  "clear",
+  "point A 1.8 2.4",
+  "point B 0 0",
+  "point C 5 0",
+  "point D 1.8 0",
+  "polygon A B C blue",
+  "segment A D red",
+  "angle B A C orange fill",
+]
+
+[[step]]
+text = "Since the angle BAC is equal to the angle ADB, for each is right, and the angle at B is common to the two triangles ABC and ABD, the remaining angle ACB is equal to the remaining angle BAD (I.32). Therefore the triangle ABC is equiangular with the triangle ABD. Therefore, as BC, subtending the right angle in the triangle ABC, is to BA, subtending the right angle in the triangle ABD, so is AB itself, subtending the angle at C in the triangle ABC, to BD, subtending the equal angle BAD in the triangle ABD, and so also is AC to AD, subtending the angle at B common to the two triangles (VI.4). Therefore the triangle ABC is similar to the triangle ABD."
+draw = [
+  "polygon A B D teal fill",
+  "angle A D B green fill",
+]
+
+[[step]]
+text = "Similarly we can prove that the triangle ADC is also similar to the triangle ABC. Therefore each of the triangles ABD, ADC is similar to the whole ABC. I say next that the triangles ABD, ADC are also similar to one another. Since the right angle BDA is equal to the right angle ADC, and the angle BAD was proved equal to the angle at C, the remaining angle at B is also equal to the remaining angle DAC. Therefore the triangle ABD is equiangular with the triangle ADC. Therefore, as BD, which subtends the angle BAD in the triangle ABD, is to DA, which subtends the angle at C in the triangle ADC, equal to the angle BAD, so is AD, which subtends the angle at B in the triangle ABD, to DC, which subtends the angle DAC in the triangle ADC, equal to the angle at B, and so also is BA to AC, which subtend the right angles. Therefore the triangle ABD is similar to the triangle ADC."
+draw = [
+  "polygon A D C purple fill",
+]

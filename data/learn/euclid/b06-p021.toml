@@ -1,0 +1,29 @@
+id = "VI.21"
+book = 6
+order = 21
+title = "Similar to the same figure"
+statement = "Figures which are similar to the same rectilineal figure are also similar to one another."
+proof = "Therefore figures which are similar to the same rectilineal figure are also similar to one another. Q.E.D."
+
+[[step]]
+text = "Let each of the rectilineal figures A, B be similar to C. I say that A is also similar to B."
+draw = [
+  "clear",
+  "point A0 0 0",
+  "point A1 3 0",
+  "point A2 1 2",
+  "point B0 5 0",
+  "point B1 9.5 0",
+  "point B2 6.5 3",
+  "point C0 11 0",
+  "point C1 17.75 0",
+  "point C2 13.25 4.5",
+  "polygon A0 A1 A2 blue fill",
+  "polygon B0 B1 B2 red fill",
+  "polygon C0 C1 C2 green fill",
+]
+
+[[step]]
+text = "Since A is similar to C, it is equiangular with it and has the sides about the equal angles proportional. Again, since B is similar to C, it is equiangular with it and has the sides about the equal angles proportional. Therefore each of A, B is equiangular with C and has the sides about the equal angles proportional (V.11). Therefore A is similar to B."
+draw = [
+]

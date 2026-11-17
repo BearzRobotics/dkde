@@ -1,0 +1,30 @@
+id = "VI.5"
+book = 6
+order = 5
+title = "Proportional sides give equiangular triangles"
+statement = "If two triangles have their sides proportional, the triangles will be equiangular and will have those angles equal which the corresponding sides subtend."
+proof = "Therefore if two triangles have their sides proportional, the triangles will be equiangular and will have those angles equal which the corresponding sides subtend. Q.E.D."
+
+[[step]]
+text = "Let ABC, DEF be two triangles having their sides proportional, so that AB is to BC as DE is to EF, BC to CA as EF to FD, and BA to AC as ED to DF. I say that the triangle ABC is equiangular with the triangle DEF, and they will have those angles equal which the corresponding sides subtend, namely the angle ABC to the angle DEF, the angle BCA to the angle EFD, and the angle BAC to the angle EDF."
+draw = [
+  "clear",
+  "point A 1 3",
+  "point B 0 0",
+  "point C 4 0",
+  "point D 8.5 4.5",
+  "point E 7 0",
+  "point F 13 0",
+  "polygon A B C blue",
+  "polygon D E F red",
+]
+
+[[step]]
+text = "On the straight line EF, and at the points E, F on it, let the angle FEG be constructed equal to the angle ABC, and the angle EFG equal to the angle ACB (I.23). Then the remaining angle at A is equal to the remaining angle at G (I.32). Therefore the triangle ABC is equiangular with the triangle GEF."
+draw = [
+]
+
+[[step]]
+text = "Therefore in the triangles ABC, GEF the sides about the equal angles are proportional (VI.4), so AB is to BC as GE is to EF. But by hypothesis AB is to BC as DE is to EF. Therefore DE is to EF as GE is to EF, so DE is equal to GE. For the same reason DF is also equal to GF. Since DE is equal to EG, and EF is common, the two sides DE, EF are equal to the two sides GE, EF, and the base DF is equal to the base FG. Therefore the angle DEF is equal to the angle GEF (I.8), and the triangle DEF is equal to the triangle GEF. Therefore the triangle DEF is equiangular with the triangle ABC."
+draw = [
+]

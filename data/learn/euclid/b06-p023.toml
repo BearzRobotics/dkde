@@ -1,0 +1,33 @@
+id = "VI.23"
+book = 6
+order = 23
+title = "Compounded ratios of parallelograms"
+statement = "Equiangular parallelograms have to one another the ratio compounded of the ratios of their sides."
+proof = "Therefore equiangular parallelograms have to one another the ratio compounded of the ratios of their sides. Q.E.D."
+
+[[step]]
+text = "Let AC, CF be equiangular parallelograms having the angle BCD equal to the angle ECG. I say that the parallelogram AC has to the parallelogram CF the ratio compounded of the ratios of the sides."
+draw = [
+  "clear",
+  "point A 1 2",
+  "point B 0 0",
+  "point C 4 0",
+  "point D 5 2",
+  "point E 2.5 -3",
+  "point G 7 0",
+  "point F 5.5 -3",
+  "polygon B C D A blue fill",
+  "polygon C G F E red fill",
+  "line B G black",
+  "line D E black",
+]
+
+[[step]]
+text = "Let BC be placed in a straight line with CG. Then DC is also in a straight line with CE (I.14). Let the parallelogram DG be completed, and let a straight line K be set out, and let it be made that, as BC is to CG, so is K to L, and, as DC is to CE, so is L to M. Then the ratios of K to L and of L to M are the same as the ratios of the sides, BC to CG and DC to CE. But the ratio of K to M is compounded of the ratio of K to L and of L to M. So that K also has to M the ratio compounded of the ratios of the sides."
+draw = [
+]
+
+[[step]]
+text = "Now, as BC is to CG, so is the parallelogram AC to the parallelogram CH (VI.1); and as BC is to CG, so is K to L. Therefore as K is to L, so is AC to CH. Again, as DC is to CE, so is the parallelogram CH to the parallelogram CF, and as DC is to CE, so is L to M. Therefore as L is to M, so is CH to CF. Since it was proved that as K is to L, so is AC to CH, and as L is to M, so is CH to CF, ex aequali as K is to M, so is AC to CF (V.22). But K has to M the ratio compounded of the ratios of the sides. Therefore AC also has to CF the ratio compounded of the ratios of the sides."
+draw = [
+]

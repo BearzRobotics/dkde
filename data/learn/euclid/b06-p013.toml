@@ -1,0 +1,34 @@
+id = "VI.13"
+book = 6
+order = 13
+title = "A mean proportional"
+statement = "To two given straight lines to find a mean proportional."
+proof = "Therefore between the two given straight lines AB, BC a mean proportional DB has been found. Being what it was required to do."
+
+[[step]]
+text = "Let AB, BC be the two given straight lines. It is required to find a mean proportional between AB, BC. Let them be placed in a straight line, and let the semicircle ADC be described on AC."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 2 0",
+  "point C 8 0",
+  "point F 4 0",
+  "segment A C black",
+  "circle F A blue",
+]
+
+[[step]]
+text = "Let BD be drawn from the point B at right angles to the straight line AC (I.11), and let AD, DC be joined."
+draw = [
+  "point D 2 3.464",
+  "segment B D red",
+  "segment A D green",
+  "segment D C green",
+  "angle A D C orange fill",
+]
+
+[[step]]
+text = "Since the angle ADC is an angle in a semicircle, it is right (III.31). And since in the right-angled triangle ADC a perpendicular DB has been drawn from the right angle to the base, DB is a mean proportional between the segments of the base, AB, BC (VI.8 corollary). Therefore between the two given straight lines AB, BC a mean proportional DB has been found."
+draw = [
+  "polygon A D C teal",
+]

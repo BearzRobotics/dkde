@@ -1,0 +1,33 @@
+id = "VI.32"
+book = 6
+order = 32
+title = "Triangles placed together at an angle"
+statement = "If two triangles having two sides proportional to two sides be placed together at one angle so that their corresponding sides are also parallel, the remaining sides of the triangles will be in a straight line."
+proof = "Therefore if two triangles having two sides proportional to two sides be placed together at one angle so that their corresponding sides are also parallel, the remaining sides of the triangles will be in a straight line. Q.E.D."
+
+[[step]]
+text = "Let ABC, DCE be two triangles having the two sides BA, AC proportional to the two sides CD, DE, so that AB is to AC as DC is to DE, and AB parallel to DC and AC to DE. I say that BC is in a straight line with CE."
+draw = [
+  "clear",
+  "point A -1 3",
+  "point B -4 0",
+  "point C 0 0",
+  "point D 3 3",
+  "point E 4 0",
+  "polygon A B C blue fill",
+  "polygon D C E red fill",
+]
+
+[[step]]
+text = "Since AB is parallel to DC, and the straight line AC falls on them, the alternate angles BAC, ACD are equal to one another (I.29). For the same reason the angle CDE is also equal to the angle ACD. Therefore the angle BAC is equal to the angle CDE. And since the triangles ABC, DCE have one angle at A equal to one angle at D and the sides about them proportional, so that AB is to AC as DC is to DE, the triangle ABC is equiangular with the triangle DCE (VI.6). Therefore the angle ABC is equal to the angle DCE."
+draw = [
+  "angle B A C orange fill",
+  "angle A C D orange fill",
+  "angle C D E orange fill",
+]
+
+[[step]]
+text = "But the angle ACD was proved equal to the angle BAC. Therefore the whole angle ACE is equal to the two angles ABC, BAC. Add the angle ACB to each. Then the angles ACE, ACB are equal to the angles BAC, ACB, CBA. But the angles BAC, ABC, ACB are equal to two right angles (I.32). Therefore the angles ACE, ACB are also equal to two right angles. Therefore with a straight line AC, and at the point C on it, the two straight lines BC, CE not lying on the same side make the adjacent angles ACE, ACB equal to two right angles. Therefore BC is in a straight line with CE (I.14)."
+draw = [
+  "segment B E black",
+]

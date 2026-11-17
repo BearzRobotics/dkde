@@ -1,0 +1,29 @@
+id = "VI.10"
+book = 6
+order = 10
+title = "To cut a line like another"
+statement = "To cut a given uncut straight line similarly to a given cut straight line."
+proof = "Therefore the given uncut straight line AB has been cut similarly to the given cut straight line AC. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given uncut straight line, and AC the straight line cut at the points D, E, and let them be so placed as to contain any angle. Let CB be joined, and through D, E let DF, EG be drawn parallel to BC, and through D let DHK be drawn parallel to AB."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point C 8 0",
+  "point D 2 0",
+  "point E 5 0",
+  "point B 3.857 4.596",
+  "segment A C black",
+  "segment A B blue",
+  "segment B C red",
+]
+
+[[step]]
+text = "Therefore each of the figures FH, HB is a parallelogram. Therefore DH is equal to FG, and HK to GB (I.34). Since the straight line HE has been drawn parallel to one of the sides KC of the triangle DKC, then as CE is to ED, so is KH to HD (VI.2). But KH is equal to BG, and HD to GF. Therefore, as CE is to ED, so is BG to GF. Again, since FD has been drawn parallel to GE, one of the sides of the triangle AGE, as ED is to DA, so is GF to FA. But it was proved that as CE is to ED, so is BG to GF. Therefore, as CE is to ED, so is BG to GF, and as ED is to DA, so is GF to FA. Therefore the given uncut straight line AB has been cut similarly to the given cut straight line AC."
+draw = [
+  "point F 0.964 1.149",
+  "point G 2.41 2.873",
+  "segment D F green",
+  "segment E G green",
+]

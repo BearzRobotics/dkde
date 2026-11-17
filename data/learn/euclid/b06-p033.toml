@@ -1,0 +1,33 @@
+id = "VI.33"
+book = 6
+order = 33
+title = "Angles are proportional to arcs"
+statement = "In equal circles angles have the same ratio as the circumferences on which they stand, whether they stand at the centres or at the circumferences. And sectors also, being constructed at the centres, have the same ratio as the angles."
+proof = "Therefore in equal circles angles have the same ratio as the circumferences on which they stand, whether they stand at the centres or at the circumferences. And sectors also, being constructed at the centres, have the same ratio as the angles. Q.E.D."
+
+[[step]]
+text = "Let ABC, DEF be equal circles, and let there be at their centres G, H the angles BGC, EHF, and at the circumferences the angles BAC, EDF. I say that, as the circumference BC is to the circumference EF, so is the angle BGC to the angle EHF, and the angle BAC to the angle EDF, and further the sector BGC to the sector EHF. (One circle is drawn here with the arcs BC, CD equal.)"
+draw = [
+  "clear",
+  "point G 0 0",
+  "point B 3.464 2",
+  "point C 0 4",
+  "point D -3.464 2",
+  "point E 0 -4",
+  "circle G B blue",
+  "segment G B black",
+  "segment G C black",
+  "segment G D black",
+  "angle B G C orange fill",
+  "angle C G D green fill",
+]
+
+[[step]]
+text = "Let any number of consecutive circumferences CK, KL be made equal to the circumference BC, and any number FM, MN equal to EF, and let GK, GL, HM, HN be joined. Since the circumferences BC, CK, KL are equal to one another, the angles BGC, CGK, KGL are also equal to one another (III.27). Therefore, whatever multiple the circumference BL is of BC, that multiple also is the angle BGL of the angle BGC. For the same reason, whatever multiple the circumference EN is of EF, that multiple also is the angle EHN of the angle EHF."
+draw = [
+]
+
+[[step]]
+text = "If the circumference BL is equal to the circumference EN, the angle BGL is also equal to the angle EHN (III.27); if the circumference BL is greater than the circumference EN, the angle BGL is also greater than the angle EHN; and if less, less. There being four magnitudes, two circumferences BC, EF and two angles BGC, EHF, equimultiples have been taken of the circumference BC and the angle BGC, namely the circumference BL and the angle BGL, and of the circumference EF and the angle EHF, namely the circumference EN and the angle EHN; and it has been proved that if the circumference BL exceeds the circumference EN, the angle BGL also exceeds the angle EHN; if equal, equal; if less, less. Therefore, as the circumference BC is to EF, so is the angle BGC to the angle EHF (V, definition 5). But the angle BGC is to the angle EHF as the angle BAC is to the angle EDF, for each is double of each (III.20). Therefore also, as the circumference BC is to the circumference EF, so is the angle BGC to the angle EHF, and the angle BAC to the angle EDF. And the sectors have the same ratio as the angles, by the same reasoning with the triangles BGC, CGK, KGL, equal and similar, and the segments."
+draw = [
+]

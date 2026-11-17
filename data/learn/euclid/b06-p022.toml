@@ -1,0 +1,31 @@
+id = "VI.22"
+book = 6
+order = 22
+title = "Proportional lines and similar figures"
+statement = "If four straight lines be proportional, the rectilineal figures similar and similarly described upon them will also be proportional; and, if the rectilineal figures similar and similarly described upon them be proportional, the straight lines themselves will also be proportional."
+proof = "Therefore if four straight lines be proportional, the rectilineal figures similar and similarly described upon them will also be proportional; and, if the rectilineal figures similar and similarly described upon them be proportional, the straight lines themselves will also be proportional. Q.E.D."
+
+[[step]]
+text = "Let the four straight lines AB, CD, EF, GH be proportional, so that AB is to CD as EF is to GH, and let the similar and similarly situated rectilineal figures KAB, LCD be described on AB, CD, and the similar and similarly situated rectilineal figures MF, NH on EF, GH. I say that, as KAB is to LCD, so is MF to NH."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 3 0",
+  "point C 5 0",
+  "point D 9.5 0",
+  "point E 0 -3",
+  "point F 2 -3",
+  "point G 5 -3",
+  "point H 8 -3",
+  "point K 1.5 2.5",
+  "point L 7.25 3.75",
+  "polygon A B K blue fill",
+  "polygon C D L red fill",
+  "segment E F green",
+  "segment G H green",
+]
+
+[[step]]
+text = "Take a third proportional X to AB, CD, and a third proportional O to EF, GH (VI.11). Since AB is to CD as EF is to GH, and CD is to X as GH is to O, ex aequali, as AB is to X, so is EF to O (V.22). But as AB is to X, so is KAB to LCD (VI.19, corollary), and as EF is to O, so is MF to NH. Therefore, as KAB is to LCD, so is MF to NH. Conversely, if KAB is to LCD as MF is to NH, reverse the argument: AB is to X as EF is to O, so AB is to CD as EF is to GH."
+draw = [
+]

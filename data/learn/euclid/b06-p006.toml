@@ -1,0 +1,32 @@
+id = "VI.6"
+book = 6
+order = 6
+title = "One angle equal, sides about it proportional"
+statement = "If two triangles have one angle equal to one angle and the sides about the equal angles proportional, the triangles will be equiangular and will have those angles equal which the corresponding sides subtend."
+proof = "Therefore if two triangles have one angle equal to one angle and the sides about the equal angles proportional, the triangles will be equiangular and will have those angles equal which the corresponding sides subtend. Q.E.D."
+
+[[step]]
+text = "Let ABC, DEF be two triangles having one angle BAC equal to one angle EDF and the sides about the equal angles proportional, so that BA is to AC as ED is to DF. I say that the triangle ABC is equiangular with the triangle DEF and will have the angle ABC equal to the angle DEF, and the angle ACB to the angle DFE."
+draw = [
+  "clear",
+  "point A 1 3",
+  "point B 0 0",
+  "point C 4 0",
+  "point D 8.5 4.5",
+  "point E 7 0",
+  "point F 13 0",
+  "polygon A B C blue",
+  "polygon D E F red",
+  "angle B A C orange fill",
+  "angle E D F orange fill",
+]
+
+[[step]]
+text = "On the straight line DF, and at the points D, F on it, let the angle FDG be constructed equal to either of the angles BAC, EDF, and the angle DFG equal to the angle ACB (I.23). Therefore the remaining angle at B is equal to the remaining angle at G, and the triangle ABC is equiangular with the triangle DGF. Therefore, as BA is to AC, so is GD to DF (VI.4). But by hypothesis as BA is to AC, so is ED to DF. Therefore ED is to DF as GD is to DF (V.11), so ED is equal to DG (V.9)."
+draw = [
+]
+
+[[step]]
+text = "And DF is common; therefore the two sides ED, DF are equal to the two sides GD, DF, and the angle EDF is equal to the angle GDF. Therefore the base EF is equal to the base GF, the triangle DEF is equal to the triangle DGF, and the remaining angles are equal to the remaining angles (I.4). Therefore the angle DFG is equal to the angle DFE, and the angle at G to the angle at E. But the angle DFG is equal to the angle ACB. Therefore the angle ACB is also equal to the angle DFE. And the angle BAC is equal to the angle EDF. Therefore the remaining angle at B is equal to the remaining angle at E, and the triangle ABC is equiangular with the triangle DEF."
+draw = [
+]

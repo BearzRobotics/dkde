@@ -1,0 +1,40 @@
+id = "VI.3"
+book = 6
+order = 3
+title = "The angle bisector theorem"
+statement = "If an angle of a triangle be bisected and the straight line cutting the angle cut the base also, the segments of the base will have the same ratio as the remaining sides of the triangle; and, if the segments of the base have the same ratio as the remaining sides of the triangle, the straight line drawn from the vertex to the point of section will bisect the angle of the triangle."
+proof = "Therefore if an angle of a triangle be bisected and the straight line cutting the angle cut the base also, the segments of the base will have the same ratio as the remaining sides of the triangle; and, if the segments of the base have the same ratio as the remaining sides of the triangle, the straight line drawn from the vertex to the point of section will bisect the angle of the triangle. Q.E.D."
+
+[[step]]
+text = "Let ABC be a triangle, and let the angle BAC be bisected by the straight line AD. I say that, as BD is to CD, so is BA to AC."
+draw = [
+  "clear",
+  "point A 1 4",
+  "point B 0 0",
+  "point C 6 0",
+  "point D 2.35 0",
+  "polygon A B C blue",
+  "segment A D red",
+  "angle B A D orange fill",
+  "angle D A C orange fill",
+]
+
+[[step]]
+text = "Let CE be drawn through C parallel to DA, and let BA be drawn through and meet it at E (I.31)."
+draw = [
+  "point E 2.553 10.212",
+  "segment C E green",
+  "line B A black",
+]
+
+[[step]]
+text = "Since the straight line AC falls on the parallels AD, EC, the angle ACE is equal to the angle CAD (I.29). But the angle CAD is by hypothesis equal to the angle BAD. Therefore the angle BAD is also equal to the angle ACE. Again, since the straight line BAE falls on the parallels AD, EC, the exterior angle BAD is equal to the interior angle AEC. But the angle ACE was proved equal to the angle BAD. Therefore the angle AEC is also equal to the angle ACE, so the side AE is equal to the side AC (I.6)."
+draw = [
+  "angle A C E green fill",
+  "angle A E C green fill",
+]
+
+[[step]]
+text = "And since AD has been drawn parallel to EC, one of the sides of the triangle BCE, BD is to DC as BA is to AE (VI.2). But AE is equal to AC. Therefore, as BD is to DC, so is BA to AC. The converse is proved by the same construction: if BD:DC = BA:AC, then BA:AE = BD:DC, so AD is parallel to EC (VI.2), the angles BAD, AEC are equal and the angles DAC, ACE are equal; and AEC equals ACE since AE equals AC; so BAD equals DAC."
+draw = [
+]

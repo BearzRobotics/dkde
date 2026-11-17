@@ -1,0 +1,45 @@
+id = "VI.1"
+book = 6
+order = 1
+title = "Triangles of the same height"
+statement = "Triangles and parallelograms which are under the same height are to one another as their bases."
+proof = "Therefore triangles and parallelograms which are under the same height are to one another as their bases. Q.E.D."
+
+[[step]]
+text = "Let ABC, ACD be triangles and EC, CF parallelograms under the same height. I say that, as the base BC is to the base CD, so is the triangle ABC to the triangle ACD, and the parallelogram EC to the parallelogram CF."
+draw = [
+  "clear",
+  "point A 1.5 3",
+  "point B 0 0",
+  "point C 3 0",
+  "point D 7 0",
+  "segment B D black",
+  "polygon A B C blue",
+  "polygon A C D red",
+]
+
+[[step]]
+text = "Let BD be produced in both directions to the points H, L, and let any number of straight lines BG, GH be made equal to the base BC, and any number DK, KL equal to the base CD. Let AG, AH, AK, AL be joined."
+draw = [
+  "point G -3 0",
+  "point H -6 0",
+  "point K 11 0",
+  "point L 15 0",
+  "segment H L black",
+  "segment A G green",
+  "segment A H green",
+  "segment A K green",
+  "segment A L green",
+]
+
+[[step]]
+text = "Since CB, BG, GH are equal to one another, the triangles AHG, AGB, ABC are also equal to one another (I.38). Therefore, whatever multiple the base HC is of the base BC, that multiple also is the triangle AHC of the triangle ABC. For the same reason, whatever multiple the base LC is of the base CD, that multiple also is the triangle ALC of the triangle ACD."
+draw = [
+  "polygon A H G orange fill",
+  "polygon A G B green fill",
+]
+
+[[step]]
+text = "If the base HC is equal to the base CL, the triangle AHC is also equal to the triangle ACL (I.38); if the base HC exceeds the base CL, the triangle AHC exceeds the triangle ACL; and if less, less. There are four magnitudes, the two bases BC, CD and the two triangles ABC, ACD; equimultiples have been taken of the base BC and the triangle ABC, namely the base HC and the triangle AHC, and of the base CD and the triangle ADC, namely the base CL and the triangle ALC. Therefore, as the base BC is to the base CD, so is the triangle ABC to the triangle ACD (V, definition 5). Since the parallelogram is double the triangle (I.41), the parallelograms are in the same ratio as the triangles. Therefore as the base is to the base, so is the parallelogram to the parallelogram."
+draw = [
+]

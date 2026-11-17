@@ -1,0 +1,26 @@
+id = "VI.11"
+book = 6
+order = 11
+title = "A third proportional"
+statement = "To two given straight lines to find a third proportional."
+proof = "Therefore to the two given straight lines A, B a third proportional C has been found. Being what it was required to do."
+
+[[step]]
+text = "Let BA, AC be the two given straight lines, and let them be placed so as to contain any angle. It is required to find a third proportional to BA, AC. Let them be produced to the points D, E, and let BD be made equal to AC (I.3). Let BC be joined, and through D let DE be drawn parallel to it."
+draw = [
+  "clear",
+  "point D 0 0",
+  "point G 3 0",
+  "point E 5 0",
+  "point H 1.147 1.638",
+  "point F 1.912 2.731",
+  "segment D E blue",
+  "segment D F black",
+  "segment G H red",
+  "segment E F red",
+]
+
+[[step]]
+text = "Since BC has been drawn parallel to DE, one of the sides of the triangle ADE, proportionally, as AB is to BD, so is AC to CE (VI.2). But BD is equal to AC. Therefore, as AB is to AC, so is AC to CE. Therefore to the two given straight lines AB, AC a third proportional CE has been found."
+draw = [
+]

@@ -1,0 +1,26 @@
+id = "VI.26"
+book = 6
+order = 26
+title = "A similar parallelogram on the same diameter"
+statement = "If from a parallelogram there be taken away a parallelogram similar and similarly situated to the whole and having a common angle with it, it is about the same diameter with the whole."
+proof = "Therefore if from a parallelogram there be taken away a parallelogram similar and similarly situated to the whole and having a common angle with it, it is about the same diameter with the whole. Q.E.D."
+
+[[step]]
+text = "From the parallelogram ABCD let there be taken away the parallelogram AF similar and similarly situated to ABCD, having the angle DAB common with it. I say that ABCD is about the same diameter with AF."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 4 0",
+  "point C 1 3",
+  "point D 7 0",
+  "point E 0.4 1.2",
+  "point F 2 0",
+  "point G 2.4 1.2",
+  "polygon A B C D blue",
+  "polygon A F G E orange fill",
+]
+
+[[step]]
+text = "For suppose it is not, but, if possible, let the diameter of ABCD be AHC, and let GF be produced to H, and through H let HK be drawn parallel to either AD or BC. Since ABCD is about the same diameter AC as KG, ABCD is similar to KG (VI.24). Therefore DA is to AB as GA is to AK. But, because ABCD and EG are similar, DA is to AB as GA is to AF. Therefore GA has the same ratio to each of AK, AF, so AK is equal to AF, the less to the greater, which is impossible. Therefore ABCD is not not about the same diameter with AF; therefore the parallelogram ABCD is about the same diameter with AF."
+draw = [
+]

@@ -1,0 +1,30 @@
+id = "VI.31"
+book = 6
+order = 31
+title = "Similar figures on the sides of a right triangle"
+statement = "In right-angled triangles the figure on the side subtending the right angle is equal to the similar and similarly described figures on the sides containing the right angle."
+proof = "Therefore in right-angled triangles the figure on the side subtending the right angle is equal to the similar and similarly described figures on the sides containing the right angle. Q.E.D."
+
+[[step]]
+text = "Let ABC be a right-angled triangle having the angle BAC right. I say that the figure on BC is equal to the similar and similarly described figures on BA, AC. (Squares are drawn here; any similar figures work.)"
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 3 0",
+  "point C 0 4",
+  "point D 7 3",
+  "point E 4 7",
+  "point F 3 -3",
+  "point G 0 -3",
+  "point H -4 0",
+  "point K -4 4",
+  "polygon A B C yellow",
+  "polygon A B F G blue fill",
+  "polygon A C K H green fill",
+  "polygon B D E C red fill",
+]
+
+[[step]]
+text = "Let the perpendicular AD be drawn. Since in the right-angled triangle ABC the perpendicular AD has been drawn from the right angle at A to the base BC, the triangles ABD, ADC adjoining the perpendicular are similar to the whole ABC and to one another (VI.8). Since ABC is similar to ABD, as CB is to BA, so is BA to BD (VI.4). And since three straight lines are proportional, as the first is to the third, so is the figure on the first to the similar and similarly described figure on the second (VI.19 corollary). Therefore, as CB is to BD, so is the figure on CB to the similar and similarly described figure on BA. For the same reason, as BC is to CD, so is the figure on BC to that on CA. Hence, as BC is to BD, DC together, so is the figure on BC to the similar and similarly described figures on BA, AC together. But BC is equal to BD, DC together. Therefore the figure on BC is also equal to the similar and similarly described figures on BA, AC."
+draw = [
+]

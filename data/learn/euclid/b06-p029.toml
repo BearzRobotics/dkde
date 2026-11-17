@@ -1,0 +1,30 @@
+id = "VI.29"
+book = 6
+order = 29
+title = "Application exceeding by a similar figure"
+statement = "To a given straight line to apply a parallelogram equal to a given rectilineal figure and exceeding by a parallelogrammic figure similar to a given one."
+proof = "Therefore to the given straight line AB there has been applied the parallelogram AP equal to the given rectilineal figure C and exceeding by the parallelogrammic figure QB similar to D. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given straight line, C the given rectilineal figure to which the parallelogram to be applied to AB is to be equal, and D that to which the excess is to be similar. It is required to apply to the given straight line AB a parallelogram equal to the rectilineal figure C and exceeding by a parallelogrammic figure similar to D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point E 3 0",
+  "point B 6 0",
+  "point F 3 2",
+  "point G 6 2",
+  "point H 0 2",
+  "segment A B black",
+  "polygon E B G F blue fill",
+]
+
+[[step]]
+text = "Let AB be bisected at E, and on EB let the parallelogram BF be described similar and similarly situated to D (VI.18). Let the parallelogram GH be constructed equal to BF and C together, and similar and similarly situated to D (VI.25). Let KH correspond to FL and KG to FE. Since the parallelogram GH is greater than the parallelogram FB, KH is greater than FL and KG than FE. Let FL, FE be produced, and let FLM be equal to KH and FEN to KG, and let MN be completed. Then MN is equal and similar to GH. But GH is similar to EL. Therefore MN is similar to EL, so EL is about the same diameter with MN (VI.26). Let their diameter FO be drawn, and let the figure be described."
+draw = [
+]
+
+[[step]]
+text = "Since GH is equal to EL and C together, and GH is equal to MN, MN is also equal to EL and C together. Take away EL from each. Then the remaining gnomon XWV is equal to C. Since AE is equal to EB, AN is equal to NB (I.36), that is, to LP. Add EO to each. Then the whole AO is equal to the gnomon VXW. But the gnomon VXW is equal to C. Therefore AO is also equal to C. Therefore to the given straight line AB there has been applied the parallelogram AO equal to the given rectilineal figure C and exceeding by the parallelogram QP, which is similar to D, since PQ is also similar to EL."
+draw = [
+]

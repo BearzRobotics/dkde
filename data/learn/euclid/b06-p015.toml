@@ -1,0 +1,25 @@
+id = "VI.15"
+book = 6
+order = 15
+title = "Equal triangles: reciprocal sides"
+statement = "Equal triangles which have one angle equal to one angle have the sides about the equal angles reciprocally proportional; and those triangles which have one angle equal to one angle, and the sides about the equal angles reciprocally proportional, are equal."
+proof = "Therefore equal triangles which have one angle equal to one angle have the sides about the equal angles reciprocally proportional; and those triangles which have one angle equal to one angle, and the sides about the equal angles reciprocally proportional, are equal. Q.E.D."
+
+[[step]]
+text = "Let ABC, ADE be equal triangles having one angle equal to one angle, namely the angle BAC to the angle DAE. (Here ABC has sides 4 and 3, and ADE has sides 6 and 2.) I say that in the triangles ABC, ADE the sides about the equal angles are reciprocally proportional, that is, CA is to AD as EA is to AB."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 4 0",
+  "point C 0 3",
+  "point E 6 0",
+  "point D 0 2",
+  "polygon A B C blue",
+  "polygon A E D red",
+  "angle B A C orange fill",
+]
+
+[[step]]
+text = "Let them be placed so that CA is in a straight line with AD; therefore EA is also in a straight line with AB (I.14). Let BD be joined. Since the triangle ABC is equal to the triangle ADE, and BAD is another area, the triangle CAB is to the triangle BAD as the triangle EAD is to the triangle BAD (V.7). But the triangle CAB is to BAD as CA is to AD (VI.1), and EAD is to BAD as EA is to AB. Therefore CA is to AD as EA is to AB. The converse is proved by reversing the argument."
+draw = [
+]

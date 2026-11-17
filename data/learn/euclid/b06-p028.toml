@@ -1,0 +1,30 @@
+id = "VI.28"
+book = 6
+order = 28
+title = "Application deficient by a similar figure"
+statement = "To a given straight line to apply a parallelogram equal to a given rectilineal figure and deficient by a parallelogrammic figure similar to a given one: thus the given rectilineal figure must not be greater than the parallelogram described on the half of the straight line and similar to the defect."
+proof = "Therefore to the given straight line AB there has been applied the parallelogram AP equal to the given rectilineal figure C and deficient by the parallelogrammic figure PB similar to D. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given straight line, C the given rectilineal figure to which the parallelogram to be applied to AB is to be equal, not being greater than the parallelogram described on the half of AB and similar to the defect, and D the parallelogram to which the defect is to be similar. It is required to apply to the given straight line AB a parallelogram equal to the given rectilineal figure C and deficient by a parallelogrammic figure similar to D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point E 4 0",
+  "point B 8 0",
+  "point F 4 3",
+  "point G 8 3",
+  "point H 0 3",
+  "segment A B black",
+  "polygon E B G F blue fill",
+]
+
+[[step]]
+text = "Let AB be bisected at the point E, and on EB let the parallelogram EBFG be described similar and similarly situated to D (VI.18), and let the parallelogram AG be completed. If AG is equal to C, that which was prescribed is done. If not, let HE be greater than C. But HE is equal to GB. Therefore GB is also greater than C. Let KLMN be constructed at once similar and similarly situated to D and equal to the excess by which GB exceeds C (VI.25). But D is similar to GB. Therefore KM is also similar to GB. Let KL correspond to GE and LM to GF."
+draw = [
+]
+
+[[step]]
+text = "Since GB is equal to C and KM, GB is greater than KM. Therefore GE is greater than KL and GF than LM. Let GO be made equal to KL and GP equal to LM, and let the parallelogram OGPQ be completed. Then GQ is equal and similar to KM. But KM is similar to GB. Therefore GQ is also similar to GB. Therefore GQ is about the same diameter with GB (VI.26). Let GQB be their diameter, and let the figure be described. Since BG is equal to C and KM, and in these GQ is equal to KM, the remaining gnomon UWV is equal to the remaining C. And since PR is equal to OS, add QB to each. Then the whole PB is equal to the whole OB. But OB is equal to TE, since AE is equal to EB. Therefore TE is also equal to PB. Add OS to each. Then the whole TS is equal to the gnomon VWU. But the gnomon VWU was proved equal to C. Therefore TS is also equal to C. Therefore to the given straight line AB there has been applied the parallelogram ST equal to the given rectilineal figure C and deficient by a parallelogrammic figure QB similar to D."
+draw = [
+]

@@ -1,0 +1,30 @@
+id = "VI.27"
+book = 6
+order = 27
+title = "The greatest parallelogram applied to a line"
+statement = "Of all the parallelograms applied to the same straight line and deficient by parallelogrammic figures similar and similarly situated to that described on the half of the straight line, that parallelogram is greatest which is applied to the half of the straight line and is similar to the difference."
+proof = "Therefore, of all the parallelograms applied to the same straight line and deficient by parallelogrammic figures similar and similarly situated to that described on the half of the straight line, that parallelogram is greatest which is applied to the half of the straight line and is similar to the difference. Q.E.D."
+
+[[step]]
+text = "Let AB be a straight line, and let it be bisected at C. Let there be applied to the straight line AB the parallelogram AD deficient by the parallelogrammic figure DB described on the half of AB, that is CB. (Rectangles are drawn here.) I say that, of all the parallelograms applied to AB and deficient by parallelogrammic figures similar and similarly situated to DB, AD is greatest."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point C 4 0",
+  "point B 8 0",
+  "point D 4 3",
+  "point E 0 3",
+  "point F 8 3",
+  "point K 6.5 0",
+  "point L 6.5 2.4",
+  "point M 0 2.4",
+  "polygon A C D E blue fill",
+  "polygon C B F D teal fill",
+  "segment A B black",
+  "polygon A K L M orange",
+]
+
+[[step]]
+text = "For let there be applied to AB the parallelogram AF deficient by the parallelogrammic figure FB similar and similarly situated to DB. I say that AD is greater than AF. Since the parallelogram DB is similar to the parallelogram FB, they are about the same diameter (VI.26). Let their diameter DB be drawn, and let the figure be described. Since the complement CF is equal to the complement FE (I.43), and FB is common, the whole CH is equal to the whole KE. But CH is equal to CG, since AC is equal to CB. Therefore GC is also equal to EK. Add CF to each. Then the whole AF is equal to the gnomon CHL. Therefore the parallelogram DB, that is AD, is greater than the parallelogram AF."
+draw = [
+]

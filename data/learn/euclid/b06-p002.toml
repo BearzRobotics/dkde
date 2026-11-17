@@ -1,0 +1,34 @@
+id = "VI.2"
+book = 6
+order = 2
+title = "A parallel to a side of a triangle"
+statement = "If a straight line be drawn parallel to one of the sides of a triangle, it will cut the sides of the triangle proportionally; and, if the sides of the triangle be cut proportionally, the line joining the points of section will be parallel to the remaining side of the triangle."
+proof = "Therefore if a straight line be drawn parallel to one of the sides of a triangle, it will cut the sides of the triangle proportionally; and, if the sides of the triangle be cut proportionally, the line joining the points of section will be parallel to the remaining side of the triangle. Q.E.D."
+
+[[step]]
+text = "Let DE be drawn parallel to BC, one of the sides of the triangle ABC. I say that, as BD is to DA, so is CE to EA."
+draw = [
+  "clear",
+  "point A 2 5",
+  "point B 0 0",
+  "point C 6 0",
+  "point D 1.2 3",
+  "point E 3.6 3",
+  "polygon A B C blue",
+  "segment D E red",
+]
+
+[[step]]
+text = "Let BE, CD be joined. Then the triangle BDE is equal to the triangle CDE, for they are on the same base DE and in the same parallels DE, BC (I.38). And the triangle ADE is another area. But equals have the same ratio to the same (V.7). Therefore, as the triangle BDE is to ADE, so is the triangle CDE to ADE."
+draw = [
+  "segment B E green",
+  "segment C D green",
+  "polygon B D E teal fill",
+  "polygon C D E purple fill",
+]
+
+[[step]]
+text = "But, as the triangle BDE is to ADE, so is BD to DA, for being under the same height, the perpendicular drawn from E to AB, they are to one another as their bases (VI.1). For the same reason, as the triangle CDE is to ADE, so is CE to EA. Therefore, as BD is to DA, so is CE to EA (V.11). Conversely, if BD:DA = CE:EA, join DE; the same triangles are equal, so BDE = CDE, and since they are on the same base DE and on the same side, DE is parallel to BC (I.39)."
+draw = [
+  "polygon A D E orange fill",
+]
