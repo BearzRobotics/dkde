@@ -1,0 +1,40 @@
+id = "I.27"
+book = 1
+order = 28
+title = "Alternate angles equal: parallel"
+statement = "If a straight line falling on two straight lines make the alternate angles equal to one another, the straight lines will be parallel to one another."
+proof = "Therefore if a straight line falling on two straight lines make the alternate angles equal to one another, the straight lines will be parallel to one another. Q.E.D."
+
+[[step]]
+text = "Let the straight line EF falling on the two straight lines AB, CD make the alternate angles AEF, EFD equal to one another. I say that AB is parallel to CD."
+draw = [
+  "clear",
+  "point A -4 0",
+  "point B 4 0",
+  "point C -6 -3",
+  "point D 3 -3",
+  "point E 0 0",
+  "point F -1.5 -3",
+  "segment A B blue",
+  "segment C D blue",
+  "segment E F black",
+  "angle A E F orange fill",
+  "angle E F D orange fill",
+]
+
+[[step]]
+text = "For if not, AB, CD when produced will meet, either in the direction of B, D or towards A, C. Let them be produced and meet, in the direction of B, D, at G."
+draw = [
+  "line A B blue",
+  "line C D blue",
+]
+
+[[step]]
+text = "Then in the triangle GEF the exterior angle AEF is equal to the interior and opposite angle EFG, which is impossible (I.16)."
+draw = [
+]
+
+[[step]]
+text = "Similarly it can be proved that they do not meet towards A, C. But straight lines which meet in neither direction are parallel (definition 23). Therefore AB is parallel to CD."
+draw = [
+]

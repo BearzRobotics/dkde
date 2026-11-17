@@ -1,0 +1,44 @@
+id = "I.28"
+book = 1
+order = 29
+title = "Corresponding or co-interior angles: parallel"
+statement = "If a straight line falling on two straight lines make the exterior angle equal to the interior and opposite angle on the same side, or the interior angles on the same side equal to two right angles, the straight lines will be parallel to one another."
+proof = "Therefore if a straight line falling on two straight lines make the exterior angle equal to the interior and opposite angle on the same side, or the interior angles on the same side equal to two right angles, the straight lines will be parallel to one another. Q.E.D."
+
+[[step]]
+text = "Let the straight line EF falling on the two straight lines AB, CD make the exterior angle EGB equal to the interior and opposite angle GHD. I say that AB is parallel to CD."
+draw = [
+  "clear",
+  "point A -4 0",
+  "point B 4 0",
+  "point C -6 -3",
+  "point D 3 -3",
+  "point G 0 0",
+  "point H -1.5 -3",
+  "point E 0.75 1.5",
+  "point F -2.25 -4.5",
+  "segment A B blue",
+  "segment C D blue",
+  "segment E F black",
+  "angle E G B orange fill",
+  "angle G H D orange fill",
+]
+
+[[step]]
+text = "Since the angle EGB is equal to the angle GHD, and the angle EGB is equal to the angle AGH (I.15), the angle AGH is equal to the angle GHD. And they are alternate."
+draw = [
+  "angle A G H green fill",
+  "angle G H D green fill",
+]
+
+[[step]]
+text = "Therefore AB is parallel to CD (I.27)."
+draw = [
+]
+
+[[step]]
+text = "Again, suppose the angles BGH, GHD are equal to two right angles. Since the angles AGH, BGH are equal to two right angles (I.13), the angles AGH, BGH are equal to the angles BGH, GHD. Take away BGH from each. Then the angle AGH is equal to the angle GHD, and they are alternate. Therefore AB is parallel to CD (I.27)."
+draw = [
+  "angle B G H purple fill",
+  "angle G H D purple fill",
+]

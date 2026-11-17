@@ -1,0 +1,40 @@
+id = "I.25"
+book = 1
+order = 26
+title = "Two sides equal, the base greater"
+statement = "If two triangles have the two sides equal to two sides respectively, but have the base greater than the base, they will also have the one of the angles contained by the equal straight lines greater than the other."
+proof = "Therefore if two triangles have two sides equal to two sides respectively, but have the base greater than the base, they will also have the one of the angles contained by the equal straight lines greater than the other. Q.E.D."
+
+[[step]]
+text = "Let ABC, DEF be two triangles having the two sides AB, AC equal to the two sides DE, DF respectively, AB to DE and AC to DF, and let the base BC be greater than the base EF. I say that the angle BAC is also greater than the angle EDF."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 3 0",
+  "point C 1.026 2.819",
+  "polygon A B C blue",
+  "point D 6 0",
+  "point E 9 0",
+  "point F 8.121 2.121",
+  "polygon D E F red",
+  "segment B C green",
+  "segment E F green",
+]
+
+[[step]]
+text = "For if not, it is either equal to it or less. The angle BAC is not equal to the angle EDF, for then the base BC would be equal to the base EF (I.4), and it is not."
+draw = [
+  "angle B A C orange fill",
+  "angle E D F orange fill",
+]
+
+[[step]]
+text = "Nor is the angle BAC less than the angle EDF, for then the base BC would be less than the base EF (I.24), and it is not. But it was proved not equal either."
+draw = [
+]
+
+[[step]]
+text = "Therefore the angle BAC is greater than the angle EDF."
+draw = [
+  "angle B A C red fill",
+]

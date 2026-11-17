@@ -1,0 +1,44 @@
+id = "I.23"
+book = 1
+order = 24
+title = "An angle equal to a given angle"
+statement = "On a given straight line and at a point on it, to construct a rectilineal angle equal to a given rectilineal angle."
+proof = "Therefore on the given straight line AB, and at the point A on it, the rectilineal angle FAG has been constructed equal to the given rectilineal angle DCE. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given straight line, A the point on it, and DCE the given rectilineal angle. It is required to construct on the straight line AB, and at the point A on it, a rectilineal angle equal to DCE."
+draw = [
+  "clear",
+  "point C 0 0",
+  "point D 2.954 0.521",
+  "point E 0.932 3.477",
+  "segment C D blue",
+  "segment C E blue",
+  "angle D C E orange fill",
+  "point A 6 -1",
+  "point B 14 -1",
+  "segment A B black",
+]
+
+[[step]]
+text = "On the straight lines CD, CE let the points D, E be taken at random, and let DE be joined."
+draw = [
+  "segment D E green",
+]
+
+[[step]]
+text = "Out of three straight lines which are equal to CD, DE, CE let the triangle AFG be constructed, so that CD is equal to AF, CE to AG, and DE to FG (I.22)."
+draw = [
+  "point F 9 -1",
+  "point G 7.521 2.263",
+  "segment A F red",
+  "segment A G red",
+  "segment F G green",
+  "polygon A F G teal fill",
+]
+
+[[step]]
+text = "Since the two sides DC, CE are equal to the two sides FA, AG respectively, and the base DE is equal to the base FG, the angle DCE is equal to the angle FAG (I.8). Therefore on the given straight line AB, at the point A on it, the angle FAG has been constructed equal to the given angle DCE."
+draw = [
+  "angle F A G orange fill",
+]

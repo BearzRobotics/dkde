@@ -1,0 +1,44 @@
+id = "I.26"
+book = 1
+order = 27
+title = "Angle, side, angle"
+statement = "If two triangles have the two angles equal to two angles respectively, and one side equal to one side, namely, either the side adjoining the equal angles, or that subtending one of the equal angles, they will also have the remaining sides equal to the remaining sides and the remaining angle to the remaining angle."
+proof = "Therefore if two triangles have two angles equal to two angles respectively, and one side equal to one side, either the side adjoining the equal angles or that subtending one of the equal angles, they will also have the remaining sides equal to the remaining sides and the remaining angle to the remaining angle. Q.E.D."
+
+[[step]]
+text = "Let ABC, DEF be two triangles having the two angles ABC, BCA equal to the two angles DEF, EFD respectively, namely the angle ABC to the angle DEF, and the angle BCA to the angle EFD. Let them also have one side equal to one side, first that adjoining the equal angles, namely BC to EF. I say that they will have the remaining sides equal to the remaining sides, AB to DE and AC to DF, and the remaining angle to the remaining angle, BAC to EDF."
+draw = [
+  "clear",
+  "point A 0 3.2",
+  "point B -2 0",
+  "point C 2 0",
+  "polygon A B C blue",
+  "point D 6 2.1",
+  "point E 4 0",
+  "point F 8 0",
+  "polygon D E F red",
+  "angle A B C green fill",
+  "angle D E F green fill",
+  "angle A C B orange fill",
+  "angle D F E orange fill",
+]
+
+[[step]]
+text = "For if AB is unequal to DE, one of them is greater. Let AB be the greater. Let BG be made equal to DE (I.3), and let GC be joined."
+draw = [
+  "point G -0.463 2.459",
+  "segment G C black",
+]
+
+[[step]]
+text = "Since BG is equal to DE, and BC to EF, the two sides GB, BC are equal to the two sides DE, EF respectively, and they contain equal angles. Therefore the base GC is equal to the base DF, the triangle GBC is equal to the triangle DEF, and the remaining angles are equal to the remaining angles (I.4). Therefore the angle GCB is equal to the angle DFE."
+draw = [
+  "polygon G B C purple fill",
+]
+
+[[step]]
+text = "But the angle DFE is by hypothesis equal to the angle BCA. Therefore the angle BCG is equal to the angle BCA, the less to the greater, which is impossible. Therefore AB is not unequal to DE, but equal to it. And BC is equal to EF, so the two sides AB, BC are equal to the two sides DE, EF, and they contain equal angles. Therefore the base AC is equal to the base DF, and the remaining angle BAC is equal to the remaining angle EDF (I.4)."
+draw = [
+  "angle B C G red",
+  "angle B C A red",
+]

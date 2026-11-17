@@ -1,0 +1,47 @@
+id = "I.24"
+book = 1
+order = 25
+title = "Two sides equal, one angle greater"
+statement = "If two triangles have the two sides equal to two sides respectively, but have the one of the angles contained by the equal straight lines greater than the other, they will also have the base greater than the base."
+proof = "Therefore if two triangles have two sides equal to two sides respectively, but have the one of the angles contained by the equal straight lines greater than the other, they will also have the base greater than the base. Q.E.D."
+
+[[step]]
+text = "Let ABC, DEF be two triangles having the two sides AB, AC equal to the two sides DE, DF respectively, AB to DE and AC to DF, and let the angle at A be greater than the angle at D. I say that the base BC is also greater than the base EF."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 3 0",
+  "point C 1.026 2.819",
+  "polygon A B C blue",
+  "point D 6 0",
+  "point E 9 0",
+  "point F 8.121 2.121",
+  "polygon D E F red",
+  "angle B A C orange fill",
+  "angle E D F orange fill",
+]
+
+[[step]]
+text = "At the point D on the straight line DE, let the angle EDG be constructed equal to the angle BAC (I.23), and let DG be made equal to AC or DF (I.3). Let EG, FG be joined."
+draw = [
+  "point G 7.026 2.819",
+  "segment D G green",
+  "segment E G green",
+  "segment F G green",
+  "angle E D G orange fill",
+]
+
+[[step]]
+text = "Since AB is equal to DE, and AC to DG, the two sides BA, AC are equal to the two sides ED, DG respectively, and they contain equal angles. Therefore the base BC is equal to the base EG (I.4)."
+draw = [
+  "polygon D E G green fill",
+]
+
+[[step]]
+text = "Again, since DF is equal to DG, the angle DFG is equal to the angle DGF (I.5). Therefore the angle DFG is greater than the angle EGF, so the angle EFG is much greater than the angle EGF. Since EFG is a triangle having the angle EFG greater than the angle EGF, and the greater angle is subtended by the greater side (I.19), the side EG is greater than EF. But EG is equal to BC. Therefore BC is also greater than EF."
+draw = [
+  "angle D F G purple fill",
+  "angle D G F purple fill",
+  "angle E F G red",
+  "angle E G F red",
+]

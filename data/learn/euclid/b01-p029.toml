@@ -1,0 +1,42 @@
+id = "I.29"
+book = 1
+order = 30
+title = "Parallels make equal angles"
+statement = "A straight line falling on parallel straight lines makes the alternate angles equal to one another, the exterior angle equal to the interior and opposite angle, and the interior angles on the same side equal to two right angles. (This is the first proof that uses postulate 5.)"
+proof = "Therefore a straight line falling on parallel straight lines makes the alternate angles equal to one another, the exterior angle equal to the interior and opposite angle, and the interior angles on the same side equal to two right angles. Q.E.D."
+
+[[step]]
+text = "Let the straight line EF fall on the parallel straight lines AB, CD. I say that it makes the alternate angles AGH, GHD equal, the exterior angle EGB equal to the interior and opposite angle GHD, and the interior angles on the same side, BGH, GHD, equal to two right angles."
+draw = [
+  "clear",
+  "point A -4 0",
+  "point B 4 0",
+  "point C -6 -3",
+  "point D 3 -3",
+  "point G 0 0",
+  "point H -1.5 -3",
+  "point E 0.75 1.5",
+  "point F -2.25 -4.5",
+  "segment A B blue",
+  "segment C D blue",
+  "segment E F black",
+  "angle A G H orange fill",
+  "angle G H D orange fill",
+]
+
+[[step]]
+text = "For if the angle AGH is unequal to the angle GHD, one of them is greater. Let AGH be greater. Add the angle BGH to each. Then AGH, BGH are greater than BGH, GHD. But AGH, BGH are equal to two right angles (I.13). Therefore BGH, GHD are less than two right angles."
+draw = [
+  "angle B G H purple fill",
+]
+
+[[step]]
+text = "But straight lines produced indefinitely from angles less than two right angles meet (postulate 5). Therefore AB, CD will meet if produced indefinitely. But they do not meet, since they are by hypothesis parallel. Therefore the angle AGH is not unequal to the angle GHD, that is, it is equal to it."
+draw = [
+]
+
+[[step]]
+text = "Again, the angle AGH is equal to the angle EGB (I.15). Therefore the angle EGB is equal to the angle GHD. Add the angle BGH to each. Then the angles EGB, BGH are equal to the angles BGH, GHD. But EGB, BGH are equal to two right angles (I.13). Therefore BGH, GHD are also equal to two right angles."
+draw = [
+  "angle E G B green fill",
+]
