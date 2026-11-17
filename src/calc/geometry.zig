@@ -17,7 +17,7 @@ const Pt = geom.Pt;
 
 const t = common.tr;
 
-const Tool = enum { move, point, segment, line, circle, polygon, angle, erase };
+const Tool = enum { move, point, segment, line, circle, polygon, angle, intersect, erase };
 
 const tool_names = [_]struct { tool: Tool, label: [:0]const u8, tip: [:0]const u8 }{
     .{ .tool = .move, .label = "Move", .tip = "Drag points to move them; drag the background to pan" },
@@ -27,6 +27,7 @@ const tool_names = [_]struct { tool: Tool, label: [:0]const u8, tip: [:0]const u
     .{ .tool = .circle, .label = "Circle", .tip = "Click the centre, then a point on the circle" },
     .{ .tool = .polygon, .label = "Polygon", .tip = "Click the corners; click the first one again to close it" },
     .{ .tool = .angle, .label = "Angle", .tip = "Click a point on one arm, the corner, then a point on the other arm" },
+    .{ .tool = .intersect, .label = "Cross", .tip = "Click two lines or circles: a point where they cross" },
     .{ .tool = .erase, .label = "Erase", .tip = "Click a point or a line to remove it (and what depends on it)" },
 };
 
@@ -57,6 +58,8 @@ pub const Geometry = struct {
     tool: Tool = .move,
     /// Points picked so far for the shape being made.
     picks: std.ArrayList(usize) = .empty,
+    /// The first of two shapes picked for "Cross".
+    first_shape: ?usize = null,
     /// The view: the world point in the middle, and pixels per unit.
     cx: f64 = 0,
     cy: f64 = 0,
@@ -193,6 +196,7 @@ pub const Geometry = struct {
             .circle => t("Click the centre, then a point on the circle."),
             .polygon => t("Click the corners; click the first corner again to close the polygon."),
             .angle => t("Click a point on one arm, then the corner, then a point on the other arm."),
+            .intersect => t("Click two lines or circles; a point is put where they cross."),
             .erase => t("Click a point or a line to remove it."),
         };
         self.status.setText(text);
@@ -281,6 +285,7 @@ pub const Geometry = struct {
             },
             .point => _ = self.pickPoint(px, py),
             .erase => self.erase(px, py),
+            .intersect => self.crossShapes(px, py),
             else => {
                 const i = self.pickPoint(px, py);
                 self.pickedPoint(i);
@@ -449,6 +454,66 @@ pub const Geometry = struct {
     }
 
     // ---- names and numbers ---------------------------------------------------------------------
+
+    fn crossShapes(self: *Geometry, px: f64, py: f64) void {
+        const here = self.toWorld(px, py);
+        const reach = 8.0 / self.scale;
+        var found: ?usize = null;
+        var n = self.shapes.items.len;
+        while (n > 0 and found == null) {
+            n -= 1;
+            const s = self.shapes.items[n];
+            if (s == .polygon or s == .angle) continue;
+            if (self.shapeNear(s, here, reach)) found = n;
+        }
+        const second = found orelse {
+            self.first_shape = null;
+            return;
+        };
+        const first = self.first_shape orelse {
+            self.first_shape = second;
+            return;
+        };
+        self.first_shape = null;
+        if (first == second) return;
+        const a = self.shapes.items[first];
+        const b = self.shapes.items[second];
+        var hits: [2]?Pt = .{ null, null };
+        switch (a) {
+            .circle => |ca| switch (b) {
+                .circle => |cb| hits = geom.circleCircle(self.pt(ca[0]), geom.dist(self.pt(ca[0]), self.pt(ca[1])), self.pt(cb[0]), geom.dist(self.pt(cb[0]), self.pt(cb[1]))),
+                .segment, .line => |l| hits = geom.lineCircle(self.pt(l[0]), self.pt(l[1]), self.pt(ca[0]), geom.dist(self.pt(ca[0]), self.pt(ca[1]))),
+                else => {},
+            },
+            .segment, .line => |la| switch (b) {
+                .circle => |cb| hits = geom.lineCircle(self.pt(la[0]), self.pt(la[1]), self.pt(cb[0]), geom.dist(self.pt(cb[0]), self.pt(cb[1]))),
+                .segment, .line => |lb| {
+                    if (geom.intersect(self.pt(la[0]), self.pt(la[1]), self.pt(lb[0]), self.pt(lb[1]))) |p| hits[0] = p;
+                },
+                else => {},
+            },
+            else => {},
+        }
+        // A segment only reaches as far as its ends.
+        for (&hits) |*h| if (h.*) |p| {
+            if (!self.onShape(a, p) or !self.onShape(b, p)) h.* = null;
+        };
+        for (hits) |h| if (h) |p| {
+            // No second point where one already is.
+            var exists = false;
+            for (self.points.items) |q| if (q.alive and geom.dist(q.p, p) < 1e-9) {
+                exists = true;
+            };
+            if (!exists) _ = self.addPoint(p);
+        };
+    }
+
+    fn onShape(self: *Geometry, s: Shape, p: Pt) bool {
+        return switch (s) {
+            .segment => |e| geom.distToSegment(p, self.pt(e[0]), self.pt(e[1])) < 1e-6,
+            else => true,
+        };
+    }
 
     /// A, B, ... Z, then A1, B1, ...
     fn nameOf(buf: []u8, i: usize) []const u8 {

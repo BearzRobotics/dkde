@@ -105,6 +105,56 @@ pub fn triangleKind(a: Pt, b: Pt, c: Pt) []const u8 {
     return name;
 }
 
+/// Up to two crossings of the line through `a` and `b` with a circle (centre `c`, radius `r`).
+pub fn lineCircle(a: Pt, b: Pt, c: Pt, r: f64) [2]?Pt {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 == 0) return .{ null, null };
+    const fx = a.x - c.x;
+    const fy = a.y - c.y;
+    const qa = len2;
+    const qb = 2 * (fx * dx + fy * dy);
+    const qc = fx * fx + fy * fy - r * r;
+    const disc = qb * qb - 4 * qa * qc;
+    if (disc < -1e-9 * qa) return .{ null, null };
+    const root = @sqrt(@max(disc, 0));
+    const t1 = (-qb - root) / (2 * qa);
+    const t2 = (-qb + root) / (2 * qa);
+    const p1: Pt = .{ .x = a.x + t1 * dx, .y = a.y + t1 * dy };
+    if (root < 1e-12) return .{ p1, null };
+    return .{ p1, .{ .x = a.x + t2 * dx, .y = a.y + t2 * dy } };
+}
+
+/// Up to two crossings of two circles.
+pub fn circleCircle(c1: Pt, r1: f64, c2: Pt, r2: f64) [2]?Pt {
+    const d = dist(c1, c2);
+    if (d == 0 or d > r1 + r2 + 1e-9 or d < @abs(r1 - r2) - 1e-9) return .{ null, null };
+    const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+    const h2 = r1 * r1 - a * a;
+    const h = if (h2 > 0) @sqrt(h2) else 0;
+    const mx = c1.x + a * (c2.x - c1.x) / d;
+    const my = c1.y + a * (c2.y - c1.y) / d;
+    const ox = h * (c2.y - c1.y) / d;
+    const oy = h * (c2.x - c1.x) / d;
+    const p1: Pt = .{ .x = mx + ox, .y = my - oy };
+    if (h < 1e-12) return .{ p1, null };
+    return .{ p1, .{ .x = mx - ox, .y = my + oy } };
+}
+
+test "circles and lines cross where Euclid says" {
+    // Two unit circles a unit apart meet at the apex of the equilateral triangle on that line (I.1).
+    const hit = circleCircle(.{ .x = 0, .y = 0 }, 1, .{ .x = 1, .y = 0 }, 1);
+    try std.testing.expectApproxEqAbs(0.5, hit[0].?.x, 1e-12);
+    try std.testing.expectApproxEqAbs(@sqrt(3.0) / 2.0, @abs(hit[0].?.y), 1e-12);
+    try std.testing.expect(hit[1] != null);
+    try std.testing.expect(circleCircle(.{ .x = 0, .y = 0 }, 1, .{ .x = 5, .y = 0 }, 1)[0] == null);
+    const lc = lineCircle(.{ .x = -2, .y = 0 }, .{ .x = 2, .y = 0 }, .{ .x = 0, .y = 0 }, 1);
+    try std.testing.expectApproxEqAbs(-1.0, lc[0].?.x, 1e-12);
+    try std.testing.expectApproxEqAbs(1.0, lc[1].?.x, 1e-12);
+    try std.testing.expect(lineCircle(.{ .x = -2, .y = 3 }, .{ .x = 2, .y = 3 }, .{ .x = 0, .y = 0 }, 1)[0] == null);
+}
+
 test "distance, midpoint, angle" {
     try std.testing.expectApproxEqAbs(5.0, dist(.{ .x = 0, .y = 0 }, .{ .x = 3, .y = 4 }), 1e-12);
     const m = midpoint(.{ .x = 0, .y = 0 }, .{ .x = 4, .y = 2 });
