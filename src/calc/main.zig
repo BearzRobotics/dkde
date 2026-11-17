@@ -156,7 +156,8 @@ const Calc = struct {
     vars_list: *gtk.ListBox,
     graph: *graph_mod.Graph,
     geometry: *geometry_mod.Geometry,
-    learn: *learn_mod.Learn,
+    /// Made the first time the Learn view is shown: reading every lesson file would slow the start-up.
+    learn: ?*learn_mod.Learn = null,
     /// The Learn view beside the panes (View > Learn); it does not replace the pane in view.
     learn_scroll: *gtk.ScrolledWindow,
     learn_open: bool = false,
@@ -288,7 +289,6 @@ const Calc = struct {
             .vars_list = gtk.ListBox.new(),
             .graph = undefined,
             .geometry = undefined,
-            .learn = undefined,
             .learn_scroll = gtk.ScrolledWindow.new(),
             .formula_list = gtk.ListBox.new(),
             .formula_form = gtk.Box.new(.vertical, 6),
@@ -296,7 +296,6 @@ const Calc = struct {
         };
         self.graph = try graph_mod.Graph.create(gpa, &self.session);
         self.geometry = try geometry_mod.Geometry.create(gpa, self, useGeometryValue);
-        self.learn = try learn_mod.Learn.create(gpa, .{ .ctx = self, .run = learnRun, .clear = learnClear, .show_canvas = learnShowCanvas, .use_calc = learnUseCalc, .graph = learnGraph });
         self.readSettings();
         self.loadState();
         self.loadManualRates();
@@ -450,7 +449,6 @@ const Calc = struct {
         // The Learn view stands beside whatever pane is open.
         self.learn_scroll.setPolicy(.never, .automatic);
         self.learn_scroll.setMinContentWidth(320);
-        self.learn_scroll.setChild(self.learn.widget());
         self.learn_scroll.as(gtk.Widget).setMarginTop(10);
         self.learn_scroll.as(gtk.Widget).setMarginBottom(10);
         self.learn_scroll.as(gtk.Widget).setMarginEnd(10);
@@ -473,7 +471,7 @@ const Calc = struct {
 
         self.setMode(self.mode);
         self.showPane(self.pane);
-        if (self.learn_open) self.learn.start();
+        if (self.learn_open) self.ensureLearn().start();
         self.fillHistory();
         self.fillVars();
         self.updateMemory();
@@ -3665,11 +3663,19 @@ const Calc = struct {
         if (self.pane != .geometry) self.showPane(.geometry);
     }
 
+    fn ensureLearn(self: *Calc) *learn_mod.Learn {
+        if (self.learn) |l| return l;
+        const l = learn_mod.Learn.create(self.gpa, .{ .ctx = self, .run = learnRun, .clear = learnClear, .show_canvas = learnShowCanvas, .use_calc = learnUseCalc, .graph = learnGraph }) catch @panic("learn");
+        self.learn = l;
+        self.learn_scroll.setChild(l.widget());
+        return l;
+    }
+
     /// Shows or hides the Learn view. The other panes stay as they are.
     fn setLearn(self: *Calc, on: bool) void {
         self.learn_open = on;
         self.learn_scroll.as(gtk.Widget).setVisible(@intFromBool(on));
-        if (on) self.learn.start();
+        if (on) self.ensureLearn().start();
         common.menubar.setChecked(self.window, "learn", on);
         self.config.setBool("calc", "learn", on) catch {};
         self.window.as(gtk.Window).setDefaultSize(-1, -1);
@@ -4166,7 +4172,7 @@ const Calc = struct {
         self.formula_fields.deinit(self.gpa);
         self.graph.destroy();
         self.geometry.destroy();
-        self.learn.destroy();
+        if (self.learn) |l| l.destroy();
         // The exchange rates: the table in use, the arena behind it, and the rates typed in by hand.
         quantity.setCurrencies(&.{});
         if (self.rate_arena) |*arena| arena.deinit();
