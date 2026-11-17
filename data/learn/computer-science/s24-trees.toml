@@ -1,0 +1,36 @@
+id = "CS.24"
+course = "Computer Science"
+book = 4
+order = 4
+title = "Binary trees: height and counting"
+statement = "A binary tree of height h has at most 2^(h+1) - 1 nodes, so n nodes need a height of at least log2(n); the number of tree shapes is a Catalan number."
+
+[[step]]
+text = "Idea: a binary tree has 1 node at the root, up to 2 at depth 1, 4 at depth 2, 2^d at depth d. A full tree of height 3 has 1 + 2 + 4 + 8 = 15 nodes = 2^4 - 1."
+calc = ["1 + 2 + 4 + 8", "2^4 - 1"]
+
+[[step]]
+text = "Turn it around: n nodes in the best arrangement fit in height floor(log2 n). A million nodes: height 19. That is why balanced trees give O(log n) searches."
+calc = ["floor(log2(1000000))", "2^20"]
+
+[[step]]
+text = "The worst arrangement is a chain: n nodes, height n - 1, searches O(n). Balanced trees (AVL, red-black) keep the height near log2 n by rotating."
+calc = ["1000 - 1", "floor(log2(1000))"]
+
+[[step]]
+text = "In a full binary tree (every node has 0 or 2 children) with n nodes, the leaves number (n + 1)/2. With 15 nodes: 8 leaves."
+calc = ["(15 + 1)/2"]
+
+[[step]]
+text = "How many different shapes can n nodes make? The Catalan number C(n) = nCr(2n, n)/(n + 1): 1, 1, 2, 5, 14, 42, 132... So 3 nodes give 5 shapes and 5 nodes give 42."
+calc = ["nCr(6,3)/(3 + 1)", "nCr(10,5)/(5 + 1)"]
+
+[[exercise]]
+prompt = "How many nodes does a full binary tree of height 4 have? (2^5 - 1)"
+answer = "2^5 - 1"
+hint = "1 + 2 + 4 + 8 + 16."
+
+[[exercise]]
+prompt = "How many binary tree shapes can 5 nodes make? (nCr(10, 5)/6)"
+answer = "nCr(10,5)/6"
+hint = "This is the Catalan number 42."

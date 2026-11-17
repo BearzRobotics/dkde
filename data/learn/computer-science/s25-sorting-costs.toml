@@ -1,0 +1,35 @@
+id = "CS.25"
+course = "Computer Science"
+book = 4
+order = 5
+title = "Sorting: what it must cost"
+statement = "Sorting by comparisons needs at least log2(n!) comparisons, about n log2 n; simple sorts cost n^2."
+
+[[step]]
+text = "Idea: n items can be in n! orders, and each comparison has two outcomes, so k comparisons tell apart at most 2^k orders. To cover n! orders you need 2^k >= n!, so k >= log2(n!). For 10 items: 10! = 3628800, log2 of that is 21.8, so at least 22 comparisons."
+calc = ["fact(10)", "log2(fact(10))", "ceil(log2(fact(10)))"]
+
+[[step]]
+text = "That bound is about n log2 n - 1.44n for large n. So no comparison sort beats O(n log n), and merge sort and heap sort are optimal."
+calc = ["1024*log2(1024)"]
+
+[[step]]
+text = "Simple sorts: bubble and selection sort do about n(n - 1)/2 comparisons. Insertion sort does n(n - 1)/4 on average, and about n when the data is nearly sorted. For n = 100: bubble 4950, insertion 2475, merge sort about 664."
+calc = ["100*99/2", "100*99/4", "100*log2(100)"]
+
+[[step]]
+text = "At a million items the gap is 20 million against a trillion, a factor of 50000. This is why the choice of algorithm matters more than the choice of language."
+calc = ["1000000*log2(1000000)", "1000000^2", "1000000^2/(1000000*log2(1000000))"]
+
+[[step]]
+text = "Not every sort compares: counting sort and radix sort use the values themselves as indices, so for numbers in a small range they run in O(n) and the n log n bound does not apply."
+
+[[exercise]]
+prompt = "At least how many comparisons are needed to sort 10 items? (ceil of log2(10!))"
+answer = "ceil(log2(fact(10)))"
+hint = "10! = 3628800, between 2^21 and 2^22."
+
+[[exercise]]
+prompt = "How many comparisons does bubble sort make on 100 items? (n(n-1)/2)"
+answer = "100*99/2"
+hint = "Every pair."

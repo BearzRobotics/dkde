@@ -1,0 +1,35 @@
+id = "CS.23"
+course = "Computer Science"
+book = 4
+order = 3
+title = "Graphs: counting nodes and edges"
+statement = "A graph is nodes joined by edges; the handshake lemma, complete graphs and trees all have exact counts."
+
+[[step]]
+text = "Idea: the degree of a node is the number of edges at it. Every edge has two ends, so the degrees add up to twice the number of edges: sum of degrees = 2E (the handshake lemma). Six nodes of degree 3 have 6 x 3 / 2 = 9 edges."
+calc = ["6*3/2"]
+
+[[step]]
+text = "Corollary: the number of odd-degree nodes is always even, since the total 2E is even."
+
+[[step]]
+text = "A complete graph on n nodes joins every pair: n(n - 1)/2 edges, which is nCr(n, 2). For 5 nodes that is 10 edges; for 1000 nodes, 499500."
+calc = ["5*4/2", "nCr(5,2)", "1000*999/2"]
+
+[[step]]
+text = "A tree is a connected graph with no cycles. A tree on n nodes always has exactly n - 1 edges. 10 nodes, 9 edges. Add one more edge anywhere and you create a cycle."
+calc = ["10 - 1"]
+
+[[step]]
+text = "Storing a graph: an adjacency matrix of n nodes has n^2 cells, so 1000 nodes need a million cells; an adjacency list only stores the E edges (twice, for undirected), good when edges are few."
+calc = ["1000^2", "2*9"]
+
+[[exercise]]
+prompt = "How many edges does a complete graph on 6 nodes have? (n(n-1)/2)"
+answer = "6*5/2"
+hint = "Every pair of nodes."
+
+[[exercise]]
+prompt = "Five nodes each have degree 4 in a graph. How many edges does it have? (5 x 4 / 2)"
+answer = "5*4/2"
+hint = "Sum of degrees is twice the edges."

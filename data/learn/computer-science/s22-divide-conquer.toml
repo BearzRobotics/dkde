@@ -1,0 +1,36 @@
+id = "CS.22"
+course = "Computer Science"
+book = 4
+order = 2
+title = "Divide and conquer: the Master theorem"
+statement = "Split a problem into a smaller problems of size n/b, do d-th power work to split and combine: T(n) = aT(n/b) + n^d. Comparing log_b(a) with d tells you the answer."
+
+[[step]]
+text = "Idea: merge sort splits the list in half (a = 2, b = 2), sorts both halves, and merges in about n steps (d = 1). T(n) = 2T(n/2) + n."
+calc = ["2*0 + 2", "2*2 + 4", "2*8 + 8", "2*24 + 16"]
+
+[[step]]
+text = "Unrolling: T(2) = 2, T(4) = 8, T(8) = 24, T(16) = 64. These are n x log2(n): 2x1, 4x2, 8x3, 16x4. So merge sort is O(n log n)."
+calc = ["2*log2(2)", "4*log2(4)", "8*log2(8)", "16*log2(16)"]
+
+[[step]]
+text = "The Master theorem: let c = log_b(a). If c > d, the leaves dominate: O(n^c). If c = d, every level costs the same: O(n^d log n). If c < d, the top level dominates: O(n^d)."
+calc = ["log(2)/log(2)", "log(8)/log(2)"]
+
+[[step]]
+text = "Merge sort: c = log2(2) = 1 = d, so O(n log n). Binary search: T(n) = T(n/2) + 1: a = 1, b = 2, d = 0, c = 0 = d, so O(log n). Karatsuba multiplication: T(n) = 3T(n/2) + n has c = log2(3) = 1.585 > 1, so O(n^1.585), better than the schoolbook n^2."
+calc = ["log(3)/log(2)"]
+
+[[step]]
+text = "In practice: sorting a million items at n log2 n is about 20 million steps. A quadratic sort needs a trillion."
+calc = ["1000000*log2(1000000)", "1000000^2"]
+
+[[exercise]]
+prompt = "What is merge sort's n log2 n for n = 1024?"
+answer = "1024*log2(1024)"
+hint = "log2(1024) = 10."
+
+[[exercise]]
+prompt = "What is log base 2 of 8, found as log(8)/log(2)? (the c in the Master theorem for a = 8, b = 2)"
+answer = "log(8)/log(2)"
+hint = "2^3 = 8."

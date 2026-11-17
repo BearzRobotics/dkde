@@ -1,0 +1,36 @@
+id = "CS.21"
+course = "Computer Science"
+book = 4
+order = 1
+title = "Recursion and recurrences"
+statement = "A recursive function is described by a recurrence: the answer for n in terms of smaller cases; solving the recurrence says how much work it does."
+
+[[step]]
+text = "Idea: factorial. n! = n x (n - 1)!, with 0! = 1. The recurrence is how the code is written, and the closed form is what it computes."
+calc = ["fact(5)", "5*fact(4)"]
+
+[[step]]
+text = "Tower of Hanoi: to move n discs, move n - 1 out of the way, move the biggest, move n - 1 back. That is T(n) = 2T(n - 1) + 1 moves, with T(1) = 1. T(2) = 3, T(3) = 7, T(4) = 15: the pattern is 2^n - 1."
+calc = ["2*1+1", "2*3+1", "2*7+1", "2^4 - 1"]
+
+[[step]]
+text = "At one move per second, the legendary 64-disc tower takes 2^64 - 1 seconds, about 585 billion years. Exponential growth beats any computer."
+calc = ["2^64 - 1", "(2^64 - 1)/(86400*365.25)"]
+
+[[step]]
+text = "Fibonacci: F(n) = F(n - 1) + F(n - 2), starting 0, 1. The terms run 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55. There is a closed form: F(n) is phi^n / sqrt(5) rounded, with phi = (1 + sqrt 5)/2 = 1.618."
+calc = ["fibonacci(10)", "round(((1+sqrt(5))/2)^10/sqrt(5))"]
+
+[[step]]
+text = "Written naively, fib(n) calls itself twice and recomputes the same values. The number of calls is 2F(n + 1) - 1: for n = 30 that is over 2.6 million calls to find 832040. Remembering results (memoisation) cuts it to about 30."
+calc = ["2*fibonacci(31) - 1", "fibonacci(30)"]
+
+[[exercise]]
+prompt = "How many moves does the Tower of Hanoi need for 10 discs? (2^10 - 1)"
+answer = "2^10 - 1"
+hint = "2^n - 1."
+
+[[exercise]]
+prompt = "What is the 10th Fibonacci number, F(10)?"
+answer = "fibonacci(10)"
+hint = "0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55."
