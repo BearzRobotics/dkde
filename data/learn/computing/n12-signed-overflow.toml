@@ -17,6 +17,13 @@ calc = ["(250 + 10) mod 256"]
 text = "In signed 8 bits, 127 + 1 wraps to -128. That is how a counter can suddenly go negative. 16-bit signed tops out at 2^15 - 1 = 32767."
 calc = ["2^15 - 1", "-2^15"]
 
+[[step]]
+text = "Watch it wrap: the calculator is in Programmer mode with an 8-bit word, in decimal. Try 127 + 1 and 250 + 10, and switch the word size to 16 to see them stop wrapping."
+calc = ["127 + 1", "250 + 10"]
+mode = "programmer"
+base = 10
+bits = 8
+
 [[exercise]]
 prompt = "What is (250 + 10) mod 256?"
 answer = "(250 + 10) mod 256"

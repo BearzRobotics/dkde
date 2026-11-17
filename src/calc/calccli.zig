@@ -298,6 +298,18 @@ fn cmdCheck(args: []const []const u8) u8 {
                     problems += 1;
                 }
             }
+            if (step.mode.len > 0 and !std.mem.eql(u8, step.mode, "standard") and !std.mem.eql(u8, step.mode, "scientific") and !std.mem.eql(u8, step.mode, "programmer")) {
+                err("{s} step {d}: mode \"{s}\" is not standard, scientific or programmer\n", .{ lesson.id, si + 1, step.mode });
+                problems += 1;
+            }
+            if (step.base != 0 and step.base != 2 and step.base != 8 and step.base != 10 and step.base != 16) {
+                err("{s} step {d}: base {d} is not 2, 8, 10 or 16\n", .{ lesson.id, si + 1, step.base });
+                problems += 1;
+            }
+            if (step.bits != 0 and step.bits != 8 and step.bits != 16 and step.bits != 32 and step.bits != 64) {
+                err("{s} step {d}: bits {d} is not 8, 16, 32 or 64\n", .{ lesson.id, si + 1, step.bits });
+                problems += 1;
+            }
             for (step.graph) |line| {
                 _ = arena.reset(.retain_capacity);
                 var p: eval.Problem = .{};

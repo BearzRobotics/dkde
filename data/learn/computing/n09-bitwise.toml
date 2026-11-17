@@ -17,6 +17,13 @@ calc = ["0xAB and 0x0F", "0xAB and 0xF0"]
 text = "XOR twice undoes itself: (x xor k) xor k is x. This is the idea behind simple ciphers and parity checks."
 calc = ["(57 xor 23) xor 23"]
 
+[[step]]
+text = "Binary mode: the calculator is now in Programmer mode, Bin, 8 bits. Digits are 0 and 1 only, and the bit grid above the keys shows each place. 1100 and 1010 is 1000."
+calc = ["1100 and 1010", "1100 or 1010", "1100 xor 1010"]
+mode = "programmer"
+base = 2
+bits = 8
+
 [[exercise]]
 prompt = "What is 0xFF and 0x3C?"
 answer = "0xFF and 0x3C"

@@ -17,6 +17,13 @@ calc = ["0x1A3", "1*256 + 10*16 + 3"]
 text = "Going the other way, ask the calculator: 255 to hex, 419 to hex. Or divide by 16 and read the remainders upward, just as for binary."
 calc = ["255 to hex", "419 to hex", "419 mod 16"]
 
+[[step]]
+text = "Hex mode: this step switched the calculator to Programmer mode in Hex, 32 bits. Now bare hex digits are numbers: FF + 1 is 100, and 1A3 * 2 is 346. The Dec, Oct and Bin buttons show the same value in other bases."
+calc = ["FF + 1", "1A3 * 2", "FF and F0"]
+mode = "programmer"
+base = 16
+bits = 32
+
 [[exercise]]
 prompt = "What is 0x2F in decimal?"
 answer = "0x2F"

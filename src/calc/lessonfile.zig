@@ -15,6 +15,9 @@
 //!   calc = ["3/4 + 1/6"]             # optional: lines to try in the calculator
 //!   work = ["3/4 + 1/6"]             # optional: entries the solver writes out by hand
 //!   graph = ["x^2 - 4"]              # optional: expressions in x to plot beside the lesson
+//!   mode = "programmer"              # optional: put the calculator in this mode (standard, scientific, programmer)
+//!   base = 16                        # optional, programmer mode: 2, 8, 10 or 16
+//!   bits = 32                        # optional, programmer mode: word size 8, 16, 32 or 64
 //!
 //!   [[exercise]]                     # optional practice; the answer is an entry the engine works out
 //!   prompt = "Work out 2/3 + 1/4."
@@ -105,6 +108,9 @@ pub fn parseLesson(arena: Allocator, text: []const u8, source: []const u8, probl
                 .calc = calc,
                 .work = work,
                 .graph = graph,
+                .mode = arena.dupe(u8, table.getString("mode") orelse "") catch "",
+                .base = @intCast(std.math.clamp(table.getInt("base") orelse 0, 0, 255)),
+                .bits = @intCast(std.math.clamp(table.getInt("bits") orelse 0, 0, 255)),
             }) catch {};
         }
     }

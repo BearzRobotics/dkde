@@ -28,6 +28,8 @@ pub const Hooks = struct {
     use_calc: *const fn (ctx: *anyopaque, text: []const u8) void,
     /// Show the Graph pane with these expressions plotted (replacing what was there).
     graph: *const fn (ctx: *anyopaque, exprs: []const []const u8) void,
+    /// A step asks for a calculator mode, base and word size (0 keeps the current one).
+    set_mode: *const fn (ctx: *anyopaque, mode: []const u8, base: u8, bits: u8) void,
 };
 
 const Group = struct { course: []const u8, book: u8 };
@@ -275,6 +277,7 @@ pub const Learn = struct {
 
     fn showGraph(self: *Learn, step: figure.Step) void {
         if (step.graph.len > 0) self.hooks.graph(self.hooks.ctx, step.graph);
+        if (step.mode.len > 0 or step.base != 0 or step.bits != 0) self.hooks.set_mode(self.hooks.ctx, step.mode, step.base, step.bits);
     }
 
     fn refresh(self: *Learn) void {

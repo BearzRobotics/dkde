@@ -76,6 +76,10 @@ pub const Step = struct {
     work: []const []const u8 = &.{},
     /// Expressions in x to plot in the Graph pane beside the lesson.
     graph: []const []const u8 = &.{},
+    /// Puts the calculator in this mode ("programmer", "scientific", "standard"), with the base (2, 8, 10, 16) and word size (8, 16, 32, 64) for programmer mode.
+    mode: []const u8 = "",
+    base: u8 = 0,
+    bits: u8 = 0,
 };
 
 /// A practice question. The answer is an entry the engine works out, so it can never disagree with the calculator.

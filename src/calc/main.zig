@@ -3660,6 +3660,20 @@ const Calc = struct {
         for (exprs) |e| if (!self.graph.has(e)) self.graph.plot(e, null);
     }
 
+    /// A lesson step asks for a mode (programmer with a base and word size, say); the panel is rebuilt to match.
+    fn learnSetMode(ctx: *anyopaque, mode: []const u8, base: u8, bits: u8) void {
+        const self: *Calc = @ptrCast(@alignCast(ctx));
+        if (base == 2 or base == 8 or base == 10 or base == 16) self.base = base;
+        if (bits == 8 or bits == 16 or bits == 32 or bits == 64) self.word = bits;
+        const m: Mode = if (mode.len > 0) (std.meta.stringToEnum(Mode, mode) orelse self.mode) else if (base != 0 or bits != 0) .programmer else self.mode;
+        const kept = self.mode;
+        self.setMode(m);
+        // A lesson's mode is for the lesson; the mode saved for the next start stays the user's own.
+        self.config.setString("calc", "mode", @tagName(kept)) catch {};
+        self.updateKeys();
+        self.refreshPreview();
+    }
+
     /// A lesson draws on the Geometry canvas, so it is shown beside the Learn view.
     fn learnShowCanvas(ctx: *anyopaque) void {
         const self: *Calc = @ptrCast(@alignCast(ctx));
@@ -3668,7 +3682,7 @@ const Calc = struct {
 
     fn ensureLearn(self: *Calc) *learn_mod.Learn {
         if (self.learn) |l| return l;
-        const l = learn_mod.Learn.create(self.gpa, .{ .ctx = self, .run = learnRun, .clear = learnClear, .show_canvas = learnShowCanvas, .use_calc = learnUseCalc, .graph = learnGraph }) catch @panic("learn");
+        const l = learn_mod.Learn.create(self.gpa, .{ .ctx = self, .run = learnRun, .clear = learnClear, .show_canvas = learnShowCanvas, .use_calc = learnUseCalc, .graph = learnGraph, .set_mode = learnSetMode }) catch @panic("learn");
         self.learn = l;
         self.learn_scroll.setChild(l.widget());
         return l;
