@@ -1,0 +1,37 @@
+id = "I.36"
+book = 1
+order = 37
+title = "Parallelograms on equal bases"
+statement = "Parallelograms which are on equal bases and in the same parallels are equal to one another."
+proof = "Therefore parallelograms which are on equal bases and in the same parallels are equal to one another. Q.E.D."
+
+[[step]]
+text = "Let ABCD, EFGH be parallelograms on equal bases BC, FG and in the same parallels AH, BG. I say that the parallelogram ABCD is equal to EFGH."
+draw = [
+  "clear",
+  "point A 1 2",
+  "point B 0 0",
+  "point C 3 0",
+  "point D 4 2",
+  "point E 5 2",
+  "point F 4 0",
+  "point G 7 0",
+  "point H 8 2",
+  "segment B G black",
+  "segment A H black",
+  "polygon A B C D blue",
+  "polygon E F G H red",
+]
+
+[[step]]
+text = "Let BE, CH be joined. Since BC is equal to FG, and FG to EH, BC is equal to EH. And they are parallel, and EB, HC join them. But straight lines joining equal and parallel straight lines at their extremities in the same directions are equal and parallel (I.33). Therefore EBCH is a parallelogram."
+draw = [
+  "segment B E green",
+  "segment C H green",
+  "polygon E B C H teal fill",
+]
+
+[[step]]
+text = "It is equal to ABCD, for it has the same base BC with it and is in the same parallels BC, AH (I.35). For the same reason EFGH is equal to the same EBCH. Therefore the parallelogram ABCD is also equal to EFGH (common notion 1)."
+draw = [
+]

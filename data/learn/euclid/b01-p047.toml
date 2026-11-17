@@ -1,0 +1,68 @@
+id = "I.47"
+book = 1
+order = 48
+title = "The theorem of Pythagoras"
+statement = "In right-angled triangles the square on the side subtending the right angle is equal to the squares on the sides containing the right angle."
+proof = "Therefore in right-angled triangles the square on the side subtending the right angle is equal to the squares on the sides containing the right angle. Q.E.D."
+
+[[step]]
+text = "Let ABC be a right-angled triangle having the angle BAC right. I say that the square on BC is equal to the squares on BA, AC."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 3 0",
+  "point C 0 4",
+  "polygon A B C yellow",
+]
+
+[[step]]
+text = "On BC let the square BDEC be described, and on BA, AC the squares GB, HC (I.46)."
+draw = [
+  "point D 7 3",
+  "point E 4 7",
+  "point F 3 -3",
+  "point G 0 -3",
+  "point H -4 0",
+  "point K -4 4",
+  "polygon A B F G blue fill",
+  "polygon A C K H green fill",
+  "polygon B D E C red fill",
+]
+
+[[step]]
+text = "Through A let AL be drawn parallel to BD or CE (I.31), and let AD, FC be joined."
+draw = [
+  "point L 5.92 4.44",
+  "point M 1.92 1.44",
+  "segment A L black",
+  "segment A D orange",
+  "segment F C orange",
+]
+
+[[step]]
+text = "Since each of the angles BAC, BAG is right, with a straight line BA, and at the point A on it, the two straight lines AC, AG not lying on the same side make the adjacent angles equal to two right angles, CA is in a straight line with AG (I.14). For the same reason BA is also in a straight line with AH."
+draw = [
+  "angle B A C black",
+  "angle B A G black",
+]
+
+[[step]]
+text = "Since the angle DBC is equal to the angle FBA, for each is right, add the angle ABC to each. Then the whole angle DBA is equal to the whole angle FBC. And since DB is equal to BC, and FB to BA, the two sides AB, BD are equal to the two sides FB, BC respectively, and the angle ABD is equal to the angle FBC. Therefore the base AD is equal to the base FC, and the triangle ABD is equal to the triangle FBC (I.4)."
+draw = [
+  "polygon A B D purple fill",
+  "polygon F B C purple fill",
+]
+
+[[step]]
+text = "Now the parallelogram BL is double of the triangle ABD, for they have the same base BD and are in the same parallels BD, AL (I.41). And the square GB is double of the triangle FBC, for they have the same base FB and are in the same parallels FB, GC. Therefore the parallelogram BL is equal to the square GB."
+draw = [
+  "polygon B D L M teal fill",
+]
+
+[[step]]
+text = "Similarly, if AE, BK be joined, the parallelogram CL can be proved equal to the square HC. Therefore the whole square BDEC is equal to the two squares GB, HC. And the square BDEC is described on BC, and the squares GB, HC on BA, AC. Therefore the square on the side BC is equal to the squares on the sides BA, AC."
+draw = [
+  "segment A E orange",
+  "segment B K orange",
+  "polygon M L E C teal fill",
+]

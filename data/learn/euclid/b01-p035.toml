@@ -1,0 +1,40 @@
+id = "I.35"
+book = 1
+order = 36
+title = "Parallelograms on the same base"
+statement = "Parallelograms which are on the same base and in the same parallels are equal to one another."
+proof = "Therefore parallelograms which are on the same base and in the same parallels are equal to one another. Q.E.D."
+
+[[step]]
+text = "Let ABCD, EBCF be parallelograms on the same base BC and in the same parallels AF, BC. I say that ABCD is equal to the parallelogram EBCF."
+draw = [
+  "clear",
+  "point A 1 2.5",
+  "point B 0 0",
+  "point C 4 0",
+  "point D 5 2.5",
+  "point E 2.5 2.5",
+  "point F 6.5 2.5",
+  "segment A F black",
+  "polygon A B C D blue",
+  "polygon E B C F red",
+]
+
+[[step]]
+text = "Since ABCD is a parallelogram, AD is equal to BC (I.34). For the same reason EF is equal to BC. So AD is equal to EF, and DE is common. Therefore the whole AE is equal to the whole DF (common notion 2)."
+draw = [
+  "segment A D green",
+  "segment E F green",
+]
+
+[[step]]
+text = "But AB is also equal to DC. So the two sides EA, AB are equal to the two sides FD, DC respectively, and the angle FDC is equal to the angle EAB, the exterior to the interior (I.29). Therefore the base EB is equal to the base FC, and the triangle EAB is equal to the triangle FDC (I.4)."
+draw = [
+  "polygon A B E teal fill",
+  "polygon D C F purple fill",
+]
+
+[[step]]
+text = "Take away DGE from each. Then the remaining trapezium ABGD is equal to the remaining trapezium EGCF (common notion 3). Add the triangle GBC to each. Then the whole parallelogram ABCD is equal to the whole parallelogram EBCF."
+draw = [
+]

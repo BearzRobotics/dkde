@@ -1,0 +1,39 @@
+id = "I.43"
+book = 1
+order = 44
+title = "The complements of a parallelogram"
+statement = "In any parallelogram the complements of the parallelograms about the diameter are equal to one another."
+proof = "Therefore in any parallelogram the complements of the parallelograms about the diameter are equal to one another. Q.E.D."
+
+[[step]]
+text = "Let ABCD be a parallelogram, and AC its diameter. About AC let EH, FG be parallelograms, and BK, KD the so-called complements. I say that the complement BK is equal to the complement KD."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 5 0",
+  "point C 6.5 3",
+  "point D 1.5 3",
+  "point E 0.6 1.2",
+  "point F 2 0",
+  "point G 3.5 3",
+  "point H 5.6 1.2",
+  "point K 2.6 1.2",
+  "polygon A B C D blue",
+  "segment A C black",
+  "segment E H black",
+  "segment F G black",
+]
+
+[[step]]
+text = "Since ABCD is a parallelogram, and AC its diameter, the triangle ABC is equal to the triangle ACD (I.34). Again, since EKHA is a parallelogram and AK its diameter, the triangle AEK is equal to the triangle AHK; and for the same reason the triangle KGC is equal to the triangle KFC."
+draw = [
+  "polygon A F K E orange fill",
+  "polygon K H C G orange fill",
+]
+
+[[step]]
+text = "Therefore the triangle AEK together with the triangle KGC is equal to the triangle AHK together with the triangle KFC. But the whole triangle ABC is equal to the whole triangle ADC. Therefore the remaining complement BK is equal to the remaining complement KD (common notion 3)."
+draw = [
+  "polygon F B H K red fill",
+  "polygon E K G D green fill",
+]

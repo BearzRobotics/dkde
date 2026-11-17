@@ -1,0 +1,39 @@
+id = "I.34"
+book = 1
+order = 35
+title = "Properties of a parallelogram"
+statement = "In parallelogrammic areas the opposite sides and angles are equal to one another, and the diameter bisects the areas."
+proof = "Therefore in parallelogrammic areas the opposite sides and angles are equal to one another, and the diameter bisects the areas. Q.E.D."
+
+[[step]]
+text = "Let ACDB be a parallelogrammic area, and BC its diameter. I say that the opposite sides and angles of the parallelogram ACDB are equal to one another, and the diameter BC bisects it."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 4 0",
+  "point C 1.5 2.5",
+  "point D 5.5 2.5",
+  "polygon A B D C blue",
+  "segment B C red",
+]
+
+[[step]]
+text = "Since AB is parallel to CD, and the straight line BC has fallen upon them, the alternate angles ABC, BCD are equal to one another (I.29). Again, since AC is parallel to BD, and BC has fallen upon them, the alternate angles ACB, CBD are equal to one another."
+draw = [
+  "angle A B C orange fill",
+  "angle B C D orange fill",
+  "angle A C B green fill",
+  "angle C B D green fill",
+]
+
+[[step]]
+text = "Therefore ABC, DCB are two triangles having the two angles ABC, BCA equal to the two angles DCB, CBD respectively, and one side equal to one side, namely the side adjoining the equal angles, BC, which is common to them. Therefore they will also have the remaining sides equal to the remaining sides, and the remaining angle to the remaining angle (I.26). Therefore the side AB is equal to CD, and AC to BD, and the angle BAC is equal to the angle CDB."
+draw = [
+  "polygon A B C teal fill",
+  "polygon D C B purple fill",
+]
+
+[[step]]
+text = "Since the angle ABC is equal to the angle BCD, and the angle CBD to the angle ACB, the whole angle ABD is equal to the whole angle ACD. And the angle BAC was proved equal to the angle CDB. Therefore in parallelogrammic areas the opposite sides and angles are equal to one another. I say next that the diameter also bisects the areas: since AB is equal to CD, and BC is common, the two sides AB, BC are equal to the two sides DC, CB respectively, and the angle ABC is equal to the angle BCD. Therefore the base AC is also equal to DB, and the triangle ABC is equal to the triangle DCB (I.4). Therefore the diameter BC bisects the parallelogram ACDB."
+draw = [
+]

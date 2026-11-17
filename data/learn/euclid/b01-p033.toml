@@ -1,0 +1,42 @@
+id = "I.33"
+book = 1
+order = 34
+title = "Joining equal parallels"
+statement = "The straight lines joining equal and parallel straight lines (at the extremities which are) in the same directions are themselves also equal and parallel."
+proof = "Therefore the straight lines joining equal and parallel straight lines (at the extremities which are) in the same directions are themselves also equal and parallel. Q.E.D."
+
+[[step]]
+text = "Let AB, CD be equal and parallel straight lines, and let the straight lines AC, BD join them (at the extremities which are) in the same directions. I say that AC, BD are also equal and parallel."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 4 0",
+  "point C 1 2.5",
+  "point D 5 2.5",
+  "segment A B blue",
+  "segment C D blue",
+  "segment A C red",
+  "segment B D red",
+]
+
+[[step]]
+text = "Let BC be joined. Since AB is parallel to CD, and BC has fallen upon them, the alternate angles ABC, BCD are equal to one another (I.29)."
+draw = [
+  "segment B C black",
+  "angle A B C orange fill",
+  "angle B C D orange fill",
+]
+
+[[step]]
+text = "Since AB is equal to CD, and BC is common, the two sides AB, BC are equal to the two sides DC, CB, and the angle ABC is equal to the angle BCD. Therefore the base AC is equal to the base BD, the triangle ABC is equal to the triangle DCB, and the remaining angles are equal to the remaining angles (I.4). Therefore the angle ACB is equal to the angle CBD."
+draw = [
+  "polygon A B C teal fill",
+  "polygon D C B purple fill",
+]
+
+[[step]]
+text = "Since the straight line BC, falling on the two straight lines AC, BD, has made the alternate angles equal to one another, AC is parallel to BD (I.27). And it was also proved equal to it."
+draw = [
+  "angle A C B green fill",
+  "angle C B D green fill",
+]

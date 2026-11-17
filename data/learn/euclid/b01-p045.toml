@@ -1,0 +1,44 @@
+id = "I.45"
+book = 1
+order = 46
+title = "A parallelogram equal to any figure"
+statement = "To construct, in a given rectilineal angle, a parallelogram equal to a given rectilineal figure."
+proof = "Therefore the parallelogram FKML has been constructed equal to the given rectilineal figure ABCD, in the angle FKM which is equal to the given angle E. Being what it was required to do."
+
+[[step]]
+text = "Let ABCD be the given rectilineal figure and E the given rectilineal angle. It is required to construct, in the angle E, a parallelogram equal to the rectilineal figure ABCD."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 3 0",
+  "point C 4 2.5",
+  "point D 1 2",
+  "polygon A B C D blue",
+]
+
+[[step]]
+text = "Let DB be joined, and let the parallelogram FH be constructed equal to the triangle ABD, in the angle HKF which is equal to E (I.42)."
+draw = [
+  "segment D B green",
+  "polygon A B D teal fill",
+  "point F 6 0",
+  "point K 9 0",
+  "point G 6.577 1",
+  "point H 9.577 1",
+  "polygon F K H G teal fill",
+]
+
+[[step]]
+text = "Let the parallelogram GM be applied to the straight line GH, equal to the triangle DBC, in the angle GHM which is equal to E (I.44)."
+draw = [
+  "polygon D B C purple fill",
+  "point L 7.251 2.167",
+  "point M 10.251 2.167",
+  "polygon G H M L purple fill",
+]
+
+[[step]]
+text = "Since the angle E is equal to each of the angles HKF, GHM, the angle HKF is equal to the angle GHM. Add the angle KHG to each. Then the angles FKH, KHG are equal to the angles KHG, GHM. But FKH, KHG are equal to two right angles (I.29). Therefore KHG, GHM are also equal to two right angles. So KH is in a straight line with HM (I.14). Similarly FG is in a straight line with GL. Therefore FKML is a parallelogram, and it is equal to the whole figure ABCD."
+draw = [
+  "polygon F K M L red",
+]

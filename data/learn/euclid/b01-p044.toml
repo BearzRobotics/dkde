@@ -1,0 +1,52 @@
+id = "I.44"
+book = 1
+order = 45
+title = "Applying a parallelogram to a line"
+statement = "To a given straight line to apply, in a given rectilineal angle, a parallelogram equal to a given triangle."
+proof = "Therefore the parallelogram LB has been applied to the given straight line AB, equal to the given triangle C, in the angle ABM which is equal to D. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given straight line, C the given triangle and D the given rectilineal angle. It is required to apply to the given straight line AB, in an angle equal to D, a parallelogram equal to the triangle C."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 4 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "Let the parallelogram BEFG be constructed equal to the triangle C, in the angle EBG which is equal to D (I.42), and let it be placed so that BE is in a straight line with AB. Let FG be drawn through to H, and through A let AH be drawn parallel to BG or EF (I.31). Let HB be joined."
+draw = [
+  "point E 7 0",
+  "point G 5.5 2.598",
+  "point F 8.5 2.598",
+  "point H 1.5 2.598",
+  "polygon B E F G teal fill",
+  "line F H black",
+  "segment A H black",
+  "segment H B orange",
+]
+
+[[step]]
+text = "Since the straight line HF falls on the parallels AH, EF, the angles AHF, HFE are equal to two right angles (I.29). Therefore the angles BHF, HFE are less than two right angles. But straight lines produced from angles less than two right angles meet (postulate 5). Therefore HB, FE, when produced, will meet. Let them be produced and meet at K."
+draw = [
+  "point K 5.875 -1.949",
+  "line F E black",
+  "line H B orange",
+]
+
+[[step]]
+text = "Through K let KL be drawn parallel to EA or FH, and let HA, GB be produced to the points L, M. Then HLKF is a parallelogram, HK is its diameter, and AG, ME are parallelograms about HK, while LB, BF are the so-called complements. Therefore LB is equal to BF (I.43)."
+draw = [
+  "point L -1.125 -1.949",
+  "point M 2.875 -1.949",
+  "segment L K black",
+  "segment H L black",
+  "segment G M black",
+]
+
+[[step]]
+text = "But BF is equal to the triangle C. Therefore LB is also equal to C. And since the angle GBE is equal to the angle ABM (I.15), while GBE is equal to D, the angle ABM is also equal to D. Therefore the parallelogram LB has been applied to AB, equal to the triangle C, in the angle ABM equal to D."
+draw = [
+  "polygon A B M L red fill",
+]

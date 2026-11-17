@@ -1,0 +1,36 @@
+id = "I.37"
+book = 1
+order = 38
+title = "Triangles on the same base"
+statement = "Triangles which are on the same base and in the same parallels are equal to one another."
+proof = "Therefore triangles which are on the same base and in the same parallels are equal to one another. Q.E.D."
+
+[[step]]
+text = "Let ABC, DBC be triangles on the same base BC and in the same parallels AD, BC. I say that the triangle ABC is equal to the triangle DBC."
+draw = [
+  "clear",
+  "point A 1 2.5",
+  "point B 0 0",
+  "point C 4 0",
+  "point D 3.5 2.5",
+  "segment A D black",
+  "polygon A B C blue",
+  "polygon D B C red",
+]
+
+[[step]]
+text = "Let AD be produced in both directions to E and F. Through B let BE be drawn parallel to CA, and through C let CF be drawn parallel to BD (I.31)."
+draw = [
+  "point E -1.5 2.5",
+  "point F 7 2.5",
+  "line A D black",
+  "segment B E green",
+  "segment C F green",
+]
+
+[[step]]
+text = "Then each of the figures EBCA, DBCF is a parallelogram, and they are equal, for they are on the same base BC and in the same parallels BC, EF (I.35). The triangle ABC is half of the parallelogram EBCA, for the diameter AB bisects it (I.34). The triangle DBC is half of the parallelogram DBCF, for the diameter DC bisects it. But the halves of equal things are equal to one another. Therefore the triangle ABC is equal to the triangle DBC."
+draw = [
+  "polygon E B C A teal fill",
+  "polygon D B C F purple fill",
+]

@@ -1,0 +1,32 @@
+id = "I.41"
+book = 1
+order = 42
+title = "A parallelogram is double a triangle"
+statement = "If a parallelogram have the same base with a triangle and be in the same parallels, the parallelogram is double of the triangle."
+proof = "Therefore if a parallelogram have the same base with a triangle and be in the same parallels, the parallelogram is double of the triangle. Q.E.D."
+
+[[step]]
+text = "Let the parallelogram ABCD have the same base BC with the triangle EBC, and be in the same parallels BC, AE. I say that the parallelogram ABCD is double of the triangle BEC."
+draw = [
+  "clear",
+  "point A 1 2.5",
+  "point B 0 0",
+  "point C 4 0",
+  "point D 5 2.5",
+  "point E 3 2.5",
+  "segment A E black",
+  "polygon A B C D blue",
+  "polygon E B C red",
+]
+
+[[step]]
+text = "Let AC be joined. Then the triangle ABC is equal to the triangle EBC, for it is on the same base BC and in the same parallels BC, AE (I.37)."
+draw = [
+  "segment A C green",
+  "polygon A B C teal fill",
+]
+
+[[step]]
+text = "But the parallelogram ABCD is double of the triangle ABC, for the diameter AC bisects it (I.34). Therefore the parallelogram ABCD is also double of the triangle EBC."
+draw = [
+]

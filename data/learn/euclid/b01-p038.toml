@@ -1,0 +1,39 @@
+id = "I.38"
+book = 1
+order = 39
+title = "Triangles on equal bases"
+statement = "Triangles which are on equal bases and in the same parallels are equal to one another."
+proof = "Therefore triangles which are on equal bases and in the same parallels are equal to one another. Q.E.D."
+
+[[step]]
+text = "Let ABC, DEF be triangles on equal bases BC, EF and in the same parallels BF, AD. I say that the triangle ABC is equal to the triangle DEF."
+draw = [
+  "clear",
+  "point A 1.5 2.5",
+  "point B 0 0",
+  "point C 3 0",
+  "point D 5.5 2.5",
+  "point E 4 0",
+  "point F 7 0",
+  "segment B F black",
+  "segment A D black",
+  "polygon A B C blue",
+  "polygon D E F red",
+]
+
+[[step]]
+text = "Let AD be produced in both directions to G and H. Through B let BG be drawn parallel to CA, and through F let FH be drawn parallel to ED (I.31)."
+draw = [
+  "point G -0.5 2.5",
+  "point H 9 2.5",
+  "line A D black",
+  "segment B G green",
+  "segment F H green",
+]
+
+[[step]]
+text = "Then each of GBCA, DEFH is a parallelogram. GBCA is equal to DEFH, for they are on equal bases BC, EF and in the same parallels BF, GH (I.36). The triangle ABC is half of GBCA, for the diameter AB bisects it (I.34), and the triangle FED is half of DEFH. Therefore the triangle ABC is equal to the triangle DEF."
+draw = [
+  "polygon G B C A teal fill",
+  "polygon D E F H purple fill",
+]

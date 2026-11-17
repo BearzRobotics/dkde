@@ -1,0 +1,42 @@
+id = "I.46"
+book = 1
+order = 47
+title = "A square on a line"
+statement = "On a given straight line to describe a square."
+proof = "Therefore on the given straight line AB the square ADEB has been described. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given straight line. It is required to describe a square on the straight line AB."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 4 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "Let AC be drawn at right angles to the straight line AB from the point A on it (I.11), and let AD be made equal to AB (I.3)."
+draw = [
+  "point C 0 6",
+  "segment A C black",
+  "point D 0 4",
+  "segment A D green",
+]
+
+[[step]]
+text = "Through the point D let DE be drawn parallel to AB, and through the point B let BE be drawn parallel to AD (I.31). Then ADEB is a parallelogram."
+draw = [
+  "point E 4 4",
+  "segment D E green",
+  "segment B E green",
+  "polygon A B E D teal fill",
+]
+
+[[step]]
+text = "Therefore AB is equal to DE, and AD to BE (I.34). But AB is equal to AD. Therefore the four straight lines BA, AD, DE, EB are equal to one another, so the parallelogram ADEB is equilateral. I say next that it is also right-angled: since the straight line AD falls on the parallels AB, DE, the angles BAD, ADE are equal to two right angles (I.29). But BAD is right. Therefore ADE is also right, and the opposite angles of parallelogrammic areas are equal (I.34), so each of the opposite angles ABE, BED is also right. Therefore ADEB is right-angled, and it was proved equilateral. So it is a square."
+draw = [
+  "angle B A D red fill",
+  "angle A D E red fill",
+  "angle D E B red fill",
+  "angle E B A red fill",
+]

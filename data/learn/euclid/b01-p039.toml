@@ -1,0 +1,33 @@
+id = "I.39"
+book = 1
+order = 40
+title = "Equal triangles on the same base"
+statement = "Equal triangles which are on the same base and on the same side are also in the same parallels."
+proof = "Therefore equal triangles which are on the same base and on the same side are also in the same parallels. Q.E.D."
+
+[[step]]
+text = "Let ABC, DBC be equal triangles on the same base and on the same side of it. I say that they are also in the same parallels: AD is parallel to BC."
+draw = [
+  "clear",
+  "point A 1 2.5",
+  "point B 0 0",
+  "point C 4 0",
+  "point D 3.5 2.5",
+  "segment B C black",
+  "polygon A B C blue",
+  "polygon D B C red",
+  "segment A D green",
+]
+
+[[step]]
+text = "For if not, let AE be drawn through A parallel to BC (I.31), and let EC be joined. Then the triangle ABC is equal to the triangle EBC, for it is on the same base BC and in the same parallels (I.37)."
+draw = [
+  "point E 2 2.5",
+  "line A E orange",
+  "segment E C orange",
+]
+
+[[step]]
+text = "But ABC is equal to DBC. Therefore DBC is also equal to EBC, the greater to the less, which is impossible. Therefore AE is not parallel to BC. Similarly we can prove that neither is any other straight line except AD. Therefore AD is parallel to BC."
+draw = [
+]

@@ -1,0 +1,41 @@
+id = "I.42"
+book = 1
+order = 43
+title = "A parallelogram equal to a triangle"
+statement = "To construct, in a given rectilineal angle, a parallelogram equal to a given triangle."
+proof = "Therefore the parallelogram FECG has been constructed equal to the given triangle ABC, in the angle CEF which is equal to D. Being what it was required to do."
+
+[[step]]
+text = "Let ABC be the given triangle and D the given rectilineal angle. It is required to construct in the angle D a parallelogram equal to the triangle ABC."
+draw = [
+  "clear",
+  "point A 1 2.5",
+  "point B 0 0",
+  "point C 4 0",
+  "polygon A B C blue",
+]
+
+[[step]]
+text = "Let BC be bisected at E (I.10), and let AE be joined. On the straight line EC, at the point E on it, let the angle CEF be constructed equal to D (I.23)."
+draw = [
+  "point E 2 0",
+  "point F 3.443 2.5",
+  "segment A E green",
+  "angle C E F orange fill",
+]
+
+[[step]]
+text = "Through A let AG be drawn parallel to EC, and through C let CG be drawn parallel to EF (I.31). Then FECG is a parallelogram."
+draw = [
+  "point G 5.443 2.5",
+  "line A G black",
+  "segment E F orange",
+  "segment C G orange",
+  "polygon F E C G red fill",
+]
+
+[[step]]
+text = "Since BE is equal to EC, the triangle ABE is equal to the triangle AEC, for they are on equal bases BE, EC and in the same parallels BC, AG (I.38). Therefore the triangle ABC is double of the triangle AEC. But the parallelogram FECG is also double of the triangle AEC, for it has the same base with it and is in the same parallels (I.41). Therefore the parallelogram FECG is equal to the triangle ABC, and it has the angle CEF equal to the given angle D."
+draw = [
+  "polygon A E C teal fill",
+]

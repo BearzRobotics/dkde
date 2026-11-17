@@ -1,0 +1,47 @@
+id = "I.32"
+book = 1
+order = 33
+title = "The angles of a triangle"
+statement = "In any triangle, if one of the sides be produced, the exterior angle is equal to the two interior and opposite angles, and the three interior angles of the triangle are equal to two right angles."
+proof = "Therefore in any triangle, if one side be produced, the exterior angle is equal to the two interior and opposite angles, and the three interior angles of the triangle are equal to two right angles. Q.E.D."
+
+[[step]]
+text = "Let ABC be a triangle, and let one side of it BC be produced to D. I say that the exterior angle ACD is equal to the two interior and opposite angles CAB, ABC, and the three interior angles of the triangle ABC, BCA, CAB are equal to two right angles."
+draw = [
+  "clear",
+  "point A 0 3",
+  "point B -3 0",
+  "point C 2 0",
+  "point D 5 0",
+  "polygon A B C blue",
+  "segment C D black",
+  "angle A C D red fill",
+]
+
+[[step]]
+text = "Let CE be drawn through the point C parallel to the straight line AB (I.31)."
+draw = [
+  "point E 3.5 1.5",
+  "segment C E green",
+]
+
+[[step]]
+text = "Since AB is parallel to CE, and AC has fallen upon them, the alternate angles BAC, ACE are equal to one another (I.29). Again, since AB is parallel to CE, and the straight line BD has fallen upon them, the exterior angle ECD is equal to the interior and opposite angle ABC (I.29)."
+draw = [
+  "angle B A C orange fill",
+  "angle A C E orange fill",
+  "angle A B C purple fill",
+  "angle E C D purple fill",
+]
+
+[[step]]
+text = "But the angle ACE was also proved equal to the angle BAC. Therefore the whole angle ACD is equal to the two interior and opposite angles BAC, ABC."
+draw = [
+  "angle A C D red fill",
+]
+
+[[step]]
+text = "Let the angle ACB be added to each. Then the angles ACD, ACB are equal to the three angles ABC, BCA, CAB. But the angles ACD, ACB are equal to two right angles (I.13). Therefore the angles ABC, BCA, CAB are also equal to two right angles."
+draw = [
+  "angle A C B green fill",
+]
