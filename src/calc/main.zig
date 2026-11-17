@@ -33,6 +33,7 @@ const calculus = @import("calculus.zig");
 const quantity = @import("quantity.zig");
 const rates = @import("rates.zig");
 const highlight = @import("highlight.zig");
+const mathview = @import("mathview.zig");
 const export_session = @import("export.zig");
 const steps_mod = @import("steps.zig");
 const progsteps = @import("progsteps.zig");
@@ -103,6 +104,9 @@ const memory_keys = [_]Spec{
 
 const HistoryItem = struct { expr: []u8, result: []u8 };
 
+/// Fractions, powers and roots drawn typeset (View > Stacked Fractions).
+var stacked_on: bool = true;
+
 /// The formula in the entry: a built-in one or one of the user's own.
 const Picked = union(enum) { builtin: usize, own: usize };
 
@@ -133,6 +137,12 @@ const Calc = struct {
     entry: *gtk.Entry,
     expr_label: *gtk.Label,
     preview: *gtk.Label,
+    /// View > Fraction Results: exact results are shown as a fraction.
+    fraction_results: bool = false,
+    /// The line being typed (or the result shown), typeset: fractions stacked with a bar.
+    echo: *gtk.Box,
+    /// The preview's result, typeset, shown in place of the preview label when it has a fraction in it.
+    preview_math: *gtk.Box,
     memory_label: *gtk.Label,
     keypad: *gtk.Box,
     bases: *gtk.Box,
@@ -258,6 +268,8 @@ const Calc = struct {
             .entry = gtk.Entry.new(),
             .expr_label = gtk.Label.new(""),
             .preview = gtk.Label.new(""),
+            .echo = gtk.Box.new(.vertical, 0),
+            .preview_math = gtk.Box.new(.vertical, 0),
             .memory_label = gtk.Label.new(""),
             .keypad = gtk.Box.new(.horizontal, 8),
             .bases = gtk.Box.new(.vertical, 0),
@@ -336,12 +348,22 @@ const Calc = struct {
         _ = gtk.Entry.signals.activate.connect(self.entry, *Calc, &onActivate, self, .{});
         _ = gtk.Editable.signals.changed.connect(self.entry.as(gtk.Editable), *Calc, &onChanged, self, .{});
         _ = gobject.Object.signals.notify.connect(self.entry, *Calc, &onCursorMoved, self, .{ .detail = "cursor-position" });
+        // Above the entry: what is typed, typeset (a/b as a stacked fraction).
+        self.echo.as(gtk.Widget).setHalign(.end);
+        self.echo.as(gtk.Widget).setVisible(0);
+        self.echo.as(gtk.Widget).addCssClass("dkde-calc-echo");
+        display.append(self.echo.as(gtk.Widget));
+        _ = gobject.Object.signals.notify.connect(self.entry, *Calc, &onEntryText, self, .{ .detail = "text" });
         display.append(self.entry.as(gtk.Widget));
         self.preview.setXalign(1);
         self.preview.setEllipsize(.end);
         self.preview.setSelectable(1);
         self.preview.as(gtk.Widget).addCssClass("dkde-calc-preview");
         display.append(self.preview.as(gtk.Widget));
+        self.preview_math.as(gtk.Widget).setHalign(.end);
+        self.preview_math.as(gtk.Widget).setVisible(0);
+        display.append(self.preview_math.as(gtk.Widget));
+        _ = gobject.Object.signals.notify.connect(self.preview, *Calc, &onPreviewLabel, self, .{ .detail = "label" });
 
         // Programmer: the value in every base, and its bits.
         self.buildBases();
@@ -449,6 +471,8 @@ const Calc = struct {
         self.word = if (w == 8 or w == 16 or w == 32) @intCast(w) else 64;
         self.style.decimals = @intCast(std.math.clamp(self.config.getInt("calc", "decimals", 10), 0, 30));
         self.style.grouping = self.config.getBool("calc", "grouping", true);
+        stacked_on = self.config.getBool("calc", "stacked-fractions", true);
+        self.fraction_results = self.config.getBool("calc", "fraction-results", false);
         self.expanded = self.config.getBool("calc", "expanded", false);
         self.rpn = self.config.getBool("calc", "rpn", false);
         self.style.notation = std.meta.stringToEnum(num.Notation, self.configString(&buf, "notation", "auto")) orelse .auto;
@@ -518,6 +542,8 @@ const Calc = struct {
                 .separator,
                 mb.check("_RPN Mode (stack)", "rpn", self.rpn),
                 mb.check("Digit G_rouping", "grouping", self.style.grouping),
+                mb.check("_Stacked Fractions", "stacked", stacked_on),
+                mb.check("Results as _Fractions", "fraction-results", self.fraction_results),
                 mb.check("Scientific _Notation", "notation-scientific", self.style.notation == .scientific),
                 mb.check("_Engineering Notation", "notation-engineering", self.style.notation == .engineering),
                 mb.dynamic("Decimal _Places", "decimals"),
@@ -1065,8 +1091,15 @@ const Calc = struct {
         self.finishResultMarked(expr, shown, value, a, equals, false);
     }
 
-    fn finishResultMarked(self: *Calc, expr: []const u8, shown: []const u8, value: ?num.Number, a: std.mem.Allocator, equals: bool, rounded: bool) void {
+    fn finishResultMarked(self: *Calc, expr: []const u8, shown_in: []const u8, value: ?num.Number, a: std.mem.Allocator, equals: bool, rounded: bool) void {
         var line_buf: [4096]u8 = undefined;
+        // "Results as fractions": an exact fraction is shown as 1/2 (stacked), not 0.5.
+        var shown = shown_in;
+        var as_fraction = false;
+        if (self.fraction_results and self.mode != .programmer) if (value) |v| if (num.fraction(a, v) catch null) |f| {
+            shown = f;
+            as_fraction = true;
+        };
         // The expression above, with "≈" when the result is rounded and the fraction when there is one.
         var tail: []const u8 = "";
         if (self.exact_tail) |exact| {
@@ -1075,7 +1108,7 @@ const Calc = struct {
             self.exact_tail = null;
         } else if (value) |v| {
             if (num.fraction(a, v) catch null) |f| {
-                if (self.mode != .programmer) tail = std.fmt.allocPrint(a, "   (= {s})", .{f}) catch "";
+                if (self.mode != .programmer and !as_fraction) tail = std.fmt.allocPrint(a, "   (= {s})", .{f}) catch "";
             }
         }
         const approx = rounded or (if (value) |v| !v.isExact() else false);
@@ -1146,6 +1179,46 @@ const Calc = struct {
         self.fresh = false;
         self.refreshPreview();
         self.highlightEntry();
+    }
+
+    /// Typesets what is in the entry (above it), when it has something to stack.
+    fn onEntryText(_: *gtk.Entry, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        self.updateEcho();
+    }
+
+    fn clearBox(box: *gtk.Box) void {
+        while (box.as(gtk.Widget).getFirstChild()) |child| box.remove(child);
+    }
+
+    fn updateEcho(self: *Calc) void {
+        clearBox(self.echo);
+        self.echo.as(gtk.Widget).setVisible(0);
+        if (!stacked_on) return;
+        const text = self.entryText();
+        if (text.len == 0) return;
+        if (mathview.MathView.create(std.heap.c_allocator, text, "dkde-calc-echo-line")) |w| {
+            self.echo.append(w);
+            self.echo.as(gtk.Widget).setVisible(1);
+        }
+    }
+
+    /// A result with a fraction in it ("= 3/4") is shown stacked, in place of the plain preview line.
+    fn onPreviewLabel(_: *gtk.Label, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
+        self.updatePreviewMath();
+    }
+
+    fn updatePreviewMath(self: *Calc) void {
+        clearBox(self.preview_math);
+        self.preview_math.as(gtk.Widget).setVisible(0);
+        self.preview.as(gtk.Widget).setVisible(1);
+        if (!stacked_on) return;
+        const text = std.mem.span(self.preview.getText());
+        if (!(std.mem.startsWith(u8, text, "= ") or std.mem.startsWith(u8, text, "\u{2248} "))) return;
+        if (mathview.MathView.create(std.heap.c_allocator, text, "dkde-calc-preview")) |w| {
+            self.preview_math.append(w);
+            self.preview_math.as(gtk.Widget).setVisible(1);
+            self.preview.as(gtk.Widget).setVisible(0);
+        }
     }
 
     fn onCursorMoved(_: *gtk.Entry, _: *gobject.ParamSpec, self: *Calc) callconv(.c) void {
@@ -1486,25 +1559,39 @@ const Calc = struct {
         self.onMenuAction("clear-history");
     }
 
+    fn typesetLine(text: []const u8, css: [:0]const u8) ?*gtk.Widget {
+        if (!stacked_on) return null;
+        return mathview.MathView.create(std.heap.c_allocator, text, css);
+    }
+
     fn historyRow(h: HistoryItem) *gtk.Widget {
         const box = gtk.Box.new(.vertical, 0);
         box.as(gtk.Widget).setMarginTop(4);
         box.as(gtk.Widget).setMarginBottom(4);
         var buf: [4096]u8 = undefined;
-        const e = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.expr}, 0) catch "");
-        e.setXalign(1);
-        e.setWrap(1);
-        e.setMaxWidthChars(40);
-        e.setWrapMode(.word_char);
-        e.as(gtk.Widget).addCssClass("dim-label");
-        const r = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.result}, 0) catch "");
-        r.setXalign(1);
-        r.setWrap(1);
-        r.setMaxWidthChars(40);
-        r.setWrapMode(.word_char);
-        r.as(gtk.Widget).addCssClass("dkde-calc-history-result");
-        box.append(e.as(gtk.Widget));
-        box.append(r.as(gtk.Widget));
+        // A line with a fraction, a power or a root in it is typeset; the rest stays a label.
+        if (typesetLine(h.expr, "dim-label")) |w| {
+            box.append(w);
+        } else {
+            const e = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.expr}, 0) catch "");
+            e.setXalign(1);
+            e.setWrap(1);
+            e.setMaxWidthChars(40);
+            e.setWrapMode(.word_char);
+            e.as(gtk.Widget).addCssClass("dim-label");
+            box.append(e.as(gtk.Widget));
+        }
+        if (typesetLine(h.result, "dkde-calc-history-result")) |w| {
+            box.append(w);
+        } else {
+            const r = gtk.Label.new(std.fmt.bufPrintSentinel(&buf, "{s}", .{h.result}, 0) catch "");
+            r.setXalign(1);
+            r.setWrap(1);
+            r.setMaxWidthChars(40);
+            r.setWrapMode(.word_char);
+            r.as(gtk.Widget).addCssClass("dkde-calc-history-result");
+            box.append(r.as(gtk.Widget));
+        }
         return box.as(gtk.Widget);
     }
 
@@ -3512,6 +3599,20 @@ const Calc = struct {
             self.window.as(gtk.Window).setDefaultSize(-1, -1);
             return;
         }
+        if (eql(u8, action, "fraction-results")) {
+            self.fraction_results = !self.fraction_results;
+            self.config.setBool("calc", "fraction-results", self.fraction_results) catch {};
+            common.menubar.setChecked(self.window, "fraction-results", self.fraction_results);
+            return;
+        }
+        if (eql(u8, action, "stacked")) {
+            stacked_on = !stacked_on;
+            self.config.setBool("calc", "stacked-fractions", stacked_on) catch {};
+            common.menubar.setChecked(self.window, "stacked", stacked_on);
+            self.updateEcho();
+            self.updatePreviewMath();
+            return self.fillHistory();
+        }
         if (eql(u8, action, "grouping")) {
             self.style.grouping = !self.style.grouping;
             self.config.setBool("calc", "grouping", self.style.grouping) catch {};
@@ -3946,6 +4047,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 }
 
 test {
+    _ = @import("typeset.zig");
     _ = @import("num.zig");
     _ = @import("eval.zig");
     _ = @import("units.zig");
