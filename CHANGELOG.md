@@ -5,7 +5,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 ## Unreleased
 
 dkde-calc learning and geometry:
-- **Learn**: lessons are TOML files (data/learn, and your own in ~/.local/share/dkde/learn) with drawing, calculator, written-out solution and graph lines per step and practice questions that check your answer. Courses: Euclid's Elements (Books I to VII so far), arithmetic, algebra, calculus, linear algebra. The lesson files are read only when Learn is first shown, so calc starts as fast as before.
+- **Learn**: lessons are TOML files (data/learn, and your own in ~/.local/share/dkde/learn) with drawing, calculator, written-out solution and graph lines per step and practice questions that check your answer. Courses: Euclid's Elements (all 13 books, 465 propositions), arithmetic, algebra, calculus, linear algebra (a starter lesson each), arithmetic, algebra, calculus, linear algebra. The lesson files are read only when Learn is first shown, so calc starts as fast as before.
 - **Geometry**: colours and shading, a 3D mode (parallel projection, drag to turn) for solid geometry, and Cross tools for compass-and-straightedge work.
 - **Command line**: `dkde-calc eval|steps|render|check-lessons`.
 
