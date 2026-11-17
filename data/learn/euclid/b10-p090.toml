@@ -1,0 +1,26 @@
+id = "X.90"
+book = 10
+order = 90
+title = "To find the sixth apotome"
+statement = "To find the sixth apotome."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "The sixth apotome is the apotome with neither commensurable in length with the assigned rational line, and the square on the whole exceeding the square on the annex by the square on a line incommensurable with the whole. It is required to find one. (Example: the pair the square root of 3 and the square root of 2 (the difference of squares is 1); the remainder is 0.318.)"
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.212 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.99 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 0.222 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "Construction. The same numbers are used as for the sixth binomial (X.53), but the annex is subtracted instead of added. The whole and the annex are rational lines commensurable in square only, with the stated relation to the assigned rational line and the stated excess of squares; so AC, the remainder, is an apotome (X.73), of the sixth kind."
+draw = [
+]

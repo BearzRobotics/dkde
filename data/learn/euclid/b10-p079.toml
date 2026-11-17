@@ -1,0 +1,26 @@
+id = "X.79"
+book = 10
+order = 79
+title = "Only one annex"
+statement = "To an apotome only one rational straight line can be annexed which is commensurable with the whole in square only."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Take an apotome AB (here 2 less the square root of 3). I say that no second straight line of the same kind can be annexed to it."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.188 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 1.212 -0.9",
+  "segment BC bc red",
+  "point BD 0 -1.8",
+  "point bd 0.84 -1.8",
+  "segment BD bd green",
+]
+
+[[step]]
+text = "Let AB be an apotome with the annex BC, so that AC, CB are rational and commensurable in square only. If possible let BD also be an annex, so that AD, DB are rational and commensurable in square only. The square on AB is the squares on AC, CB less twice the rectangle AC, CB (II.7), and also the squares on AD, DB less twice the rectangle AD, DB. So the squares on AC, CB exceed the squares on AD, DB, by twice the rectangle AC, CB less twice the rectangle AD, DB. The two sums of squares are rational, so their difference is rational; but the two doubled rectangles are medial (X.21), so this would be a difference of two medial areas equal to a rational area, and a medial area does not exceed a medial area by a rational area (X.26). Impossible. Therefore only one annex can be added"
+draw = [
+]

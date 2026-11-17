@@ -1,0 +1,26 @@
+id = "X.82"
+book = 10
+order = 82
+title = "Only one annex"
+statement = "To a minor straight line only one straight line can be annexed which is incommensurable in square with the whole and which with the whole makes the sum of the squares on them rational but the rectangle contained by them medial."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Take a minor straight line AB. I say that no second straight line of the same kind can be annexed to it."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.188 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 1.212 -0.9",
+  "segment BC bc red",
+  "point BD 0 -1.8",
+  "point bd 0.84 -1.8",
+  "segment BD bd green",
+]
+
+[[step]]
+text = "Suppose two such annexes BC, BD. The sums of the squares on AC, CB and AD, DB are both rational, so their difference is rational, and equals twice the rectangle AD, DB less twice the rectangle AC, CB (a difference of medial areas). But a medial area does not exceed a medial by a rational (X.26). Impossible."
+draw = [
+]

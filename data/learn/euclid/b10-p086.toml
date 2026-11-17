@@ -1,0 +1,26 @@
+id = "X.86"
+book = 10
+order = 86
+title = "To find the second apotome"
+statement = "To find the second apotome."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "The second apotome is the apotome with the annex commensurable in length with the assigned rational line, and the square on the whole exceeding the square on the annex by the square on a line commensurable with the whole. It is required to find one. (Example: the pair two thirds of the square root of 3, doubled, that is 1.155, and 1 (the difference of squares is 1/3); the remainder is 0.155.)"
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.808 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.7 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 0.108 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "Construction. The same numbers are used as for the second binomial (X.49), but the annex is subtracted instead of added. The whole and the annex are rational lines commensurable in square only, with the stated relation to the assigned rational line and the stated excess of squares; so AC, the remainder, is an apotome (X.73), of the second kind."
+draw = [
+]

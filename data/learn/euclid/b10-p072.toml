@@ -1,0 +1,26 @@
+id = "X.72"
+book = 10
+order = 72
+title = "Two medial areas added"
+statement = "If two medial areas incommensurable with one another be added together, the two remaining irrational straight lines arise as the side of the area so composed, namely either a second bimedial or a side of the sum of two medial areas."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB, CD be two medial areas incommensurable with one another, added together (here the square root of 2 and the square root of 3 square units; the side of their sum is 1.776). I say that the side of the area AD is either a second bimedial or the side of the sum of two medial areas."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.99 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 1.212 -0.9",
+  "segment CD cd red",
+  "point AD 0 -1.8",
+  "point ad 2.202 -1.8",
+  "segment AD ad green",
+]
+
+[[step]]
+text = "Set out a rational line EF, and apply to it the rectangles FG equal to AB and HI equal to CD. Then EH, HK are rational and incommensurable with EF (X.22), and incommensurable with one another (X.13), so commensurable in square only and EK is a binomial. Neither term is commensurable with EF, so EK is a third or a sixth binomial (X.50, X.53). In the first case the side of the area is a second bimedial (X.56); in the second, the side of the sum of two medial areas (X.59). Therefore the side is one of these two lines."
+draw = [
+]

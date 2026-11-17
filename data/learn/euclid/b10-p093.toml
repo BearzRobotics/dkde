@@ -1,0 +1,26 @@
+id = "X.93"
+book = 10
+order = 93
+title = "The area on the third apotome"
+statement = "If an area be contained by a rational straight line and the third apotome, the side of the area is the second apotome of a medial straight line."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let the area be contained by the rational straight line AB (here 1) and the third apotome AD (here 0.189). I say that the side of the square equal to the area is the second apotome of a medial straight line (here 0.435)."
+draw = [
+  "clear",
+  "point R 0 0",
+  "point r 0.7 0",
+  "segment R r blue",
+  "point AD 0 -0.9",
+  "point ad 0.133 -0.9",
+  "segment AD ad red",
+  "point AB 0 -1.8",
+  "point ab 0.305 -1.8",
+  "segment AB ab green",
+]
+
+[[step]]
+text = "Let DG be the annex of the apotome AD (so AG is the whole and DG the annex, the whole and annex being commensurable in square only). Apply to AG a rectangle equal to the square on half the annex, deficient by a square (VI.28); as for the binomials (X.54 to X.59), if x and y are the sides of the squares equal to the rectangles of AB with the two parts, then x minus y is the side of the square equal to the area (since (x - y) squared is the sum of the squares less twice xy, as II.7). The types of x and y follow from the type of the apotome exactly as in the binomial cases, with the sum replaced by the difference, so the difference is the corresponding irrational: an apotome, a first or second apotome of a medial, a minor line, or a line which produces a medial whole with a rational or with a medial area."
+draw = [
+]

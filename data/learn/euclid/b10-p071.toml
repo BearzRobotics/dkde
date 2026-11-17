@@ -1,0 +1,26 @@
+id = "X.71"
+book = 10
+order = 71
+title = "A rational and a medial area added"
+statement = "If a rational and a medial area be added together, four irrational straight lines arise as the side of the area so composed, namely either a binomial or a first bimedial or a major or a side of a rational plus a medial area."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be a rational area and CD a medial area, and let them be added together (here 4 and the square root of 3 square units, drawn as the lengths of the areas). I say that the side of the area AD is either a binomial or a first bimedial or a major or a side of a rational plus a medial area."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 2.8 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 1.212 -0.9",
+  "segment CD cd red",
+  "point AD 0 -1.8",
+  "point ad 4.012 -1.8",
+  "segment AD ad green",
+]
+
+[[step]]
+text = "Set out a rational straight line EF and apply to it the rectangle FG equal to AB and HI equal to CD. Then EH is rational and commensurable with EF, and HK is rational and incommensurable with it (X.20, X.22). So EH is incommensurable with HK, and EH, HK are rational straight lines commensurable in square only; so EK is a binomial (X.36). Divide EK at L so that the rectangle... The greater term EH or HK may exceed the less by a square on a line commensurable or incommensurable with it: four cases arise. If the greater is EH and the excess is commensurable with it, EK is the first binomial, so its area's side is a binomial (X.54). If the greater is HK, the lesser EH commensurable with EF and the excess commensurable, EK is a second binomial and the side is a first bimedial (X.55). If the greater is EH and the excess is incommensurable, EK is a fourth binomial and the side is a major line (X.57). If the greater is HK and the excess is incommensurable, EK is a fifth binomial and the side is the side of a rational plus a medial area (X.58). Therefore the side is one of the four irrational lines."
+draw = [
+]

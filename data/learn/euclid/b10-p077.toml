@@ -1,0 +1,26 @@
+id = "X.77"
+book = 10
+order = 77
+title = "That which makes a medial whole with a rational area"
+statement = "If from a straight line there be subtracted a straight line which is incommensurable in square with the whole and which with the whole makes the sum of the squares on them medial, but the rectangle contained by them rational, the remainder is irrational; and let it be called that which produces with a rational area a medial whole."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be a straight line, and BC a straight line incommensurable in square with it such that the sum of the squares on AB, BC is medial and the rectangle AB, BC rational (the pair of X.34: 1.554 and 0.644). I say that the remainder AC is irrational, and is called that which produces with a rational area a medial whole (here 0.910)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.088 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.451 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 0.637 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "The square on AC is the squares on AB, BC (medial) less twice the rectangle AB, BC (rational). A medial area less a rational one is irrational. So the square on AC is irrational and AC is irrational. It is called that which produces with a rational area a medial whole because the square on AC with twice the rectangle (rational) gives the medial sum of squares."
+draw = [
+]

@@ -1,0 +1,29 @@
+id = "X.64"
+book = 10
+order = 64
+title = "The square on the side of a rational plus a medial area"
+statement = "The square on the side of a rational plus a medial area straight line, if applied to a rational straight line, produces as breadth the fifth binomial."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be the side of a rational plus a medial area straight line divided into its terms at C, and let a rational straight line DE be set out. Apply to DE the rectangle DF equal to the square on AB, producing DG as breadth. I say that DG is the fifth binomial. Example: (1.554 + 0.644) squared is 2 times the square root of 2 + 2 (terms 2.828 and 2); the breadth is the sum of these terms, 4.828."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.539 0",
+  "segment AB ab blue",
+  "point R 0 -0.9",
+  "point r 0.7 -0.9",
+  "segment R r red",
+  "point GH 0 -1.8",
+  "point gh 1.98 -1.8",
+  "segment GH gh green",
+  "point HK 0 -2.7",
+  "point hk 1.4 -2.7",
+  "segment HK hk orange",
+]
+
+[[step]]
+text = "The square on AB is the squares on AC, CB together with twice the rectangle AC, CB (II.4). Apply to DE the areas equal to these in turn: the squares give breadths DH, MK, and twice the rectangle gives a breadth HK (so DG = DH + HK + KG split into the two terms). By X.20 and X.22 the breadths of rational areas are rational and commensurable with DE, and of medial areas rational and incommensurable with DE, so the terms of DG have the commensurabilities with DE which belong to the fifth binomial. The excess of the square on the greater term over the square on the less is a square on a line which is, or is not, commensurable with the greater, according to the type of AB (X.14 carries the ratios of squares over). Therefore DG is the fifth binomial, in the order shown (X.48 to X.53)."
+draw = [
+]

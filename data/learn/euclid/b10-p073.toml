@@ -1,0 +1,26 @@
+id = "X.73"
+book = 10
+order = 73
+title = "The apotome"
+statement = "If from a rational straight line there be subtracted a rational straight line commensurable with the whole in square only, the remainder is irrational; and let it be called an apotome."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be a rational straight line (here 2) and let BC, a rational straight line commensurable with AB in square only (the square root of 3), be subtracted from it. I say that the remainder AC is irrational, and is called an apotome (here 0.268)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.4 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 1.212 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 0.188 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "Since AB is incommensurable in length with BC, the whole AB is incommensurable with the remainder AC (X.16 converse: if AC were commensurable with AB, then BC = AB less AC would be, X.15). The squares on AB, BC are rational; the rectangle AB, BC is medial (X.21), and the square on AC is the squares on AB, BC less twice the rectangle AB, BC (II.7). A rational area less a medial area is irrational (a medial does not exceed... X.26 companion), so the square on AC is irrational, and so is AC. It is called an apotome (a cut-off) since it is a binomial's terms with one subtracted instead of added."
+draw = [
+]

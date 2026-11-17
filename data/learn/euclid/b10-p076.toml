@@ -1,0 +1,26 @@
+id = "X.76"
+book = 10
+order = 76
+title = "The minor line"
+statement = "If from a straight line there be subtracted a straight line which is incommensurable in square with the whole and which with the whole makes the sum of the squares on them rational, but the rectangle contained by them medial, the remainder is irrational; and let it be called minor."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be a straight line, and BC a straight line incommensurable in square with it such that the sum of the squares on AB, BC is rational and the rectangle AB, BC medial (the pair of X.33: 1.848 and 0.765). I say that the remainder AC is irrational, and is called minor (here 1.082)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.293 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.536 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 0.758 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "The square on AC is the squares on AB, BC (rational) less twice the rectangle AB, BC (medial). A rational area less a medial area is irrational (the sum of the rational remainder and the medial would otherwise be a medial equal to a rational, X.26). Therefore the square on AC is irrational and AC is irrational: the minor line."
+draw = [
+]

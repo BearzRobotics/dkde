@@ -1,0 +1,26 @@
+id = "X.89"
+book = 10
+order = 89
+title = "To find the fifth apotome"
+statement = "To find the fifth apotome."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "The fifth apotome is the apotome with the annex commensurable in length with the assigned rational line, and the square on the whole exceeding the square on the annex by the square on a line incommensurable with the whole. It is required to find one. (Example: the pair the square root of 3 and 1 (the difference of squares is 2); the remainder is 0.732.)"
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.212 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.7 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 0.512 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "Construction. The same numbers are used as for the fifth binomial (X.52), but the annex is subtracted instead of added. The whole and the annex are rational lines commensurable in square only, with the stated relation to the assigned rational line and the stated excess of squares; so AC, the remainder, is an apotome (X.73), of the fifth kind."
+draw = [
+]

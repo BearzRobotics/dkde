@@ -1,0 +1,23 @@
+id = "X.69"
+book = 10
+order = 69
+title = "Commensurable with the side of a rational plus a medial area"
+statement = "A straight line commensurable in length with a side of a rational plus a medial area straight line is the side of a rational plus a medial area."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be a side of a rational plus a medial area straight line divided into its terms at E, and let CD be commensurable in length with AB (here the side of a rational plus a medial area and its double). I say that CD is the side of a rational plus a medial area."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.539 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 3.077 -0.9",
+  "segment CD cd red",
+]
+
+[[step]]
+text = "Divide CD at F in the same ratio as AB is divided at E, so that AE is to EB as CF is to FD (VI.10). Then, as AB is to CD, so is AE to CF and EB to FD, so that AE is commensurable with CF and EB with FD (X.11). The squares on the parts are in the ratios of the squares on AE, EB; so CF, FD have the same commensurabilities in square and in length as AE, EB, and the same relation to the assigned rational line (X.12, X.13: lines commensurable with the same line are commensurable with one another, and incommensurable lines keep that quality), and the same excess relation between the squares (X.14). Therefore CD has the same form and the same order as AB."
+draw = [
+]

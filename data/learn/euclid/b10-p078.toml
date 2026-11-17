@@ -1,0 +1,26 @@
+id = "X.78"
+book = 10
+order = 78
+title = "That which makes a medial whole with a medial area"
+statement = "If from a straight line there be subtracted a straight line which is incommensurable in square with the whole and which with the whole makes the sum of the squares on them medial and the rectangle contained by them medial and also incommensurable with the sum of the squares on them, the remainder is irrational; and let it be called that which produces with a medial area a medial whole."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be a straight line, and BC a straight line incommensurable in square with it such that the sum of the squares on AB, BC is medial, the rectangle AB, BC medial, and the rectangle incommensurable with the sum of the squares (the pair of X.35: 1.293 and 0.670). I say that the remainder AC is irrational, and is called that which produces with a medial area a medial whole (here 0.624)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.905 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.469 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 0.437 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "The square on AC is the squares on AB, BC less twice the rectangle AB, BC, both medial and incommensurable with one another. Apply them to a rational line: the breadths are rational, incommensurable with it and with one another, so their difference is an apotome, irrational (X.73). So the square on AC is irrational and AC is irrational."
+draw = [
+]

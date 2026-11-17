@@ -1,0 +1,26 @@
+id = "X.80"
+book = 10
+order = 80
+title = "Only one annex"
+statement = "To a first apotome of a medial straight line only one medial straight line can be annexed which is commensurable with the whole in square only and which contains with the whole a rational rectangle."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Take a first apotome of a medial AB. I say that no second straight line of the same kind can be annexed to it."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.188 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 1.212 -0.9",
+  "segment BC bc red",
+  "point BD 0 -1.8",
+  "point bd 0.84 -1.8",
+  "segment BD bd green",
+]
+
+[[step]]
+text = "Suppose two such annexes BC, BD. As before the squares on AC, CB and AD, DB differ by a difference of medial areas, which is the same as twice the rectangle AC, CB less twice AD, DB, a difference of rational areas, so rational; but a medial area does not exceed a medial area by a rational (X.26). Impossible."
+draw = [
+]
