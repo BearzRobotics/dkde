@@ -1,0 +1,29 @@
+id = "VIII.1"
+book = 8
+order = 1
+title = "Continued proportion with prime extremes"
+statement = "If there be as many numbers as we please in continued proportion, and the extremes of them be prime to one another, the numbers are the least of those which have the same ratio with them."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B, C, D be as many numbers as we please in continued proportion (here 8, 12, 18, 27), and let A, D be prime to one another. I say that A, B, C, D are the least of those which have the same ratio with them."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 4.2 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 6.3 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 9.45 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "If not, let E, F, G, H be less than A, B, C, D and in the same ratio. Since A, B, C, D are in the same ratio with E, F, G, H and are equal to them in multitude, ex aequali A is to D as E is to H (VII.14). But A, D are prime to one another, and numbers prime to one another are the least of those which have the same ratio (VII.21), and the least measure those which have the same ratio the same number of times, the greater the greater and the less the less (VII.20). So A measures E, the greater the less, which is impossible. Therefore there are no numbers less than A, B, C, D in the same ratio; they are the least."
+draw = [
+]

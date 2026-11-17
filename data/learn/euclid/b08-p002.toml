@@ -1,0 +1,44 @@
+id = "VIII.2"
+book = 8
+order = 2
+title = "To find numbers in continued proportion"
+statement = "To find numbers in continued proportion, as many as may be prescribed, and the least that are in a given ratio."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let the given ratio in least numbers be that of A to B (here 2 to 3). It is required to find four numbers in continued proportion in the ratio of A to B, and the least that are so."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.7 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.05 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.4 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 2.1 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 3.15 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 2.8 -4.5",
+  "segment F f teal",
+  "point G 0 -5.4",
+  "point g 4.2 -5.4",
+  "segment G g blue",
+  "point H 0 -6.3",
+  "point h 6.3 -6.3",
+  "segment H h red",
+  "point K 0 -7.2",
+  "point k 9.45 -7.2",
+  "segment K k green",
+]
+
+[[step]]
+text = "Let A by multiplying itself make C, and by multiplying B make D; let B by multiplying itself make E; again let A by multiplying C, D, E make F, G, H, and B by multiplying E make K. Since A by multiplying itself has made C and by multiplying B has made D, A is to B as C is to D (VII.17). Again, as A is to B, so is D to E (VII.18). So C, D, E are in the ratio of A to B. In the same way F, G, H, K (8, 12, 18, 27) are in that ratio. Since A, B are least, and least numbers are prime to one another (VII.22), the extremes F, K are prime to one another (VII.27). Therefore F, G, H, K are the least in continued proportion (VIII.1). Corollary: if three numbers in continued proportion are the least in their ratio, the extremes are squares; if four, cubes."
+draw = [
+]

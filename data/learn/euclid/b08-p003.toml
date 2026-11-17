@@ -1,0 +1,29 @@
+id = "VIII.3"
+book = 8
+order = 3
+title = "Least numbers: the extremes are prime"
+statement = "If as many numbers as we please in continued proportion be the least of those which have the same ratio with them, the extremes of them are prime to one another."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B, C, D be as many numbers as we please in continued proportion, the least of those which have the same ratio with them. I say that the extremes A, D are prime to one another."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 4.2 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 6.3 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 9.45 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Take two least numbers E, F in the ratio of A, B, C, D (VII.33), then three, G, H, K, and so on until the multitude equals that of A, B, C, D, and let them be L, M, N, O. Then, as before, L, O are the cube-like products of E, F, so they are prime to one another (VIII.2, VII.27). Since L, M, N, O are in the same ratio with A, B, C, D and equal in multitude, and A, B, C, D are the least, A is equal to L and D to O. Therefore the extremes A, D are prime to one another."
+draw = [
+]

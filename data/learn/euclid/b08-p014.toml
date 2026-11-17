@@ -1,0 +1,37 @@
+id = "VIII.14"
+book = 8
+order = 14
+title = "A square measures a square"
+statement = "If a square measure a square, the side will also measure the side; and, if the side measure the side, the square will also measure the square."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B be square numbers (9 and 36) and C, D their sides (3 and 6), and let A measure B. I say that C measures D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 3.15 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 12.6 -0.9",
+  "segment B b red",
+  "point E 0 -1.8",
+  "point e 6.3 -1.8",
+  "segment E e green",
+  "point C 0 -2.7",
+  "point c 1.05 -2.7",
+  "segment C c orange",
+  "point D 0 -3.6",
+  "point d 2.1 -3.6",
+  "segment D d purple",
+]
+
+[[step]]
+text = "Let C by multiplying D make E (18). Then A, E, B are in continued proportion in the ratio of C to D (VIII.11). Since A, E, B are in continued proportion, and A measures B, A also measures E (VIII.7). And as A is to E, so is C to D. Therefore C measures D."
+draw = [
+]
+
+[[step]]
+text = "Conversely, let C measure D. Since A is to E as C is to D, A measures E. And E is to B as C is to D, so E measures B. Therefore A measures B."
+draw = [
+]

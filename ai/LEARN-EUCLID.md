@@ -22,7 +22,7 @@ carries out the steps).
 | V | Proportion (Eudoxus) | 25 | done (all 25; magnitudes are drawn as bars) |
 | VI | Similar figures | 33 | done (all 33) |
 | VII | Number theory: gcd, primes | 39 | done (all 39; numbers are drawn as bars) |
-| VIII | Continued proportion in numbers | 27 | |
+| VIII | Continued proportion in numbers | 27 | done (all 27; numbers are drawn as bars) |
 | IX | Numbers: primes are infinite, perfect numbers | 36 | |
 | X | Incommensurables | 115 | |
 | XI | Solid geometry | 39 | done (all 39, in the 3D view) |

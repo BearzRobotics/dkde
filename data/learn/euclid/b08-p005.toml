@@ -1,0 +1,35 @@
+id = "VIII.5"
+book = 8
+order = 5
+title = "Plane numbers"
+statement = "Plane numbers have to one another the ratio compounded of the ratios of their sides."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B be plane numbers, and let the numbers C, D be the sides of A, and E, F the sides of B (here A = 2 times 3 = 6, B = 3 times 5 = 15). I say that A has to B the ratio compounded of the ratios of C to E and D to F."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.1 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 5.25 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 0.7 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 1.05 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 1.05 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 1.75 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Given the ratios C to E and D to F, take the least numbers G, H, K in continued proportion in those ratios (VIII.4), so that C is to E as G is to H and D is to F as H is to K. Now C by multiplying D makes A, and E by multiplying F makes B. Since C by D makes A and C by F makes L, D is to F as A is to L (VII.17); but D is to F as H is to K. Also, since C by F makes L and E by F makes B, C is to E as L is to B (VII.18); and C is to E as G is to H. Therefore, as A is to L so is H to K, and as L is to B so is G to H. Ex aequali A is to B as G is to K. But G has to K the ratio compounded of the ratios of G to H and H to K, that is, of C to E and D to F. Therefore A has to B the ratio compounded of the ratios of the sides."
+draw = [
+]

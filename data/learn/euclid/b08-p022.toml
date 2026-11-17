@@ -1,0 +1,26 @@
+id = "VIII.22"
+book = 8
+order = 22
+title = "First square, third square"
+statement = "If three numbers be in continued proportion, and the first be square, the third will also be square."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B, C be three numbers in continued proportion (4, 6, 9), and let A be square. I say that C is also square."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 2.1 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 3.15 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Since between A, C there is one mean proportional number B, A, C are similar plane numbers (VIII.20). But A is square. Therefore C is also square, since similar plane numbers one of which is a square have the other a square (VII definition 21: similar plane numbers have proportional sides, and a square has its sides equal)."
+draw = [
+]

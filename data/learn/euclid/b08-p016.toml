@@ -1,0 +1,29 @@
+id = "VIII.16"
+book = 8
+order = 16
+title = "A square does not measure a square"
+statement = "If a square number do not measure a square number, neither will the side measure the side; and, if the side do not measure the side, neither will the square measure the square."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B be square numbers, with sides C, D (here 9 and 16, sides 3 and 4), and let A not measure B. I say that C does not measure D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 3.15 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 5.6 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.05 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 1.4 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "For if C measures D, A will also measure B (VIII.14). But A does not measure B. Therefore C will not measure D. Again, let C not measure D. I say that A will not measure B. For if A measures B, C will also measure D (VIII.14). But C does not measure D. Therefore neither will A measure B."
+draw = [
+]

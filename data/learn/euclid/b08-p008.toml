@@ -1,0 +1,41 @@
+id = "VIII.8"
+book = 8
+order = 8
+title = "Means between two numbers"
+statement = "If between two numbers there fall numbers in continued proportion with them, then, however many numbers fall between them in continued proportion, so many will also fall in continued proportion between the numbers which have the same ratios with the original numbers."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let the numbers C, D fall between the numbers A, B in continued proportion (A, C, D, B = 8, 12, 18, 27), and let E be to F as A is to B (here 16 to 54... take E, F in the same ratio). I say that, however many numbers fall between A, B in continued proportion, so many will fall between E, F in continued proportion."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 4.2 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 6.3 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 9.45 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 5.6 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 8.4 -4.5",
+  "segment F f teal",
+  "point G 0 -5.4",
+  "point g 12.6 -5.4",
+  "segment G g blue",
+  "point H 0 -6.3",
+  "point h 18.9 -6.3",
+  "segment H h red",
+]
+
+[[step]]
+text = "However many A, B are in multitude, take so many G, H, K, L, the least numbers in the ratio of A, C, D, B (VIII.2). Their extremes G, L are prime to one another (VIII.3). Since A, C, D, B are in the same ratio as G, H, K, L, and equal in multitude, ex aequali A is to B as G is to L (VII.14). But A is to B as E is to F. Therefore G is to L as E is to F. But G, L are prime, hence least, so they measure E, F equally (VII.20): G measures E as often as L measures F. Let this multiplier be M. Then M times G, H, K, L give E and three numbers in continued proportion ending in F, since they have the ratios of G, H, K, L. Therefore as many numbers as fall between A, B fall between E, F."
+draw = [
+]

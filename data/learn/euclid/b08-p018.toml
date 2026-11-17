@@ -1,0 +1,26 @@
+id = "VIII.18"
+book = 8
+order = 18
+title = "Between two similar plane numbers"
+statement = "Between two similar plane numbers there is one mean proportional number; and the plane number has to the plane number the ratio duplicate of that which the corresponding side has to the corresponding side."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B be two similar plane numbers, and let the numbers C, D be the sides of A, and E, F the sides of B (here A = 4 by 6 = 24 and B = 6 by 9 = 54, with 4 : 6 = 6 : 9). I say that between A, B there is one mean proportional number, and A has to B the ratio duplicate of that which C has to E, or D to F."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 8.4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 18.9 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 12.6 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Since A, B are similar plane numbers, C is to D as E is to F, so C is to E as D is to F (VII.13). Let G be D by E (6 times 6 = 36). Then, since C by D makes A and C by E makes... as C is to E, so is A to G (VII.17: C by D is A, C by... ) and as D is to F so is G to B (VII.18). Since C is to E as D is to F, A is to G as G is to B. Therefore between A, B there is one mean proportional number G (36). And since A, G, B are in continued proportion, A has to B the ratio duplicate of that which A has to G, that is, which C has to E."
+draw = [
+]

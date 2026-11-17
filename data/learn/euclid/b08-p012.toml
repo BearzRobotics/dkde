@@ -1,0 +1,29 @@
+id = "VIII.12"
+book = 8
+order = 12
+title = "Between two cubes"
+statement = "Between two cube numbers there are two mean proportional numbers, and the cube has to the cube the ratio triplicate of that which the side has to the side."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B be cube numbers, and let C be the side of A and D of B (here 8 and 27, sides 2 and 3). I say that between A, B there are two mean proportional numbers, and A has to B the ratio triplicate of that which C has to D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 9.45 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4.2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 6.3 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Let C by multiplying itself make E, and by multiplying D make F; let D by multiplying itself make G, and let C, D by multiplying F make H, K. Since A is a cube and C its side, and C by multiplying itself has made E, C by multiplying E has made A. For the same reason D by multiplying G has made B. Since C by multiplying C, D has made E, F, C is to D as E is to F; for the same reason as F is to G. Again, since C by multiplying E, F has made A, H, E is to F as A is to H; and so as C is to D. Since C, D by multiplying F make H, K, C is to D as H is to K. Since D by multiplying F, G has made K, B, F is to G as K is to B, and F is to G as C is to D. Therefore A, H, K, B (8, 12, 18, 27) are in continued proportion in the ratio of C to D. Therefore between A, B there are two mean proportional numbers H, K, and A has to B the ratio triplicate of that which the side C has to the side D (V definition 10)."
+draw = [
+]

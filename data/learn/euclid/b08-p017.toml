@@ -1,0 +1,29 @@
+id = "VIII.17"
+book = 8
+order = 17
+title = "A cube does not measure a cube"
+statement = "If a cube number do not measure a cube number, neither will the side measure the side; and, if the side do not measure the side, neither will the cube measure the cube."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B be cube numbers (8 and 27), with sides C, D, and let A not measure B. I say that C does not measure D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 9.45 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 0.7 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 1.05 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "For if C measures D, A will also measure B (VIII.15). But A does not measure B. Therefore C will not measure D. Again, let C not measure D. I say that A will not measure B. For if A measures B, C will also measure D (VIII.15). But C does not measure D. Therefore neither will A measure B."
+draw = [
+]

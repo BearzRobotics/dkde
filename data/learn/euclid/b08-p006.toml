@@ -1,0 +1,34 @@
+id = "VIII.6"
+book = 8
+order = 6
+title = "The first does not measure the second"
+statement = "If there be as many numbers as we please in continued proportion, and the first do not measure the second, neither will any other measure any other."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let there be as many numbers as we please in continued proportion A, B, C, D (here 16, 24, 36, 54), and let A not measure B. I say that neither will any other measure any other."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 5.6 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 8.4 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 12.6 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 18.9 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "That A does not measure C or D: take the least numbers E, F, G, H in the same ratio (here 8, 12, 18, 27). A is some multiple of E, and then C, D are the same multiple of G, H; so A measures C only if E measures G, and A measures D only if E measures H. But if E measured G, or H, it would measure F (VIII.7), and then A would measure B, contrary to the hypothesis."
+draw = [
+]
+
+[[step]]
+text = "The same argument, applied to the series B, C, D (which has the same ratio and the same property, since B does not measure C), shows that B does not measure D; and so on. Therefore no term measures any later term."
+draw = [
+]

@@ -1,0 +1,29 @@
+id = "VIII.7"
+book = 8
+order = 7
+title = "The first measures the last"
+statement = "If there be as many numbers as we please in continued proportion, and the first measure the last, it will measure the second also."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let there be as many numbers as we please in continued proportion A, B, C, D, and let A measure D (here 2, 4, 8, 16). I say that A also measures B."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.7 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.4 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2.8 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 5.6 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "For, if A does not measure B, neither will any of the other numbers measure any other (VIII.6). But A measures D. Therefore A also measures B."
+draw = [
+]

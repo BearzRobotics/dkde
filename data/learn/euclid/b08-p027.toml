@@ -1,0 +1,29 @@
+id = "VIII.27"
+book = 8
+order = 27
+title = "Similar solid numbers"
+statement = "Similar solid numbers have to one another the ratio which a cube number has to a cube number."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B be similar solid numbers. I say that A has to B the ratio which a cube number has to a cube number."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 9.45 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4.2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 6.3 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Since A, B are similar solid numbers, two mean proportional numbers fall between A, B (VIII.19). Let them be C, D. Let E, F, G, H be the least numbers in continued proportion in the same ratio as A, C, D, B (VIII.2), so that their extremes E, H are cubes (VIII.2 corollary). And E, F, G, H are in the same ratio with A, C, D, B. Therefore, ex aequali, as A is to B, so is E to H. But E, H are cubes. Therefore A has to B the ratio which a cube number has to a cube number."
+draw = [
+]

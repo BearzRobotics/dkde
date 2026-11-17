@@ -1,0 +1,29 @@
+id = "VIII.19"
+book = 8
+order = 19
+title = "Between two similar solid numbers"
+statement = "Between two similar solid numbers there fall two mean proportional numbers; and the solid number has to the similar solid number the ratio triplicate of that which the corresponding side has to the corresponding side."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B be two similar solid numbers, with sides C, D, E of A and F, G, H of B, so that C is to F as D is to G and as E is to H (here 2, 2, 2 and 3, 3, 3). I say that two mean proportional numbers fall between A, B and A has to B the ratio triplicate of that which C has to F."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 9.45 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4.2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 6.3 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "A is C·D·E and B is F·G·H. Let the two means be X = C·D·H and Y = C·G·H. Then A to X is E to H (VII.17), X to Y is D to G, and Y to B is C to F; and these three ratios are the same, since the sides are proportional. So A, X, Y, B are in continued proportion (here 8, 12, 18, 27), and A has to B the ratio triplicate of that which C has to F (V definition 10)."
+draw = [
+]

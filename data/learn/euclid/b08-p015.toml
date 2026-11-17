@@ -1,0 +1,29 @@
+id = "VIII.15"
+book = 8
+order = 15
+title = "A cube measures a cube"
+statement = "If a cube number measure a cube number, the side will also measure the side; and, if the side measure the side, the cube will also measure the cube."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let the cube number A measure the cube number B (8 and 64), and let C be the side of A, D of B. I say that C measures D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 22.4 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 0.7 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 1.4 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Let C by multiplying itself make E, D by multiplying itself make G, C by D make F, and let H, K be made by C, D multiplying F. Then A, H, K, B are in continued proportion in the ratio of C to D (VIII.12). Since A measures B, A also measures H (VIII.7). As A is to H so is C to D. Therefore C measures D. Conversely, if C measures D, then A measures H, H measures K, K measures B, so A measures B."
+draw = [
+]

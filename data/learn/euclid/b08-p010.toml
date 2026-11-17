@@ -1,0 +1,35 @@
+id = "VIII.10"
+book = 8
+order = 10
+title = "Means between numbers and the unit"
+statement = "If numbers fall between two numbers and an unit in continued proportion, however many numbers fall between each of them and an unit in continued proportion, so many will also fall between the numbers themselves in continued proportion."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let the numbers D, E fall between the number A and the unit in continued proportion, and the numbers F, G between the number B and the unit (here the unit, 2, 4, 8 and the unit, 3, 9, 27). I say that as many numbers fall between A and B in continued proportion."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 9.45 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4.2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 6.3 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 0.7 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 1.05 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Let D be 2 and F be 3, so that A is D·D·D and B is F·F·F. Form the numbers D·D·F = 12 and D·F·F = 18. Then A : 12 = D : F, since D·D·D to D·D·F is D to F (VII.17). Also 12 : 18 = D : F, and 18 : B = D : F. Therefore A, 12, 18, B are in continued proportion in the ratio of D to F, and two numbers fall between A and B, as two fall between each of A, B and the unit."
+draw = [
+]

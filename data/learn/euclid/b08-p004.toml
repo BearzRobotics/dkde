@@ -1,0 +1,43 @@
+id = "VIII.4"
+book = 8
+order = 4
+title = "Several ratios in least numbers"
+statement = "Given as many ratios as we please in least numbers, to find the least numbers in continued proportion which keep the given ratios."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let the given ratios in least numbers be that of A to B and that of C to D (here 2 to 3 and 4 to 5). It is required to find the least numbers in continued proportion in the ratios of A to B and of C to D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.7 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.05 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.4 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 1.75 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 4.2 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 2.8 -4.5",
+  "segment F f teal",
+  "point G 0 -5.4",
+  "point g 5.25 -5.4",
+  "segment G g blue",
+]
+
+[[step]]
+text = "Take the least number E measured by B and C (VII.34); here it is 12. As many times as B measures E, so many times let A measure F; so F is 8, and A is to B as F is to E (VII.17). As many times as C measures E, so many times let D measure G; so G is 15, and C is to D as E is to G. Therefore F, E, G (8, 12, 15) are in continued proportion in the given ratios."
+draw = [
+]
+
+[[step]]
+text = "They are the least. For suppose H, K, L were less and in the same ratios. Then H is to K as A is to B, and A, B are least, so A measures H and B measures K equally (VII.20); and K is to L as C to D, so C measures K and D measures L equally. Thus K is a common multiple of B and C, so E measures K (VII.35), the greater the less, which is impossible. Therefore F, E, G are the least."
+draw = [
+]

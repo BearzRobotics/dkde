@@ -1,0 +1,26 @@
+id = "VIII.11"
+book = 8
+order = 11
+title = "Between two squares"
+statement = "Between two square numbers there is one mean proportional number, and the square has to the square the ratio duplicate of that which the side has to the side."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B be square numbers, and let C be the side of A and D the side of B (here 9 and 16, sides 3 and 4). I say that between A, B there is one mean proportional number, and A has to B the ratio duplicate of that which C has to D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 3.15 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 5.6 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4.2 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Let C by multiplying D make E. Since A is a square and C is its side, C by multiplying itself has made A. For the same reason D by multiplying itself has made B. Since C by multiplying C, D has made A, E, C is to D as A is to E (VII.17). For the same reason, as C is to D, so is E to B (VII.18). Therefore, as A is to E, so is E to B. Therefore between the square numbers A, B there is one mean proportional number E (12). I say next that A has also to B the ratio duplicate of that which the side C has to the side D. For, since A, E, B are proportional, A has to B the ratio duplicate of that which A has to E (V definition 9). But A is to E as C is to D. Therefore A has to B the ratio duplicate of that which the side C has to the side D."
+draw = [
+]

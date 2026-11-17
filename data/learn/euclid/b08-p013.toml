@@ -1,0 +1,35 @@
+id = "VIII.13"
+book = 8
+order = 13
+title = "Squares and cubes of a progression"
+statement = "If there be as many numbers as we please in continued proportion, and each by multiplying itself make some number, the products will be proportional; and, if the original numbers by multiplying the products make certain numbers, the latter will also be proportional."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let there be as many numbers as we please in continued proportion, A, B, C (here 2, 4, 8), so that A is to B as B is to C, and let A, B, C by multiplying themselves make D, E, F (4, 16, 64). I say that D, E, F are in continued proportion."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.7 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.4 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2.8 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 1.4 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 5.6 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 22.4 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Let A by multiplying B make G. Then, since A by multiplying itself has made D and B has made G, A is to B as D is to G (VII.17). Also A is to B as G is to E (VII.18). So D, G, E are in proportion. Similarly E, H, F are in proportion, where H is B times C. Since A is to B as B is to C, the products G and H are in the same ratio: ex aequali D is to E as E is to F. Likewise, if A, B, C by multiplying D, E, F make cubes, the cubes are in continued proportion, by the same reasoning."
+draw = [
+]

@@ -1,0 +1,31 @@
+id = "VIII.20"
+book = 8
+order = 20
+title = "One mean: similar plane numbers"
+statement = "If one mean proportional number fall between two numbers, the numbers will be similar plane numbers."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let one mean proportional number C fall between the two numbers A, B (here 24, 36, 54). I say that A, B are similar plane numbers."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 8.4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 18.9 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 12.6 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Take the least numbers D, E in the ratio of A to C, which is also the ratio of C to B (here 2 and 3). The least numbers measure the others equally: D measures A as E measures C (VII.20), say F times, and D measures C as E measures B, say G times. So A is D·F, C is E·F and also D·G, and B is E·G."
+draw = [
+]
+
+[[step]]
+text = "Since E·F = D·G, D is to E as F is to G (VII.19). So A = D·F and B = E·G are plane numbers whose sides are proportional (D : E = F : G), that is, similar plane numbers."
+draw = [
+]

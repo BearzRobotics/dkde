@@ -1,0 +1,29 @@
+id = "VIII.23"
+book = 8
+order = 23
+title = "First cube, fourth cube"
+statement = "If four numbers be in continued proportion, and the first be cube, the fourth will also be cube."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B, C, D be four numbers in continued proportion (8, 12, 18, 27), and let A be a cube. I say that D is also a cube."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 4.2 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 6.3 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 9.45 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Since between A, D there are two mean proportional numbers B, C, A, D are similar solid numbers (VIII.21). But A is a cube. Therefore D is also a cube, since similar solid numbers one of which is a cube have the other a cube."
+draw = [
+]
