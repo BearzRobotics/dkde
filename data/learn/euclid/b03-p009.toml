@@ -1,0 +1,36 @@
+id = "III.9"
+book = 3
+order = 9
+title = "A point with three equal lines is the centre"
+statement = "If a point be taken within a circle, and more than two equal straight lines fall from the point on the circle, the point taken is the centre of the circle."
+proof = "Therefore if a point be taken within a circle, and more than two equal straight lines fall from the point on the circle, the point taken is the centre of the circle. Q.E.D."
+
+[[step]]
+text = "Let ABC be a circle and D a point within it, and from D let more than two equal straight lines, namely DA, DB, DC, fall on the circle ABC. I say that the point D is the centre of the circle ABC."
+draw = [
+  "clear",
+  "point D 0 0",
+  "point A -3.759 -1.368",
+  "point B 3.064 -2.571",
+  "point C 2 3.464",
+  "segment D A black",
+  "segment D B black",
+  "segment D C black",
+]
+
+[[step]]
+text = "Let AB, BC be joined and bisected at the points E, F, and let ED, FD be joined and drawn through to the points G, K, H, L."
+draw = [
+  "point E -0.347 -1.97",
+  "point F 2.532 0.446",
+  "segment A B green",
+  "segment B C green",
+  "line E D orange",
+  "line F D orange",
+]
+
+[[step]]
+text = "Since AE is equal to EB, and ED is common, the two sides AE, ED are equal to the two sides BE, ED, and the base DA is equal to the base DB. Therefore the angle AED is equal to the angle BED (I.8). Therefore each of the angles AED, BED is right. Therefore GK cuts AB into two equal parts and at right angles. And since, if in a circle a straight line cut a straight line into two equal parts and at right angles, the centre of the circle is on the cutting straight line (III.1 corollary), the centre of the circle is on GK. For the same reason the centre of the circle ABC is also on HL. And the straight lines GK, HL have no other point common but the point D. Therefore D is the centre of the circle ABC."
+draw = [
+  "circle D A blue",
+]

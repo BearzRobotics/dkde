@@ -1,0 +1,31 @@
+id = "III.2"
+book = 3
+order = 2
+title = "A chord lies inside the circle"
+statement = "If on the circumference of a circle two points be taken at random, the straight line joining the points will fall within the circle."
+proof = "Therefore if on the circumference of a circle two points be taken at random, the straight line joining the points will fall within the circle. Q.E.D."
+
+[[step]]
+text = "Let ABC be a circle, and let two points A, B be taken at random on its circumference. I say that the straight line joined from A to B will fall within the circle."
+draw = [
+  "clear",
+  "point D 0 0",
+  "point A -3 -2.65",
+  "point B 3 -2.65",
+  "circle D A blue",
+  "segment A B red",
+]
+
+[[step]]
+text = "For suppose it does not, but, if possible, let it fall outside, as AEB. Let the centre of the circle ABC be found (III.1), and let it be D. Let DA, DB be joined, and let DF be drawn through to any point E on the straight line AB."
+draw = [
+  "point E 1 -2.65",
+  "segment D A black",
+  "segment D B black",
+  "segment D E green",
+]
+
+[[step]]
+text = "Then, since DA is equal to DB, the angle DAE is equal to the angle DBE (I.5). Since AE is produced to F, the angle DEB is greater than the angle DAE (I.16). But the angle DAE is equal to the angle DBE. Therefore the angle DEB is greater than the angle DBE. And the greater angle is subtended by the greater side (I.19). Therefore DB is greater than DE. But DB is equal to DF. Therefore DF is greater than DE, the less than the greater, which is impossible. Therefore the straight line joined from A to B will not fall outside the circle. Similarly we can prove that neither will it fall on the circumference itself. Therefore it will fall within."
+draw = [
+]

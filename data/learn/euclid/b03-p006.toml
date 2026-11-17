@@ -1,0 +1,31 @@
+id = "III.6"
+book = 3
+order = 6
+title = "Circles that touch internally"
+statement = "If two circles touch one another, they will not have the same centre."
+proof = "Therefore if two circles touch one another, they will not have the same centre. Q.E.D."
+
+[[step]]
+text = "For let the two circles ABC, CDE touch one another at the point C. I say that they will not have the same centre."
+draw = [
+  "clear",
+  "point F 0 0",
+  "point G 2 0",
+  "point C 4 0",
+  "circle F C blue",
+  "circle G C red",
+]
+
+[[step]]
+text = "For if possible, let it be F. Let FC be joined, and let FEB be drawn through at random."
+draw = [
+  "point E 1 1.732",
+  "point B -2 3.464",
+  "segment F C black",
+  "line F B black",
+]
+
+[[step]]
+text = "Since F is the centre of the circle ABC, FC is equal to FB. Again, since F is the centre of the circle CDE, FC is equal to FE. But FC was proved equal to FB. Therefore FE is also equal to FB, the less to the greater, which is impossible. Therefore F is not the centre of both circles."
+draw = [
+]

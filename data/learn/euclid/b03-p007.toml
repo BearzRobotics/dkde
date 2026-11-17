@@ -1,0 +1,46 @@
+id = "III.7"
+book = 3
+order = 7
+title = "Distances from a point on a diameter"
+statement = "If on the diameter of a circle a point be taken which is not the centre of the circle, and from the point straight lines fall upon the circle, that will be greatest on which the centre is, the remainder of the same diameter will be least, and of the rest the nearer to the straight line through the centre is always greater than the more remote, and only two equal straight lines will fall from the point on the circle, one on each side of the least straight line."
+proof = "Therefore if on the diameter of a circle a point be taken which is not the centre of the circle, and from the point straight lines fall upon the circle, that will be greatest on which the centre is, the remainder of the same diameter will be least, and of the rest the nearer to the straight line through the centre is always greater than the more remote, and only two equal straight lines will fall from the point on the circle, one on each side of the least straight line. Q.E.D."
+
+[[step]]
+text = "Let ABCD be a circle and AD a diameter of it. On AD let a point F be taken which is not the centre of the circle, and let E be the centre. From F let certain straight lines FB, FC, FG fall on the circle. I say that FA is greatest, FD least, and of the others FB is greater than FC, and FC than FG."
+draw = [
+  "clear",
+  "point E 0 0",
+  "point A -4 0",
+  "point D 4 0",
+  "point F 1.5 0",
+  "point B 2.571 3.064",
+  "point C -2 3.464",
+  "point G -3.939 0.695",
+  "circle E A blue",
+  "segment A D black",
+  "segment F B black",
+  "segment F C black",
+  "segment F G black",
+]
+
+[[step]]
+text = "Let BE, CE, GE be joined. Since in any triangle two sides are greater than the remaining one (I.20), EB, EF are greater than BF. But EB is equal to AE. Therefore AE, EF, that is AF, is greater than BF. Therefore AF is greater than BF."
+draw = [
+  "segment E B green",
+  "segment E C green",
+  "segment E G green",
+  "segment F A red",
+]
+
+[[step]]
+text = "Again, since BE is equal to CE, and FE is common, the two sides BE, EF are equal to the two sides CE, EF. But the angle BEF is greater than the angle CEF. Therefore the base BF is greater than the base CF (I.24). For the same reason CF is greater than GF."
+draw = [
+  "angle B E F orange fill",
+  "angle C E F orange fill",
+]
+
+[[step]]
+text = "Again, GF, FE are greater than EG (I.20), and EG is equal to ED. Therefore GF, FE are greater than ED. Take away EF from each. Then GF is greater than FD. Therefore FA is greatest, FD least, and FB greater than FC, FC than FG. I say also that from the point F only two equal straight lines will fall on the circle, one on each side of the least FD. For if a third FH were equal to FG, then the angle on one side would have to be equal to the angle on the other, FH being nearer or farther than FG, which is impossible (I.24)."
+draw = [
+  "segment F D green",
+]

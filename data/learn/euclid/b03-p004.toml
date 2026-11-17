@@ -1,0 +1,34 @@
+id = "III.4"
+book = 3
+order = 4
+title = "Chords that do not bisect one another"
+statement = "If in a circle two straight lines which do not pass through the centre cut one another, they do not bisect one another."
+proof = "Therefore if in a circle two straight lines which do not pass through the centre cut one another, they do not bisect one another. Q.E.D."
+
+[[step]]
+text = "Let ABCD be a circle, and in it let two straight lines AC, BD, not through the centre, cut one another at E. I say that they do not bisect one another."
+draw = [
+  "clear",
+  "point F 0 0",
+  "point A -3.464 -2",
+  "point B -2.571 3.064",
+  "point C 2 3.464",
+  "point D 3.759 -1.368",
+  "point E -0.118 1.346",
+  "circle F A blue",
+  "segment A C black",
+  "segment B D black",
+]
+
+[[step]]
+text = "For if possible, let them bisect one another, so that AE is equal to EC and BE to ED. Let the centre of the circle ABCD be taken (III.1), and let it be F. Let FE be joined."
+draw = [
+  "segment F E red",
+]
+
+[[step]]
+text = "Since the straight line FE through the centre bisects the straight line AC not through the centre, it also cuts it at right angles (III.3). Therefore the angle FEA is right. Again, since the straight line FE bisects the straight line BD, it also cuts it at right angles. Therefore the angle FEB is right. But FEA was proved right. Therefore the angle FEA is equal to the angle FEB, the less to the greater, which is impossible. Therefore AC, BD do not bisect one another."
+draw = [
+  "angle F E A orange fill",
+  "angle F E B green fill",
+]

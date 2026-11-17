@@ -1,0 +1,38 @@
+id = "III.8"
+book = 3
+order = 8
+title = "Distances from a point outside"
+statement = "If a point be taken outside a circle and from the point straight lines be drawn through to the circle, one of which passes through the centre and the others are drawn at random, then, of the straight lines which fall on the concave circumference, that which passes through the centre is greatest, while of the rest the nearer to that through the centre is always greater than the more remote; but of the straight lines falling on the convex circumference that between the point and the diameter is least, and of the rest the nearer to the least is always less than the more remote, and only two equal straight lines will fall on the circle from the point, one on each side of the least."
+proof = "Therefore if a point be taken outside a circle, and from the point straight lines be drawn through to the circle, one of which passes through the centre and the others are drawn at random, then of the straight lines falling on the concave circumference that through the centre is greatest, of the rest the nearer to that through the centre is always greater than the more remote, and of the straight lines falling on the convex circumference that between the point and the diameter is least, and of the rest the nearer to the least is always less than the more remote, and only two equal straight lines will fall on the circle from the point, one on each side of the least. Q.E.D."
+
+[[step]]
+text = "Let ABC be a circle, let a point D be taken outside it, and from D let straight lines DA, DE, DF, DC be drawn through, DA being through the centre. I say that DA is greatest, and DE greater than DF, DF than DC; of the lines falling on the convex circumference, DG between the point and the diameter is least."
+draw = [
+  "clear",
+  "point K 0 0",
+  "point A -4 0",
+  "point G 4 0",
+  "point D 7 0",
+  "point C 2.571 3.064",
+  "point F -0.695 3.939",
+  "point E -3.464 2",
+  "circle K A blue",
+  "segment D A black",
+  "segment D C black",
+  "segment D F black",
+  "segment D E black",
+]
+
+[[step]]
+text = "Let the centre be K, and let KE, KF, KC be joined. Since AK is equal to EK, add KD to each. Then AD is equal to EK, KD. But EK, KD are greater than ED (I.20). Therefore AD is greater than ED. Again, since EK is equal to FK, and KD is common, EK, KD are equal to FK, KD; and the angle EKD is greater than the angle FKD. Therefore the base ED is greater than the base FD (I.24). Similarly FD is greater than CD. Therefore DA is greatest, DE greater than DF, DF than DC."
+draw = [
+  "segment K E green",
+  "segment K F green",
+  "segment K C green",
+]
+
+[[step]]
+text = "Again, since MK, KD are greater than DM (I.20), and MK is equal to KG, the remainder KD is greater than the remainder GD, that is, GD is less than KD, so GD is least of all. And since on one side of KD, the triangle KDM... the lines drawn to the convex arc nearer to DG are less than those more remote (I.21, I.24). And only two equal lines fall from D on the circle, one on each side of the least DG, by the angle construction of I.23."
+draw = [
+  "segment D G red",
+]

@@ -1,0 +1,42 @@
+id = "III.3"
+book = 3
+order = 3
+title = "A diameter and a chord"
+statement = "If in a circle a straight line through the centre bisect a straight line not through the centre, it also cuts it at right angles; and if it cut it at right angles, it also bisects it."
+proof = "Therefore if in a circle a straight line through the centre bisect a straight line not through the centre, it also cuts it at right angles; and if it cut it at right angles, it also bisects it. Q.E.D."
+
+[[step]]
+text = "Let ABC be a circle, and in it let a straight line CD through the centre bisect a straight line AB not through the centre at the point F. I say that it also cuts it at right angles."
+draw = [
+  "clear",
+  "point E 0 0",
+  "point A -2 -3.464",
+  "point B 3.064 -2.571",
+  "point C -0.695 3.939",
+  "point D 0.695 -3.939",
+  "point F 0.532 -3.018",
+  "circle E D blue",
+  "segment C D red",
+  "segment A B black",
+]
+
+[[step]]
+text = "Let the centre of the circle ABC be taken, and let it be E. Let EA, EB be joined."
+draw = [
+  "segment E A green",
+  "segment E B green",
+]
+
+[[step]]
+text = "Since AF is equal to FB, and FE is common, two sides are equal to two sides, and the base EA is equal to the base EB. Therefore the angle AFE is equal to the angle BFE (I.8). But when a straight line standing on a straight line makes the adjacent angles equal, each is right (definition 10). Therefore each of the angles AFE, BFE is right. Therefore CD, which is through the centre and bisects AB, cuts it at right angles."
+draw = [
+  "angle A F E orange fill",
+  "angle E F B orange fill",
+]
+
+[[step]]
+text = "Next, let CD cut AB at right angles. I say that it also bisects it. With the same construction, since EA is equal to EB, the angle EAF is equal to the angle EBF (I.5). But the right angle AFE is equal to the right angle BFE. Therefore EAF, EBF are two triangles having two angles equal to two angles and one side equal to one side, namely EF, which is common and subtends one of the equal angles. Therefore they will also have the remaining sides equal to the remaining sides (I.26). Therefore AF is equal to FB."
+draw = [
+  "polygon A F E teal fill",
+  "polygon B F E purple fill",
+]

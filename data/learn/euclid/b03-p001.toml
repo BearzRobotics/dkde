@@ -1,0 +1,37 @@
+id = "III.1"
+book = 3
+order = 1
+title = "To find the centre of a circle"
+statement = "To find the centre of a given circle."
+proof = "Therefore the point F has been found to be the centre of the circle ABC. Being what it was required to do. (Corollary: if in a circle a straight line cut a straight line into two equal parts and at right angles, the centre of the circle is on the cutting straight line.)"
+
+[[step]]
+text = "Let ABC be the given circle. It is required to find the centre of the circle ABC. (The circle is drawn here with its centre F, which we pretend not to know.)"
+draw = [
+  "clear",
+  "point F 0 0",
+  "point C 0 -4",
+  "circle F C blue",
+]
+
+[[step]]
+text = "Let a straight line AB be drawn through it at random, and let it be bisected at the point D (I.10). From D let DC be drawn at right angles to AB (I.11), and let it be drawn through to E."
+draw = [
+  "point A -3 -2.65",
+  "point B 3 -2.65",
+  "point D 0 -2.65",
+  "point E 0 4",
+  "segment A B black",
+  "segment C E red",
+]
+
+[[step]]
+text = "Let CE be bisected at F. I say that F is the centre of the circle ABC."
+draw = [
+  "circle F C blue",
+]
+
+[[step]]
+text = "For suppose it is not, but, if possible, let G be the centre, and let GA, GD, GB be joined. Then since AD is equal to DB, and DG is common, the two sides AD, DG are equal to the two sides BD, DG respectively, and the base GA is equal to the base GB, since they are radii. Therefore the angle ADG is equal to the angle GDB (I.8). But when a straight line standing on a straight line makes the adjacent angles equal to one another, each of the equal angles is right (definition 10). Therefore the angle GDB is right. But the angle FDB is also right. Therefore the angle FDB is equal to the angle GDB, the greater to the less, which is impossible. Therefore G is not the centre of the circle ABC. Similarly we can prove that neither is any other point except F."
+draw = [
+]

@@ -1,0 +1,30 @@
+id = "III.5"
+book = 3
+order = 5
+title = "Circles that cut do not share a centre"
+statement = "If two circles cut one another, they will not have the same centre."
+proof = "Therefore if two circles cut one another, they will not have the same centre. Q.E.D."
+
+[[step]]
+text = "For let the circles ABC, CDG cut one another at the points B, C. I say that they will not have the same centre."
+draw = [
+  "clear",
+  "point E -1 0",
+  "point F 2 0",
+  "point B 0.197 -3.289",
+  "point C 0.197 3.289",
+  "circle E C blue",
+  "circle F C red",
+]
+
+[[step]]
+text = "For if possible, let E be the centre of both. Let EC be joined, and let EFG be drawn through at random."
+draw = [
+  "segment E C black",
+  "line E F black",
+]
+
+[[step]]
+text = "Since E is the centre of the circle ABC, EC is equal to EF. Again, since E is the centre of the circle CDG, EC is equal to EG. But EC was proved equal to EF. Therefore EF is also equal to EG, the less to the greater, which is impossible. Therefore E is not the centre of both circles ABC, CDG."
+draw = [
+]

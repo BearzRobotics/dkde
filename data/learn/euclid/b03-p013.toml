@@ -1,0 +1,27 @@
+id = "III.13"
+book = 3
+order = 13
+title = "One point of contact only"
+statement = "A circle does not touch a circle at more than one point, whether it touch it internally or externally."
+proof = "Therefore a circle does not touch a circle at more than one point, whether it touch it internally or externally. Q.E.D."
+
+[[step]]
+text = "For, if possible, let the circle ABDC touch the circle EBFD, first internally, at more than one point, namely D, B."
+draw = [
+  "clear",
+  "point F 0 0",
+  "point G 2 0",
+  "point A 4 0",
+  "circle F A blue",
+  "circle G A red",
+]
+
+[[step]]
+text = "Let BD be joined and bisected, and from its middle let straight lines be drawn at right angles to BD; they will pass through the centres of both circles (III.1 corollary), so the centres lie on the line through the midpoint at right angles to BD."
+draw = [
+]
+
+[[step]]
+text = "But then the straight line joining the centres must fall on the points of contact B and D (III.11), and a straight line through two distinct points is BD itself; but BD does not pass through the centres. This is absurd. So the circles do not touch at more than one point internally. Next, if possible, let the circle ACK touch the circle ABDC externally at more than one point, namely A, C. Let AC be joined. Then the straight line AC lies within each circle (III.2), but being within ACK it is outside ABDC, which is absurd. Therefore a circle does not touch a circle at more than one point."
+draw = [
+]

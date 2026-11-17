@@ -1,0 +1,29 @@
+id = "III.10"
+book = 3
+order = 10
+title = "Circles meet in at most two points"
+statement = "A circle does not cut a circle at more than two points."
+proof = "Therefore a circle does not cut a circle at more than two points. Q.E.D."
+
+[[step]]
+text = "For, if possible, let the circle ABC cut the circle DEF at more than two points, namely B, G, F, H. Let there be two circles cutting at two points B and C."
+draw = [
+  "clear",
+  "point K -1.5 0",
+  "point L 1.5 0",
+  "point B 0 3",
+  "point C 0 -3",
+  "circle K B blue",
+  "circle L B red",
+]
+
+[[step]]
+text = "Let BH, BG be joined and bisected at the points K, L, and from K, L let KC, LM be drawn at right angles to BH, BG and carried on to the points A, E."
+draw = [
+  "segment B C black",
+]
+
+[[step]]
+text = "Then, in the circle ABC, since a straight line AC cuts a straight line BH into two equal parts and at right angles, the centre of the circle ABC is on AC. Again, since a straight line NO cuts BG into two equal parts and at right angles, the centre of the circle ABC is on NO. But it was proved to be on AC, and the straight lines AC, NO meet at no point except P. Therefore the point P is the centre of the circle ABC. Similarly we can prove that P is also the centre of the circle DEF. Therefore the two circles ABC, DEF which cut one another have the same centre P, which is impossible (III.5). Therefore a circle does not cut a circle at more than two points."
+draw = [
+]

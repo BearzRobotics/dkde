@@ -1,0 +1,32 @@
+id = "III.11"
+book = 3
+order = 11
+title = "Circles touching internally: the line of centres"
+statement = "If two circles touch one another internally, and their centres be taken, the straight line joining their centres, if it be also produced, will fall on the point of contact of the circles."
+proof = "Therefore if two circles touch one another internally, and their centres be taken, the straight line joining their centres, if it be also produced, will fall on the point of contact of the circles. Q.E.D."
+
+[[step]]
+text = "Let the two circles ABC, ADE touch one another internally at the point A, and let the centre F of the circle ABC and the centre G of ADE be taken. I say that the straight line joined from G to F and produced will fall on A."
+draw = [
+  "clear",
+  "point F 0 0",
+  "point G 2 0",
+  "point A 4 0",
+  "circle F A blue",
+  "circle G A red",
+  "segment F G black",
+]
+
+[[step]]
+text = "For suppose it does not, but, if possible, let it fall as FGDH, and let AF, AG be joined."
+draw = [
+  "point D 0.714 1.532",
+  "segment A F green",
+  "segment A G green",
+]
+
+[[step]]
+text = "Since AG, GF are greater than FA, that is, than FH, take away FG from each. Then the remainder AG is greater than the remainder GH. But AG is equal to GD. Therefore GD is also greater than GH, the less than the greater, which is impossible. Therefore the straight line joined from F to G will not fall outside; therefore it will fall on A, the point of contact."
+draw = [
+  "line F A black",
+]

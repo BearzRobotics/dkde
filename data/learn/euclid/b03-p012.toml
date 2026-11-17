@@ -1,0 +1,36 @@
+id = "III.12"
+book = 3
+order = 12
+title = "Circles touching externally: the line of centres"
+statement = "If two circles touch one another externally, the straight line joining their centres will pass through the point of contact."
+proof = "Therefore if two circles touch one another externally, the straight line joining their centres will pass through the point of contact. Q.E.D."
+
+[[step]]
+text = "Let the two circles ABC, ADE touch one another externally at the point A, and let the centre F of ABC and the centre G of ADE be taken. I say that the straight line joined from F to G will pass through the point of contact at A."
+draw = [
+  "clear",
+  "point F -3 0",
+  "point G 2 0",
+  "point A 0 0",
+  "circle F A blue",
+  "circle G A red",
+]
+
+[[step]]
+text = "For suppose it does not, but, if possible, let it pass as FCDG, and let FA, AG be joined."
+draw = [
+  "point C -0.702 1.928",
+  "point D 0.468 1.286",
+  "segment F C black",
+  "segment C D black",
+  "segment D G black",
+  "segment F A green",
+  "segment A G green",
+]
+
+[[step]]
+text = "Since the point F is the centre of the circle ABC, FA is equal to FC. Again, since the point G is the centre of the circle ADE, GA is equal to GD. But FA, AG are greater than FG. And FA, AG are equal to FC, DG; so FC, DG are greater than FG... which is impossible, since FG is greater than FC, DG together with CD. Therefore the straight line joined from F to G will not fail to pass through the point of contact at A; that is, it will pass through it."
+draw = [
+  "segment F A green",
+  "segment A G green",
+]
