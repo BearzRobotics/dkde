@@ -1,0 +1,26 @@
+id = "T.2"
+course = "Trigonometry"
+book = 1
+order = 2
+title = "Solving right triangles"
+statement = "Given one side and one angle of a right triangle, the other sides follow from sine, cosine or tangent."
+
+[[step]]
+text = "Idea: a ladder 5 long leaning at 60 degrees reaches 5 sin 60 up the wall: about 4.33."
+calc = ["5*sin(60)"]
+
+[[step]]
+text = "And its foot is 5 cos 60 = 2.5 from the wall."
+calc = ["5*cos(60)"]
+
+[[step]]
+text = "Check with Pythagoras (I.47): 4.33^2 + 2.5^2 = 25."
+calc = ["(5*sin(60))^2 + (5*cos(60))^2"]
+
+[[exercise]]
+prompt = "A hill rises at 30 degrees. How high is the climb after 100 metres along the slope?"
+answer = "100*sin(30)"
+
+[[exercise]]
+prompt = "A shadow is 20 long when the sun is 45 degrees up. How tall is the pole?"
+answer = "20*tan(45)"

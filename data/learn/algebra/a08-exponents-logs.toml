@@ -1,0 +1,26 @@
+id = "AL.8"
+course = "Algebra"
+book = 2
+order = 3
+title = "Exponents and logarithms"
+statement = "A logarithm answers the question: what power gives this number?"
+
+[[step]]
+text = "Idea: 2^x = 8 asks for the power of 2 that makes 8. The answer, 3, is log base 2 of 8."
+calc = ["2^x = 8", "log2(8)"]
+
+[[step]]
+text = "Common logarithms use base 10: log(1000) = 3. Natural logarithms use base e."
+calc = ["log(1000)", "ln(e)"]
+
+[[step]]
+text = "Logs turn multiplication into addition: log(a x b) = log(a) + log(b)."
+calc = ["log(20) + log(5)", "log(100)"]
+
+[[exercise]]
+prompt = "What is log base 2 of 64?"
+answer = "log2(64)"
+
+[[exercise]]
+prompt = "What is log(100000)?"
+answer = "log(100000)"

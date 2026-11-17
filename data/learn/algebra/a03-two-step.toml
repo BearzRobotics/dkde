@@ -1,0 +1,27 @@
+id = "AL.3"
+course = "Algebra"
+book = 1
+order = 3
+title = "Solving equations: several steps"
+statement = "Undo the addition or subtraction first, then the multiplication or division."
+
+[[step]]
+text = "Idea: 2x + 3 = 11. Subtract 3: 2x = 8. Divide by 2: x = 4."
+calc = ["2x + 3 = 11"]
+
+[[step]]
+text = "By hand: the solver writes each step."
+work = ["2x + 3 = 11"]
+
+[[step]]
+text = "Unknowns on both sides: 3x - 7 = 2x + 5. Take 2x from both sides: x - 7 = 5, so x = 12."
+calc = ["3x - 7 = 2x + 5"]
+work = ["3x - 7 = 2x + 5"]
+
+[[exercise]]
+prompt = "Solve 5x - 4 = 21. What is x?"
+answer = "(21+4)/5"
+
+[[exercise]]
+prompt = "Solve 7x + 2 = 4x + 14. What is x?"
+answer = "(14-2)/(7-4)"

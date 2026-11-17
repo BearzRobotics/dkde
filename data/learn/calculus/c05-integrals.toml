@@ -1,0 +1,27 @@
+id = "C.5"
+course = "Calculus"
+book = 2
+order = 1
+title = "Integrals"
+statement = "An integral adds up many small pieces; it undoes the derivative."
+
+[[step]]
+text = "Idea: the area under y = x between 0 and 4 is a triangle of base 4 and height 4: 8."
+calc = ["integral(x,x,0,4)"]
+graph = ["x"]
+
+[[step]]
+text = "The antiderivative of x^2 is x^3/3 (plus a constant)."
+calc = ["integral(x^2,x)"]
+
+[[step]]
+text = "By hand: the solver shows the power rule backwards."
+work = ["integral(2x+1,x)"]
+
+[[exercise]]
+prompt = "What is the area under y = x^2 from 0 to 3?"
+answer = "integral(x^2,x,0,3)"
+
+[[exercise]]
+prompt = "What is the area under y = 2x + 1 from 0 to 5?"
+answer = "integral(2x+1,x,0,5)"

@@ -1,0 +1,26 @@
+id = "T.3"
+course = "Trigonometry"
+book = 1
+order = 3
+title = "The Pythagorean identity"
+statement = "sin^2 + cos^2 = 1 for every angle; it is Pythagoras on the unit circle."
+
+[[step]]
+text = "Idea: a point on the unit circle at angle t has coordinates (cos t, sin t), and its distance from the centre is 1."
+calc = ["sin(30)^2 + cos(30)^2"]
+
+[[step]]
+text = "The same for any angle: 70 degrees."
+calc = ["sin(70)^2 + cos(70)^2"]
+
+[[step]]
+text = "Dividing by cos^2 gives 1 + tan^2 = 1/cos^2."
+calc = ["1 + tan(40)^2", "1/cos(40)^2"]
+
+[[exercise]]
+prompt = "What is sin(10)^2 + cos(10)^2?"
+answer = "sin(10)^2 + cos(10)^2"
+
+[[exercise]]
+prompt = "If sin t = 0.6, what is cos^2 t?"
+answer = "1 - 0.6^2"

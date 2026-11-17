@@ -1,0 +1,26 @@
+id = "A.7"
+course = "Arithmetic"
+book = 1
+order = 7
+title = "Order of operations"
+statement = "Brackets first, then powers, then multiplication and division from the left, then addition and subtraction from the left."
+
+[[step]]
+text = "Idea: 2 + 3 x 4 is 14, not 20, because multiplication comes before addition. Brackets change the order: (2 + 3) x 4 is 20."
+calc = ["2 + 3 * 4", "(2 + 3) * 4"]
+
+[[step]]
+text = "By hand: the solver shows which step is done first."
+work = ["2 + 3 * 4"]
+
+[[step]]
+text = "Powers come before multiplication: 2 x 3^2 is 2 x 9 = 18, not 36."
+calc = ["2 * 3^2", "(2*3)^2"]
+
+[[exercise]]
+prompt = "Work out 5 + 6 * 7 - 8."
+answer = "5 + 6*7 - 8"
+
+[[exercise]]
+prompt = "Work out (5 + 6) * (7 - 8)."
+answer = "(5+6)*(7-8)"

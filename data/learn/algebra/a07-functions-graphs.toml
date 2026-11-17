@@ -1,0 +1,28 @@
+id = "AL.7"
+course = "Algebra"
+book = 2
+order = 2
+title = "Functions and graphs"
+statement = "A function turns each input x into one output; its graph plots the pairs (x, y)."
+
+[[step]]
+text = "Idea: y = 2x + 1 is a straight line: each step right of 1 raises y by 2 (the slope)."
+calc = ["2*3 + 1"]
+graph = ["2x + 1"]
+
+[[step]]
+text = "A parabola y = x^2 has a lowest point at the origin and is symmetrical."
+graph = ["x^2"]
+
+[[step]]
+text = "Where the line crosses y = 0 is the solution of the equation 2x + 1 = 0."
+calc = ["2x + 1 = 0"]
+graph = ["2x + 1", "x^2 - 4"]
+
+[[exercise]]
+prompt = "What is y when x = 3 and y = 2x + 1?"
+answer = "2*3+1"
+
+[[exercise]]
+prompt = "For y = x^2 - 4, what is y when x = 5?"
+answer = "5^2 - 4"

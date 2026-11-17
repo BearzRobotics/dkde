@@ -1,0 +1,27 @@
+id = "A.14"
+course = "Arithmetic"
+book = 3
+order = 1
+title = "Powers"
+statement = "A power is repeated multiplication: 2^5 = 2 x 2 x 2 x 2 x 2."
+
+[[step]]
+text = "Idea: 2^3 x 2^4 = 2^7, because you are multiplying 2 three times and four more times."
+calc = ["2^3 * 2^4", "2^7"]
+
+[[step]]
+text = "By hand: the solver shows the powers combining."
+work = ["2^3 * 2^4"]
+
+[[step]]
+text = "A power of a power multiplies the exponents: (2^3)^2 = 2^6. Anything to the power zero is 1."
+calc = ["(2^3)^2", "5^0"]
+
+[[exercise]]
+prompt = "What is 3^4?"
+answer = "3^4"
+
+[[exercise]]
+prompt = "What is 2^10?"
+answer = "2^10"
+hint = "1024."

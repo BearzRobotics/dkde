@@ -1,0 +1,27 @@
+id = "AL.6"
+course = "Algebra"
+book = 2
+order = 1
+title = "The quadratic formula"
+statement = "For ax^2 + bx + c = 0, x = (-b plus or minus the square root of b^2 - 4ac) over 2a."
+
+[[step]]
+text = "Idea: complete the square and you get the formula. For x^2 + 2x - 8 = 0: a = 1, b = 2, c = -8, so b^2 - 4ac = 36, the roots are (-2 + 6)/2 = 2 and (-2 - 6)/2 = -4."
+calc = ["x^2 + 2x - 8 = 0"]
+
+[[step]]
+text = "By hand: the solver gives the steps with the discriminant."
+work = ["x^2 + 2x - 8 = 0"]
+
+[[step]]
+text = "When b^2 - 4ac is negative there are no real roots: x^2 + 1 = 0."
+work = ["x^2 + 1 = 0"]
+graph = ["x^2 + 1"]
+
+[[exercise]]
+prompt = "What is the discriminant of x^2 + 2x - 8 (b^2 - 4ac)?"
+answer = "2^2 - 4*1*(-8)"
+
+[[exercise]]
+prompt = "A ball is at height 20t - 5t^2. At what time t > 0 does it hit the ground?"
+answer = "20/5"

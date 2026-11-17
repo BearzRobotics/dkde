@@ -1,0 +1,26 @@
+id = "C.3"
+course = "Calculus"
+book = 1
+order = 3
+title = "Derivative rules"
+statement = "The derivative of a sum is the sum of the derivatives; constants come out; powers drop by one."
+
+[[step]]
+text = "Idea: diff(3x^4) = 12x^3 and diff(5x) = 5. For a polynomial, differentiate each term."
+calc = ["diff(3x^4 + 5x,x)"]
+
+[[step]]
+text = "By hand: the solver shows each term."
+work = ["diff(x^3,x)"]
+
+[[step]]
+text = "Product rule: the derivative of u times v is (u prime) v + u (v prime). For x^2 times x^3: 2x * x^3 + x^2 * 3x^2 = 5x^4."
+calc = ["diff(x^2*x^3,x)"]
+
+[[exercise]]
+prompt = "What is the slope of y = x^3 at x = 2?"
+answer = "3*2^2"
+
+[[exercise]]
+prompt = "What is the slope of y = 4x^2 - 3x at x = 5?"
+answer = "8*5 - 3"

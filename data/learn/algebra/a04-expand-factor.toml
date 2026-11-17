@@ -1,0 +1,27 @@
+id = "AL.4"
+course = "Algebra"
+book = 1
+order = 4
+title = "Expanding and factoring"
+statement = "Expanding multiplies out brackets; factoring writes a sum as a product. They are inverse processes."
+
+[[step]]
+text = "Idea: (x + 2)(x + 3) = x^2 + 5x + 6. Each term of the first bracket multiplies each term of the second (II.1 draws this as a rectangle cut into pieces)."
+calc = ["expand((x+2)(x+3))"]
+
+[[step]]
+text = "By hand: the solver shows the products."
+work = ["expand((x+2)(x+3))"]
+
+[[step]]
+text = "Factoring: x^2 + 5x + 6 = (x + 2)(x + 3): find two numbers with product 6 and sum 5."
+calc = ["factor(x^2+5x+6)"]
+work = ["factor(x^2+5x+6)"]
+
+[[exercise]]
+prompt = "What is the value of (x+1)^2 at x = 4? (expand it as x^2 + 2x + 1)"
+answer = "4^2 + 2*4 + 1"
+
+[[exercise]]
+prompt = "A rectangle is (x+3) by (x+5). What is its area when x = 2?"
+answer = "(2+3)*(2+5)"

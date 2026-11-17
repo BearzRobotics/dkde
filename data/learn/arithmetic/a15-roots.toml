@@ -1,0 +1,27 @@
+id = "A.15"
+course = "Arithmetic"
+book = 3
+order = 2
+title = "Square roots"
+statement = "The square root of a number is the number that multiplies by itself to give it."
+
+[[step]]
+text = "Idea: the square root of 144 is 12, since 12 x 12 = 144. Euclid draws the square on a line (II.14) and finds the side of a square equal to a given figure."
+calc = ["sqrt(144)"]
+
+[[step]]
+text = "Not every root is a whole number. The square root of 50 is 5 times the square root of 2, about 7.07."
+calc = ["sqrt(50)"]
+work = ["sqrt(50)"]
+
+[[step]]
+text = "Roots of products: sqrt(a x b) = sqrt(a) x sqrt(b)."
+calc = ["sqrt(4*9)", "sqrt(4)*sqrt(9)"]
+
+[[exercise]]
+prompt = "What is the square root of 529?"
+answer = "sqrt(529)"
+
+[[exercise]]
+prompt = "What is 15 squared?"
+answer = "15^2"

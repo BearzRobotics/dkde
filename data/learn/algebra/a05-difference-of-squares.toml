@@ -1,0 +1,28 @@
+id = "AL.5"
+course = "Algebra"
+book = 1
+order = 5
+title = "Difference of squares"
+statement = "a^2 - b^2 = (a - b)(a + b): a square with a smaller square cut out of a corner can be rearranged as a rectangle (II.5)."
+
+[[step]]
+text = "Idea: x^2 - 9 = (x - 3)(x + 3)."
+calc = ["factor(x^2-9)"]
+
+[[step]]
+text = "By hand: the solver shows the factors and the roots."
+work = ["x^2 - 9 = 0"]
+
+[[step]]
+text = "A trick for mental arithmetic: 51 x 49 = 50^2 - 1 = 2499."
+calc = ["51 * 49", "50^2 - 1"]
+
+[[exercise]]
+prompt = "What is 101 x 99?"
+answer = "101*99"
+hint = "100^2 - 1."
+
+[[exercise]]
+prompt = "What is 15^2 - 14^2?"
+answer = "15^2 - 14^2"
+hint = "(15-14)(15+14)."

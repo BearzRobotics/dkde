@@ -1,0 +1,26 @@
+id = "A.8"
+course = "Arithmetic"
+book = 1
+order = 8
+title = "Negative numbers"
+statement = "On the number line, adding moves right and subtracting moves left; two minus signs make a plus."
+
+[[step]]
+text = "Idea: -5 + 8 is 3: start at -5 and move 8 to the right. 3 - 7 is -4: start at 3 and move 7 to the left."
+calc = ["-5 + 8", "3 - 7"]
+
+[[step]]
+text = "Subtracting a negative adds: 5 - (-3) = 8. A negative times a negative is positive: (-4)(-6) = 24."
+calc = ["5 - (-3)", "(-4) * (-6)"]
+
+[[step]]
+text = "A negative times a positive is negative: (-4)(6) = -24."
+work = ["-5 + 8"]
+
+[[exercise]]
+prompt = "What is -12 + 20?"
+answer = "-12 + 20"
+
+[[exercise]]
+prompt = "What is (-3) * (-7)?"
+answer = "(-3)*(-7)"

@@ -1,0 +1,26 @@
+id = "LA.3"
+course = "Linear Algebra"
+book = 1
+order = 3
+title = "Multiplying matrices"
+statement = "Each entry of a product is a row of the first matrix dotted with a column of the second."
+
+[[step]]
+text = "Idea: [[1,2],[3,4]] times [[5,6],[7,8]]: the top-left entry is 1x5 + 2x7 = 19."
+calc = ["[[1,2],[3,4]]*[[5,6],[7,8]]", "1*5 + 2*7"]
+
+[[step]]
+text = "Order matters: a product of matrices usually differs when reversed."
+calc = ["[[5,6],[7,8]]*[[1,2],[3,4]]"]
+
+[[step]]
+text = "A matrix squared multiplies it by itself."
+calc = ["[[1,2],[3,4]]^2"]
+
+[[exercise]]
+prompt = "What is the top-left entry of [[2,0],[1,3]] times [[4,1],[5,2]]?"
+answer = "2*4 + 0*5"
+
+[[exercise]]
+prompt = "What is the bottom-right entry of that product?"
+answer = "1*1 + 3*2"

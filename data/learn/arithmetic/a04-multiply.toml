@@ -1,0 +1,28 @@
+id = "A.4"
+course = "Arithmetic"
+book = 1
+order = 4
+title = "Multiplying"
+statement = "Long multiplication multiplies by each digit in turn and adds the shifted results."
+
+[[step]]
+text = "Idea: 23 times 47 is 23 times 40 plus 23 times 7. Multiplying by a digit in the tens place shifts the result one place left."
+calc = ["23 * 47"]
+
+[[step]]
+text = "By hand: 23 x 7 = 161. 23 x 40 = 920. Add: 161 + 920 = 1081."
+work = ["23 * 47"]
+
+[[step]]
+text = "Tables help: learn 1 to 10 times 1 to 10. A quick check is to estimate: 23 x 47 is about 20 x 50 = 1000."
+calc = ["20 * 50"]
+
+[[exercise]]
+prompt = "Work out 36 times 25."
+answer = "36 * 25"
+hint = "36 x 25 = 36 x 100 / 4."
+
+[[exercise]]
+prompt = "Work out 14 times 14."
+answer = "14 * 14"
+hint = "Square of 14."

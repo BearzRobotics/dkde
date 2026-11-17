@@ -1,0 +1,26 @@
+id = "C.6"
+course = "Calculus"
+book = 2
+order = 2
+title = "Taylor series"
+statement = "A smooth function can be approximated near a point by a polynomial built from its derivatives."
+
+[[step]]
+text = "Idea: near 0, e^x is about 1 + x + x^2/2 + x^3/6."
+calc = ["taylor(e^x,x,0,4)"]
+
+[[step]]
+text = "By hand: the solver shows each derivative at the point."
+work = ["taylor(e^x,x,0,3)"]
+
+[[step]]
+text = "The more terms, the better the fit: e = 1 + 1 + 1/2 + 1/6 + 1/24 is about 2.708."
+calc = ["1 + 1 + 1/2 + 1/6 + 1/24"]
+
+[[exercise]]
+prompt = "What is 1 + 1 + 1/2 + 1/6 + 1/24 + 1/120?"
+answer = "1 + 1 + 1/2 + 1/6 + 1/24 + 1/120"
+
+[[exercise]]
+prompt = "What is 5! (the denominator of the fifth term)?"
+answer = "5!"

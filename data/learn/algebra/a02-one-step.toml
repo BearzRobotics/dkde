@@ -1,0 +1,26 @@
+id = "AL.2"
+course = "Algebra"
+book = 1
+order = 2
+title = "Solving equations: one step"
+statement = "An equation says two things are equal; do the same to both sides to isolate the unknown."
+
+[[step]]
+text = "Idea: x + 3 = 10. Take 3 from both sides: x = 7. Whatever you do to one side, do to the other."
+calc = ["x + 3 = 10"]
+
+[[step]]
+text = "By hand: the solver shows the balancing step."
+work = ["x + 3 = 10"]
+
+[[step]]
+text = "Multiplication is undone by division: 4x = 20 gives x = 5."
+calc = ["4x = 20"]
+
+[[exercise]]
+prompt = "Solve x + 17 = 40. What is x?"
+answer = "40 - 17"
+
+[[exercise]]
+prompt = "Solve 6x = 54. What is x?"
+answer = "54/6"

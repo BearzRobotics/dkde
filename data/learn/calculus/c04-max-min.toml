@@ -1,0 +1,28 @@
+id = "C.4"
+course = "Calculus"
+book = 1
+order = 4
+title = "Maxima and minima"
+statement = "At the top or bottom of a smooth curve the slope is zero, so solve derivative = 0."
+
+[[step]]
+text = "Idea: y = x^2 - 6x + 5 has slope 2x - 6, zero at x = 3: the lowest point, y = -4."
+calc = ["diff(x^2 - 6x + 5,x)", "2x - 6 = 0"]
+graph = ["x^2 - 6x + 5"]
+
+[[step]]
+text = "The curve is steeper far from x = 3, flat at the minimum."
+graph = ["x^2 - 6x + 5", "2x - 6"]
+
+[[step]]
+text = "A farmer with 100 m of fence makes a rectangle x by (50 - x); the area x(50 - x) is greatest at x = 25."
+calc = ["diff(50x - x^2,x)", "25*25"]
+graph = ["50x - x^2"]
+
+[[exercise]]
+prompt = "The area of a rectangle is 60x - x^2. At which x is it greatest?"
+answer = "30"
+
+[[exercise]]
+prompt = "What is that greatest area?"
+answer = "60*30 - 30^2"

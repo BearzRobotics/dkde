@@ -1,0 +1,26 @@
+id = "LA.5"
+course = "Linear Algebra"
+book = 2
+order = 1
+title = "Eigenvalues"
+statement = "An eigenvector of a matrix is only stretched by it; the stretch factor is the eigenvalue."
+
+[[step]]
+text = "Idea: [[2,0],[0,3]] stretches x by 2 and y by 3, so its eigenvalues are 2 and 3."
+calc = ["eigenvalues([[2,0],[0,3]])"]
+
+[[step]]
+text = "For a triangular matrix the eigenvalues are the diagonal entries; their sum is the trace and their product is the determinant."
+calc = ["trace([[2,0],[0,3]])", "det([[2,0],[0,3]])"]
+
+[[step]]
+text = "Eigenvalues come from det(A - t I) = 0, a polynomial equation like the ones in algebra."
+calc = ["(2 - 5)*(3 - 5)"]
+
+[[exercise]]
+prompt = "What is the product of the eigenvalues of [[2,0],[0,3]] (the determinant)?"
+answer = "det([[2,0],[0,3]])"
+
+[[exercise]]
+prompt = "What is the sum of the eigenvalues of [[1,2],[3,4]] (the trace)?"
+answer = "trace([[1,2],[3,4]])"

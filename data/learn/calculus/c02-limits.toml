@@ -1,0 +1,27 @@
+id = "C.2"
+course = "Calculus"
+book = 1
+order = 2
+title = "Limits"
+statement = "A limit says what value a function approaches as x approaches a point, even if it is not defined there."
+
+[[step]]
+text = "Idea: (x^2 - 1)/(x - 1) is not defined at x = 1, but it equals x + 1 everywhere else, so it approaches 2."
+calc = ["limit((x^2-1)/(x-1),x,1)"]
+graph = ["x + 1"]
+
+[[step]]
+text = "A limit of a nice function is just its value: x^2 near 3 approaches 9."
+calc = ["limit(x^2,x,3)"]
+
+[[step]]
+text = "Limits are what make the slope of a curve at one point meaningful."
+graph = ["x^2"]
+
+[[exercise]]
+prompt = "What does (x^2 - 4)/(x - 2) approach as x approaches 2?"
+answer = "limit((x^2-4)/(x-2),x,2)"
+
+[[exercise]]
+prompt = "What does 3x + 1 approach as x approaches 4?"
+answer = "3*4+1"

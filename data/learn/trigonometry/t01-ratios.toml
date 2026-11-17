@@ -1,0 +1,26 @@
+id = "T.1"
+course = "Trigonometry"
+book = 1
+order = 1
+title = "Sine, cosine and tangent"
+statement = "In a right triangle, sine is opposite over hypotenuse, cosine adjacent over hypotenuse, tangent opposite over adjacent."
+
+[[step]]
+text = "Idea: in a 3-4-5 right triangle, the angle opposite the side 3 has sine 3/5. Euclid VI.4 says equiangular triangles have proportional sides, which is why these ratios depend only on the angle."
+calc = ["3/5", "asin(3/5)"]
+
+[[step]]
+text = "Special angles: sin 30 = 1/2, cos 60 = 1/2, tan 45 = 1."
+calc = ["sin(30)", "cos(60)", "tan(45)"]
+
+[[step]]
+text = "The calculator works in degrees by default (use the Angles menu for radians)."
+calc = ["sin(90)"]
+
+[[exercise]]
+prompt = "What is sin(30) + cos(60)?"
+answer = "sin(30) + cos(60)"
+
+[[exercise]]
+prompt = "What is the angle in degrees whose tangent is 1?"
+answer = "atan(1)"

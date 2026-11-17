@@ -1,0 +1,28 @@
+id = "A.5"
+course = "Arithmetic"
+book = 1
+order = 5
+title = "Dividing"
+statement = "Long division asks how many times the divisor fits, writes that digit, subtracts and brings down the next digit."
+
+[[step]]
+text = "Idea: 1234 divided by 12. 12 fits into 12 once; bring down 3 to get 03, which 12 fits 0 times; bring down 4 to get 34, which 12 fits twice with 10 left over. So 102 remainder 10."
+calc = ["1234 / 12", "1234 mod 12"]
+
+[[step]]
+text = "By hand with the solver: it shows each division step and the remainder."
+work = ["1234 / 12"]
+
+[[step]]
+text = "Division is the opposite of multiplication: check by multiplying the answer back. 12 times 102 plus 10 is 1234."
+calc = ["12 * 102 + 10"]
+
+[[exercise]]
+prompt = "What is 7200 divided by 24?"
+answer = "7200 / 24"
+hint = "24 x 300 = 7200."
+
+[[exercise]]
+prompt = "What is the remainder when 100 is divided by 7?"
+answer = "100 mod 7"
+hint = "7 x 14 = 98."

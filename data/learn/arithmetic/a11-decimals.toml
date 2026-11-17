@@ -1,0 +1,26 @@
+id = "A.11"
+course = "Arithmetic"
+book = 2
+order = 3
+title = "Decimals"
+statement = "A decimal is a fraction with a power of ten below: 0.75 is 75/100 = 3/4."
+
+[[step]]
+text = "Idea: the digits after the point are tenths, hundredths, thousandths. 0.75 = 7/10 + 5/100 = 3/4."
+calc = ["3/4", "0.75 * 4"]
+
+[[step]]
+text = "To change a fraction to a decimal, divide the top by the bottom. 7/8 = 0.875."
+calc = ["7/8"]
+
+[[step]]
+text = "Some fractions never end: 1/3 = 0.3333... The calculator shows as many places as you ask for."
+calc = ["1/3"]
+
+[[exercise]]
+prompt = "What is 0.6 + 0.25?"
+answer = "0.6 + 0.25"
+
+[[exercise]]
+prompt = "What is 3/8 as a decimal?"
+answer = "3/8"

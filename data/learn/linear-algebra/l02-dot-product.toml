@@ -1,0 +1,26 @@
+id = "LA.2"
+course = "Linear Algebra"
+book = 1
+order = 2
+title = "Vectors and the dot product"
+statement = "A vector has direction and length; the dot product multiplies matching entries and adds them."
+
+[[step]]
+text = "Idea: (1, 2, 3) dot (4, 5, 6) = 4 + 10 + 18 = 32. The dot product is zero exactly when two vectors are at right angles."
+calc = ["dot([1,2,3],[4,5,6])"]
+
+[[step]]
+text = "The length of (3, 4) is 5: Pythagoras again (I.47)."
+calc = ["norm([3,4])"]
+
+[[step]]
+text = "The cross product of (1,0,0) and (0,1,0) is (0,0,1), the vector at right angles to both."
+calc = ["cross([1,0,0],[0,1,0])"]
+
+[[exercise]]
+prompt = "What is the dot product of (2, 3) and (4, -1)?"
+answer = "dot([2,3],[4,-1])"
+
+[[exercise]]
+prompt = "What is the length of (6, 8)?"
+answer = "norm([6,8])"

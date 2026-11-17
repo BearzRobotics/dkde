@@ -1,0 +1,28 @@
+id = "A.6"
+course = "Arithmetic"
+book = 1
+order = 6
+title = "Factors, primes, gcd and lcm"
+statement = "A factor divides a number exactly; a prime has only 1 and itself as factors; the gcd and lcm compare two numbers by their factors."
+
+[[step]]
+text = "Idea: 12 = 2 x 2 x 3 and 18 = 2 x 3 x 3. The factors they share give the greatest common divisor, 2 x 3 = 6. The factors needed to cover both give the least common multiple, 2 x 2 x 3 x 3 = 36."
+calc = ["gcd(12,18)", "lcm(12,18)"]
+
+[[step]]
+text = "A prime number has no divisors except 1 and itself: 2, 3, 5, 7, 11, 13... (Euclid proved there are infinitely many, IX.20.)"
+calc = ["gcd(84,36)"]
+
+[[step]]
+text = "Use gcd to simplify fractions: 12/18 = 2/3 after dividing both by 6."
+calc = ["12/18"]
+work = ["12/18"]
+
+[[exercise]]
+prompt = "What is the greatest common divisor of 48 and 36?"
+answer = "gcd(48,36)"
+hint = "48 = 2^4 x 3 and 36 = 2^2 x 3^2."
+
+[[exercise]]
+prompt = "What is the least common multiple of 4 and 6?"
+answer = "lcm(4,6)"

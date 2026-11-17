@@ -1,0 +1,26 @@
+id = "A.12"
+course = "Arithmetic"
+book = 2
+order = 4
+title = "Ratios and proportion"
+statement = "A ratio compares two amounts; two ratios are in proportion when their cross products are equal."
+
+[[step]]
+text = "Idea: if 3 pencils cost 12, then 5 pencils cost 20, because the price per pencil is 4. The ratio 3 : 12 equals 5 : 20."
+calc = ["12/3 * 5"]
+
+[[step]]
+text = "Cross-multiplying: a/b = c/d means a x d = b x c. So if 4/6 = x/15, then x = 4 x 15 / 6 = 10."
+calc = ["4*15/6"]
+
+[[step]]
+text = "Euclid Book V treats ratios of any magnitudes, not only numbers."
+calc = ["2/3 = 4/6"]
+
+[[exercise]]
+prompt = "If 8 apples cost 6, how much do 20 apples cost?"
+answer = "6/8 * 20"
+
+[[exercise]]
+prompt = "Solve 5/x = 10/12 for x. What is x?"
+answer = "5*12/10"

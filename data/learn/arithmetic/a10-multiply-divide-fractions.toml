@@ -1,0 +1,28 @@
+id = "A.10"
+course = "Arithmetic"
+book = 2
+order = 2
+title = "Multiplying and dividing fractions"
+statement = "Multiply tops and bottoms; to divide by a fraction, multiply by its flip."
+
+[[step]]
+text = "Idea: 7/8 of 4/9 is 7x4 over 8x9 = 28/72 = 7/18. Multiply the numerators, multiply the denominators, simplify."
+calc = ["7/8 * 4/9"]
+
+[[step]]
+text = "By hand: the solver shows the multiplication and the reduction."
+work = ["7/8 * 4/9"]
+
+[[step]]
+text = "Division: 3/4 divided by 2/5 is 3/4 times 5/2 = 15/8."
+calc = ["(3/4) / (2/5)"]
+work = ["3/4 / 2/5"]
+
+[[exercise]]
+prompt = "What is 2/3 times 9/10? Give the answer as a number."
+answer = "2/3 * 9/10"
+hint = "Cancel the 3 and 9 first."
+
+[[exercise]]
+prompt = "What is (1/2) / (1/4)?"
+answer = "(1/2)/(1/4)"

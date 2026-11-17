@@ -1,0 +1,26 @@
+id = "A.13"
+course = "Arithmetic"
+book = 2
+order = 5
+title = "Averages"
+statement = "The mean adds the values and divides by how many there are."
+
+[[step]]
+text = "Idea: the mean of 2, 4, 6 is (2 + 4 + 6) / 3 = 4: the value each would have if all were equal."
+calc = ["mean(2,4,6)", "(2+4+6)/3"]
+
+[[step]]
+text = "The median is the middle value when sorted; the mean is pulled by extreme values."
+calc = ["mean(1,2,3,100)"]
+
+[[step]]
+text = "A weighted mean multiplies each value by how often it occurs: (2 x 3 + 5 x 1) / 4."
+calc = ["(2*3 + 5*1)/4"]
+
+[[exercise]]
+prompt = "What is the mean of 10, 20, 30, 40?"
+answer = "mean(10,20,30,40)"
+
+[[exercise]]
+prompt = "Five tests average 70. What is the total of all five?"
+answer = "5*70"

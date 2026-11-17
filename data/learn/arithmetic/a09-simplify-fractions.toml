@@ -1,0 +1,27 @@
+id = "A.9"
+course = "Arithmetic"
+book = 2
+order = 1
+title = "Simplifying fractions"
+statement = "Divide the top and bottom of a fraction by the same number; a fraction is in lowest terms when the only common factor is 1."
+
+[[step]]
+text = "Idea: 12/18 is the same amount as 2/3. Divide both numbers by 6, their greatest common divisor."
+calc = ["12/18", "gcd(12,18)"]
+
+[[step]]
+text = "By hand: the solver finds the common factor and reduces."
+work = ["12/18"]
+
+[[step]]
+text = "Mixed numbers: 7/3 is 2 and 1/3, since 7 = 2 x 3 + 1."
+calc = ["7/3", "7 mod 3"]
+
+[[exercise]]
+prompt = "Simplify 45/60. What is the numerator of the answer?"
+answer = "45/60 * 4"
+hint = "45/60 = 3/4, so times 4 is 3."
+
+[[exercise]]
+prompt = "Which number divides 84 and 126 exactly and is greatest?"
+answer = "gcd(84,126)"

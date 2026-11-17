@@ -323,10 +323,15 @@ fn cmdCheck(args: []const []const u8) u8 {
         for (lesson.exercises, 0..) |ex, ei| {
             _ = arena.reset(.retain_capacity);
             var p: eval.Problem = .{};
-            _ = eval.run(arena.allocator(), &session, ex.answer, .{}, &p) catch |e| {
+            const got = eval.run(arena.allocator(), &session, ex.answer, .{}, &p) catch |e| {
                 err("{s} exercise {d}: answer \"{s}\": {s}\n", .{ lesson.id, ei + 1, ex.answer, @errorName(e) });
                 problems += 1;
+                continue;
             };
+            if (eval.plainValue(got) == null) {
+                err("{s} exercise {d}: answer \"{s}\" is not a single number\n", .{ lesson.id, ei + 1, ex.answer });
+                problems += 1;
+            }
         }
     }
     out("{d} lessons, {d} problems\n", .{ loaded.lessons.len, problems });
