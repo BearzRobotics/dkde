@@ -1,0 +1,28 @@
+id = "XIII.3"
+book = 13
+order = 3
+title = "The square on the lesser segment"
+statement = "If a straight line be cut in extreme and mean ratio, the square on the lesser segment added to the half of the greater segment is five times the square on the half of the greater segment."
+proof = "Therefore if a straight line be cut in extreme and mean ratio, the square on the lesser segment added to the half of the greater segment is five times the square on the half of the greater segment. Q.E.D."
+
+[[step]]
+text = "Let any straight line AB be cut in extreme and mean ratio at the point C, AC being the greater segment, and let AC be bisected at D. I say that the square on the straight line made up of BC and CD is five times the square on DC."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 5 0",
+  "point C 3.09 0",
+  "segment A C blue",
+  "segment C B red",
+  "point D 1.545 0",
+]
+
+[[step]]
+text = "Since AB has been cut in extreme and mean ratio at C, the rectangle AB, BC is equal to the square on AC (VI.17). But AB is AC and CB. Therefore the rectangle AC, CB together with the square on CB is equal to the square on AC."
+draw = [
+]
+
+[[step]]
+text = "The square on BC, CD taken as one line is the square on BC, together with twice the rectangle BC, CD, together with the square on CD (II.4). Twice the rectangle BC, CD is the rectangle BC, CA, since AC is double of CD. So that square is the square on BC plus the rectangle BC, CA plus the square on CD. But the square on BC plus the rectangle BC, CA is the square on AC, as was shown. Therefore the square on BC, CD is the square on AC plus the square on CD. And since AC is double of CD, the square on AC is four times the square on CD. Therefore the square on BC, CD is five times the square on DC."
+draw = [
+]

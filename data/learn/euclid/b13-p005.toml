@@ -1,0 +1,29 @@
+id = "XIII.5"
+book = 13
+order = 5
+title = "Adding the greater segment"
+statement = "If a straight line be cut in extreme and mean ratio, and there be added to it a straight line equal to the greater segment, the whole straight line has been cut in extreme and mean ratio, and the original straight line is the greater segment."
+proof = "Therefore if a straight line be cut in extreme and mean ratio, and there be added to it a straight line equal to the greater segment, the whole straight line has been cut in extreme and mean ratio, and the original straight line is the greater segment. Q.E.D."
+
+[[step]]
+text = "For let the straight line AB be cut in extreme and mean ratio at the point C, AC being the greater segment, and let AD be equal to AC. I say that the straight line DB has been cut in extreme and mean ratio at A, and the original straight line AB is the greater segment."
+draw = [
+  "clear",
+  "point D -3.09 0",
+  "point A 0 0",
+  "point C 3.09 0",
+  "point B 5 0",
+  "segment D A green",
+  "segment A C blue",
+  "segment C B red",
+]
+
+[[step]]
+text = "Since AB has been cut in extreme and mean ratio at C, the rectangle AB, BC is equal to the square on AC (VI.17), and AB is the sum of AC and CB, so the square on AB is the rectangle AB, AC together with the rectangle AB, BC, that is, the rectangle AB, AC together with the square on AC."
+draw = [
+]
+
+[[step]]
+text = "The rectangle BD, DA is (DA + AB) by DA. Since DA is equal to AC, this is the square on AC together with the rectangle AB, AC. But that was just shown equal to the square on AB. Therefore the rectangle BD, DA is equal to the square on AB. Therefore, as DB is to BA, so is BA to AD (VI.17). But DB is greater than BA. Therefore BA is also greater than AD (V.14). Therefore DB has been cut in extreme and mean ratio at A, and AB is the greater segment."
+draw = [
+]

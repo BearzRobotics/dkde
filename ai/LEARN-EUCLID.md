@@ -26,8 +26,8 @@ carries out the steps).
 | IX | Numbers: primes are infinite, perfect numbers | 36 | |
 | X | Incommensurables | 115 | |
 | XI | Solid geometry | 39 | done (all 39, in the 3D view) |
-| XII | Areas and volumes by exhaustion | 18 | |
-| XIII | The five regular solids | 18 | |
+| XII | Areas and volumes by exhaustion | 18 | done (all 18) |
+| XIII | The five regular solids | 18 | done (all 18; XIII.6-11 give Euclid's idea and a numeric check) |
 
 465 propositions in all. They are added book by book. Each one needs a figure (points with coordinates,
 constructed crossings where Euclid constructs them), the statement, the steps and the proof, and each

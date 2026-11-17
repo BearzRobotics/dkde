@@ -1,0 +1,24 @@
+id = "XIII.2"
+book = 13
+order = 2
+title = "Converse: the greater segment"
+statement = "If the square on a straight line be five times the square on a segment of it, then, when the double of the said segment is cut in extreme and mean ratio, the greater segment is the remaining part of the original straight line."
+proof = "Therefore if the square on a straight line be five times the square on a segment of it, then, when the double of the said segment is cut in extreme and mean ratio, the greater segment is the remaining part of the original straight line. Q.E.D."
+
+[[step]]
+text = "For let the square on the straight line AB be five times the square on the segment AC of it, and let CD be double of AC. I say that, if CD be cut in extreme and mean ratio, the greater segment is CB."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point C 1.5 0",
+  "point B 3.354 0",
+  "segment A C blue",
+  "segment C B red",
+]
+
+[[step]]
+text = "Let the squares AF, CG be described on AB, CD, let the figure be drawn in CG, and let BE be drawn through. Since the square on BA is five times the square on AC, AF is five times AM. Therefore the gnomon MNO is four times AM. And since DC is double of CA, the square on DC is four times the square on CA, that is, CG is four times AM. But the gnomon MNO was proved four times AM. Therefore the gnomon MNO is equal to CG. And since DC is double of CA, while DC is equal to CK and AC to CP, KB is also double of BP. But LP, PB are also double of PB. Therefore KB is equal to LP, PB. But the whole gnomon MNO was proved equal to the whole CG. Therefore the remainder PF is equal to the remainder BG. And BG is the rectangle CD, DB, for CD is equal to DG; and PF is the square on CB. Therefore the rectangle CD, DB is equal to the square on CB. Therefore, as DC is to CB, so is CB to BD (VI.17). But DC is greater than CB. Therefore CB is also greater than BD. Therefore, when the straight line CD is cut in extreme and mean ratio, CB is the greater segment."
+draw = [
+  "point D 3 0",
+  "segment C D green",
+]

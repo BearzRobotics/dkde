@@ -1,0 +1,22 @@
+id = "XIII.4"
+book = 13
+order = 4
+title = "The whole and the lesser segment"
+statement = "If a straight line be cut in extreme and mean ratio, the square on the whole and the square on the lesser segment together are triple of the square on the greater segment."
+proof = "Therefore if a straight line be cut in extreme and mean ratio, the square on the whole and the square on the lesser segment together are triple of the square on the greater segment. Q.E.D."
+
+[[step]]
+text = "Let AB be a straight line, let it be cut in extreme and mean ratio at C, and let AC be the greater segment. I say that the squares on AB, BC are triple of the square on CA."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 5 0",
+  "point C 3.09 0",
+  "segment A C blue",
+  "segment C B red",
+]
+
+[[step]]
+text = "Let the square ADEB be described on AB, and let the figure be drawn double. Since AB has been cut in extreme and mean ratio at C, the rectangle AB, BC is equal to the square on AC (VI.17). Therefore AG is equal to FH. Since AG is equal to GE (I.43), add CK to each. Therefore the whole AK is equal to the whole CE. Therefore AK, CE are double of AK. But AK, CE are the gnomon LMN together with the square CK. Therefore the gnomon LMN together with the square CK is double of AK. But, further, double of AK is twice the rectangle AB, BC, since BK is equal to BC. Therefore the gnomon LMN and the square CK are double of the rectangle AB, BC. But the rectangle AB, BC is equal to the square on AC. Therefore the gnomon LMN and the square CK are double of the square on AC. And the squares on AB, BC are the whole ADEB and CK, that is, the gnomon LMN and the square CK together with the square AF, which is the square on AC. Therefore the gnomon and CK are double of the square on AC, and with AF they are triple of it. Therefore the squares on AB, BC are triple of the square on AC."
+draw = [
+]

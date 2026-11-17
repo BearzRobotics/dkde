@@ -1,0 +1,90 @@
+id = "XIII.10"
+book = 13
+order = 10
+title = "The sides of pentagon, hexagon and decagon"
+statement = "If an equilateral pentagon be inscribed in a circle, the square on the side of the pentagon is equal to the squares on the sides of the hexagon and the decagon inscribed in the same circle."
+proof = "Therefore if an equilateral pentagon be inscribed in a circle, the square on the side of the pentagon is equal to the squares on the sides of the hexagon and the decagon inscribed in the same circle. Q.E.D."
+
+[[step]]
+text = "Let ABCDE be a circle, and let the equilateral pentagon ABCDE be inscribed in it, F being the centre. I say that the square on the side of the pentagon is equal to the squares on the side of the hexagon and the side of the decagon inscribed in the circle."
+draw = [
+  "clear",
+  "point F 0 0",
+  "point _0 4 0",
+  "point _1 3.978 0.418",
+  "point _2 3.913 0.832",
+  "point _3 3.804 1.236",
+  "point _4 3.654 1.627",
+  "point _5 3.464 2",
+  "point _6 3.236 2.351",
+  "point _7 2.973 2.677",
+  "point _8 2.677 2.973",
+  "point _9 2.351 3.236",
+  "point _10 2 3.464",
+  "point _11 1.627 3.654",
+  "point _12 1.236 3.804",
+  "point _13 0.832 3.913",
+  "point _14 0.418 3.978",
+  "point _15 0 4",
+  "point _16 -0.418 3.978",
+  "point _17 -0.832 3.913",
+  "point _18 -1.236 3.804",
+  "point _19 -1.627 3.654",
+  "point _20 -2 3.464",
+  "point _21 -2.351 3.236",
+  "point _22 -2.677 2.973",
+  "point _23 -2.973 2.677",
+  "point _24 -3.236 2.351",
+  "point _25 -3.464 2",
+  "point _26 -3.654 1.627",
+  "point _27 -3.804 1.236",
+  "point _28 -3.913 0.832",
+  "point _29 -3.978 0.418",
+  "point _30 -4 0",
+  "point _31 -3.978 -0.418",
+  "point _32 -3.913 -0.832",
+  "point _33 -3.804 -1.236",
+  "point _34 -3.654 -1.627",
+  "point _35 -3.464 -2",
+  "point _36 -3.236 -2.351",
+  "point _37 -2.973 -2.677",
+  "point _38 -2.677 -2.973",
+  "point _39 -2.351 -3.236",
+  "point _40 -2 -3.464",
+  "point _41 -1.627 -3.654",
+  "point _42 -1.236 -3.804",
+  "point _43 -0.832 -3.913",
+  "point _44 -0.418 -3.978",
+  "point _45 0 -4",
+  "point _46 0.418 -3.978",
+  "point _47 0.832 -3.913",
+  "point _48 1.236 -3.804",
+  "point _49 1.627 -3.654",
+  "point _50 2 -3.464",
+  "point _51 2.351 -3.236",
+  "point _52 2.677 -2.973",
+  "point _53 2.973 -2.677",
+  "point _54 3.236 -2.351",
+  "point _55 3.464 -2",
+  "point _56 3.654 -1.627",
+  "point _57 3.804 -1.236",
+  "point _58 3.913 -0.832",
+  "point _59 3.978 -0.418",
+  "polygon _0 _1 _2 _3 _4 _5 _6 _7 _8 _9 _10 _11 _12 _13 _14 _15 _16 _17 _18 _19 _20 _21 _22 _23 _24 _25 _26 _27 _28 _29 _30 _31 _32 _33 _34 _35 _36 _37 _38 _39 _40 _41 _42 _43 _44 _45 _46 _47 _48 _49 _50 _51 _52 _53 _54 _55 _56 _57 _58 _59 blue",
+  "point A 0 4",
+  "point B -3.804 1.236",
+  "point C -2.351 -3.236",
+  "point D 2.351 -3.236",
+  "point E 3.804 1.236",
+  "polygon A B C D E teal",
+]
+
+[[step]]
+text = "Euclid draws FH perpendicular to AB, carries it to K on the circle, so that AK is the side of the decagon (the arc AK is half the arc AB), and FB is the side of the hexagon (it equals the radius, IV.15). He then draws KN perpendicular to FB and shows that triangle ABF is equiangular with triangle BFN, so that AB is to BF as FB is to BN, and the rectangle AB, BN equals the square on BF; in the same way the rectangle LA, AN equals the square on AF... and adding, the square on AB equals the squares on BF and BM (the side of the decagon, equal to AK)."
+draw = [
+]
+
+[[step]]
+text = "A check in numbers: in a circle of radius 1 the side of the hexagon is 1, the side of the decagon is (the square root of 5 less 1) over 2, about 0.618, and the side of the pentagon is about 1.1756. Then 1 + 0.618 squared is 1 + 0.382 = 1.382, and 1.1756 squared is 1.382. So the square on the side of the pentagon is the sum of the squares on the sides of the hexagon and the decagon."
+draw = [
+]

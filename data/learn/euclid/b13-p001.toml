@@ -1,0 +1,27 @@
+id = "XIII.1"
+book = 13
+order = 1
+title = "The square on the greater segment"
+statement = "If a straight line be cut in extreme and mean ratio, the square on the greater segment added to the half of the whole is five times the square on the half."
+proof = "Therefore if a straight line be cut in extreme and mean ratio, the square on the greater segment added to the half of the whole is five times the square on the half. Q.E.D."
+
+[[step]]
+text = "Let the straight line AB be cut in extreme and mean ratio at the point C, AC being the greater segment, and let AD be the half of AB. I say that the square on the straight line made up of CA and AD is five times the square on AD."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 5 0",
+  "point C 3.09 0",
+  "segment A C blue",
+  "segment C B red",
+]
+
+[[step]]
+text = "Describe the squares AE, DF on AB, AD and draw the figure. Since AB has been cut in extreme and mean ratio at C, the rectangle AB, BC is equal to the square on AC (VI.17). Since BA is double of AD, the square on AB is four times the square on AD. The square AE is the rectangle AB, BC together with the rectangle AB, AC; and AB, BC equals the square on AC. So the square on AB is equal to the square on AC together with the rectangle AB, AC."
+draw = [
+]
+
+[[step]]
+text = "Therefore the square on CA, AD taken as one line is the square on CA, together with twice the rectangle CA, AD, together with the square on AD (II.4). Twice the rectangle CA, AD is the rectangle CA, AB, since AB is double of AD. So the square on CA, AD is the square on CA plus the rectangle CA, AB plus the square on AD, that is, the square on AB plus the square on AD. But the square on AB is four times the square on AD. Therefore the square on CA, AD is five times the square on AD."
+draw = [
+]
