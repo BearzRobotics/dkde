@@ -13,11 +13,12 @@ const pangocairo = @import("pangocairo1");
 const common = @import("common");
 
 const geom = @import("geom.zig");
+const figure = @import("figure.zig");
 const Pt = geom.Pt;
 
 const t = common.tr;
 
-const Tool = enum { move, point, segment, line, circle, polygon, angle, intersect, erase };
+const Tool = enum { move, point, segment, line, circle, polygon, angle, intersect, paint, erase };
 
 const tool_names = [_]struct { tool: Tool, label: [:0]const u8, tip: [:0]const u8 }{
     .{ .tool = .move, .label = "Move", .tip = "Drag points to move them; drag the background to pan" },
@@ -28,10 +29,27 @@ const tool_names = [_]struct { tool: Tool, label: [:0]const u8, tip: [:0]const u
     .{ .tool = .polygon, .label = "Polygon", .tip = "Click the corners; click the first one again to close it" },
     .{ .tool = .angle, .label = "Angle", .tip = "Click a point on one arm, the corner, then a point on the other arm" },
     .{ .tool = .intersect, .label = "Cross", .tip = "Click two lines or circles: a point where they cross" },
+    .{ .tool = .paint, .label = "Colour", .tip = "Click a shape to give it the chosen colour and shading" },
     .{ .tool = .erase, .label = "Erase", .tip = "Click a point or a line to remove it (and what depends on it)" },
 };
 
-const Point = struct { p: Pt, alive: bool = true };
+const Point = struct { p: Pt, alive: bool = true, name: [6]u8 = @splat(0) };
+
+/// How a shape is drawn: one of the palette's colours, and shaded or not.
+pub const Style = struct { color: u8 = 0, fill: bool = false };
+
+pub const palette = [_][3]f64{
+    .{ 0.15, 0.40, 0.85 }, // blue
+    .{ 0.84, 0.15, 0.16 }, // red
+    .{ 0.17, 0.63, 0.17 }, // green
+    .{ 0.95, 0.55, 0.05 }, // orange
+    .{ 0.58, 0.40, 0.74 }, // purple
+    .{ 0.09, 0.62, 0.65 }, // teal
+    .{ 0.80, 0.70, 0.05 }, // yellow
+    .{ 0.15, 0.15, 0.15 }, // black
+};
+const palette_names = [_][:0]const u8{ "Blue", "Red", "Green", "Orange", "Purple", "Teal", "Yellow", "Black" };
+const palette_hex = [_][:0]const u8{ "#2666d9", "#d62728", "#2ba02b", "#f28c0d", "#9466bc", "#17a0a6", "#ccb20d", "#262626" };
 
 const Shape = union(enum) {
     segment: [2]usize,
@@ -55,6 +73,15 @@ pub const Geometry = struct {
 
     points: std.ArrayList(Point) = .empty,
     shapes: std.ArrayList(Shape) = .empty,
+    /// The look of each shape, in step with `shapes`.
+    styles: std.ArrayList(Style) = .empty,
+    /// What new shapes get, and what the Colour tool applies.
+    current: Style = .{},
+    shade: *gtk.CheckButton = undefined,
+    /// A fit asked for before the canvas had a size: done at the first drawing.
+    fit_pending: bool = false,
+    /// Lengths written beside segments (off while a lesson draws, on for your own figures).
+    lengths: *gtk.CheckButton = undefined,
     tool: Tool = .move,
     /// Points picked so far for the shape being made.
     picks: std.ArrayList(usize) = .empty,
@@ -133,6 +160,37 @@ pub const Geometry = struct {
         self.status.as(gtk.Widget).addCssClass("dim-label");
         self.root.append(self.status.as(gtk.Widget));
 
+        // Colours and shading: what new shapes get, and what the Colour tool applies.
+        const colours = gtk.Box.new(.horizontal, 2);
+        var first_swatch: ?*gtk.ToggleButton = null;
+        inline for (palette_hex, 0..) |hex, ci| {
+            const b = gtk.ToggleButton.new();
+            const dot = gtk.Label.new(null);
+            dot.setMarkup("<span foreground=\"" ++ hex ++ "\" size=\"large\">\u{25CF}</span>");
+            b.as(gtk.Button).setChild(dot.as(gtk.Widget));
+            b.as(gtk.Button).setHasFrame(0);
+            b.as(gtk.Widget).setTooltipText(t(palette_names[ci]));
+            if (first_swatch) |f| b.setGroup(f) else {
+                first_swatch = b;
+                b.setActive(1);
+            }
+            const ctx = try gpa.create(ColourCtx);
+            ctx.* = .{ .geo = self, .index = ci };
+            _ = gtk.ToggleButton.signals.toggled.connect(b, *ColourCtx, &onColour, ctx, .{});
+            _ = gtk.Widget.signals.destroy.connect(b, *ColourCtx, &onColourDestroy, ctx, .{});
+            colours.append(b.as(gtk.Widget));
+        }
+        self.shade = gtk.CheckButton.newWithLabel(t("Shade"));
+        self.shade.as(gtk.Widget).setTooltipText(t("Fill circles, polygons and angles with the colour"));
+        colours.append(self.shade.as(gtk.Widget));
+        self.root.append(colours.as(gtk.Widget));
+
+        self.lengths = gtk.CheckButton.newWithLabel(t("Lengths"));
+        self.lengths.setActive(1);
+        self.lengths.as(gtk.Widget).setTooltipText(t("Write each segment's length beside it"));
+        _ = gtk.CheckButton.signals.toggled.connect(self.lengths, *Geometry, &onLengths, self, .{});
+        colours.append(self.lengths.as(gtk.Widget));
+
         const options = gtk.Box.new(.horizontal, 8);
         self.snap.setActive(1);
         self.snap.as(gtk.Widget).setTooltipText(t("Snap points to the grid"));
@@ -161,6 +219,136 @@ pub const Geometry = struct {
         return self;
     }
 
+    // ---- lessons draw here ---------------------------------------------------------------------
+
+    /// Empties the canvas (the view stays).
+    pub fn clearCanvas(self: *Geometry) void {
+        self.clearShapes();
+        self.points.clearRetainingCapacity();
+        self.picks.clearRetainingCapacity();
+        self.first_shape = null;
+        self.changed();
+    }
+
+    fn findPoint(self: *Geometry, name: []const u8) ?usize {
+        for (self.points.items, 0..) |p, i| {
+            if (p.alive and std.mem.eql(u8, std.mem.sliceTo(&p.name, 0), name)) return i;
+        }
+        return null;
+    }
+
+    fn named(self: *Geometry, name: []const u8) ?usize {
+        return self.findPoint(name);
+    }
+
+    /// Fits the view to everything drawn (points, and the reach of the circles), with a margin.
+    pub fn fitToFigure(self: *Geometry) void {
+        var min_x: f64 = std.math.inf(f64);
+        var max_x: f64 = -std.math.inf(f64);
+        var min_y: f64 = std.math.inf(f64);
+        var max_y: f64 = -std.math.inf(f64);
+        for (self.points.items) |p| {
+            if (!p.alive) continue;
+            min_x = @min(min_x, p.p.x);
+            max_x = @max(max_x, p.p.x);
+            min_y = @min(min_y, p.p.y);
+            max_y = @max(max_y, p.p.y);
+        }
+        for (self.shapes.items) |s| if (s == .circle) {
+            const c = self.pt(s.circle[0]);
+            const r = geom.dist(c, self.pt(s.circle[1]));
+            min_x = @min(min_x, c.x - r);
+            max_x = @max(max_x, c.x + r);
+            min_y = @min(min_y, c.y - r);
+            max_y = @max(max_y, c.y + r);
+        };
+        if (!(min_x <= max_x)) return;
+        const sz = self.size();
+        if (sz[0] < 50 or sz[1] < 50) {
+            self.fit_pending = true;
+            return;
+        }
+        self.fit_pending = false;
+        const w = @max(max_x - min_x, 1);
+        const h = @max(max_y - min_y, 1);
+        self.cx = (min_x + max_x) / 2;
+        self.cy = (min_y + max_y) / 2;
+        self.scale = std.math.clamp(@min((sz[0] - 40) / w, (sz[1] - 40) / h), 6, 120);
+    }
+
+    /// Carries out the operations of one lesson step.
+    pub fn runOps(self: *Geometry, ops: []const figure.Op) void {
+        for (ops) |op| self.runOp(op);
+        self.changed();
+    }
+
+    fn runOp(self: *Geometry, op: figure.Op) void {
+        switch (op) {
+            .clear => {
+                self.clearShapes();
+                self.points.clearRetainingCapacity();
+                self.picks.clearRetainingCapacity();
+            },
+            .pt => |o| {
+                if (self.findPoint(o.n)) |i| {
+                    self.points.items[i].p = .{ .x = o.x, .y = o.y };
+                    return;
+                }
+                self.addNamed(o.n, .{ .x = o.x, .y = o.y });
+            },
+            .seg => |o| {
+                const a = self.named(o.a) orelse return;
+                const b = self.named(o.b) orelse return;
+                self.addShapeStyled(.{ .segment = .{ a, b } }, .{ .color = o.colour }) catch {};
+            },
+            .line => |o| {
+                const a = self.named(o.a) orelse return;
+                const b = self.named(o.b) orelse return;
+                self.addShapeStyled(.{ .line = .{ a, b } }, .{ .color = o.colour }) catch {};
+            },
+            .circle => |o| {
+                const c = self.named(o.c) orelse return;
+                const tp = self.named(o.t) orelse return;
+                self.addShapeStyled(.{ .circle = .{ c, tp } }, .{ .color = o.colour, .fill = o.fill }) catch {};
+            },
+            .poly => |o| {
+                const ids = self.gpa.alloc(usize, o.names.len) catch return;
+                for (o.names, 0..) |n, k| ids[k] = self.named(n) orelse {
+                    self.gpa.free(ids);
+                    return;
+                };
+                self.addShapeStyled(.{ .polygon = ids }, .{ .color = o.colour, .fill = o.fill }) catch self.gpa.free(ids);
+            },
+            .angle => |o| {
+                const a = self.named(o.a) orelse return;
+                const v = self.named(o.v) orelse return;
+                const c = self.named(o.c) orelse return;
+                self.addShapeStyled(.{ .angle = .{ a, v, c } }, .{ .color = o.colour, .fill = o.fill }) catch {};
+            },
+            .cross => |o| {
+                const a0 = self.named(o.a0) orelse return;
+                const a1 = self.named(o.a1) orelse return;
+                const b0 = self.named(o.b0) orelse return;
+                const b1 = self.named(o.b1) orelse return;
+                var hits: [2]?Pt = .{ null, null };
+                switch (o.kind) {
+                    .circle_circle => hits = geom.circleCircle(self.pt(a0), geom.dist(self.pt(a0), self.pt(a1)), self.pt(b0), geom.dist(self.pt(b0), self.pt(b1))),
+                    .line_circle => hits = geom.lineCircle(self.pt(a0), self.pt(a1), self.pt(b0), geom.dist(self.pt(b0), self.pt(b1))),
+                    .line_line => hits[0] = geom.intersect(self.pt(a0), self.pt(a1), self.pt(b0), self.pt(b1)),
+                }
+                const at = hits[o.which] orelse hits[0] orelse return;
+                self.addNamed(o.n, at);
+            },
+        }
+    }
+
+    fn addNamed(self: *Geometry, name: []const u8, p: Pt) void {
+        var point: Point = .{ .p = p };
+        const n = @min(name.len, point.name.len - 1);
+        @memcpy(point.name[0..n], name[0..n]);
+        self.points.append(self.gpa, point) catch {};
+    }
+
     pub fn widget(self: *Geometry) *gtk.Widget {
         return self.root.as(gtk.Widget);
     }
@@ -168,9 +356,25 @@ pub const Geometry = struct {
     pub fn destroy(self: *Geometry) void {
         self.clearShapes();
         self.shapes.deinit(self.gpa);
+        self.styles.deinit(self.gpa);
         self.points.deinit(self.gpa);
         self.picks.deinit(self.gpa);
         self.gpa.destroy(self);
+    }
+
+    const ColourCtx = struct { geo: *Geometry, index: usize };
+
+    fn onColourDestroy(_: *gtk.ToggleButton, ctx: *ColourCtx) callconv(.c) void {
+        std.heap.c_allocator.destroy(ctx);
+    }
+
+    fn onColour(b: *gtk.ToggleButton, ctx: *ColourCtx) callconv(.c) void {
+        if (b.getActive() == 0) return;
+        ctx.geo.current.color = @intCast(ctx.index);
+    }
+
+    fn onLengths(_: *gtk.CheckButton, self: *Geometry) callconv(.c) void {
+        self.area.as(gtk.Widget).queueDraw();
     }
 
     const ToolCtx = struct { geo: *Geometry, tool: Tool };
@@ -197,6 +401,7 @@ pub const Geometry = struct {
             .polygon => t("Click the corners; click the first corner again to close the polygon."),
             .angle => t("Click a point on one arm, then the corner, then a point on the other arm."),
             .intersect => t("Click two lines or circles; a point is put where they cross."),
+            .paint => t("Choose a colour, then click a shape to colour it. \"Shade\" fills circles, polygons and angles."),
             .erase => t("Click a point or a line to remove it."),
         };
         self.status.setText(text);
@@ -271,6 +476,7 @@ pub const Geometry = struct {
     fn clearShapes(self: *Geometry) void {
         for (self.shapes.items) |s| if (s == .polygon) self.gpa.free(s.polygon);
         self.shapes.clearRetainingCapacity();
+        self.styles.clearRetainingCapacity();
     }
 
     fn press(self: *Geometry, px: f64, py: f64) void {
@@ -286,6 +492,7 @@ pub const Geometry = struct {
             .point => _ = self.pickPoint(px, py),
             .erase => self.erase(px, py),
             .intersect => self.crossShapes(px, py),
+            .paint => self.paintShape(px, py),
             else => {
                 const i = self.pickPoint(px, py);
                 self.pickedPoint(i);
@@ -298,7 +505,7 @@ pub const Geometry = struct {
         // Polygon: the first corner again closes it.
         if (self.tool == .polygon and self.picks.items.len >= 3 and i == self.picks.items[0]) {
             const ids = self.gpa.dupe(usize, self.picks.items) catch return;
-            self.shapes.append(self.gpa, .{ .polygon = ids }) catch {
+            self.addShape(.{ .polygon = ids }) catch {
                 self.gpa.free(ids);
                 return;
             };
@@ -318,8 +525,27 @@ pub const Geometry = struct {
         }
     }
 
+    /// Adds a shape in the current colour (polygons are shaded by default).
+    fn addShape(self: *Geometry, s: Shape) !void {
+        var style = self.current;
+        style.fill = self.shade.getActive() != 0;
+        try self.shapes.append(self.gpa, s);
+        self.styles.append(self.gpa, style) catch {
+            _ = self.shapes.pop();
+            return error.OutOfMemory;
+        };
+    }
+
+    pub fn addShapeStyled(self: *Geometry, s: Shape, style: Style) !void {
+        try self.shapes.append(self.gpa, s);
+        self.styles.append(self.gpa, style) catch {
+            _ = self.shapes.pop();
+            return error.OutOfMemory;
+        };
+    }
+
     fn finish(self: *Geometry, s: Shape) void {
-        self.shapes.append(self.gpa, s) catch return;
+        self.addShape(s) catch return;
         self.picks.clearRetainingCapacity();
     }
 
@@ -336,6 +562,7 @@ pub const Geometry = struct {
             n -= 1;
             if (self.shapeNear(self.shapes.items[n], here, reach)) {
                 const gone = self.shapes.orderedRemove(n);
+                _ = self.styles.orderedRemove(n);
                 if (gone == .polygon) self.gpa.free(gone.polygon);
                 return;
             }
@@ -368,6 +595,7 @@ pub const Geometry = struct {
             n -= 1;
             if (!self.shapeAlive(self.shapes.items[n])) {
                 const gone = self.shapes.orderedRemove(n);
+                _ = self.styles.orderedRemove(n);
                 if (gone == .polygon) self.gpa.free(gone.polygon);
             }
         }
@@ -455,6 +683,38 @@ pub const Geometry = struct {
 
     // ---- names and numbers ---------------------------------------------------------------------
 
+    fn paintShape(self: *Geometry, px: f64, py: f64) void {
+        const here = self.toWorld(px, py);
+        const reach = 8.0 / self.scale;
+        var n = self.shapes.items.len;
+        while (n > 0) {
+            n -= 1;
+            // Inside a polygon or a circle counts too, so shading is easy to reach.
+            if (self.shapeNear(self.shapes.items[n], here, reach) or self.shapeInside(self.shapes.items[n], here)) {
+                self.styles.items[n] = .{ .color = self.current.color, .fill = self.shade.getActive() != 0 };
+                return;
+            }
+        }
+    }
+
+    fn shapeInside(self: *Geometry, s: Shape, p: Pt) bool {
+        switch (s) {
+            .circle => |e| return geom.dist(p, self.pt(e[0])) <= geom.dist(self.pt(e[0]), self.pt(e[1])),
+            .polygon => |ids| {
+                var inside = false;
+                var j = ids.len - 1;
+                for (ids, 0..) |id, i| {
+                    const a = self.pt(id);
+                    const b = self.pt(ids[j]);
+                    if ((a.y > p.y) != (b.y > p.y) and p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+                    j = i;
+                }
+                return inside;
+            },
+            else => return false,
+        }
+    }
+
     fn crossShapes(self: *Geometry, px: f64, py: f64) void {
         const here = self.toWorld(px, py);
         const reach = 8.0 / self.scale;
@@ -516,7 +776,13 @@ pub const Geometry = struct {
     }
 
     /// A, B, ... Z, then A1, B1, ...
-    fn nameOf(buf: []u8, i: usize) []const u8 {
+    fn nameOf(self: *Geometry, buf: []u8, i: usize) []const u8 {
+        const given = std.mem.sliceTo(&self.points.items[i].name, 0);
+        if (given.len > 0) {
+            const n = @min(given.len, buf.len);
+            @memcpy(buf[0..n], given[0..n]);
+            return buf[0..n];
+        }
         const letter: u8 = 'A' + @as(u8, @intCast(i % 26));
         return if (i < 26) std.fmt.bufPrint(buf, "{c}", .{letter}) catch "?" else std.fmt.bufPrint(buf, "{c}{d}", .{ letter, i / 26 }) catch "?";
     }
@@ -578,7 +844,7 @@ pub const Geometry = struct {
         var n3: [16]u8 = undefined;
         for (self.points.items, 0..) |p, i| {
             if (!p.alive) continue;
-            const text = std.fmt.bufPrint(&line, "{s} = ({s}, {s})", .{ nameOf(&n1, i), num(&b1, p.p.x), num(&b2, p.p.y) }) catch continue;
+            const text = std.fmt.bufPrint(&line, "{s} = ({s}, {s})", .{ self.nameOf(&n1, i), num(&b1, p.p.x), num(&b2, p.p.y) }) catch continue;
             self.addRow(text, null);
         }
         for (self.shapes.items) |s| switch (s) {
@@ -586,7 +852,7 @@ pub const Geometry = struct {
                 const d = geom.dist(self.pt(e[0]), self.pt(e[1]));
                 const m = geom.midpoint(self.pt(e[0]), self.pt(e[1]));
                 const dist_text = num(&b1, d);
-                const text = std.fmt.bufPrint(&line, "{s}{s} = {s}   (midpoint {s}, {s})", .{ nameOf(&n1, e[0]), nameOf(&n2, e[1]), dist_text, num(&b2, m.x), num(&n3, m.y) }) catch continue;
+                const text = std.fmt.bufPrint(&line, "{s}{s} = {s}   (midpoint {s}, {s})", .{ self.nameOf(&n1, e[0]), self.nameOf(&n2, e[1]), dist_text, num(&b2, m.x), num(&n3, m.y) }) catch continue;
                 self.addRow(text, dist_text);
             },
             .line => |e| {
@@ -596,17 +862,17 @@ pub const Geometry = struct {
                     const k = a.y - m * a.x;
                     const slope_text = num(&b1, m);
                     var kb: [32]u8 = undefined;
-                    const text = std.fmt.bufPrint(&line, "line {s}{s}: y = {s}x + {s}   (slope {s})", .{ nameOf(&n1, e[0]), nameOf(&n2, e[1]), slope_text, num(&kb, k), slope_text }) catch continue;
+                    const text = std.fmt.bufPrint(&line, "line {s}{s}: y = {s}x + {s}   (slope {s})", .{ self.nameOf(&n1, e[0]), self.nameOf(&n2, e[1]), slope_text, num(&kb, k), slope_text }) catch continue;
                     self.addRow(text, slope_text);
                 } else {
-                    const text = std.fmt.bufPrint(&line, "line {s}{s}: x = {s}   (vertical)", .{ nameOf(&n1, e[0]), nameOf(&n2, e[1]), num(&b1, a.x) }) catch continue;
+                    const text = std.fmt.bufPrint(&line, "line {s}{s}: x = {s}   (vertical)", .{ self.nameOf(&n1, e[0]), self.nameOf(&n2, e[1]), num(&b1, a.x) }) catch continue;
                     self.addRow(text, null);
                 }
             },
             .circle => |e| {
                 const r = geom.dist(self.pt(e[0]), self.pt(e[1]));
                 const radius = num(&b1, r);
-                const text = std.fmt.bufPrint(&line, "circle centre {s}: radius {s}", .{ nameOf(&n1, e[0]), radius }) catch continue;
+                const text = std.fmt.bufPrint(&line, "circle centre {s}: radius {s}", .{ self.nameOf(&n1, e[0]), radius }) catch continue;
                 self.addRow(text, radius);
                 var ab: [32]u8 = undefined;
                 const area_text = num(&ab, std.math.pi * r * r);
@@ -624,7 +890,7 @@ pub const Geometry = struct {
                 var name: [96]u8 = undefined;
                 var w: usize = 0;
                 for (ids[0..count]) |id| {
-                    const part = nameOf(&n1, id);
+                    const part = self.nameOf(&n1, id);
                     if (w + part.len > name.len) break;
                     @memcpy(name[w..][0..part.len], part);
                     w += part.len;
@@ -644,7 +910,7 @@ pub const Geometry = struct {
             .angle => |e| {
                 const deg = geom.angleDeg(self.pt(e[0]), self.pt(e[1]), self.pt(e[2]));
                 const deg_text = num(&b1, deg);
-                const text = std.fmt.bufPrint(&line, "∠{s}{s}{s} = {s}°   ({s} rad)", .{ nameOf(&n1, e[0]), nameOf(&n2, e[1]), nameOf(&n3, e[2]), deg_text, num(&b2, deg * std.math.pi / 180.0) }) catch continue;
+                const text = std.fmt.bufPrint(&line, "∠{s}{s}{s} = {s}°   ({s} rad)", .{ self.nameOf(&n1, e[0]), self.nameOf(&n2, e[1]), self.nameOf(&n3, e[2]), deg_text, num(&b2, deg * std.math.pi / 180.0) }) catch continue;
                 self.addRow(text, deg_text);
             },
         };
@@ -667,6 +933,7 @@ pub const Geometry = struct {
     }
 
     fn draw(self: *Geometry, cr: *cairo.Context, w: f64, h: f64) void {
+        if (self.fit_pending) self.fitToFigure();
         var fg: gdk.RGBA = undefined;
         self.area.as(gtk.Widget).getColor(&fg);
         // The grid and the axes.
@@ -696,21 +963,26 @@ pub const Geometry = struct {
         cr.lineTo(w, origin.y + 0.5);
         cr.stroke();
 
-        const blue = [3]f64{ 0.15, 0.4, 0.85 };
+        const blue = palette[0];
         // The shapes.
         cr.setLineWidth(2);
-        for (self.shapes.items) |s| switch (s) {
+        for (self.shapes.items, 0..) |s, si| {
+            const st = self.styles.items[si];
+            const col = palette[st.color];
+            switch (s) {
             .segment => |e| {
                 const a = self.toPx(self.pt(e[0]));
                 const b = self.toPx(self.pt(e[1]));
-                cr.setSourceRgb(blue[0], blue[1], blue[2]);
+                cr.setSourceRgb(col[0], col[1], col[2]);
                 cr.moveTo(a.x, a.y);
                 cr.lineTo(b.x, b.y);
                 cr.stroke();
-                var buf: [32]u8 = undefined;
-                const m = geom.midpoint(a, b);
-                cr.setSourceRgba(fg.f_red, fg.f_green, fg.f_blue, 0.85);
-                drawText(cr, m.x + 4, m.y + 2, num(&buf, geom.dist(self.pt(e[0]), self.pt(e[1]))));
+                if (self.lengths.getActive() != 0) {
+                    var buf: [32]u8 = undefined;
+                    const m = geom.midpoint(a, b);
+                    cr.setSourceRgba(fg.f_red, fg.f_green, fg.f_blue, 0.85);
+                    drawText(cr, m.x + 4, m.y + 2, num(&buf, geom.dist(self.pt(e[0]), self.pt(e[1]))));
+                }
             },
             .line => |e| {
                 const a = self.toPx(self.pt(e[0]));
@@ -720,7 +992,7 @@ pub const Geometry = struct {
                 const len = std.math.hypot(dx, dy);
                 if (len > 0) {
                     const far = (w + h) * 2;
-                    cr.setSourceRgb(blue[0], blue[1], blue[2]);
+                    cr.setSourceRgb(col[0], col[1], col[2]);
                     cr.moveTo(a.x - dx / len * far, a.y - dy / len * far);
                     cr.lineTo(a.x + dx / len * far, a.y + dy / len * far);
                     cr.stroke();
@@ -729,13 +1001,17 @@ pub const Geometry = struct {
             .circle => |e| {
                 const c = self.toPx(self.pt(e[0]));
                 const r = geom.dist(self.pt(e[0]), self.pt(e[1])) * self.scale;
-                cr.setSourceRgb(blue[0], blue[1], blue[2]);
                 cr.newSubPath();
                 cr.arc(c.x, c.y, r, 0, 2 * std.math.pi);
+                if (st.fill) {
+                    cr.setSourceRgba(col[0], col[1], col[2], 0.3);
+                    cr.fillPreserve();
+                }
+                cr.setSourceRgb(col[0], col[1], col[2]);
                 cr.stroke();
                 // The radius.
                 const p = self.toPx(self.pt(e[1]));
-                cr.setSourceRgba(blue[0], blue[1], blue[2], 0.5);
+                cr.setSourceRgba(col[0], col[1], col[2], 0.5);
                 cr.setLineWidth(1);
                 cr.moveTo(c.x, c.y);
                 cr.lineTo(p.x, p.y);
@@ -748,16 +1024,16 @@ pub const Geometry = struct {
                     if (k == 0) cr.moveTo(p.x, p.y) else cr.lineTo(p.x, p.y);
                 }
                 cr.closePath();
-                cr.setSourceRgba(blue[0], blue[1], blue[2], 0.12);
+                cr.setSourceRgba(col[0], col[1], col[2], if (st.fill) 0.35 else 0.08);
                 cr.fillPreserve();
-                cr.setSourceRgb(blue[0], blue[1], blue[2]);
+                cr.setSourceRgb(col[0], col[1], col[2]);
                 cr.stroke();
             },
             .angle => |e| {
                 const v = self.toPx(self.pt(e[1]));
                 const a = self.toPx(self.pt(e[0]));
                 const c = self.toPx(self.pt(e[2]));
-                cr.setSourceRgb(0.8, 0.3, 0.1);
+                cr.setSourceRgb(col[0], col[1], col[2]);
                 cr.setLineWidth(1.5);
                 cr.moveTo(a.x, a.y);
                 cr.lineTo(v.x, v.y);
@@ -770,7 +1046,14 @@ pub const Geometry = struct {
                 while (diff > std.math.pi) diff -= 2 * std.math.pi;
                 while (diff < -std.math.pi) diff += 2 * std.math.pi;
                 cr.newSubPath();
+                if (st.fill) cr.moveTo(v.x, v.y);
                 if (diff >= 0) cr.arc(v.x, v.y, 22, ha, ha + diff) else cr.arcNegative(v.x, v.y, 22, ha, ha + diff);
+                if (st.fill) {
+                    cr.closePath();
+                    cr.setSourceRgba(col[0], col[1], col[2], 0.35);
+                    cr.fillPreserve();
+                    cr.setSourceRgb(col[0], col[1], col[2]);
+                }
                 cr.stroke();
                 var buf: [32]u8 = undefined;
                 var lab: [40]u8 = undefined;
@@ -779,7 +1062,8 @@ pub const Geometry = struct {
                 drawText(cr, v.x + @cos(mid) * 34 - 10, v.y + @sin(mid) * 34 - 8, label);
                 cr.setLineWidth(2);
             },
-        };
+            }
+        }
 
         // What is being made: the picks so far, with a line to the pointer.
         if (self.picks.items.len > 0) {
@@ -810,7 +1094,7 @@ pub const Geometry = struct {
             cr.fill();
             var nb: [8]u8 = undefined;
             cr.setSourceRgba(fg.f_red, fg.f_green, fg.f_blue, 0.9);
-            drawText(cr, q.x + 6, q.y - 18, nameOf(&nb, i));
+            drawText(cr, q.x + 6, q.y - 18, self.nameOf(&nb, i));
         }
         // The pointer's coordinates.
         if (self.pointer) |m| {

@@ -28,6 +28,7 @@ const rich = @import("rich.zig");
 const dates = @import("dates.zig");
 const graph_mod = @import("graph.zig");
 const geometry_mod = @import("geometry.zig");
+const learn_mod = @import("learn.zig");
 const simplify = @import("simplify.zig");
 const formulas = @import("formulas.zig");
 const calculus = @import("calculus.zig");
@@ -154,6 +155,10 @@ const Calc = struct {
     vars_list: *gtk.ListBox,
     graph: *graph_mod.Graph,
     geometry: *geometry_mod.Geometry,
+    learn: *learn_mod.Learn,
+    /// The Learn view beside the panes (View > Learn); it does not replace the pane in view.
+    learn_scroll: *gtk.ScrolledWindow,
+    learn_open: bool = false,
     formula_list: *gtk.ListBox,
     formula_form: *gtk.Box,
     formula_search: *gtk.SearchEntry,
@@ -282,12 +287,15 @@ const Calc = struct {
             .vars_list = gtk.ListBox.new(),
             .graph = undefined,
             .geometry = undefined,
+            .learn = undefined,
+            .learn_scroll = gtk.ScrolledWindow.new(),
             .formula_list = gtk.ListBox.new(),
             .formula_form = gtk.Box.new(.vertical, 6),
             .formula_search = gtk.SearchEntry.new(),
         };
         self.graph = try graph_mod.Graph.create(gpa, &self.session);
         self.geometry = try geometry_mod.Geometry.create(gpa, self, useGeometryValue);
+        self.learn = try learn_mod.Learn.create(gpa, .{ .ctx = self, .run = learnRun, .clear = learnClear, .show_canvas = learnShowCanvas });
         self.readSettings();
         self.loadState();
         self.loadManualRates();
@@ -438,6 +446,15 @@ const Calc = struct {
         side_scroll.setChild(self.side.as(gtk.Widget));
         side_scroll.as(gtk.Widget).setHexpand(1);
         body.append(side_scroll.as(gtk.Widget));
+        // The Learn view stands beside whatever pane is open.
+        self.learn_scroll.setPolicy(.never, .automatic);
+        self.learn_scroll.setMinContentWidth(320);
+        self.learn_scroll.setChild(self.learn.widget());
+        self.learn_scroll.as(gtk.Widget).setMarginTop(10);
+        self.learn_scroll.as(gtk.Widget).setMarginBottom(10);
+        self.learn_scroll.as(gtk.Widget).setMarginEnd(10);
+        self.learn_scroll.as(gtk.Widget).setVisible(@intFromBool(self.learn_open));
+        body.append(self.learn_scroll.as(gtk.Widget));
         body.as(gtk.Widget).setVexpand(1);
 
         const root = gtk.Box.new(.vertical, 0);
@@ -455,6 +472,7 @@ const Calc = struct {
 
         self.setMode(self.mode);
         self.showPane(self.pane);
+        if (self.learn_open) self.learn.start();
         self.fillHistory();
         self.fillVars();
         self.updateMemory();
@@ -478,6 +496,7 @@ const Calc = struct {
         self.style.decimals = @intCast(std.math.clamp(self.config.getInt("calc", "decimals", 10), 0, 30));
         self.style.grouping = self.config.getBool("calc", "grouping", true);
         stacked_on = self.config.getBool("calc", "stacked-fractions", true);
+        self.learn_open = self.config.getBool("calc", "learn", false);
         self.fraction_results = self.config.getBool("calc", "fraction-results", false);
         self.expanded = self.config.getBool("calc", "expanded", false);
         self.rpn = self.config.getBool("calc", "rpn", false);
@@ -538,6 +557,7 @@ const Calc = struct {
                 mb.checkKey("_Date Calculation", "pane-dates", self.pane == .dates, "<Control>e"),
                 mb.checkKey("_Graph", "pane-graph", self.pane == .graph, "<Control>g"),
                 mb.checkKey("G_eometry", "pane-geometry", self.pane == .geometry, "<Control><Shift>g"),
+                mb.checkKey("_Learn (Euclid)", "learn", self.learn_open, "<Control><Shift>l"),
                 mb.checkKey("_Formulas", "pane-formulas", self.pane == .formulas, "<Control><Shift>f"),
                 mb.checkKey("Show _Work", "pane-steps", self.pane == .steps, "<Control>l"),
                 mb.checkKey("Fu_nctions", "pane-functions", self.pane == .functions, "<Control><Shift>y"),
@@ -3609,6 +3629,35 @@ const Calc = struct {
         _ = self.entry.as(gtk.Widget).grabFocus();
     }
 
+    fn learnRun(ctx: *anyopaque, ops: []const @import("figure.zig").Op) void {
+        const self: *Calc = @ptrCast(@alignCast(ctx));
+        // Lessons draw plain figures: no lengths written on them, and the view fitted to the figure.
+        self.geometry.lengths.setActive(0);
+        self.geometry.runOps(ops);
+        self.geometry.fitToFigure();
+    }
+
+    fn learnClear(ctx: *anyopaque) void {
+        const self: *Calc = @ptrCast(@alignCast(ctx));
+        self.geometry.clearCanvas();
+    }
+
+    /// A lesson draws on the Geometry canvas, so it is shown beside the Learn view.
+    fn learnShowCanvas(ctx: *anyopaque) void {
+        const self: *Calc = @ptrCast(@alignCast(ctx));
+        if (self.pane != .geometry) self.showPane(.geometry);
+    }
+
+    /// Shows or hides the Learn view. The other panes stay as they are.
+    fn setLearn(self: *Calc, on: bool) void {
+        self.learn_open = on;
+        self.learn_scroll.as(gtk.Widget).setVisible(@intFromBool(on));
+        if (on) self.learn.start();
+        common.menubar.setChecked(self.window, "learn", on);
+        self.config.setBool("calc", "learn", on) catch {};
+        self.window.as(gtk.Window).setDefaultSize(-1, -1);
+    }
+
     fn showPane(self: *Calc, pane: Pane) void {
         self.pane = pane;
         const w = self.side.as(gtk.Widget);
@@ -3659,6 +3708,7 @@ const Calc = struct {
             return;
         }
         if (std.mem.startsWith(u8, action, "mode-")) return self.setMode(std.meta.stringToEnum(Mode, action[5..]) orelse .standard);
+        if (eql(u8, action, "learn")) return self.setLearn(!self.learn_open);
         if (std.mem.startsWith(u8, action, "pane-")) {
             const p = std.meta.stringToEnum(Pane, action[5..]) orelse .none;
             return self.showPane(if (p == self.pane) .none else p);
@@ -4099,6 +4149,7 @@ const Calc = struct {
         self.formula_fields.deinit(self.gpa);
         self.graph.destroy();
         self.geometry.destroy();
+        self.learn.destroy();
         // The exchange rates: the table in use, the arena behind it, and the rates typed in by hand.
         quantity.setCurrencies(&.{});
         if (self.rate_arena) |*arena| arena.deinit();
@@ -4129,6 +4180,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 test {
     _ = @import("typeset.zig");
     _ = @import("geom.zig");
+    _ = @import("euclid.zig");
     _ = @import("num.zig");
     _ = @import("eval.zig");
     _ = @import("units.zig");
