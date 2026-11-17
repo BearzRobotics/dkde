@@ -1,0 +1,35 @@
+id = "CS.17"
+course = "Computer Science"
+book = 3
+order = 3
+title = "Huffman codes"
+statement = "Give common symbols short codes and rare ones long codes by repeatedly joining the two rarest; no code is the start of another."
+
+[[step]]
+text = "Idea: six symbols with frequencies A 5, B 9, C 12, D 13, E 16, F 45 (total 100). A fixed code needs 3 bits each: 300 bits."
+calc = ["ceil(log2(6))", "100*3"]
+
+[[step]]
+text = "Build the tree: join the two smallest (5 + 9 = 14), then (12 + 13 = 25), then (14 + 16 = 30), then (25 + 30 = 55), then (45 + 55 = 100)."
+calc = ["5 + 9", "12 + 13", "14 + 16", "25 + 30", "45 + 55"]
+
+[[step]]
+text = "Reading off the tree gives codes F = 0, C = 100, D = 101, A = 1100, B = 1101, E = 111. The most common symbol gets one bit, the rarest get four."
+
+[[step]]
+text = "Total bits = sum of frequency times code length: 45x1 + 12x3 + 13x3 + 5x4 + 9x4 + 16x3 = 224, against 300 for the fixed code: 25 percent smaller."
+calc = ["45*1 + 12*3 + 13*3 + 5*4 + 9*4 + 16*3", "224/300"]
+
+[[step]]
+text = "Prefix-free means no code is the start of another, so a stream of bits can be read with no separators: 0 is always F, 100 always C, and so on. For probabilities 1/2, 1/4, 1/8, 1/8 the codes 0, 10, 110, 111 average exactly the entropy, 1.75 bits."
+calc = ["0.5*1 + 0.25*2 + 0.125*3*2"]
+
+[[exercise]]
+prompt = "What is the total number of bits for the example above? (45x1 + 12x3 + 13x3 + 5x4 + 9x4 + 16x3)"
+answer = "45*1 + 12*3 + 13*3 + 5*4 + 9*4 + 16*3"
+hint = "Frequency times code length for each symbol."
+
+[[exercise]]
+prompt = "Codes 0, 10, 110, 111 for probabilities 1/2, 1/4, 1/8, 1/8 have what average length?"
+answer = "0.5*1 + 0.25*2 + 0.125*3*2"
+hint = "Weight each length by its probability."

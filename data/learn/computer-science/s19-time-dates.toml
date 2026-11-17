@@ -1,0 +1,40 @@
+id = "CS.19"
+course = "Computer Science"
+book = 3
+order = 5
+title = "Time, dates and Unix timestamps"
+statement = "A Unix timestamp counts seconds since 1 January 1970 UTC; days, weekdays and leap years all come from division and remainders."
+
+[[step]]
+text = "Idea: a day has 24 x 60 x 60 = 86400 seconds. The timestamp 1700000000 is 1700000000 / 86400 = 19675 whole days after 1 January 1970, plus a remainder of seconds."
+calc = ["24*60*60", "floor(1700000000/86400)", "1700000000 mod 86400"]
+
+[[step]]
+text = "The remainder is the time of day: 80000 seconds is 22 hours (79200), then 13 minutes and 20 seconds. So 22:13:20 UTC."
+calc = ["floor(80000/3600)", "floor((80000 mod 3600)/60)", "80000 mod 60"]
+
+[[step]]
+text = "Weekday: 1 January 1970 was a Thursday. Number the days Sunday = 0 to Saturday = 6, so Thursday = 4. Then weekday = (days + 4) mod 7. For 19675 days that is 2: Tuesday (14 November 2023)."
+calc = ["(19675 + 4) mod 7"]
+
+[[step]]
+text = "Leap years: a year is a leap year if it divides by 4, except centuries, unless the century divides by 400. 2024 divides by 4; 1900 does not divide by 400, so not a leap year; 2000 does. The average year is 365.2425 days."
+calc = ["2024 mod 4", "1900 mod 400", "2000 mod 400", "365 + 1/4 - 1/100 + 1/400"]
+
+[[step]]
+text = "The year 2038 problem: a signed 32-bit timestamp tops out at 2^31 - 1 seconds, which is only 68 years after 1970. 2^31 seconds is 24855 days. Use 64-bit timestamps and the problem is billions of years away."
+calc = ["2^31 / (86400*365.25)", "floor(2^31/86400)"]
+
+[[step]]
+text = "Time zones are just offsets: local time = UTC + offset, so add the offset in seconds before taking the remainder. Store UTC, convert for display."
+calc = ["(1700000000 + 3600*(-5)) mod 86400"]
+
+[[exercise]]
+prompt = "How many seconds are in a (non-leap) year? (86400 x 365)"
+answer = "86400*365"
+hint = "86400 seconds per day."
+
+[[exercise]]
+prompt = "The timestamp 1700000000 is 19675 days after 1 January 1970. What weekday number is that, with Sunday = 0? ((days + 4) mod 7)"
+answer = "(19675 + 4) mod 7"
+hint = "Thursday was 4."

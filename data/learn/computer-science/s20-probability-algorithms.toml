@@ -1,0 +1,40 @@
+id = "CS.20"
+course = "Computer Science"
+book = 3
+order = 6
+title = "Probability and expected value for algorithms"
+statement = "The expected value is the average over all outcomes, weighted by probability; it predicts the average running time of algorithms that involve chance."
+
+[[step]]
+text = "Idea: the expected value of one die roll is (1 + 2 + 3 + 4 + 5 + 6) / 6 = 3.5. You can never roll 3.5, but it is the long-run average."
+calc = ["(1+2+3+4+5+6)/6"]
+
+[[step]]
+text = "Waiting time: if each try succeeds with probability p, the expected number of tries is 1/p. To roll a 6 you expect 6 rolls. A request that fails with chance 1 in 1000 is retried on average 1.001 times."
+calc = ["1/(1/6)", "1/(1 - 0.001)"]
+
+[[step]]
+text = "Linear search: if the item is equally likely to be at any of n places, on average you check (n + 1)/2 of them. For n = 99 that is 50, half of the worst case."
+calc = ["(99 + 1)/2"]
+
+[[step]]
+text = "Independent events multiply. If each of 1000 requests fails with probability 0.001, the chance that all succeed is 0.999^1000 = 0.368, so there is a 63 percent chance of at least one failure."
+calc = ["0.999^1000", "1 - 0.999^1000"]
+
+[[step]]
+text = "Hash tables: n items in m buckets give an average of n/m items per bucket, so a lookup costs about 1 + n/m steps. Keep the load factor small and lookups stay O(1) on average."
+calc = ["1000/2000", "1 + 1000/2000"]
+
+[[step]]
+text = "Expected value is additive even for dependent events: the expected number of heads in 100 flips is 100 x 0.5 = 50, with no need to enumerate possibilities."
+calc = ["100*0.5"]
+
+[[exercise]]
+prompt = "What is the expected value of a die roll? ((1+2+3+4+5+6)/6)"
+answer = "(1+2+3+4+5+6)/6"
+hint = "The total of the faces over 6."
+
+[[exercise]]
+prompt = "On average how many of 99 equally likely places does linear search check? ((n + 1)/2)"
+answer = "(99 + 1)/2"
+hint = "Half of n plus a half."

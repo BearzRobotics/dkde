@@ -1,0 +1,40 @@
+id = "CS.18"
+course = "Computer Science"
+book = 3
+order = 4
+title = "Floating point in practice"
+statement = "A double has 53 bits of precision, so about 16 decimal digits; nearby numbers are spaced further apart as they grow, and subtracting nearly equal numbers loses digits."
+
+[[step]]
+text = "Idea: a double has a 53-bit significand. Its relative precision is about 2^-52 = 2.2 x 10^-16 (the machine epsilon), and 53 bits is 53 x log10(2) = 15.95 decimal digits. A float has 24 bits, about 7 digits."
+calc = ["2^-52", "53*log10(2)", "24*log10(2)"]
+
+[[step]]
+text = "Whole numbers are exact up to 2^53 = 9007199254740992 and then the spacing becomes 2: 2^53 + 1 cannot be stored. This calculator uses exact arithmetic so it can show 9007199254740993, which a double rounds away. A float runs out at 2^24 = 16777216."
+calc = ["2^53", "2^53 + 1", "2^24"]
+
+[[step]]
+text = "Never compare floats with ==. 0.1 + 0.2 is 0.30000000000000004 in a double. Compare with a tolerance: the difference must be below a small epsilon times the size of the numbers."
+calc = ["0.1 + 0.2", "0.1 + 0.2 - 0.3"]
+
+[[step]]
+text = "Cancellation: subtracting nearly equal numbers cancels the leading digits and leaves mostly rounding noise. sqrt(x + 1) - sqrt(x) for x = 10^16 is a difference of two numbers near 10^8 that agree to about 16 digits."
+calc = ["sqrt(10^16 + 1)", "sqrt(10^16)"]
+
+[[step]]
+text = "The fix is algebra: multiply by the conjugate. sqrt(x + 1) - sqrt(x) = 1 / (sqrt(x + 1) + sqrt(x)). No subtraction, so no lost digits. Here the true answer is 5 x 10^-9, which the naive form in a double gives as 0."
+calc = ["1/(sqrt(10^16 + 1) + sqrt(10^16))"]
+
+[[step]]
+text = "Adding a tiny number to a huge one does nothing: 10^16 + 1 is stored as 10^16. When summing a long list, add the small numbers first, or use compensated (Kahan) summation, so they are not swallowed."
+calc = ["10^16 + 1"]
+
+[[exercise]]
+prompt = "What is the first whole number a double cannot hold exactly? Give 2^53 + 1."
+answer = "2^53 + 1"
+hint = "Exact up to 2^53."
+
+[[exercise]]
+prompt = "What is 2^24, the limit for whole numbers in a 32-bit float?"
+answer = "2^24"
+hint = "24 bits of significand."
