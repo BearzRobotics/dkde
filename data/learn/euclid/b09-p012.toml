@@ -1,0 +1,29 @@
+id = "IX.12"
+book = 9
+order = 12
+title = "Prime measures of the last term"
+statement = "If as many numbers as we please beginning from an unit be in continued proportion, by however many prime numbers the last is measured, by the same the next to the unit will also be measured."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let there be as many numbers as we please beginning from an unit in continued proportion A, B, C, D (here 1, 6, 36, 216), and let D be measured by some prime number E (here 2). I say that E measures B."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.35 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 2.1 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 12.6 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 75.6 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "For suppose E does not measure B. Then E, being prime, is prime to B (VII.29). Since E measures D, let it do so F times. Then E by multiplying F makes D. Further, B by multiplying C (the term before D) makes D, because B measures D by C (IX.11). Therefore the product of E, F equals the product of B, C. So E is to B as C is to F (VII.19). But E, B are prime to one another, so they are the least in their ratio (VII.21), and the least measure the others equally (VII.20): E measures C. Again, in the same way E measures the term before C, and so on, down to the number next the unit: so E measures B, which contradicts the supposition. Therefore E measures B."
+draw = [
+]

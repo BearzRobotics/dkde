@@ -1,0 +1,32 @@
+id = "IX.35"
+book = 9
+order = 35
+title = "The sum of a geometric progression"
+statement = "If as many numbers as we please be in continued proportion, and there be subtracted from the second and the last numbers equal to the first, then, as the excess of the second is to the first, so will the excess of the last be to all those before it."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let there be as many numbers as we please in continued proportion, A, BC, D, EF, beginning from A (here 1, 3, 9, 27, 81), and let there be subtracted from BC and EF the numbers BG, FH, each equal to A. I say that, as GC is to A, so is EH to A, BC, D (that is, 2 to 1 as 80 to 1 + 3 + 9 + 27 = 40)."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.35 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.05 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 3.15 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 9.45 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 28.35 -3.6",
+  "segment E e purple",
+]
+
+[[step]]
+text = "Let FK be made equal to BC, and FL equal to D. Since FK is equal to BC, and of these FH is equal to BG, the remainder HK is equal to the remainder GC. And since, as EF is to D, so is D to BC, and BC to A, and D is equal to FL, BC to FK, A to FH, as EF is to FL, so is LF to FK, and FK to FH. Separando, as EL is to LF, so is LK to FK, and KH to FH (VII.11). And as one of the antecedents is to one of the consequents, so are all the antecedents to all the consequents (VII.12). Therefore, as KH is to FH, so are EL, LK, KH to LF, FK, HF. But KH is equal to CG, FH to A, and LF, FK, HF to D, BC, A. Therefore, as CG is to A, so is EH to D, BC, A. Therefore, as the excess of the second is to the first, so is the excess of the last to all those before it."
+draw = [
+]

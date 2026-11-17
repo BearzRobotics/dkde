@@ -1,0 +1,43 @@
+id = "IX.8"
+book = 9
+order = 8
+title = "The unit and a geometric progression"
+statement = "If as many numbers as we please beginning from an unit be in continued proportion, the third from the unit will be square, and so will those which successively leave out one; the fourth will be cube, and so will all those which leave out two; and the seventh will be at once cube and square, and so will those which leave out five."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let as many numbers as we please beginning from the unit A be in continued proportion, B, C, D, E, F, G (here 1, 2, 4, 8, 16, 32, 64). I say that the third from the unit, C, is a square, and so are all those which leave out one; the fourth, D, is a cube, and so are all those which leave out two; and the seventh, G, is at once a cube and a square."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.35 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.7 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.4 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 2.8 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 5.6 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 11.2 -4.5",
+  "segment F f teal",
+  "point G 0 -5.4",
+  "point g 22.4 -5.4",
+  "segment G g blue",
+]
+
+[[step]]
+text = "Since the unit is to B as B is to C, the unit measures B as often as B measures C; and the unit measures B according to the units in B, so B measures C according to the units in B. That is, B by multiplying itself has made C. Therefore C is a square. Since B, C, D are in continued proportion and C is square, the terms two places on are also squares (VIII.22), and so on: C, E, G are squares."
+draw = [
+]
+
+[[step]]
+text = "Again, B by multiplying C has made D, and C is a square, so D is the product of B and the square of B: D is a cube (VII definition 19; here 2 by 4 by 2 is 8, which is 2 times 2 times 2). Since the unit, B, C, D are in continued proportion and the first of them, the unit, is a cube, so is the fourth D (VIII.23), and so are those which leave out two further. The seventh, G, is both the third in the series of squares and the fourth in the series of cubes, and so is at once a cube and a square (here 64 is 8 squared and 4 cubed)."
+draw = [
+]

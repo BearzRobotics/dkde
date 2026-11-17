@@ -1,0 +1,23 @@
+id = "IX.33"
+book = 9
+order = 33
+title = "Half odd: even-times odd only"
+statement = "If a number have its half odd, it is even-times odd only."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let the number A have its half odd (here 6, whose half is 3). I say that A is even-times odd only."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.1 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.05 -0.9",
+  "segment B b red",
+]
+
+[[step]]
+text = "That it is even-times odd is manifest, for the half of it, being odd, measures it an even number of times (twice). I say that it is also even-times odd only. For, if A is even-times even also, it will be measured by an even number according to an even number. So the half of A, which is odd, would be measured by an even number (IX.30 reversed): for an even number measuring an even number according to an even number also measures its half. This is absurd. Therefore A is even-times odd only."
+draw = [
+]

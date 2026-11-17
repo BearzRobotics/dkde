@@ -1,0 +1,32 @@
+id = "IX.11"
+book = 9
+order = 11
+title = "In a progression from the unit, the less measures the greater"
+statement = "If as many numbers as we please beginning from an unit be in continued proportion, the less measures the greater by some one of the numbers which have place among the proportional numbers."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let there be as many numbers as we please, B, C, D, E, beginning from the unit A in continued proportion (here 1, 2, 4, 8, 16). I say that B, the least of the numbers B, C, D, E, measures E by one of the numbers C, D, and in general any term measures a later term by a term of the series."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.35 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.7 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.4 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 2.8 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 5.6 -3.6",
+  "segment E e purple",
+]
+
+[[step]]
+text = "Since the unit A measures B as often as D measures E (in the proportion A : B = D : E), alternately the unit A measures D as often as B measures E (VII.15). But the unit A measures D according to the units in D. Therefore B also measures E according to the units in D. Therefore B measures E by D, which is one of the numbers in the series (here 2 measures 16 by 8). Similarly any term measures a later term by a term of the series."
+draw = [
+]

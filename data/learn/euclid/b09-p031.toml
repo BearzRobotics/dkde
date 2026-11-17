@@ -1,0 +1,26 @@
+id = "IX.31"
+book = 9
+order = 31
+title = "An odd number prime to a number is prime to its double"
+statement = "If an odd number be prime to any number, it will also be prime to the double of it."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let the odd number A be prime to any number B, and let C be double of B (3 is prime to 5; C is 10). I say that A is prime to C."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.05 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.75 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 3.5 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "If they are not prime, some number will measure them. Let a number D measure them. Now A is odd. Therefore D is also odd (an even number could not measure an odd number). And since D, being odd, measures C, which is even, it will also measure the half of C (IX.30). But B is the half of C. Therefore D measures B. But it also measures A. Therefore D measures A, B, which are prime to one another, which is impossible. Therefore A cannot but be prime to C."
+draw = [
+]

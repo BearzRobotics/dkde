@@ -1,0 +1,26 @@
+id = "IX.1"
+book = 9
+order = 1
+title = "Similar plane numbers multiply to a square"
+statement = "If two similar plane numbers by multiplying one another make some number, the product will be a square."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B be two similar plane numbers (here 6 = 2 by 3 and 24 = 4 by 6), and let A by multiplying B make C (144). I say that C is a square."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.1 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 8.4 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 50.4 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Let A by multiplying itself make D (36). Then D is a square. Since A by multiplying itself has made D and by multiplying B has made C, A is to B as D is to C (VII.17). And since A, B are similar plane numbers, one mean proportional number falls between them (VIII.18). But if numbers between two numbers fall in continued proportion, as many fall between those which have the same ratio (VIII.8). So one mean proportional falls between D and C. But D is a square. Therefore C is also a square (VIII.22)."
+draw = [
+]

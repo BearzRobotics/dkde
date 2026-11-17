@@ -1,0 +1,29 @@
+id = "IX.3"
+book = 9
+order = 3
+title = "A cube multiplied by itself"
+statement = "If a cube number by multiplying itself make some number, the product will be a cube."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let the cube number A by multiplying itself make B (here A = 8 and B = 64). I say that B is a cube."
+draw = [
+  "clear",
+  "point C 0 0",
+  "point c 0.7 0",
+  "segment C c blue",
+  "point D 0 -0.9",
+  "point d 1.4 -0.9",
+  "segment D d red",
+  "point A 0 -1.8",
+  "point a 2.8 -1.8",
+  "segment A a green",
+  "point B 0 -2.7",
+  "point b 22.4 -2.7",
+  "segment B b orange",
+]
+
+[[step]]
+text = "Let C be the side of A (2), and let C by multiplying itself make D (4). Then C by multiplying D has made A (8). Let A by multiplying itself make B. Take the unit, and the numbers C, D, A, B... The unit, C, D, A are in continued proportion (as C is to D so D is to A, and the unit is to C as C is to D), and A by multiplying itself makes B, so the unit, C, D, A, ..., B continue the progression: B is the seventh from the unit. But the seventh from the unit is a cube (IX.8). Therefore B is a cube."
+draw = [
+]

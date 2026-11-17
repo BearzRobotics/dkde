@@ -1,0 +1,26 @@
+id = "IX.29"
+book = 9
+order = 29
+title = "Odd times odd"
+statement = "If an odd number by multiplying an odd number make some number, the product will be odd."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let the odd number A by multiplying the odd number B make C (3 by 5 is 15). I say that C is odd."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.05 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.75 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 5.25 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Since A by multiplying B has made C, C is composed of as many numbers equal to B as there are units in A. And each of the numbers A, B is odd. Therefore C is composed of odd numbers the multitude of which is odd. Thus C is odd (IX.23)."
+draw = [
+]

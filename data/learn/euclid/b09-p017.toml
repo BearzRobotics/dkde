@@ -1,0 +1,29 @@
+id = "IX.17"
+book = 9
+order = 17
+title = "No continued proportion beyond prime extremes"
+statement = "If there be as many numbers as we please in continued proportion, and the extremes of them be prime to one another, the last will not be to any other number as the first to the second."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let there be as many numbers as we please in continued proportion A, B, C, D (8, 12, 18, 27), and let the extremes A, D be prime to one another. I say that D is not to any other number as A is to B."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 4.2 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 6.3 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 9.45 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "For, if possible, as A is to B, so let D be to E. Then, alternately, as A is to D, so is B to E. But A, D are prime, and prime numbers are least of those having the same ratio, and the least measure the others equally (VII.21, VII.20). Therefore A measures B. So (VIII.7 in reverse) A measures all the later terms, and in particular A measures D. But A, D are prime to one another, which is impossible. Therefore D is not to any other number as A is to B."
+draw = [
+]

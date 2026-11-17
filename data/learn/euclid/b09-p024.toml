@@ -1,0 +1,26 @@
+id = "IX.24"
+book = 9
+order = 24
+title = "Even minus even"
+statement = "If from an even number an even number be subtracted, the remainder will be even."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For from the even number AB let the even number BC be subtracted (here 10 less 6). I say that the remainder CA is even (4)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 3.5 0",
+  "segment AB ab blue",
+  "point AC 0 -0.9",
+  "point ac 2.1 -0.9",
+  "segment AC ac red",
+  "point CB 0 -1.8",
+  "point cb 1.4 -1.8",
+  "segment CB cb green",
+]
+
+[[step]]
+text = "For, since AB is even, it has a half part (VII definition 6). For the same reason BC also has a half part. So that the remainder, CA, also has a half part, and is therefore even."
+draw = [
+]

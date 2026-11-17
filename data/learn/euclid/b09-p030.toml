@@ -1,0 +1,26 @@
+id = "IX.30"
+book = 9
+order = 30
+title = "An odd measure of an even number"
+statement = "If an odd number measure an even number, it will also measure the half of it."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let the odd number A measure the even number B (3 measures 12). I say that it will also measure the half of it (6)."
+draw = [
+  "clear",
+  "point B 0 0",
+  "point b 4.2 0",
+  "segment B b blue",
+  "point A 0 -0.9",
+  "point a 1.05 -0.9",
+  "segment A a red",
+  "point C 0 -1.8",
+  "point c 2.1 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Since A measures B, let it measure it according to C (4). I say that C is not odd. For, if possible, let it be so. Then, since A measures B according to C, A by multiplying C has made B. Therefore B is composed of odd numbers the multitude of which is odd. Therefore B is odd (IX.23), which is absurd, for it was supposed even. Therefore C is not odd; therefore C is even. So A measures B an even number of times. For this reason it also measures the half of it."
+draw = [
+]

@@ -1,0 +1,29 @@
+id = "IX.32"
+book = 9
+order = 32
+title = "Doubling from a dyad"
+statement = "Each of the numbers which are continually doubled beginning from a dyad is even-times even only."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let as many numbers as we please, B, C, D, be continually doubled beginning from the dyad A (2, 4, 8, 16). I say that B, C, D are even-times even only."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.7 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.4 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2.8 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 5.6 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "That each of the numbers B, C, D is even-times even is manifest, for it is doubled from an even number. I say that it is also even-times even only. For let a unit be set out. Since as many numbers as we please beginning from a unit are in continued proportion, and the number A after the unit is prime, the greatest of the numbers A, B, C, D, namely D, will not be measured by any number except A, B, C (IX.13). And each of the numbers A, B, C is even. Therefore D is even-times even only. Similarly each of B, C is even-times even only."
+draw = [
+]

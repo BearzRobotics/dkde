@@ -1,0 +1,37 @@
+id = "IX.9"
+book = 9
+order = 9
+title = "Squares and cubes in a progression from the unit"
+statement = "If as many numbers as we please beginning from an unit be in continued proportion, and the number after the unit be a square, all the rest will also be squares. And, if the number after the unit be a cube, all the rest will also be cubes."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let as many numbers as we please beginning from the unit A be in continued proportion, B, C, D, E, and let B, the number after the unit, be a square (here 1, 4, 16, 64, 256). I say that all the rest will also be squares."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.35 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.4 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 5.6 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 22.4 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 89.6 -3.6",
+  "segment E e purple",
+]
+
+[[step]]
+text = "It was proved (IX.8) that the third from the unit, C, is square, and so are those which leave out one. I say that all the rest are squares. Since A, B, C are in continued proportion, and A, C are squares, B has to C the ratio of... B is square by hypothesis, and then, since B, C, D are in continued proportion with B and C squares, D is square (VIII.22: three in continued proportion, the first square, the third is square). Likewise E, and all the rest."
+draw = [
+]
+
+[[step]]
+text = "Next let B be a cube (here 1, 8, 64, 512). Then C is a cube, being the product of B by B (IX.4), D is the product of B by C, a cube by a cube, so a cube (IX.4), and so on. Therefore all the rest are cubes."
+draw = [
+]

@@ -1,0 +1,31 @@
+id = "IX.15"
+book = 9
+order = 15
+title = "Three least numbers in continued proportion"
+statement = "If three numbers in continued proportion be the least of those which have the same ratio with them, any two whatever added together will be prime to the remaining number."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B, C be three numbers in continued proportion, the least of those which have the same ratio with them (here 4, 6, 9). I say that any two of them added together are prime to the remaining one."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 2.1 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 3.15 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Take the least numbers D, E in the ratio of A, B, C (here 2 and 3). Then A is D times D, C is E times E, and B is D times E (VIII.2); and D, E are prime to one another (VII.22). So the sum D + E is prime to each of D, E (VII.28)."
+draw = [
+]
+
+[[step]]
+text = "A + B is D times (D + E), and C is E times E: D and (D + E) are each prime to E, so the product of D, D + E is prime to E, and to E times E (VII.24, 25, 26). So A + B is prime to C. In the same way B + C = E times (D + E) is prime to A = D times D. And A + C, the sum of the squares of D and E, is prime to D (a common measure would measure E times E, which is prime to D) and to E, so it is prime to D times E, that is, to B (VII.24)."
+draw = [
+]

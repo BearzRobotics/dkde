@@ -1,0 +1,23 @@
+id = "IX.16"
+book = 9
+order = 16
+title = "No third proportional for primes"
+statement = "If two numbers be prime to one another, the second will not be to any other number as the first is to the second."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let the two numbers A, B be prime to one another (2 and 3). I say that B is not to any other number as A is to B."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.7 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.05 -0.9",
+  "segment B b red",
+]
+
+[[step]]
+text = "For, if possible, as A is to B, so let B be to C. Now A, B are prime, and prime numbers are the least of those having the same ratio (VII.21), and the least measure those which have the same ratio the same number of times, the antecedent the antecedent and the consequent the consequent (VII.20). Therefore A measures B. But A also measures itself. Therefore A measures A, B which are prime to one another, which is impossible (unless A is a unit). Therefore B will not be to any other number C as A is to B."
+draw = [
+]

@@ -1,0 +1,32 @@
+id = "IX.10"
+book = 9
+order = 10
+title = "Non-squares and non-cubes in a progression from the unit"
+statement = "If as many numbers as we please beginning from an unit be in continued proportion, and the number after the unit be not square, neither will any other be square except the third from the unit and all those which leave out one; and, if the number after the unit be not cube, neither will any other be cube except the fourth from the unit and all those which leave out two."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let as many numbers as we please beginning from an unit be in continued proportion A, B, C, D, E (here 1, 3, 9, 27, 81), and let the number after the unit, B, be not square. I say that neither will any other be square except the third from the unit (C = 9) and those which leave out one (E = 81)."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.35 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.05 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 3.15 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 9.45 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 28.35 -3.6",
+  "segment E e purple",
+]
+
+[[step]]
+text = "For, if possible, let D be square. But C is also square (IX.8). So C has to D the ratio which a square has to a square. And as C is to D, so is B to C. Therefore B has to C the ratio which a square number has to a square number, so that B, C are similar plane numbers (VIII.26 converse). But C is square. Therefore B is also square (VIII.24), which is contrary to the hypothesis. Therefore D is not square. Similarly we can prove that no other number, except the third from the unit and those which leave out one, is square. The cube case is proved in the same way using VIII.25."
+draw = [
+]

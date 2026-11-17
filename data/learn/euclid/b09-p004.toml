@@ -1,0 +1,26 @@
+id = "IX.4"
+book = 9
+order = 4
+title = "A cube by a cube"
+statement = "If a cube number by multiplying a cube number make some number, the product will be a cube."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let the cube number A by multiplying the cube number B make C (8 by 27 is 216). I say that C is a cube."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 9.45 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 75.6 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Let A by multiplying itself make D. Then D is a cube (IX.3). Since A by multiplying itself makes D and by multiplying B makes C, D is to C as A is to B (VII.17). But A, B are cubes, so they are similar solid numbers, and two mean proportional numbers fall between A and B (VIII.19); so two means fall between D and C (VIII.8). Since D is a cube and four numbers D, ..., C are in continued proportion, C is a cube (VIII.23)."
+draw = [
+]

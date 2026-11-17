@@ -1,0 +1,29 @@
+id = "IX.14"
+book = 9
+order = 14
+title = "The least number measured by given primes"
+statement = "If a number be the least that is measured by prime numbers, it will not be measured by any other prime number except those originally measuring it."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let the number A be the least that is measured by the prime numbers B, C, D (here 30 by 2, 3, 5). I say that A will not be measured by any other prime number except B, C, D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 10.5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.7 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.05 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 1.75 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "For, if possible, let it be measured by the prime number E, and let E not be the same with any one of B, C, D. Since E measures A, let it do so F times. Then E by multiplying F makes A. And A is measured by the primes B, C, D. But if two numbers by multiplying one another make some number, and any prime measures the product, it measures one of the original numbers (VII.30). So B, C, D each measure F (E is a different prime, so none of them measures E). Therefore F is measured by B, C, D, and F is less than A. But A was the least number measured by B, C, D. Therefore F cannot be measured by B, C, D, which is impossible. Therefore A is not measured by any other prime."
+draw = [
+]

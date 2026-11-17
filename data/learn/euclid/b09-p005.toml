@@ -1,0 +1,26 @@
+id = "IX.5"
+book = 9
+order = 5
+title = "A cube times a number gives a cube"
+statement = "If a cube number by multiplying any number make a cube number, the multiplied number will also be a cube."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let the cube number A by multiplying any number B make the cube C (here 8 by 27 is 216). I say that B is a cube."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 9.45 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 75.6 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Let A by multiplying itself make D, a cube (IX.3). Then D is to C as A is to B (VII.17). Since D, C are cubes, they are similar solid numbers, so two mean proportional numbers fall between D, C (VIII.19), and so two fall between A and B (VIII.8). But A is a cube. Therefore B is also a cube (VIII.23)."
+draw = [
+]

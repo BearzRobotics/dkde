@@ -1,0 +1,29 @@
+id = "IX.23"
+book = 9
+order = 23
+title = "An odd number of odd numbers"
+statement = "If as many odd numbers as we please be added together, and their multitude be odd, the whole will also be odd."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let as many odd numbers as we please, AB, BC, CD, the multitude of which is odd, be added together (3, 5, 7). I say that the whole AD is also odd (15)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.05 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 1.75 -0.9",
+  "segment BC bc red",
+  "point CD 0 -1.8",
+  "point cd 2.45 -1.8",
+  "segment CD cd green",
+  "point AD 0 -2.7",
+  "point ad 5.25 -2.7",
+  "segment AD ad orange",
+]
+
+[[step]]
+text = "Let the unit DE be subtracted from CD. Then the remainder CE is even (VII definition 7). But CA is also even (IX.22). Therefore the whole AE is also even (IX.21). And DE is a unit. Therefore AD is odd (VII definition 7)."
+draw = [
+]

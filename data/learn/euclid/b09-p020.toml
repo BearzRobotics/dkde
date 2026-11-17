@@ -1,0 +1,37 @@
+id = "IX.20"
+book = 9
+order = 20
+title = "Primes are more than any assigned multitude"
+statement = "Prime numbers are more than any assigned multitude of prime numbers."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B, C be the assigned prime numbers (here 2, 3, 5). I say that there are more prime numbers than A, B, C."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.7 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.05 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.75 -1.8",
+  "segment C c green",
+  "point DE 0 -2.7",
+  "point de 10.5 -2.7",
+  "segment DE de orange",
+  "point F 0 -3.6",
+  "point f 10.85 -3.6",
+  "segment F f purple",
+]
+
+[[step]]
+text = "Let the least number measured by A, B, C be taken, and let it be DE (30); let the unit DF be added to DE (31). Then EF is either prime or not. First let it be prime. Then the prime numbers A, B, C, EF have been found which are more than A, B, C."
+draw = [
+]
+
+[[step]]
+text = "Next let EF not be prime. Therefore it is measured by some prime number (VII.31). Let it be measured by the prime G. I say that G is not the same with any of the numbers A, B, C. For, if possible, let it be so. Now A, B, C measure DE; therefore G will also measure DE. But it also measures EF. Therefore G, being a number, will measure the remainder, the unit DF, which is absurd. Therefore G is not the same with any one of the numbers A, B, C. And by hypothesis it is prime. Therefore the prime numbers A, B, C, G have been found which are more than the assigned multitude of A, B, C. Therefore prime numbers are more than any assigned multitude of prime numbers."
+draw = [
+]

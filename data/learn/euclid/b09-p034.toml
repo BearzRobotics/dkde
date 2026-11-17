@@ -1,0 +1,26 @@
+id = "IX.34"
+book = 9
+order = 34
+title = "Even-times even and even-times odd"
+statement = "If a number neither be one of those which are continually doubled from a dyad, nor have its half odd, it is both even-times even and even-times odd."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let the number A neither be one of those doubled from a dyad, nor have its half odd (here 12). I say that A is both even-times even and even-times odd."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 4.2 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.05 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.4 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "That A is even-times even is manifest, for it has not its half odd (VII definition 8). I say next that it is also even-times odd. For if we bisect A, and bisect its half, and do this continually, we shall come upon some odd number which will measure A according to an even number. For, if not, we shall come upon a dyad, and A will be one of those which are doubled from a dyad, which is contrary to the hypothesis. So A is even-times odd. But it was also proved even-times even. Therefore A is both even-times even and even-times odd (here 12 = 4 by 3 = 2 by 6)."
+draw = [
+]

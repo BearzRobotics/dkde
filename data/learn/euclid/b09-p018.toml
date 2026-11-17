@@ -1,0 +1,26 @@
+id = "IX.18"
+book = 9
+order = 18
+title = "A third proportional to two numbers"
+statement = "Given two numbers, to investigate whether it is possible to find a third proportional to them."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let A, B be the given two numbers (here 4 and 6), and let it be required to investigate whether it is possible to find a third proportional to them."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 2.1 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 3.15 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "A, B are either prime to one another or not. If they are prime to one another, it has been proved that it is impossible to find a third proportional (IX.16). Now let A, B not be prime to one another, and let B by multiplying itself make C (36). Then A either measures C or does not. First let it measure it, according to D (9). Then A by multiplying D has made C. But B by multiplying itself has made C. Therefore the product of A, D equals the square on B. Therefore, as A is to B, so is B to D (VII.19). A third proportional D to A, B has been found. Next let A not measure C. I say that it is impossible to find a third proportional. For if possible, let D be found. Then the product of A, D equals the square on B, i.e. equals C, so A measures C, contrary to the hypothesis. Therefore a third proportional cannot be found."
+draw = [
+]

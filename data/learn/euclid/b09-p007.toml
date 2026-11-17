@@ -1,0 +1,32 @@
+id = "IX.7"
+book = 9
+order = 7
+title = "A composite number times a number is solid"
+statement = "If a composite number by multiplying any number make some number, the product will be solid."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let the composite number A by multiplying any number B make C (here 6 by 5 is 30). I say that C is solid."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.1 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.75 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 10.5 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 0.7 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 1.05 -3.6",
+  "segment E e purple",
+]
+
+[[step]]
+text = "Since A is composite, it is measured by some number D (here 2), say E times (E = 3). So D by multiplying E makes A, and C = A times B = D times E times B. Therefore C is contained by the three numbers D, E, B (2, 3, 5): it is a solid number."
+draw = [
+]

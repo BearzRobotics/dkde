@@ -1,0 +1,40 @@
+id = "IX.36"
+book = 9
+order = 36
+title = "Perfect numbers"
+statement = "If as many numbers as we please beginning from an unit be set out in double proportion, until the sum of all becomes prime, and if the sum multiplied into the last make some number, the product will be perfect."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "Let numbers beginning from the unit be set out in double proportion until their sum is prime: 1, 2, 4 have the sum 7, which is prime. Let the sum E = 7 be multiplied into the last, 4, to make FG = 28. I say that 28 is perfect, that is, equal to its own parts."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.35 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.7 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.4 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 2.45 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 4.9 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 9.8 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Beginning from E take as many numbers in double proportion as there are in 1, 2, 4: these are 7, 14, 28. Then, ex aequali, the unit is to the last, 4, as 7 is to 28 (VII.14); so the product of the unit and 28 equals the product of 7 and 4, which is FG. This is how FG = 28 comes out as the last of the second row."
+draw = [
+]
+
+[[step]]
+text = "The parts (divisors) of 28 are 1, 2, 4 and 7, 14: the first row up to the last, and the second row before the last. By IX.35 the sum of the first row 1 + 2 + 4 is 7 (the excess of 8 over the unit), which is the first of the second row, E; and the sum of the second row before the last, 7 + 14, is 21 which is 3 times 7, and by IX.35 equals the excess 28 - 7. Hence 1 + 2 + 4 + 7 + 14 = 28. And 28 has no other parts: any other divisor would be measured by a prime other than 2 and 7, which is impossible (IX.14 and IX.13, the first row being measured by 2 only, and 7 being prime). Therefore 28 is equal to its own parts: it is perfect."
+draw = [
+]

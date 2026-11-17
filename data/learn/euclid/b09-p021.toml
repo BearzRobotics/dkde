@@ -1,0 +1,32 @@
+id = "IX.21"
+book = 9
+order = 21
+title = "Even numbers added"
+statement = "If as many even numbers as we please be added together, the whole is even."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For let as many even numbers as we please, AB, BC, CD, DE, be added together (4, 6, 10, 8). I say that the whole AE is even (28)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.4 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 2.1 -0.9",
+  "segment BC bc red",
+  "point CD 0 -1.8",
+  "point cd 3.5 -1.8",
+  "segment CD cd green",
+  "point DE 0 -2.7",
+  "point de 2.8 -2.7",
+  "segment DE de orange",
+  "point AE 0 -3.6",
+  "point ae 9.8 -3.6",
+  "segment AE ae purple",
+]
+
+[[step]]
+text = "Since each of the numbers AB, BC, CD, DE is even, it has a half part (VII definition 6). So that the whole AE also has a half part. But an even number is that which is divisible into two equal parts (VII definition 6). Therefore AE is even."
+draw = [
+]

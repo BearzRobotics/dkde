@@ -1,0 +1,26 @@
+id = "IX.27"
+book = 9
+order = 27
+title = "Odd minus even"
+statement = "If from an odd number an even number be subtracted, the remainder will be odd."
+proof = "Q.E.D. In the figure each number is a bar whose length is the number."
+
+[[step]]
+text = "For from the odd number AB let the even number BC be subtracted (11 less 4). I say that the remainder CA is odd (7)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 3.85 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 1.4 -0.9",
+  "segment BC bc red",
+  "point CA 0 -1.8",
+  "point ca 2.45 -1.8",
+  "segment CA ca green",
+]
+
+[[step]]
+text = "Let the unit AD be subtracted. Then DB is even (VII definition 7). But BC is also even. Therefore the remainder CD is even (IX.24). And CA is greater than CD by the unit DA, so CA is odd (VII definition 7)."
+draw = [
+]
