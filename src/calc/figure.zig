@@ -70,6 +70,18 @@ pub const Step = struct {
     ops: []const Op = &.{},
     /// Calculator lines to try (shown under the step; a click puts one in the entry).
     calc: []const []const u8 = &.{},
+    /// Entries the solver writes out by hand (the pencil-and-paper method), shown under the step.
+    work: []const []const u8 = &.{},
+    /// Expressions in x to plot in the Graph pane beside the lesson.
+    graph: []const []const u8 = &.{},
+};
+
+/// A practice question. The answer is an entry the engine works out, so it can never disagree with the calculator.
+pub const Exercise = struct {
+    prompt: []const u8,
+    /// Entry whose value is the right answer ("3/4 + 1/6").
+    answer: []const u8,
+    hint: []const u8 = "",
 };
 
 pub const Kind = enum { definition, postulate, notion, proposition };
@@ -84,6 +96,7 @@ pub const Lesson = struct {
     /// What is to be shown or done, in Euclid's words (Heath's translation).
     statement: []const u8,
     steps: []const Step,
+    exercises: []const Exercise = &.{},
     /// The proof (or the reason the construction works), in plain words.
     proof: []const u8 = "",
 };

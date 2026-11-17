@@ -290,6 +290,23 @@ fn cmdCheck(args: []const []const u8) u8 {
                     }
                 }
             }
+            for (step.work) |line| {
+                _ = arena.reset(.retain_capacity);
+                const got = steps_mod.explain(.{ .a = arena.allocator(), .session = &session, .mode = .{} }, line) catch null;
+                if (got == null) {
+                    err("{s} step {d}: work \"{s}\": no written-out steps\n", .{ lesson.id, si + 1, line });
+                    problems += 1;
+                }
+            }
+            for (step.graph) |line| {
+                _ = arena.reset(.retain_capacity);
+                var p: eval.Problem = .{};
+                _ = eval.run(arena.allocator(), &session, "x = 1", .{}, &p) catch {};
+                _ = eval.run(arena.allocator(), &session, line, .{}, &p) catch |e| {
+                    err("{s} step {d}: graph \"{s}\": {s}\n", .{ lesson.id, si + 1, line, @errorName(e) });
+                    problems += 1;
+                };
+            }
             for (step.calc) |line| {
                 _ = arena.reset(.retain_capacity);
                 var p: eval.Problem = .{};
@@ -298,6 +315,18 @@ fn cmdCheck(args: []const []const u8) u8 {
                     problems += 1;
                 };
             }
+        }
+    }
+    for (loaded.lessons) |lesson| {
+        var session: eval.Session = .{ .gpa = gpa };
+        defer session.deinit();
+        for (lesson.exercises, 0..) |ex, ei| {
+            _ = arena.reset(.retain_capacity);
+            var p: eval.Problem = .{};
+            _ = eval.run(arena.allocator(), &session, ex.answer, .{}, &p) catch |e| {
+                err("{s} exercise {d}: answer \"{s}\": {s}\n", .{ lesson.id, ei + 1, ex.answer, @errorName(e) });
+                problems += 1;
+            };
         }
     }
     out("{d} lessons, {d} problems\n", .{ loaded.lessons.len, problems });

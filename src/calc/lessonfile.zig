@@ -87,10 +87,36 @@ pub fn parseLesson(arena: Allocator, text: []const u8, source: []const u8, probl
             }
             var calc: []const []const u8 = &.{};
             if (table.getArray("calc")) |c| calc = strings(arena, c, source, "calc", problems);
+            var work: []const []const u8 = &.{};
+            if (table.getArray("work")) |w| work = strings(arena, w, source, "work", problems);
+            var graph: []const []const u8 = &.{};
+            if (table.getArray("graph")) |g| graph = strings(arena, g, source, "graph", problems);
             steps.append(arena, .{
                 .text = arena.dupe(u8, step_text) catch continue,
                 .ops = ops.items,
                 .calc = calc,
+                .work = work,
+                .graph = graph,
+            }) catch {};
+        }
+    }
+    var exercises: std.ArrayList(figure.Exercise) = .empty;
+    if (root.getArray("exercise")) |array| {
+        for (array.items.items, 0..) |item, n| {
+            const table = switch (item) {
+                .table => |t| t,
+                else => continue,
+            };
+            const prompt = table.getString("prompt");
+            const answer = table.getString("answer");
+            if (prompt == null or answer == null) {
+                problem(arena, problems, "{s}: exercise {d} needs a prompt and an answer", .{ source, n + 1 });
+                continue;
+            }
+            exercises.append(arena, .{
+                .prompt = arena.dupe(u8, prompt.?) catch continue,
+                .answer = arena.dupe(u8, answer.?) catch continue,
+                .hint = arena.dupe(u8, table.getString("hint") orelse "") catch continue,
             }) catch {};
         }
     }
@@ -105,6 +131,7 @@ pub fn parseLesson(arena: Allocator, text: []const u8, source: []const u8, probl
             .title = arena.dupe(u8, title) catch return null,
             .statement = arena.dupe(u8, statement) catch return null,
             .steps = steps.items,
+            .exercises = exercises.items,
             .proof = arena.dupe(u8, proof) catch return null,
         },
         .order = order,

@@ -1,0 +1,28 @@
+id = "A.1"
+book = 0
+order = 1
+title = "Adding fractions"
+statement = "To add fractions with different denominators, first give them a common denominator."
+proof = "Fractions can only be added when the pieces are the same size, so we rewrite each one in pieces of the common size, then add the pieces."
+
+[[step]]
+text = "Idea: 3/4 and 1/6 are cut into different sized pieces (quarters and sixths), so we cannot add the tops yet. Find a size both fit into: 12 works, since 4 and 6 both divide it."
+calc = ["3/4 + 1/6"]
+
+[[step]]
+text = "By hand: rewrite 3/4 as 9/12 (multiply top and bottom by 3), and 1/6 as 2/12 (multiply top and bottom by 2). Then add the tops: 9 + 2 = 11, over 12."
+work = ["3/4 + 1/6"]
+
+[[step]]
+text = "With the calculator: type the sum. The result can be shown as a stacked fraction with Results as Fractions."
+calc = ["3/4 + 1/6", "5/8 + 1/3"]
+
+[[exercise]]
+prompt = "Work out 2/3 + 1/4."
+answer = "2/3 + 1/4"
+hint = "A common denominator for 3 and 4 is 12."
+
+[[exercise]]
+prompt = "Work out 5/6 + 3/8."
+answer = "5/6 + 3/8"
+hint = "Use 24."
