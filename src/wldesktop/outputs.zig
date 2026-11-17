@@ -220,6 +220,7 @@ pub const Outputs = struct {
                 if (findMode(h, want)) |m| ch.setMode(m.handle) else return fail(pending);
             }
             if (change.scale) |sc| ch.setScale(wl.Fixed.fromDouble(sc));
+            if (change.x != null or change.y != null) ch.setPosition(change.x orelse h.x, change.y orelse h.y);
         }
         config.setListener(*Pending, configEvent, pending);
         config.apply();

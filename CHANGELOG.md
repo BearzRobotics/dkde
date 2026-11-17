@@ -2,6 +2,19 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
+## Unreleased
+
+Fixes from the first test on real hardware (dinit):
+- **Login screen**: a session picker (every installed session entry: labwc, dkde-compositor, dkde-wm), remembered between logins. Logging out ends everything the session started, so the next login no longer shows two panels.
+- **No more aborts at File > Save As / Choose picture** on systems without compiled GSettings schemas: dkde compiles them into its cache.
+- **dkde-tasks**: the Services page finds dinit when `/proc/1` is hidden; firewall on/off uses dinitctl under dinit; the Security page no longer crashes when the padlock is opened with SELinux (endless recursion); `sudo dkde-tasks` finds the user's display.
+- **Panel**: Shut down and Restart ask for the password where there is no logind (dinit).
+- **dkde-term**: the X on a tab closes it.
+- **dkde-files**: the Trash is created when first looked at; right-click on a sidebar place (default folders, bookmarks, drives) offers Open, new tab, new window, terminal, remove bookmark, unmount; unmounted drives are listed and mounted on click.
+- **dkde-parted**: a moving bar while a change is made.
+- **Settings**: searching lists matching pages from every category, each a link; the mouse default speed is a little faster (0.4); Display: arrangement of several screens (main display, left/right/above/below, mirror) and a switch for the taskbar on other screens.
+- Specs and README: X11 and the compositor are no longer described as non-goals.
+
 ## 0.3.2 (2026-11-16)
 
 ### Packaging

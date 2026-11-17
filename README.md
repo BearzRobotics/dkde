@@ -2,7 +2,9 @@
 
 A small Wayland desktop shell with the layout of classic Windows: taskbar,
 Windows 7 style start menu, and a matching set of apps. Written in Zig on
-GTK4 (no libadwaita). The compositor is labwc. See `ai/DKDE-SPEC.md` for the design.
+GTK4 (no libadwaita). It runs on labwc by default, or on DKDE's own experimental
+Wayland compositor (`dkde-compositor`) or X11 window manager (`dkde-wm`); pick one
+at the login screen. See `ai/DKDE-SPEC.md` for the design.
 
 | Binary | What it is |
 |---|---|
@@ -126,7 +128,8 @@ Vendored in the repo: `protocols/` holds the protocol XML files that
 `ext-workspace-v1` (virtual desktops), `ext-idle-notify-v1` (idle timeouts) and
 `virtual-keyboard-unstable-v1` (`dkde-pointer` key presses).
 
-There is no init-system, systemd, logind, libadwaita or X11 dependency, and no D-Bus
+There is no init-system, systemd, logind or libadwaita dependency, and X11 is only
+needed for the optional X11 session (`dkde-wm`, libxcb); there is no D-Bus
 *library* dependency: notifications and the system tray use GIO's own GDBus
 when the session has a D-Bus session bus, and are simply off without one.
 
@@ -335,7 +338,7 @@ panel. Click inside it, then use the Start button (or the Super key).
 ### WSL2 (WSLg) note
 
 labwc is built with Xwayland support and, at startup, insists that
-`/tmp/.X11-unix` has the sticky bit. dkde does not use X11, but on WSLg the
+`/tmp/.X11-unix` has the sticky bit. The Wayland session does not use X11, but on WSLg the
 directory lacks the bit and labwc exits. The script works around this with a
 private mount namespace, **which makes `sudo` fail inside the nested session**
 (setuid programs cannot work in it).

@@ -6,6 +6,8 @@ height = 40
 position = "bottom"
 # Slide out of the way; move the pointer to the edge to show it.
 autohide = false
+# A taskbar on the second and later screens too.
+other-monitors = true
 # strftime codes; \n starts a new line. 12-hour time over the date by default.
 clock-format = "%-I:%M %p\n%-m/%-d/%Y"
 # Dates in other calendars can be shown in the clock with these codes in

@@ -53,6 +53,9 @@ const Parted = struct {
     part_list: *gtk.ListBox,
     bar: *gtk.DrawingArea,
     status: *gtk.Label,
+    /// Pulses while a change is being made (an apply cannot report how far it is).
+    progress: *gtk.ProgressBar,
+    pulse_source: c_uint = 0,
     /// Shown above everything when a program the tool drives is not installed.
     notice: *gtk.Label,
     probe: *gtk.Widget,
@@ -118,6 +121,7 @@ const Parted = struct {
             .part_list = gtk.ListBox.new(),
             .bar = gtk.DrawingArea.new(),
             .status = gtk.Label.new(""),
+            .progress = gtk.ProgressBar.new(),
             .notice = gtk.Label.new(""),
             .probe = undefined,
             .arena = std.heap.ArenaAllocator.init(allocator),
@@ -283,6 +287,10 @@ const Parted = struct {
         root.append(header.as(gtk.Widget));
         root.append(part_scroller.as(gtk.Widget));
         root.append(self.pending_box.as(gtk.Widget));
+        self.progress.as(gtk.Widget).setMarginStart(12);
+        self.progress.as(gtk.Widget).setMarginEnd(12);
+        self.progress.as(gtk.Widget).setVisible(0);
+        root.append(self.progress.as(gtk.Widget));
         root.append(self.status.as(gtk.Widget));
         window.setChild(root.as(gtk.Widget));
         _ = gtk.Widget.signals.destroy.connect(self.window, *Parted, &onDestroy, self, .{});
@@ -302,6 +310,7 @@ const Parted = struct {
     }
 
     fn onDestroy(_: *gtk.ApplicationWindow, self: *Parted) callconv(.c) void {
+        if (self.pulse_source != 0) _ = glib.Source.remove(self.pulse_source);
         self.proc_guard.kill();
         self.rows.deinit(self.allocator);
         self.pending.deinit(self.allocator);
@@ -621,7 +630,27 @@ const Parted = struct {
         }
     }
 
+    fn onPulse(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Parted = @ptrCast(@alignCast(data.?));
+        self.progress.pulse();
+        return 1;
+    }
+
+    /// The bar moves while something is being changed, so the window never looks stuck.
+    fn syncProgress(self: *Parted) void {
+        if (self.busy and self.pulse_source == 0) {
+            self.progress.as(gtk.Widget).setVisible(1);
+            self.pulse_source = glib.timeoutAdd(120, onPulse, self);
+        } else if (!self.busy and self.pulse_source != 0) {
+            _ = glib.Source.remove(self.pulse_source);
+            self.pulse_source = 0;
+            self.progress.as(gtk.Widget).setVisible(0);
+        }
+        self.pending_box.as(gtk.Widget).setSensitive(@intFromBool(!self.busy));
+    }
+
     fn updateButtons(self: *Parted) void {
+        self.syncProgress();
         self.updateNotice();
         const d = self.selectedDisk();
         const writable = d != null and !self.busy and model.refuseReason(d.?) == null;
@@ -1265,6 +1294,7 @@ const Parted = struct {
 
     fn applyFinished(self: *Parted, ok: bool, message: []const u8) void {
         self.busy = false;
+        self.syncProgress();
         self.apply_root = null;
         self.logText(if (ok) "DONE" else "FAILED", message);
         if (ok) {
@@ -1400,6 +1430,7 @@ const Parted = struct {
 
     fn onRunDone(self: *Parted, outcome: common.elevate.Outcome, message: []const u8) void {
         self.busy = false;
+        self.syncProgress();
         switch (outcome) {
             .ok => {
                 if (self.pending_image) |path| {

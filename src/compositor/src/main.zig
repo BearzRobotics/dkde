@@ -1637,7 +1637,9 @@ fn configurePointer(device: *c.wlr_input_device) void {
             _ = c.libinput_device_config_tap_set_enabled(li, if (v) c.LIBINPUT_CONFIG_TAP_ENABLED else c.LIBINPUT_CONFIG_TAP_DISABLED);
         }
     }
-    if (input_settings.pointer_speed) |v| {
+    // Unset means a little faster than libinput's 0, which feels slow.
+    {
+        const v = input_settings.pointer_speed orelse 0.4;
         if (c.libinput_device_config_accel_is_available(li) != 0) _ = c.libinput_device_config_accel_set_speed(li, v);
     }
 }

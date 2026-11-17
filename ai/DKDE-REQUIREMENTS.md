@@ -7,6 +7,7 @@
 ## 1. Product and portability
 
 - **DKDE-001 (MUST):** Provide a cohesive Wayland desktop shell and core utility suite with a Windows 7-inspired taskbar and Open-Shell-style Start menu, without copying proprietary assets.
+- **DKDE-002a (SHOULD):** (2026-11-16) The session may run on labwc (default), `dkde-compositor` or, on X11, `dkde-wm`; the login screen offers every installed one. All three are tested only as far as `ai/COMPOSITOR-SURVEY.md` says.
 - **DKDE-002 (MUST):** Run under the reference labwc session on FenrirOS without requiring systemd or logind; support a documented glibc Linux target.
 - **DKDE-003 (MUST):** Use shared application appearance and conventions through the DKDE UI module, stylesheet and TOML configuration where DKDE owns the format.
 - **DKDE-004 (MUST):** Integrate with freedesktop desktop entries, icons, MIME associations and XDG user/config/state/cache directories where applicable.

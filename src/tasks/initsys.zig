@@ -13,10 +13,16 @@ pub const Init = enum { systemd, dinit, none };
 /// What PID 1 is.
 pub fn systemInit() Init {
     var buf: [32]u8 = undefined;
-    const comm = readSmall("/proc/1/comm", &buf) orelse return .none;
-    if (std.mem.eql(u8, comm, "systemd")) return .systemd;
-    if (std.mem.eql(u8, comm, "dinit")) return .dinit;
-    // An init that is not one of these: look for the tools.
+    if (readSmall("/proc/1/comm", &buf)) |comm| {
+        if (std.mem.eql(u8, comm, "systemd")) return .systemd;
+        if (std.mem.eql(u8, comm, "dinit")) return .dinit;
+        // An init that is not one of these.
+        return .none;
+    }
+    // /proc/1 is unreadable (hidepid, or a locked-down /proc): go by what each manager leaves behind.
+    if (glib.fileTest("/run/systemd/system", .{ .is_dir = true }) != 0) return .systemd;
+    if (glib.fileTest("/run/dinitctl", .{ .exists = true }) != 0) return .dinit;
+    if (glib.fileTest("/etc/dinit.d", .{ .is_dir = true }) != 0 and glib.findProgramInPath("dinitctl") != null) return .dinit;
     return .none;
 }
 

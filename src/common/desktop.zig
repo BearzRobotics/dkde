@@ -120,6 +120,9 @@ pub const OutputChange = struct {
     enabled: ?bool = null,
     mode: ?Mode = null,
     scale: ?f32 = null,
+    /// Where the output's top-left corner goes, in the shared layout (equal positions mirror).
+    x: ?i32 = null,
+    y: ?i32 = null,
 };
 
 /// One output's change in a batch.

@@ -27,6 +27,10 @@ const list_attributes = "standard::name,standard::display-name,standard::type,st
 
 /// Sidebar target that opens the Connect to Server dialog instead of a folder.
 const connect_row = "dkde:connect-server";
+/// A sidebar entry for a partition that is not mounted yet: "dev:/dev/sdb1".
+const volume_prefix = "dev:";
+
+const Volume = struct { dev: [:0]u8, label: [:0]u8, fstype: [:0]u8 };
 
 const Column = enum { name, size, kind, modified };
 
@@ -129,6 +133,10 @@ pub const FilesWindow = struct {
     sidebar_bookmark: std.ArrayList(bool) = .empty,
     /// Handlers on the volume monitor (devices plugged in or out), removed with the window.
     monitor_handlers: std.ArrayList(c_ulong) = .empty,
+    /// Partitions of removable drives that are not mounted (read with lsblk; no gvfs or udisks needed to list them).
+    volumes: std.ArrayList(Volume) = .empty,
+    volumes_source: c_uint = 0,
+    mount_target: ?[:0]u8 = null,
 
     path_stack: *gtk.Stack,
     crumbs: *gtk.Box,
@@ -228,6 +236,8 @@ pub const FilesWindow = struct {
         self.registerTab();
         self.installShortcuts();
         self.rebuildSidebar();
+        self.refreshVolumes();
+        self.volumes_source = glib.timeoutAddSeconds(5, onVolumesTick, self);
         self.pruneArchiveCache();
         const monitor = gio.VolumeMonitor.get();
         inline for (.{ "volume-added", "volume-removed", "mount-added", "mount-removed" }) |name| {
@@ -251,10 +261,188 @@ pub const FilesWindow = struct {
 
     fn onDevicesChanged(_: *gio.VolumeMonitor, _: *gobject.Object, self: *FilesWindow) callconv(.c) void {
         self.rebuildSidebar();
+        self.refreshVolumes();
+    }
+
+    // ---- unmounted partitions ------------------------------------------------------------------
+
+    fn onVolumesTick(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *FilesWindow = @ptrCast(@alignCast(data.?));
+        self.refreshVolumes();
+        return 1;
+    }
+
+    fn freeVolumes(self: *FilesWindow) void {
+        for (self.volumes.items) |v| {
+            self.allocator.free(v.dev);
+            self.allocator.free(v.label);
+            self.allocator.free(v.fstype);
+        }
+        self.volumes.clearRetainingCapacity();
+    }
+
+    fn refreshVolumes(self: *FilesWindow) void {
+        if (!common.proc.hasProgram("lsblk")) return;
+        common.proc.run(FilesWindow, self.proc_guard, &.{ "lsblk", "-J", "-p", "-o", "NAME,TYPE,FSTYPE,LABEL,MOUNTPOINT,HOTPLUG,RM" }, onVolumesRead);
+    }
+
+    fn onVolumesRead(self: *FilesWindow, ok: bool, out: []const u8) void {
+        if (!ok) return;
+        var found: std.ArrayList(Volume) = .empty;
+        defer found.deinit(self.allocator);
+        const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, out, .{}) catch return;
+        defer parsed.deinit();
+        const root = switch (parsed.value) {
+            .object => |o| o,
+            else => return,
+        };
+        const list = root.get("blockdevices") orelse return;
+        self.collectVolumes(list, false, &found);
+        // Only redraw the sidebar when the set changed.
+        var same = found.items.len == self.volumes.items.len;
+        if (same) for (found.items, self.volumes.items) |a, b| {
+            if (!std.mem.eql(u8, a.dev, b.dev) or !std.mem.eql(u8, a.label, b.label)) same = false;
+        };
+        if (same) {
+            for (found.items) |v| {
+                self.allocator.free(v.dev);
+                self.allocator.free(v.label);
+                self.allocator.free(v.fstype);
+            }
+            return;
+        }
+        self.freeVolumes();
+        self.volumes.appendSlice(self.allocator, found.items) catch {};
+        self.rebuildSidebar();
+    }
+
+    fn jsonString(object: std.json.ObjectMap, key: []const u8) []const u8 {
+        const v = object.get(key) orelse return "";
+        return switch (v) {
+            .string => |t| t,
+            else => "",
+        };
+    }
+
+    fn jsonTrue(object: std.json.ObjectMap, key: []const u8) bool {
+        const v = object.get(key) orelse return false;
+        return switch (v) {
+            .bool => |b| b,
+            .string => |t| std.mem.eql(u8, t, "1") or std.mem.eql(u8, t, "true"),
+            else => false,
+        };
+    }
+
+    /// Walks lsblk's tree: a partition (or a whole disk with a filesystem) of a removable or hot-plugged
+    /// drive, with a filesystem, that is not mounted.
+    fn collectVolumes(self: *FilesWindow, node: std.json.Value, removable: bool, out: *std.ArrayList(Volume)) void {
+        const items = switch (node) {
+            .array => |a| a.items,
+            else => return,
+        };
+        for (items) |item| {
+            const obj = switch (item) {
+                .object => |o| o,
+                else => continue,
+            };
+            const is_removable = removable or jsonTrue(obj, "rm") or jsonTrue(obj, "hotplug");
+            if (obj.get("children")) |children| self.collectVolumes(children, is_removable, out);
+            const kind = jsonString(obj, "type");
+            if (!std.mem.eql(u8, kind, "part") and !std.mem.eql(u8, kind, "disk")) continue;
+            const fstype = jsonString(obj, "fstype");
+            if (!is_removable or fstype.len == 0 or jsonString(obj, "mountpoint").len > 0) continue;
+            if (std.mem.eql(u8, fstype, "swap") or std.mem.eql(u8, fstype, "crypto_LUKS") or std.mem.eql(u8, fstype, "LVM2_member") or std.mem.eql(u8, fstype, "iso9660") or std.mem.eql(u8, fstype, "linux_raid_member")) continue;
+            const dev = self.allocator.dupeSentinel(u8, jsonString(obj, "name"), 0) catch continue;
+            const label = self.allocator.dupeSentinel(u8, jsonString(obj, "label"), 0) catch {
+                self.allocator.free(dev);
+                continue;
+            };
+            const fs = self.allocator.dupeSentinel(u8, fstype, 0) catch {
+                self.allocator.free(dev);
+                self.allocator.free(label);
+                continue;
+            };
+            out.append(self.allocator, .{ .dev = dev, .label = label, .fstype = fs }) catch {};
+        }
+    }
+
+    /// A click on an unmounted partition: mount it (udisks when there is one, else the administrator's
+    /// mount), then show it.
+    fn mountVolume(self: *FilesWindow, dev: []const u8) void {
+        var name: []const u8 = std.fs.path.basename(dev);
+        var fstype: []const u8 = "";
+        for (self.volumes.items) |v| if (std.mem.eql(u8, v.dev, dev)) {
+            if (v.label.len > 0) name = v.label;
+            fstype = v.fstype;
+        };
+        self.status.setText(common.tr("Mounting\u{2026}"));
+        if (common.proc.hasProgram("udisksctl")) {
+            return common.proc.run(FilesWindow, self.proc_guard, &.{ "udisksctl", "mount", "-b", dev }, onUdisksMounted);
+        }
+        // /run/media/<user>/<label>, as udisks would.
+        var safe: [128]u8 = undefined;
+        var n: usize = 0;
+        for (name) |ch| {
+            if (n >= safe.len) break;
+            safe[n] = if (ch == '/' or ch == 0) '_' else ch;
+            n += 1;
+        }
+        const target = std.fmt.allocPrintSentinel(self.allocator, "/run/media/{s}/{s}", .{ std.mem.span(glib.getUserName()), safe[0..n] }, 0) catch return;
+        if (self.mount_target) |old| self.allocator.free(old);
+        self.mount_target = target;
+        // FAT, exFAT and NTFS have no owners: give the files to the user.
+        var opts_buf: [96]u8 = undefined;
+        const owned_fs = std.mem.eql(u8, fstype, "vfat") or std.mem.eql(u8, fstype, "exfat") or std.mem.startsWith(u8, fstype, "ntfs");
+        const opts: []const u8 = if (owned_fs) (std.fmt.bufPrint(&opts_buf, "uid={d},gid={d},umask=022", .{ std.c.getuid(), std.c.getgid() }) catch "") else "";
+        common.elevate.run(self.window.as(gtk.Window), "Mount a drive", &.{ "sh", "-c", "mkdir -p \"$2\" && mount ${3:+-o \"$3\"} \"$1\" \"$2\"", "sh", dev, target, opts }, "", FilesWindow, onElevatedMount, self);
+    }
+
+    fn onUdisksMounted(self: *FilesWindow, ok: bool, out: []const u8) void {
+        self.updateStatus();
+        self.refreshVolumes();
+        if (!ok) return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Could not mount the drive"), null);
+        // "Mounted /dev/sdb1 at /run/media/user/LABEL"
+        const at = std.mem.indexOf(u8, out, " at ") orelse return;
+        const path = std.mem.trim(u8, out[at + 4 ..], " \n\r.");
+        self.rebuildSidebar();
+        self.goPath(path);
+    }
+
+    fn onElevatedMount(self: *FilesWindow, outcome: common.elevate.Outcome, message: []const u8) void {
+        self.updateStatus();
+        self.refreshVolumes();
+        switch (outcome) {
+            .ok => {
+                self.rebuildSidebar();
+                if (self.mount_target) |t| self.goPath(t);
+            },
+            .failed => self.errorText(common.tr("Could not mount the drive"), message),
+            .cancelled => {},
+        }
+    }
+
+    fn errorText(self: *FilesWindow, title: [:0]const u8, message: []const u8) void {
+        var buf: [420]u8 = undefined;
+        const text = std.fmt.bufPrintSentinel(&buf, "{s}", .{message[0..@min(message.len, 400)]}, 0) catch null;
+        common.dialogs.showError(self.window.as(gtk.Window), title, text);
+    }
+
+    fn unmountPath(self: *FilesWindow, path: []const u8) void {
+        common.elevate.run(self.window.as(gtk.Window), "Unmount a drive", &.{ "umount", path }, "", FilesWindow, onElevatedUnmount, self);
+    }
+
+    fn onElevatedUnmount(self: *FilesWindow, outcome: common.elevate.Outcome, message: []const u8) void {
+        self.refreshVolumes();
+        self.rebuildSidebar();
+        if (outcome == .failed) self.errorText(common.tr("Could not unmount the drive"), message);
     }
 
     fn onWindowDestroy(_: *gtk.ApplicationWindow, self: *FilesWindow) callconv(.c) void {
         if (self.opening) |o| self.allocator.free(o.dest);
+        if (self.volumes_source != 0) _ = glib.Source.remove(self.volumes_source);
+        self.freeVolumes();
+        self.volumes.deinit(self.allocator);
+        if (self.mount_target) |t| self.allocator.free(t);
         for (self.monitor_handlers.items) |id| gobject.signalHandlerDisconnect(gio.VolumeMonitor.get().as(gobject.Object), id);
         self.monitor_handlers.deinit(self.allocator);
         self.proc_guard.kill();
@@ -998,8 +1186,17 @@ pub const FilesWindow = struct {
         return std.mem.startsWith(u8, std.mem.span(path), trash);
     }
 
+    /// The Trash's files folder. The Trash is made when it is first looked at, not only when
+    /// something is first deleted: opening it must not fail on a fresh account.
     fn trashFilesDir(allocator: std.mem.Allocator) ![:0]u8 {
-        return std.fmt.allocPrintSentinel(allocator, "{s}/Trash/files", .{std.mem.span(glib.getUserDataDir())}, 0);
+        const base = std.mem.span(glib.getUserDataDir());
+        const files = try std.fmt.allocPrintSentinel(allocator, "{s}/Trash/files", .{base}, 0);
+        common.fsio.makePath(files) catch {};
+        if (std.fmt.allocPrint(allocator, "{s}/Trash/info", .{base})) |info| {
+            defer allocator.free(info);
+            common.fsio.makePath(info) catch {};
+        } else |_| {}
+        return files;
     }
 
     fn rebuildCrumbs(self: *FilesWindow) void {
@@ -1262,12 +1459,24 @@ pub const FilesWindow = struct {
             defer self.allocator.free(content);
             if (pure.parseMountinfo(self.allocator, content)) |mounts| {
                 defer pure.freeMounts(self.allocator, mounts);
-                if (mounts.len > 0) self.addSidebarHeading(common.tr("Devices"));
+                if (mounts.len > 0 or self.volumes.items.len > 0) self.addSidebarHeading(common.tr("Devices"));
                 for (mounts) |m| {
                     const label = if (std.mem.eql(u8, m.mount_point, "/")) "File System" else std.fs.path.basename(m.mount_point);
                     var buf: [256]u8 = undefined;
                     const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{label}, 0) catch continue;
                     self.addSidebarRow(z, "drive-harddisk-symbolic", m.mount_point, false);
+                }
+                // Plugged in, not mounted: a click mounts it.
+                for (self.volumes.items) |v| {
+                    var lbuf: [200]u8 = undefined;
+                    const base = std.fs.path.basename(v.dev);
+                    const text = if (v.label.len > 0)
+                        std.fmt.bufPrintSentinel(&lbuf, "{s} ({s})", .{ v.label, base }, 0) catch continue
+                    else
+                        std.fmt.bufPrintSentinel(&lbuf, "{s} ({s})", .{ base, v.fstype }, 0) catch continue;
+                    var pbuf: [160]u8 = undefined;
+                    const target = std.fmt.bufPrint(&pbuf, "{s}{s}", .{ volume_prefix, v.dev }) catch continue;
+                    self.addSidebarRow(text, "drive-removable-media-symbolic", target, false);
                 }
             } else |_| {}
         } else |_| {}
@@ -3494,6 +3703,7 @@ pub const FilesWindow = struct {
         if (index >= self.sidebar_paths.items.len) return;
         if (self.sidebar_paths.items[index]) |path| {
             if (std.mem.eql(u8, path, connect_row)) return self.connectDialog();
+            if (std.mem.startsWith(u8, path, volume_prefix)) return self.mountVolume(path[volume_prefix.len..]);
             self.goPath(path);
         }
     }
@@ -3523,16 +3733,80 @@ pub const FilesWindow = struct {
         self.updateStatus();
     }
 
+    const SideKind = enum { open, new_tab, new_window, terminal, remove_bookmark, disconnect, unmount };
+    const SideAction = struct { window: *FilesWindow, popover: *gtk.Popover, path: [:0]u8, kind: SideKind };
+
+    fn onSideAction(_: *gtk.Button, ctx: *SideAction) callconv(.c) void {
+        const self = ctx.window;
+        ctx.popover.popdown();
+        const path: []const u8 = ctx.path;
+        switch (ctx.kind) {
+            .open => self.goPath(path),
+            .new_tab => {
+                const file = if (isRemote(path)) gio.File.newForUri(ctx.path.ptr) else gio.File.newForPath(ctx.path.ptr);
+                defer file.as(gobject.Object).unref();
+                self.addTab(file);
+            },
+            .new_window => common.appinfo.spawnIn(self.allocator, &.{ "dkde-files", path }, if (isRemote(path)) "/" else path),
+            .terminal => common.appinfo.spawnIn(self.allocator, &.{"dkde-term"}, path),
+            .remove_bookmark => self.removeBookmark(path),
+            .disconnect => self.ejectDevice(path),
+            .unmount => self.unmountPath(path),
+        }
+    }
+
+    fn onSideActionDestroy(_: *gtk.Button, ctx: *SideAction) callconv(.c) void {
+        std.heap.c_allocator.free(ctx.path);
+        std.heap.c_allocator.destroy(ctx);
+    }
+
+    fn sideItem(self: *FilesWindow, box: *gtk.Box, popover: *gtk.Popover, label: [:0]const u8, path: []const u8, kind: SideKind) void {
+        const button = gtk.Button.newWithLabel(label);
+        button.setHasFrame(0);
+        if (button.getChild()) |child| {
+            const l: *gtk.Label = @ptrCast(child);
+            l.setXalign(0);
+        }
+        const ctx = std.heap.c_allocator.create(SideAction) catch return;
+        const owned = std.heap.c_allocator.dupeSentinel(u8, path, 0) catch {
+            std.heap.c_allocator.destroy(ctx);
+            return;
+        };
+        ctx.* = .{ .window = self, .popover = popover, .path = owned, .kind = kind };
+        _ = gtk.Button.signals.clicked.connect(button, *SideAction, &onSideAction, ctx, .{});
+        _ = gtk.Widget.signals.destroy.connect(button, *SideAction, &onSideActionDestroy, ctx, .{});
+        box.append(button.as(gtk.Widget));
+    }
+
+    /// Right-click on a place in the sidebar (a default folder, a bookmark, a device): where to open it,
+    /// and removing a bookmark or disconnecting a device.
     fn onSidebarRightClick(gesture: *gtk.GestureClick, _: c_int, x: f64, y: f64, self: *FilesWindow) callconv(.c) void {
-        _ = gesture;
-        _ = x;
         const row = self.sidebar.getRowAtY(@intFromFloat(y)) orelse return;
         const index: usize = @intCast(row.getIndex());
         if (index >= self.sidebar_bookmark.items.len) return;
         const path = self.sidebar_paths.items[index] orelse return;
-        if (self.sidebar_bookmark.items[index]) return self.removeBookmark(path);
-        // A mounted phone or camera: right-click disconnects it.
-        if (isRemote(path) and isDeviceScheme(pure.schemeOf(path))) self.ejectDevice(path);
+        if (std.mem.eql(u8, path, connect_row)) return;
+        if (std.mem.startsWith(u8, path, volume_prefix)) return;
+        const remote = isRemote(path);
+
+        const parent = gesture.as(gtk.EventController).getWidget() orelse return;
+        const popover = gtk.Popover.new();
+        popover.as(gtk.Widget).addCssClass("dkde-context-menu");
+        popover.as(gtk.Widget).setParent(parent);
+        popover.setHasArrow(0);
+        const rect: gdk.Rectangle = .{ .f_x = @intFromFloat(x), .f_y = @intFromFloat(y), .f_width = 1, .f_height = 1 };
+        popover.setPointingTo(&rect);
+        _ = gtk.Popover.signals.closed.connect(popover, *FilesWindow, &onMenuClosed, self, .{});
+        const box = gtk.Box.new(.vertical, 0);
+        self.sideItem(box, popover, common.tr("Open"), path, .open);
+        self.sideItem(box, popover, common.tr("Open in new tab"), path, .new_tab);
+        self.sideItem(box, popover, common.tr("Open in new window"), path, .new_window);
+        if (!remote) self.sideItem(box, popover, common.tr("Open in terminal"), path, .terminal);
+        if (self.sidebar_bookmark.items[index]) self.sideItem(box, popover, common.tr("Remove from bookmarks"), path, .remove_bookmark);
+        if (remote and isDeviceScheme(pure.schemeOf(path))) self.sideItem(box, popover, common.tr("Disconnect"), path, .disconnect);
+        if (!remote and (std.mem.startsWith(u8, path, "/media/") or std.mem.startsWith(u8, path, "/mnt/") or std.mem.startsWith(u8, path, "/run/media/"))) self.sideItem(box, popover, common.tr("Unmount"), path, .unmount);
+        popover.setChild(box.as(gtk.Widget));
+        popover.popup();
     }
 };
 

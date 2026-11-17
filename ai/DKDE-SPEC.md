@@ -27,9 +27,9 @@ The reference distribution is **FenrirOS** (musl, LLVM/Clang, dinit, no systemd)
 
 ## 4. Non-goals
 
-- Writing a compositor: labwc is the compositor.
+- Replacing labwc as the *only* compositor. (Updated 2026-11-16: labwc remains the default and the reference, but DKDE also ships its own optional wlroots compositor, `dkde-compositor`, and an optional X11 window manager, `dkde-wm`; see `ai/COMPOSITOR-SPEC.md`. They are experimental.)
 - Depending on libadwaita or a GNOME desktop stack beyond the explicitly selected GTK4/GLib/GIO libraries.
-- An Xorg desktop backend. Xwayland compatibility for legacy applications is a separate integration concern, not an X11 backend for DKDE itself.
+- (Reversed 2026-11-16.) DKDE now has an X11 backend: `src/x11desktop` (the shared desktop API over EWMH and RandR), the panel's X11 surfaces, and `dkde-wm`, started with `dkde-session --x11`. It is optional and experimental; Wayland remains the primary target, and Xwayland compatibility for legacy applications is still handled by the compositor.
 - Owning or building **DKConsole**. It is a separate, standalone project and is not part of the DKDE desktop or its build graph.
 - Owning **DKTermCore**, which is an independent library.
 

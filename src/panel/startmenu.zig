@@ -727,7 +727,20 @@ pub const StartMenu = struct {
         var list: std.ArrayList([]const u8) = .empty;
         defer list.deinit(self.allocator);
         for (argv[0..@intCast(argc)]) |arg| list.append(self.allocator, std.mem.span(arg.?)) catch return;
+        // Without logind (dinit, SysV) poweroff and reboot are root's: ask for the password
+        // (dkde's own dialog, then sudo) instead of failing silently as the user.
+        const first = std.fs.path.basename(list.items[0]);
+        const system_command = std.mem.eql(u8, first, "poweroff") or std.mem.eql(u8, first, "reboot") or std.mem.eql(u8, first, "halt");
+        if (system_command and std.c.geteuid() != 0 and !common.power.system_probe.has_logind(null)) {
+            self.close();
+            common.elevate.run(null, if (std.mem.eql(u8, first, "reboot")) "Restart the computer" else "Shut down the computer", list.items, "", StartMenu, onPowerDone, self);
+            return;
+        }
         common.appinfo.spawn(self.allocator, list.items);
         self.close();
+    }
+
+    fn onPowerDone(_: *StartMenu, outcome: common.elevate.Outcome, message: []const u8) void {
+        if (outcome == .failed) log.warn("power command failed: {s}", .{message});
     }
 };

@@ -156,7 +156,7 @@ pub const Outputs = struct {
             defer std.c.free(info);
             const crtc: u32 = info.*.crtc;
             const enabled = edit.?.enabled orelse o.enabled;
-            if (edit == null or (edit.?.mode == null and edit.?.enabled == null)) {
+            if (edit == null or (edit.?.mode == null and edit.?.enabled == null and edit.?.x == null and edit.?.y == null)) {
                 // Untouched: keeps its place, counts toward the screen size.
                 if (o.enabled and crtc != 0) {
                     plans.append(self.allocator, .{ .out = @intCast(o.id), .crtc = crtc, .mode = 0, .x = o.x, .y = o.y, .w = o.width, .h = o.height }) catch return false;
@@ -170,6 +170,8 @@ pub const Outputs = struct {
             }
             // Enabled with a new mode, or switched on: pick the mode and a free CRTC.
             const want: desktop.Mode = edit.?.mode orelse blk: {
+                // Only moved: keep the mode it has.
+                for (o.modes) |m| if (m.current) break :blk m;
                 for (o.modes) |m| if (m.preferred) break :blk m;
                 break :blk if (o.modes.len > 0) o.modes[0] else return false;
             };
@@ -192,7 +194,9 @@ pub const Outputs = struct {
                     x = @max(x, other.x + @as(i32, @intCast(other.width)));
                 };
             }
-            plans.append(self.allocator, .{ .out = @intCast(o.id), .crtc = use_crtc, .mode = found.id, .x = x, .y = o.y, .w = found.w, .h = found.h }) catch return false;
+            if (edit.?.x) |ex| x = ex;
+            const y = edit.?.y orelse o.y;
+            plans.append(self.allocator, .{ .out = @intCast(o.id), .crtc = use_crtc, .mode = found.id, .x = x, .y = y, .w = found.w, .h = found.h }) catch return false;
         }
 
         // The screen must hold every enabled output.

@@ -43,7 +43,7 @@ pub fn postAuthResponse(allocator: std.mem.Allocator, response: ?[]const u8) ![]
     return out.toOwnedSlice(allocator);
 }
 
-pub fn startSession(allocator: std.mem.Allocator, argv: []const []const u8) ![]u8 {
+pub fn startSession(allocator: std.mem.Allocator, argv: []const []const u8, env: []const []const u8) ![]u8 {
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, "{\"type\":\"start_session\",\"cmd\":[");
@@ -51,7 +51,12 @@ pub fn startSession(allocator: std.mem.Allocator, argv: []const []const u8) ![]u
         if (i > 0) try out.append(allocator, ',');
         try appendJsonString(allocator, &out, arg);
     }
-    try out.appendSlice(allocator, "],\"env\":[]}");
+    try out.appendSlice(allocator, "],\"env\":[");
+    for (env, 0..) |item, i| {
+        if (i > 0) try out.append(allocator, ',');
+        try appendJsonString(allocator, &out, item);
+    }
+    try out.appendSlice(allocator, "]}");
     return out.toOwnedSlice(allocator);
 }
 
@@ -148,9 +153,9 @@ test "requests are valid json with escaping" {
     const none = try postAuthResponse(a, null);
     defer a.free(none);
     try std.testing.expectEqualStrings("{\"type\":\"post_auth_message_response\",\"response\":null}", none);
-    const start = try startSession(a, &.{ "dkde-session", "--x" });
+    const start = try startSession(a, &.{ "dkde-session", "--x" }, &.{"A=b"});
     defer a.free(start);
-    try std.testing.expectEqualStrings("{\"type\":\"start_session\",\"cmd\":[\"dkde-session\",\"--x\"],\"env\":[]}", start);
+    try std.testing.expectEqualStrings("{\"type\":\"start_session\",\"cmd\":[\"dkde-session\",\"--x\"],\"env\":[\"A=b\"]}", start);
 }
 
 test "replies" {

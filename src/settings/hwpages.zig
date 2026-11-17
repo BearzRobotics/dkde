@@ -268,7 +268,163 @@ pub const DisplayPage = struct {
             _ = note(self.content, common.tr("Display settings need a session that can configure outputs: a Wayland compositor with wlr-output-management (labwc and dkde-compositor have it), or X11 with RandR."));
             return;
         }
+        self.addLayoutCard();
         for (self.desktop.outputs()) |output| self.addOutput(output);
+    }
+
+    // ---- several screens: which is the main one, and where the others are --------------------
+
+    const arrangements = [_][]const u8{ "Right of the main display", "Left of the main display", "Above the main display", "Below the main display", "Same as the main display (mirror)" };
+
+    const Layout = struct {
+        page: *DisplayPage,
+        ids: []u64,
+        /// Size in layout units (pixels divided by scale).
+        w: []i32,
+        h: []i32,
+        main_drop: *gtk.DropDown,
+        drops: []?*gtk.DropDown,
+    };
+
+    fn onLayoutDestroy(_: *gtk.Box, l: *Layout) callconv(.c) void {
+        gpa.free(l.ids);
+        gpa.free(l.w);
+        gpa.free(l.h);
+        gpa.free(l.drops);
+        gpa.destroy(l);
+    }
+
+    /// With two or more screens on: the main display (at the origin) and where each other one is.
+    fn addLayoutCard(self: *DisplayPage) void {
+        var count: usize = 0;
+        for (self.desktop.outputs()) |o| if (o.enabled and o.width > 0) {
+            count += 1;
+        };
+        if (count < 2) return;
+        const l = gpa.create(Layout) catch return;
+        l.page = self;
+        l.ids = gpa.alloc(u64, count) catch return;
+        l.w = gpa.alloc(i32, count) catch return;
+        l.h = gpa.alloc(i32, count) catch return;
+        l.drops = gpa.alloc(?*gtk.DropDown, count) catch return;
+        var names: std.ArrayList([]const u8) = .empty;
+        defer names.deinit(gpa);
+        var i: usize = 0;
+        var main_index: usize = 0;
+        var xs: [16]i32 = undefined;
+        var ys: [16]i32 = undefined;
+        for (self.desktop.outputs()) |o| {
+            if (!(o.enabled and o.width > 0) or i >= 16) continue;
+            l.ids[i] = o.id;
+            const scale: f32 = if (o.scale > 0) o.scale else 1;
+            l.w[i] = @intFromFloat(@as(f32, @floatFromInt(o.width)) / scale);
+            l.h[i] = @intFromFloat(@as(f32, @floatFromInt(o.height)) / scale);
+            xs[i] = o.x;
+            ys[i] = o.y;
+            // The screen at the origin is the main one.
+            if (o.x == 0 and o.y == 0 and main_index == 0) main_index = i;
+            names.append(gpa, o.name) catch {};
+            i += 1;
+        }
+        const card = gtk.Box.new(.vertical, 8);
+        card.as(gtk.Widget).addCssClass("dkde-setting-row");
+        const heading = gtk.Label.new(common.tr("Arrangement"));
+        heading.setXalign(0);
+        heading.as(gtk.Widget).addCssClass("heading");
+        card.append(heading.as(gtk.Widget));
+        l.main_drop = dropdownOf(names.items);
+        l.main_drop.setSelected(@intCast(main_index));
+        win.SettingsWindow.addRowDesc(card, common.tr("Main display"), common.tr("The screen the others are placed around."), l.main_drop.as(gtk.Widget));
+        for (names.items, 0..) |name, n| {
+            var buf: [200]u8 = undefined;
+            const label = std.fmt.bufPrintSentinel(&buf, "{s}", .{name}, 0) catch "Display";
+            var kind: c_uint = 0;
+            const mx = xs[main_index];
+            const my = ys[main_index];
+            if (xs[n] == mx and ys[n] == my) kind = 4 else if (xs[n] >= mx + l.w[main_index]) kind = 0 else if (xs[n] + l.w[n] <= mx) kind = 1 else if (ys[n] + l.h[n] <= my) kind = 2 else kind = 3;
+            const d = dropdownOf(&arrangements);
+            d.setSelected(kind);
+            l.drops[n] = d;
+            win.SettingsWindow.addRowDesc(card, label, common.tr("Where this screen is, compared with the main display. Ignored for the main display itself."), d.as(gtk.Widget));
+        }
+        const apply = gtk.Button.newWithLabel(common.tr("Apply arrangement"));
+        apply.as(gtk.Widget).addCssClass("suggested-action");
+        apply.as(gtk.Widget).setHalign(.end);
+        _ = gtk.Button.signals.clicked.connect(apply, *Layout, &onApplyLayout, l, .{});
+        card.append(apply.as(gtk.Widget));
+        _ = gtk.Widget.signals.destroy.connect(card, *Layout, &onLayoutDestroy, l, .{});
+        self.content.append(card.as(gtk.Widget));
+    }
+
+    fn onApplyLayout(_: *gtk.Button, l: *Layout) callconv(.c) void {
+        const self = l.page;
+        const n = l.ids.len;
+        const main = l.main_drop.getSelected();
+        if (main >= n) return;
+        const edits = gpa.alloc(common.desktop.OutputEdit, n) catch return;
+        defer gpa.free(edits);
+        const xs = gpa.alloc(i32, n) catch return;
+        defer gpa.free(xs);
+        const ys = gpa.alloc(i32, n) catch return;
+        defer gpa.free(ys);
+        // Screens on the same side stack one after another.
+        var right = l.w[main];
+        var left: i32 = 0;
+        var above: i32 = 0;
+        var below = l.h[main];
+        for (0..n) |i| {
+            if (i == main) {
+                xs[i] = 0;
+                ys[i] = 0;
+                continue;
+            }
+            const kind = if (l.drops[i]) |d| d.getSelected() else 0;
+            switch (kind) {
+                0 => {
+                    xs[i] = right;
+                    ys[i] = 0;
+                    right += l.w[i];
+                },
+                1 => {
+                    left -= l.w[i];
+                    xs[i] = left;
+                    ys[i] = 0;
+                },
+                2 => {
+                    above -= l.h[i];
+                    xs[i] = 0;
+                    ys[i] = above;
+                },
+                3 => {
+                    xs[i] = 0;
+                    ys[i] = below;
+                    below += l.h[i];
+                },
+                else => {
+                    xs[i] = 0;
+                    ys[i] = 0;
+                },
+            }
+        }
+        // Layout coordinates start at 0 (X11 has no negative ones).
+        var min_x: i32 = 0;
+        var min_y: i32 = 0;
+        for (0..n) |i| {
+            min_x = @min(min_x, xs[i]);
+            min_y = @min(min_y, ys[i]);
+        }
+        for (0..n) |i| edits[i] = .{ .id = l.ids[i], .change = .{ .x = xs[i] - min_x, .y = ys[i] - min_y } };
+        self.requestMany(edits, onLayoutApplied);
+    }
+
+    fn onLayoutApplied(self: *DisplayPage, ok: bool) void {
+        if (!ok) {
+            self.status.setText(common.tr("The display refused that arrangement."));
+            self.refresh();
+            return;
+        }
+        self.refresh();
+        self.saveLayout();
     }
 
     fn modeText(m: common.desktop.Mode) [:0]u8 {
@@ -349,6 +505,10 @@ pub const DisplayPage = struct {
 
     /// Asks for a change and calls `then` with the page when it is done (and the page still exists).
     fn request(self: *DisplayPage, id: u64, change: common.desktop.OutputChange, comptime then: fn (*DisplayPage, bool) void) void {
+        self.requestMany(&.{.{ .id = id, .change = change }}, then);
+    }
+
+    fn requestMany(self: *DisplayPage, edits: []const common.desktop.OutputEdit, comptime then: fn (*DisplayPage, bool) void) void {
         const Done = struct {
             fn run(ctx: ?*anyopaque, ok: bool) void {
                 const token: *Token = @ptrCast(@alignCast(ctx.?));
@@ -357,7 +517,7 @@ pub const DisplayPage = struct {
             }
         };
         self.token.pending += 1;
-        self.desktop.configureOutput(id, change, Done.run, self.token);
+        self.desktop.configureOutputs(edits, Done.run, self.token);
     }
 
     fn onApply(_: *gtk.Button, row: *Row) callconv(.c) void {
@@ -482,9 +642,9 @@ pub const DisplayPage = struct {
                 if (x11) {
                     var rate_buf: [32]u8 = undefined;
                     const rate = if (m.refresh_mhz > 0) std.fmt.bufPrint(&rate_buf, " --rate {d:.2}", .{hz}) catch "" else "";
-                    break :blk std.fmt.allocPrint(gpa, "xrandr --output '{s}' --mode {d}x{d}{s}\n", .{ o.name, m.width, m.height, rate }) catch return;
+                    break :blk std.fmt.allocPrint(gpa, "xrandr --output '{s}' --mode {d}x{d}{s} --pos {d}x{d}\n", .{ o.name, m.width, m.height, rate, o.x, o.y }) catch return;
                 }
-                break :blk std.fmt.allocPrint(gpa, "wlr-randr --output '{s}' --on --mode {d}x{d}@{d:.3}Hz --scale {d:.2}\n", .{ o.name, m.width, m.height, hz, o.scale }) catch return;
+                break :blk std.fmt.allocPrint(gpa, "wlr-randr --output '{s}' --on --mode {d}x{d}@{d:.3}Hz --scale {d:.2} --pos {d},{d}\n", .{ o.name, m.width, m.height, hz, o.scale, o.x, o.y }) catch return;
             };
             defer gpa.free(line);
             script.appendSlice(gpa, line) catch return;

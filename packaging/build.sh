@@ -133,6 +133,9 @@ password   include    system-password
 session    include    system-session
 PAM
     fi
+    # The greeter remembers the last session here (writable by the greeter's account).
+    install -d -m 755 "$DESTDIR/var/cache/dkde-greeter"
+    chown "$GREETD_USER" "$DESTDIR/var/cache/dkde-greeter" 2>/dev/null || true
     case "$INIT" in
     dinit)
         install -d "$etc/dinit.d"

@@ -232,10 +232,15 @@ pub const Page = struct {
     pub fn reload(self: *Page) void {
         if (glib.getenv("DKDE_DEBUG_SECURITY") != null and !self.loaded) return self.load();
         if (common.elevate.isUnlocked()) return self.load();
-        if (self.kind == .selinux) {
-            common.proc.run(Page, self.guard, &.{"getenforce"}, onGetenforce);
-            common.proc.run(Page, self.guard, &.{ "getsebool", "-a" }, onBooleans);
-        }
+        self.readSelinux();
+    }
+
+    /// SELinux's mode and booleans. (`load` must not call `reload`: with the padlock open
+    /// `reload` calls `load`, and the two recursed until the stack ran out.)
+    fn readSelinux(self: *Page) void {
+        if (self.kind != .selinux) return;
+        common.proc.run(Page, self.guard, &.{"getenforce"}, onGetenforce);
+        common.proc.run(Page, self.guard, &.{ "getsebool", "-a" }, onBooleans);
     }
 
     // ---- reading -------------------------------------------------------------------------
@@ -268,7 +273,7 @@ pub const Page = struct {
         if (glib.getenv("DKDE_DEBUG_SECURITY")) |dir| return self.loadDebug(std.mem.span(dir));
         switch (self.kind) {
             .apparmor => common.elevate.runCapture(self.window, "Read the AppArmor profiles", &.{ "aa-status", "--json" }, Page, onAaStatus, self),
-            .selinux => self.reload(),
+            .selinux => self.readSelinux(),
             .none => {},
         }
         self.loadDenials();

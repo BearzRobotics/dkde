@@ -165,7 +165,13 @@ const Setup = struct {
         const current = self.readFile(path) orelse "";
         // dkde owns every shortcut, labwc's window ones included, so they can be
         // changed in one place (Settings > Keyboard shortcuts).
-        const updated = core.labwc.takeOverKeybinds(self.arena.allocator(), current, &core.labwc.dkde_keybinds) catch null;
+        var updated = core.labwc.takeOverKeybinds(self.arena.allocator(), current, &core.labwc.dkde_keybinds) catch null;
+        // libinput's own default speed (0) feels slow on most mice: start a little faster, once.
+        // Only when the user has not chosen one.
+        const base = updated orelse current;
+        if (std.mem.indexOf(u8, base, "pointerSpeed") == null) {
+            if (core.labwc.setLibinput(self.arena.allocator(), base, "pointerSpeed", "0.4")) |with_speed| updated = with_speed else |_| {}
+        }
         const title = "labwc keybindings (dkde's shortcuts, in place of labwc's built-in ones)";
         if (updated) |content| {
             self.add(.{ .title = title, .status = .todo, .detail = self.fmt("add the missing ones to {s} and drop labwc's <default />; your own are kept", .{path}), .write_path = path, .write_content = content });

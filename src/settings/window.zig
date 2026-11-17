@@ -376,7 +376,8 @@ pub const SettingsWindow = struct {
         self.search_len = @min(text.len, self.search_text.len);
         @memcpy(self.search_text[0..self.search_len], text[0..self.search_len]);
         if (self.sidebar) |sb| sb.invalidateFilter();
-        // A category list shows only the pages that match.
+        // Matching pages from every category, each a link that opens it.
+        if (self.search_len > 0) return self.openSearchResults();
         if (self.current_sub == null) self.openCategory(self.current_cat);
     }
 
@@ -463,32 +464,63 @@ pub const SettingsWindow = struct {
         for (pages, 0..) |p, i| {
             if (p.category != index) continue;
             if (!self.matches(p.title) and !self.matches(sections[index].title)) continue;
-            const button = gtk.Button.new();
-            button.as(gtk.Widget).addCssClass("flat");
-            button.as(gtk.Widget).addCssClass("dkde-setting-row");
-            const row = gtk.Box.new(.horizontal, 12);
-            row.append(gtk.Image.newFromIconName(p.icon).as(gtk.Widget));
-            const texts = gtk.Box.new(.vertical, 2);
-            texts.as(gtk.Widget).setHexpand(1);
-            const title = gtk.Label.new(p.title);
-            title.setXalign(0);
-            texts.append(title.as(gtk.Widget));
-            const sub = gtk.Label.new(p.desc);
-            sub.setXalign(0);
-            sub.setWrap(1);
-            sub.as(gtk.Widget).addCssClass("dkde-setting-desc");
-            texts.append(sub.as(gtk.Widget));
-            row.append(texts.as(gtk.Widget));
-            row.append(gtk.Image.newFromIconName("go-next-symbolic").as(gtk.Widget));
-            button.setChild(row.as(gtk.Widget));
-            const ctx = self.allocator.create(OpenCtx) catch continue;
-            ctx.* = .{ .window = self, .index = i };
-            _ = gtk.Button.signals.clicked.connect(button, *OpenCtx, &onOpenPage, ctx, .{});
-            _ = gtk.Widget.signals.destroy.connect(button, *OpenCtx, &onOpenDestroy, ctx, .{});
+            const button = self.pageRow(i, p) orelse continue;
             page.append(button.as(gtk.Widget));
         }
         _ = self.stack.addNamed(page.as(gtk.Widget), name);
         self.stack.setVisibleChildName(name);
+        self.scrollToTop();
+    }
+
+    /// One row of a list of pages: icon, title, what it is for; opens the page.
+    fn pageRow(self: *SettingsWindow, i: usize, p: Page) ?*gtk.Button {
+        const button = gtk.Button.new();
+        button.as(gtk.Widget).addCssClass("flat");
+        button.as(gtk.Widget).addCssClass("dkde-setting-row");
+        const row = gtk.Box.new(.horizontal, 12);
+        row.append(gtk.Image.newFromIconName(p.icon).as(gtk.Widget));
+        const texts = gtk.Box.new(.vertical, 2);
+        texts.as(gtk.Widget).setHexpand(1);
+        const title = gtk.Label.new(p.title);
+        title.setXalign(0);
+        texts.append(title.as(gtk.Widget));
+        const sub = gtk.Label.new(p.desc);
+        sub.setXalign(0);
+        sub.setWrap(1);
+        sub.as(gtk.Widget).addCssClass("dkde-setting-desc");
+        texts.append(sub.as(gtk.Widget));
+        row.append(texts.as(gtk.Widget));
+        row.append(gtk.Image.newFromIconName("go-next-symbolic").as(gtk.Widget));
+        button.setChild(row.as(gtk.Widget));
+        const ctx = self.allocator.create(OpenCtx) catch return null;
+        ctx.* = .{ .window = self, .index = i };
+        _ = gtk.Button.signals.clicked.connect(button, *OpenCtx, &onOpenPage, ctx, .{});
+        _ = gtk.Widget.signals.destroy.connect(button, *OpenCtx, &onOpenDestroy, ctx, .{});
+        return button;
+    }
+
+    /// While something is typed in the search box: every page that matches, from any category,
+    /// each one a link that opens that page.
+    fn openSearchResults(self: *SettingsWindow) void {
+        self.current_sub = null;
+        self.crumb_bar.as(gtk.Widget).setVisible(0);
+        if (self.stack.getChildByName("search-results")) |old| self.stack.remove(old);
+        const page = newPage(common.tr("Search results"));
+        var found = false;
+        for (pages, 0..) |p, i| {
+            if (!self.matches(p.title) and !self.matches(p.desc) and !self.matches(sections[p.category].title)) continue;
+            const button = self.pageRow(i, p) orelse continue;
+            page.append(button.as(gtk.Widget));
+            found = true;
+        }
+        if (!found) {
+            const none = gtk.Label.new(common.tr("No setting matches that."));
+            none.setXalign(0);
+            none.as(gtk.Widget).addCssClass("dim-label");
+            page.append(none.as(gtk.Widget));
+        }
+        _ = self.stack.addNamed(page.as(gtk.Widget), "search-results");
+        self.stack.setVisibleChildName("search-results");
         self.scrollToTop();
     }
 
@@ -1623,6 +1655,7 @@ pub const SettingsWindow = struct {
         const page = newPage(common.tr("Taskbar"));
         addRowDesc(page, common.tr("Position on screen"), "Which edge of the screen the taskbar sits on", self.choice(&self.panel, "panel", "position", &.{ "bottom", "top", "left", "right" }, "bottom").as(gtk.Widget));
         addRowDesc(page, common.tr("Automatically hide"), "Slide the taskbar out of the way; touch the edge to show it", self.toggle(&self.panel, "panel", "autohide", false).as(gtk.Widget));
+        addRowDesc(page, common.tr("Show on other screens"), "Put a taskbar on the second and later screens as well", self.toggle(&self.panel, "panel", "other-monitors", true).as(gtk.Widget));
         addRow(page, common.tr("Size (pixels)"), self.spin(&self.panel, "panel", "height", 24, 120, 40).as(gtk.Widget));
         hwpages.QuickRows.add(self, page);
         {
@@ -2293,7 +2326,7 @@ pub const SettingsWindow = struct {
 
         const speed = gtk.Scale.newWithRange(.horizontal, -1, 1, 0.1);
         speed.as(gtk.Widget).setSizeRequest(240, -1);
-        speed.as(gtk.Range).setValue(if (own_cfg) |c| (c.input.pointer_speed orelse 0) else if (rc) |c| (xmlValueFloat(c, "pointerSpeed") orelse 0) else 0);
+        speed.as(gtk.Range).setValue(if (own_cfg) |c| (c.input.pointer_speed orelse 0.4) else if (rc) |c| (xmlValueFloat(c, "pointerSpeed") orelse 0.4) else 0.4);
         _ = gtk.Range.signals.value_changed.connect(speed.as(gtk.Range), *SettingsWindow, &onSpeed, self, .{});
         addRow(page, common.tr("Pointer speed"), speed.as(gtk.Widget));
 

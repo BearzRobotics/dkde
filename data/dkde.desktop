@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=dkde
+Name=dkde (labwc)
 Comment=The dkde desktop on labwc
-Exec=dkde-session
+Exec=env DKDE_SESSION_TYPE=wayland DKDE_COMPOSITOR=labwc dkde-session
 Type=Application
 DesktopNames=dkde

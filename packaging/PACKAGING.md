@@ -103,6 +103,18 @@ on first use; `dkde-setup --once` runs from `dkde-session` on first login.
 | `greetd` | graphical login (otherwise log in on a tty and run `dkde-session`) | |
 | `sudo`, `shadow`/`passwd` | run-as-administrator, user management | `useradd`, `usermod`, ... |
 
+**GSettings schemas must be compiled.** GTK's file dialogs read GSettings, and GLib aborts the
+whole program ("No GSettings schemas are installed on the system") when
+`/usr/share/glib-2.0/schemas/gschemas.compiled` is missing. The image build must run
+`glib-compile-schemas /usr/share/glib-2.0/schemas` after installing GTK (and again when schema
+packages are added). As a safety net, every dkde program compiles the system's schemas into
+`~/.cache/dkde/schemas` at start-up when none are compiled, but an image should not rely on it.
+
+**The login screen** lists every session entry it finds in `share/wayland-sessions` and
+`share/xsessions` whose program is installed (dkde on labwc, dkde-compositor, dkde-wm), and
+remembers the last choice in `/var/cache/dkde-greeter/last-session` (the install step creates the
+folder, owned by the greeter account).
+
 **Optional** (each feature hides itself or says what is missing): see
 `README.md`, "Recommended software". The commands it looks for are `wpa_cli`
 (wpa_supplicant), `ip`, `bluetoothctl`, `rfkill`, `brightnessctl`, `wpctl` or `pactl`,
@@ -120,6 +132,15 @@ With dkde-compositor and dkde-wm installed, labwc becomes optional: it is only
 the default of `dkde-session` (`DKDE_COMPOSITOR`, `compositor=` in
 `~/.config/dkde/session.conf`, or `--x11`). dkde-compositor also runs Xwayland
 (optional) for X11 programs. dkde-wm needs an X server (Xorg or Xvfb).
+
+**Drives in Files:** unmounted partitions on removable drives are listed with `lsblk` and mounted on
+click with `udisksctl` when it is installed, otherwise with `mount` through the administrator
+password (into `/run/media/$USER/LABEL`; FAT, exFAT and NTFS are mounted owned by the user). NTFS
+needs a kernel driver (`ntfs3`) or ntfs-3g.
+
+**Without logind** (dinit, SysV): the panel's Shut down and Restart run `poweroff` / `reboot` through
+the administrator password dialog, since only root may. `/proc` may be mounted `hidepid`; Task Manager
+then recognises dinit by `/run/dinitctl`.
 
 **Not needed:** systemd, logind, polkit, libadwaita, X11,
 a D-Bus library, cron or any init-system timers. Calendar reminders run inside

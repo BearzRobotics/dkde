@@ -40,6 +40,7 @@ const App = struct {
     /// What the current bars were built with; a change rebuilds them.
     built_position: Position = .bottom,
     built_autohide: bool = false,
+    built_other_monitors: bool = true,
     wallpapers: std.ArrayList(Wallpaper) = .empty,
     /// Colours the wallpaper windows; reloaded when the config changes.
     wallpaper_css: *gtk.CssProvider,
@@ -237,7 +238,7 @@ const App = struct {
     fn onConfigChanged(self: *App) void {
         if (self.quick) |q| q.reload();
         self.applyWallpaperStyle();
-        if (self.panelPosition() != self.built_position or self.panelAutohide() != self.built_autohide) {
+        if (self.panelPosition() != self.built_position or self.panelAutohide() != self.built_autohide or self.otherMonitors() != self.built_other_monitors) {
             self.rebuildSurfaces();
         } else {
             const height = self.barHeight();
@@ -253,6 +254,11 @@ const App = struct {
         const name = self.config.getString(self.allocator, "panel", "position", "bottom") catch return .bottom;
         defer self.allocator.free(name);
         return Position.fromName(name);
+    }
+
+    /// Whether the second and later screens get a taskbar too (Settings > Taskbar).
+    fn otherMonitors(self: *const App) bool {
+        return self.config.getBool("panel", "other-monitors", true);
     }
 
     fn panelAutohide(self: *const App) bool {
@@ -353,6 +359,7 @@ const App = struct {
         self.bars.clearRetainingCapacity();
         self.built_position = self.panelPosition();
         self.built_autohide = self.panelAutohide();
+        self.built_other_monitors = self.otherMonitors();
         self.wallpapers.clearRetainingCapacity();
 
         self.applyWallpaperStyle();
@@ -369,6 +376,7 @@ const App = struct {
             defer monitor.as(gobject.Object).unref();
 
             self.wallpapers.append(self.allocator, Wallpaper.create(monitor, image, self.wallpaperFit(), if (self.wallpapers.items.len == 0 and self.config.getBool("desktop", "icons", true)) &self.config else null)) catch return;
+            if (i > 0 and !self.built_other_monitors) continue;
             const bar = Bar.create(self.allocator, monitor, self.barHeight(), self.panelPosition(), self.panelAutohide(), onStartClicked, self, self.tray, self.quick) catch |err| {
                 std.log.err("cannot create bar: {s}", .{@errorName(err)});
                 return;

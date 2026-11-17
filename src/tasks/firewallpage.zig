@@ -617,7 +617,12 @@ pub const Page = struct {
         if (self.backend == .ufw) {
             common.elevate.run(self.window, "Turn the firewall on or off", &.{ "ufw", "--force", if (self.ufw.active) "disable" else "enable" }, "", Page, onChanged, self);
         } else {
-            common.elevate.run(self.window, "Turn the firewall on or off", &.{ "systemctl", if (self.running) "stop" else "start", "firewalld" }, "", Page, onChanged, self);
+            const verb: []const u8 = if (self.running) "stop" else "start";
+            if (@import("initsys.zig").systemInit() == .dinit) {
+                common.elevate.run(self.window, "Turn the firewall on or off", &.{ "dinitctl", "--system", verb, "firewalld" }, "", Page, onChanged, self);
+            } else {
+                common.elevate.run(self.window, "Turn the firewall on or off", &.{ "systemctl", verb, "firewalld" }, "", Page, onChanged, self);
+            }
         }
     }
 

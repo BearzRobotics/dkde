@@ -813,7 +813,14 @@ pub const TermWindow = struct {
         tab.button.as(gtk.Button).setChild(content.as(gtk.Widget));
         tab.button.as(gtk.Widget).addCssClass("dkde-tab");
         _ = gtk.ToggleButton.signals.toggled.connect(tab.button, *Tab, &onTabToggled, tab, .{});
-        _ = gtk.Button.signals.clicked.connect(close, *Tab, &onCloseClicked, tab, .{});
+        // The X sits inside the tab's own toggle button, which takes the click first: catch it here, before
+        // the toggle button sees it, and claim it so the tab is not also selected.
+        const close_click = gtk.GestureClick.new();
+        close_click.as(gtk.GestureSingle).setButton(1);
+        close_click.as(gtk.EventController).setPropagationPhase(.capture);
+        _ = gtk.GestureClick.signals.pressed.connect(close_click, *Tab, &onClosePressed, tab, .{});
+        _ = gtk.GestureClick.signals.released.connect(close_click, *Tab, &onCloseReleased, tab, .{});
+        close.as(gtk.Widget).addController(close_click.as(gtk.EventController));
         // Drag a tab to reorder it, onto another window, or out into its own.
         const drag = gtk.DragSource.new();
         drag.setActions(.{ .move = true });
@@ -1321,7 +1328,14 @@ pub const TermWindow = struct {
         if (button.getActive() != 0) tab.window.select(tab);
     }
 
-    fn onCloseClicked(_: *gtk.Button, tab: *Tab) callconv(.c) void {
+    fn onClosePressed(gesture: *gtk.GestureClick, _: c_int, _: f64, _: f64, _: *Tab) callconv(.c) void {
+        _ = gesture.as(gtk.Gesture).setState(.claimed);
+    }
+
+    fn onCloseReleased(gesture: *gtk.GestureClick, _: c_int, x: f64, y: f64, tab: *Tab) callconv(.c) void {
+        const widget = gesture.as(gtk.EventController).getWidget() orelse return;
+        // Released over the X (a press dragged away cancels).
+        if (x < 0 or y < 0 or x > @as(f64, @floatFromInt(widget.getWidth())) or y > @as(f64, @floatFromInt(widget.getHeight()))) return;
         tab.window.askCloseTab(tab);
     }
 

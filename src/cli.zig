@@ -94,6 +94,103 @@ fn writeAll(fd: c_int, bytes: []const u8) void {
     }
 }
 
+extern fn geteuid() c_uint;
+extern fn getenv(name: [*:0]const u8) ?[*:0]const u8;
+extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
+
+/// `sudo dkde-tasks`: sudo drops the variables that say where the desktop is, so the program
+/// ran as root could not open a window ("Authorization required, but no authorization protocol
+/// specified"). When we are root through sudo, point at the invoking user's display again:
+/// their runtime folder (Wayland), their Xauthority file (X11) and their Wayland socket.
+fn sudoDisplay() void {
+    if (geteuid() != 0) return;
+    const uid_text = getenv("SUDO_UID") orelse return;
+    const uid = std.mem.span(uid_text);
+    var run_buf: [64:0]u8 = undefined;
+    const run_dir = std.fmt.bufPrintSentinel(&run_buf, "/run/user/{s}", .{uid}, 0) catch return;
+    if (getenv("XDG_RUNTIME_DIR") == null) _ = setenv("XDG_RUNTIME_DIR", run_dir.ptr, 0);
+    if (getenv("DISPLAY") != null) {
+        if (getenv("XAUTHORITY") != null) return;
+        // The user's own authority file, in their home (from sudo's SUDO_USER).
+        const user = getenv("SUDO_USER") orelse return;
+        const pw = getpwnam(user) orelse return;
+        var xa_buf: [512:0]u8 = undefined;
+        const path = std.fmt.bufPrintSentinel(&xa_buf, "{s}/.Xauthority", .{std.mem.span(pw.dir.?)}, 0) catch return;
+        if (access(path.ptr, 4) == 0) _ = setenv("XAUTHORITY", path.ptr, 0);
+        return;
+    }
+    if (getenv("WAYLAND_DISPLAY") != null) return;
+    // Wayland: the first socket in the user's runtime folder.
+    var n: usize = 0;
+    while (n < 4) : (n += 1) {
+        var sock_buf: [96:0]u8 = undefined;
+        const sock = std.fmt.bufPrintSentinel(&sock_buf, "{s}/wayland-{d}", .{ run_dir, n }, 0) catch return;
+        if (access(sock.ptr, 0) == 0) {
+            var name_buf: [16:0]u8 = undefined;
+            const name = std.fmt.bufPrintSentinel(&name_buf, "wayland-{d}", .{n}, 0) catch return;
+            _ = setenv("WAYLAND_DISPLAY", name.ptr, 0);
+            return;
+        }
+    }
+}
+
+extern fn access(path: [*:0]const u8, mode: c_int) c_int;
+extern fn system(command: [*:0]const u8) c_int;
+extern fn mkdir(path: [*:0]const u8, mode: c_uint) c_int;
+
+/// GTK's file dialogs read GSettings, and GLib aborts the whole program ("No GSettings schemas are
+/// installed on the system") when `gschemas.compiled` is missing: an image that ships the schema
+/// files but never ran `glib-compile-schemas` loses the user's unsaved text at File > Save As.
+/// When no compiled schemas exist anywhere, compile the system's into the user's cache once and use those.
+fn ensureSchemas() void {
+    if (getenv("GSETTINGS_SCHEMA_DIR") != null) return;
+    const data_dirs = if (getenv("XDG_DATA_DIRS")) |d| std.mem.span(d) else "/usr/local/share:/usr/share";
+    var source_dir: ?[]const u8 = null;
+    var src_buf: [512:0]u8 = undefined;
+    var dirs = std.mem.splitScalar(u8, data_dirs, ':');
+    while (dirs.next()) |d| {
+        if (d.len == 0) continue;
+        const compiled = std.fmt.bufPrintSentinel(&src_buf, "{s}/glib-2.0/schemas/gschemas.compiled", .{d}, 0) catch continue;
+        if (access(compiled.ptr, 0) == 0) return; // schemas are fine
+    }
+    dirs = std.mem.splitScalar(u8, data_dirs, ':');
+    var found_buf: [512]u8 = undefined;
+    while (dirs.next()) |d| {
+        if (d.len == 0) continue;
+        const xml = std.fmt.bufPrintSentinel(&src_buf, "{s}/glib-2.0/schemas/gschema.dtd", .{d}, 0) catch continue;
+        if (access(xml.ptr, 0) == 0) {
+            source_dir = std.fmt.bufPrint(&found_buf, "{s}/glib-2.0/schemas", .{d}) catch null;
+            break;
+        }
+    }
+    const src = source_dir orelse return;
+    const cache = if (getenv("XDG_CACHE_HOME")) |c| std.mem.span(c) else blk: {
+        const home = getenv("HOME") orelse return;
+        var hb: [512]u8 = undefined;
+        const text = std.fmt.bufPrint(&hb, "{s}/.cache", .{std.mem.span(home)}) catch return;
+        break :blk text;
+    };
+    var target_buf: [640:0]u8 = undefined;
+    const target = std.fmt.bufPrintSentinel(&target_buf, "{s}/dkde/schemas", .{cache}, 0) catch return;
+    var done_buf: [680:0]u8 = undefined;
+    const done = std.fmt.bufPrintSentinel(&done_buf, "{s}/gschemas.compiled", .{target}, 0) catch return;
+    if (access(done.ptr, 0) != 0) {
+        // The paths go into a shell command: refuse anything that could close the quotes.
+        if (std.mem.indexOfScalar(u8, target, '\'') != null or std.mem.indexOfScalar(u8, src, '\'') != null) return;
+        var parent_buf: [660:0]u8 = undefined;
+        const parent = std.fmt.bufPrintSentinel(&parent_buf, "{s}/dkde", .{cache}, 0) catch return;
+        _ = mkdir(parent.ptr, 0o755);
+        _ = mkdir(target.ptr, 0o755);
+        var cmd_buf: [1400:0]u8 = undefined;
+        const cmd = std.fmt.bufPrintSentinel(&cmd_buf, "glib-compile-schemas --targetdir='{s}' '{s}' >/dev/null 2>&1", .{ target, src }, 0) catch return;
+        _ = system(cmd.ptr);
+        if (access(done.ptr, 0) != 0) return;
+    }
+    _ = setenv("GSETTINGS_SCHEMA_DIR", target.ptr, 0);
+}
+const Passwd = extern struct { name: ?[*:0]const u8, passwd: ?[*:0]const u8, uid: c_uint, gid: c_uint, gecos: ?[*:0]const u8, dir: ?[*:0]const u8, shell: ?[*:0]const u8 };
+extern fn getpwnam(name: [*:0]const u8) ?*const Passwd;
+
 /// Call first in `main`, before any toolkit or configuration is touched.
 /// Returns only when the program should go on to run.
 pub fn handle(args: std.process.Args, info: Info) void {
@@ -102,6 +199,8 @@ pub fn handle(args: std.process.Args, info: Info) void {
         .run => {
             // Starts the program's logging (and its log file, when Settings > For developers asks for one).
             std.log.scoped(.cli).debug("{s} {s} starting", .{ info.name, build_options.version });
+            sudoDisplay();
+            ensureSchemas();
             return;
         },
         .help => {

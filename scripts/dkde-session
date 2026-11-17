@@ -187,5 +187,17 @@ else
     "$compositor" "$@"
 fi
 status=$?
+# Leaving the session: end whatever it started and left running (the panel, the idle
+# watcher...). Nothing does that without logind, and the next login would then
+# show two panels. Everything greetd starts for the session is in this session id.
+if [ -d /proc/self ]; then
+    me=$$
+    for p in /proc/[0-9]*; do
+        pid=${p#/proc/}
+        [ "$pid" = "$me" ] && continue
+        sid=$(awk '{ sub(/^.*\) /, ""); print $4 }' "$p/stat" 2>/dev/null)
+        [ "$sid" = "$me" ] && kill "$pid" 2>/dev/null
+    done
+fi
 echo "dkde-session: $compositor exited with status $status after $(( $(date +%s) - started )) s"
 exit "$status"
