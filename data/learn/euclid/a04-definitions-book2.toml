@@ -1,0 +1,36 @@
+id = "Definitions II"
+book = 0
+order = 3
+title = "Definitions (Book II)"
+statement = "The two definitions of Book II."
+
+[[step]]
+text = "1. Any rectangular parallelogram is said to be contained by the two straight lines containing the right angle."
+draw = [
+  "clear",
+  "point A -3 -1.5",
+  "point B 3 -1.5",
+  "point C 3 1.5",
+  "point D -3 1.5",
+  "polygon A B C D blue fill",
+]
+
+[[step]]
+text = "2. And in any parallelogrammic area let any one whatever of the parallelograms about its diameter with the two complements be called a gnomon."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 6 0",
+  "point C 6 4",
+  "point D 0 4",
+  "point E 2.5 1.7",
+  "point F 2.5 0",
+  "point G 2.5 4",
+  "point H 0 1.7",
+  "point K 6 1.7",
+  "segment A C black",
+  "polygon A B C D blue",
+  "polygon F B K E orange fill",
+  "polygon H E G D orange fill",
+  "segment E K black",
+]

@@ -1,0 +1,165 @@
+id = "Definitions I-b"
+book = 0
+order = 2
+title = "Definitions (Book I, the rest)"
+statement = "The remaining definitions of Book I: surfaces, planes, kinds of angle, figures, circles and the kinds of triangle and quadrilateral."
+
+[[step]]
+text = "5. A surface is that which has length and breadth only. 6. The extremities of a surface are lines. 7. A plane surface is a surface which lies evenly with the straight lines on itself."
+draw = [
+  "clear",
+  "point A -3 -2",
+  "point B 3 -2",
+  "point C 3 2",
+  "point D -3 2",
+  "polygon A B C D teal fill",
+]
+
+[[step]]
+text = "10. When a straight line standing on a straight line makes the adjacent angles equal to one another, each of the equal angles is right, and the straight line standing on the other is called a perpendicular to that on which it stands."
+draw = [
+  "clear",
+  "point A -4 0",
+  "point B 4 0",
+  "point C 0 0",
+  "point D 0 3.5",
+  "segment A B blue",
+  "segment C D red",
+  "angle A C D green fill",
+  "angle D C B green fill",
+]
+
+[[step]]
+text = "11. An obtuse angle is an angle greater than a right angle. 12. An acute angle is an angle less than a right angle."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point A 4 0",
+  "point B -2 3",
+  "point C 3 1.5",
+  "segment O A blue",
+  "segment O B red",
+  "segment O C green",
+  "angle A O B red",
+  "angle A O C green fill",
+]
+
+[[step]]
+text = "13. A boundary is that which is an extremity of anything. 14. A figure is that which is contained by any boundary or boundaries."
+draw = [
+  "clear",
+  "point A -3 -2",
+  "point B 3 -2",
+  "point C 0 3",
+  "polygon A B C blue fill",
+]
+
+[[step]]
+text = "15. A circle is a plane figure contained by one line such that all the straight lines falling upon it from one point among those lying within the figure are equal to one another. 16. And the point is called the centre of the circle."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point A 3 0",
+  "circle O A blue fill",
+]
+
+[[step]]
+text = "17. A diameter of the circle is any straight line drawn through the centre and terminated in both directions by the circumference of the circle, and such a straight line also bisects the circle. 18. A semicircle is the figure contained by the diameter and the circumference cut off by it. And the centre of the semicircle is the same as that of the circle."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point A -3 0",
+  "point B 3 0",
+  "circle O A blue",
+  "segment A B red",
+]
+
+[[step]]
+text = "19. Rectilineal figures are those which are contained by straight lines, trilateral figures being those contained by three, quadrilateral those contained by four, and multilateral those contained by more than four straight lines."
+draw = [
+  "clear",
+  "point A -5 -2",
+  "point B -2 -2",
+  "point C -3.5 1",
+  "polygon A B C blue fill",
+  "point D 0 -2",
+  "point E 3 -2",
+  "point F 3 1",
+  "point G 0 1",
+  "polygon D E F G red fill",
+  "point H 5 -1",
+  "point I 7 -1",
+  "point J 8 1",
+  "point K 6 2.5",
+  "point L 4.5 1",
+  "polygon H I J K L green fill",
+]
+
+[[step]]
+text = "20. Of trilateral figures, an equilateral triangle is that which has its three sides equal, an isosceles triangle that which has two of its sides alone equal, and a scalene triangle that which has its three sides unequal."
+draw = [
+  "clear",
+  "point A -6 -2",
+  "point B -2 -2",
+  "cross C cc A B B A 1",
+  "polygon A B C blue fill",
+  "point D 0 -2",
+  "point E 4 -2",
+  "point F 2 2",
+  "polygon D E F red fill",
+  "point G 5 -2",
+  "point H 9 -2",
+  "point I 6.5 2.2",
+  "polygon G H I green fill",
+]
+
+[[step]]
+text = "21. Further, of trilateral figures, a right-angled triangle is that which has a right angle, an obtuse-angled triangle that which has an obtuse angle, and an acute-angled triangle that which has its three angles acute."
+draw = [
+  "clear",
+  "point A -6 -2",
+  "point B -2 -2",
+  "point C -6 1",
+  "polygon A B C blue fill",
+  "point D 0 -2",
+  "point E 4 -2",
+  "point F -1 1",
+  "polygon D E F red fill",
+  "point G 5 -2",
+  "point H 9 -2",
+  "point I 7 2",
+  "polygon G H I green fill",
+]
+
+[[step]]
+text = "22. Of quadrilateral figures, a square is that which is both equilateral and right-angled; an oblong that which is right-angled but not equilateral; a rhombus that which is equilateral but not right-angled; and a rhomboid that which has its opposite sides and angles equal to one another but is neither equilateral nor right-angled. And let quadrilaterals other than these be called trapezia."
+draw = [
+  "clear",
+  "point A -7 -2",
+  "point B -4 -2",
+  "point C -4 1",
+  "point D -7 1",
+  "polygon A B C D blue fill",
+  "point E -3 -2",
+  "point F 1 -2",
+  "point G 1 0",
+  "point H -3 0",
+  "polygon E F G H red fill",
+  "point I 2 -2",
+  "point J 5 -2",
+  "point K 6 1",
+  "point L 3 1",
+  "polygon I J K L green fill",
+]
+
+[[step]]
+text = "23. Parallel straight lines are straight lines which, being in the same plane and being produced indefinitely in both directions, do not meet one another in either direction."
+draw = [
+  "clear",
+  "point A -5 1",
+  "point B 5 1",
+  "point C -5 -1",
+  "point D 5 -1",
+  "line A B blue",
+  "line C D red",
+]

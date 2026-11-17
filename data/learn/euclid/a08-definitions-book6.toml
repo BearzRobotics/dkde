@@ -1,0 +1,20 @@
+id = "Definitions VI"
+book = 0
+order = 8
+title = "Definitions (Book VI)"
+statement = "The five definitions of Book VI, on similar figures."
+
+[[step]]
+text = "1. Similar rectilineal figures are such as have their angles severally equal and the sides about the equal angles proportional."
+
+[[step]]
+text = "2. Two figures are reciprocally related when, in each figure, there are antecedent and consequent ratios."
+
+[[step]]
+text = "3. A straight line is said to have been cut in extreme and mean ratio when, as the whole line is to the greater segment, so is the greater to the less."
+
+[[step]]
+text = "4. The height of any figure is the perpendicular drawn from the vertex to the base."
+
+[[step]]
+text = "5. A ratio is said to be compounded of ratios when the sizes of the ratios multiplied by themselves produce some ratio."

@@ -1,0 +1,26 @@
+id = "Definitions VII"
+book = 0
+order = 9
+title = "Definitions (Book VII)"
+statement = "The twenty-two definitions of Book VII, on numbers."
+
+[[step]]
+text = "1. A unit is that by virtue of which each of the things that exist is called one. 2. A number is a multitude composed of units."
+
+[[step]]
+text = "3. A number is a part of a number, the less of the greater, when it measures the greater; 4. but parts when it does not measure it. 5. The greater number is a multiple of the less when it is measured by the less."
+
+[[step]]
+text = "6. An even number is that which is divisible into two equal parts. 7. An odd number is that which is not divisible into two equal parts, or that which differs by a unit from an even number."
+
+[[step]]
+text = "8. An even-times even number is that which is measured by an even number according to an even number. 9. An even-times odd number is that which is measured by an even number according to an odd number. 10. An odd-times odd number is that which is measured by an odd number according to an odd number."
+
+[[step]]
+text = "11. A prime number is that which is measured by a unit alone. 12. Numbers prime to one another are those which are measured by a unit alone as a common measure. 13. A composite number is that which is measured by some number. 14. Numbers composite to one another are those which are measured by some number as a common measure."
+
+[[step]]
+text = "15. A number is said to multiply a number when that which is multiplied is added to itself as many times as there are units in the other, and thus some number is produced. 16. And, when two numbers having multiplied one another make some number, the number so produced is called plane, and its sides are the numbers which have multiplied one another. 17. And, when three numbers having multiplied one another make some number, the number so produced is solid, and its sides are the numbers which have multiplied one another. 18. A square number is equal multiplied by equal, or a number which is contained by two equal numbers. 19. And a cube is equal multiplied by equal and again by equal, or a number which is contained by three equal numbers."
+
+[[step]]
+text = "20. Numbers are proportional when the first is the same multiple, or the same part, or the same parts, of the second that the third is of the fourth. 21. Similar plane and solid numbers are those which have their sides proportional. 22. A perfect number is that which is equal to its own parts."

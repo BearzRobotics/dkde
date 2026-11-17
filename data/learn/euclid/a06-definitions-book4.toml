@@ -1,0 +1,94 @@
+id = "Definitions IV"
+book = 0
+order = 5
+title = "Definitions (Book IV)"
+statement = "The seven definitions of Book IV, on figures inscribed in circles and circumscribed about them."
+
+[[step]]
+text = "1. A rectilineal figure is said to be inscribed in a rectilineal figure when the respective angles of the inscribed figure lie on the respective sides of that in which it is inscribed."
+draw = [
+  "clear",
+  "point A -3 -2",
+  "point B 3 -2",
+  "point C 0 3",
+  "polygon A B C blue",
+  "point D 0 -2",
+  "point E 1.5 0.5",
+  "point F -1.5 0.5",
+  "polygon D E F red fill",
+]
+
+[[step]]
+text = "2. Similarly a figure is said to be circumscribed about a figure when the respective sides of the circumscribed figure pass through the respective angles of that about which it is circumscribed."
+draw = [
+  "clear",
+  "point A -3 -2",
+  "point B 3 -2",
+  "point C 0 3",
+  "polygon A B C blue",
+  "point D 0 -2",
+  "point E 1.5 0.5",
+  "point F -1.5 0.5",
+  "polygon D E F red fill",
+]
+
+[[step]]
+text = "3. A rectilineal figure is said to be inscribed in a circle when each angle of the inscribed figure lies on the circumference of the circle."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point A 0 3",
+  "point B 2.6 -1.5",
+  "point C -2.6 -1.5",
+  "circle O A blue",
+  "polygon A B C red fill",
+]
+
+[[step]]
+text = "4. A rectilineal figure is said to be circumscribed about a circle when each side of the circumscribed figure touches the circumference of the circle."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point T 0 3",
+  "circle O T blue",
+  "point D 0 6",
+  "point E 5.196 -3",
+  "point F -5.196 -3",
+  "polygon D E F red",
+]
+
+[[step]]
+text = "5. Similarly a circle is said to be inscribed in a figure when the circumference of the circle touches each side of the figure in which it is inscribed."
+draw = [
+  "clear",
+  "point A -4 -3",
+  "point B 4 -3",
+  "point C 0 3.9",
+  "polygon A B C blue",
+  "point I 0 -0.696",
+  "point T 0 -3",
+  "circle I T red",
+]
+
+[[step]]
+text = "6. A circle is said to be circumscribed about a figure when the circumference of the circle passes through each angle of the figure about which it is circumscribed."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point A 0 3",
+  "point B 2.6 -1.5",
+  "point C -2.6 -1.5",
+  "polygon A B C blue",
+  "circle O A red",
+]
+
+[[step]]
+text = "7. A straight line is said to be fitted into a circle when its extremities are on the circumference of the circle."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point A -2.5 1.7",
+  "point B 2.5 1.7",
+  "circle O A blue",
+  "segment A B red",
+]

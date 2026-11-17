@@ -1,0 +1,23 @@
+id = "Definitions X"
+book = 0
+order = 10
+title = "Definitions (Book X)"
+statement = "The definitions of Book X, on commensurable and incommensurable magnitudes, and the thirteen irrational lines (the later definitions come after X.47 and X.84)."
+
+[[step]]
+text = "1. Those magnitudes are said to be commensurable which are measured by the same measure, and those incommensurable which cannot have any common measure."
+
+[[step]]
+text = "2. Straight lines are commensurable in square when the squares on them are measured by the same area, and incommensurable in square when the squares on them cannot possibly have any area as a common measure."
+
+[[step]]
+text = "3. With these hypotheses, it is proved that there exist straight lines infinite in multitude which are commensurable and incommensurable respectively, some in length only, and others in square also, with an assigned straight line. Let then the assigned straight line be called rational, and those straight lines which are commensurable with it, whether in length and in square or in square only, rational, but those which are incommensurable with it irrational."
+
+[[step]]
+text = "4. And let the square on the assigned straight line be called rational and those areas which are commensurable with it rational, but those which are incommensurable with it irrational, and the straight lines which produce them irrational, that is, in case the areas are squares, the sides themselves, but in case they are any other rectilineal figures, the straight lines on which are described squares equal to them."
+
+[[step]]
+text = "After X.47 (the six binomials): 1. Given a rational straight line and a binomial divided into its terms, such that the square on the greater term is greater than the square on the lesser by the square on a straight line commensurable in length with the greater, then, if the greater term be commensurable in length with the rational straight line set out, let the whole be called a first binomial; 2. but if the lesser term be commensurable in length with the rational straight line set out, a second binomial; 3. and if neither of the terms be commensurable in length with the rational straight line set out, a third binomial. 4. Again, if the square on the greater term be greater than the square on the lesser by the square on a straight line incommensurable in length with the greater, then, if the greater term be commensurable in length with the rational straight line set out, a fourth binomial; 5. if the lesser, a fifth binomial; 6. and if neither, a sixth binomial."
+
+[[step]]
+text = "After X.84 (the six apotomes): 1. Given a rational straight line and an apotome, if the square on the whole be greater than the square on the annex by the square on a straight line commensurable in length with the whole, and the whole be commensurable in length with the rational straight line set out, let the apotome be called a first apotome; 2. but if the annex be commensurable in length with the rational straight line set out, a second apotome; 3. and if neither, a third apotome. 4. Again, if the square on the whole be greater than the square on the annex by the square on a straight line incommensurable with the whole, then, if the whole be commensurable in length with the rational straight line set out, a fourth apotome; 5. if the annex, a fifth apotome; 6. and if neither, a sixth apotome."
