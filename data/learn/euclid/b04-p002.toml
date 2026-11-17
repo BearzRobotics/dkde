@@ -1,0 +1,38 @@
+id = "IV.2"
+book = 4
+order = 2
+title = "Inscribe an equiangular triangle"
+statement = "In a given circle to inscribe a triangle equiangular with a given triangle."
+proof = "Therefore in the given circle there has been inscribed a triangle equiangular with the given triangle. Being what it was required to do."
+
+[[step]]
+text = "Let ABC be the given circle, and DEF the given triangle (angles at E 50 degrees, at F 60 degrees). It is required to inscribe in the circle ABC a triangle equiangular with DEF."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point A 0 4",
+  "circle O A blue",
+]
+
+[[step]]
+text = "Let GH be drawn touching the circle ABC at A (III.17), and on the straight line AH, at the point A on it, let the angle HAC be constructed equal to the angle DEF, and on the straight line AG, at A, let the angle GAB be constructed equal to the angle DFE (I.23). Let BC be joined."
+draw = [
+  "point G -6 4",
+  "point H 6 4",
+  "point C 3.939 -0.695",
+  "point B -3.464 -2",
+  "line G H red",
+  "segment A C green",
+  "segment A B green",
+  "angle H A C orange fill",
+  "angle G A B purple fill",
+  "segment B C black",
+]
+
+[[step]]
+text = "Since a straight line AH touches the circle ABC, and AC has been drawn across from the point of contact A, the angle HAC is equal to the angle ABC in the alternate segment of the circle (III.32). But the angle HAC is equal to the angle DEF. Therefore the angle ABC is also equal to the angle DEF. For the same reason the angle ACB is equal to the angle DFE. Therefore the remaining angle BAC is also equal to the remaining angle EDF (I.32). Therefore the triangle ABC is equiangular with the triangle DEF, and it has been inscribed in the circle ABC."
+draw = [
+  "angle A B C orange fill",
+  "angle A C B purple fill",
+  "polygon A B C teal",
+]

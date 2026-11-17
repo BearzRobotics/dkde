@@ -1,0 +1,30 @@
+id = "IV.14"
+book = 4
+order = 14
+title = "Circumscribe a circle about a pentagon"
+statement = "About a given pentagon, which is equilateral and equiangular, to circumscribe a circle."
+proof = "Therefore the circle has been circumscribed about the given pentagon. Being what it was required to do."
+
+[[step]]
+text = "Let ABCDE be the given pentagon, which is equilateral and equiangular. It is required to circumscribe a circle about it. Let the angles BCD, CDE be bisected by the straight lines CF, DF, and from the point F, at which they meet, let FB, FA, FE be joined to the points B, A, E."
+draw = [
+  "clear",
+  "point A 0 4",
+  "point B -3.804 1.236",
+  "point C -2.351 -3.236",
+  "point D 2.351 -3.236",
+  "point E 3.804 1.236",
+  "polygon A B C D E blue",
+  "point F 0 0",
+  "segment C F green",
+  "segment D F green",
+  "segment F B black",
+  "segment F A black",
+  "segment F E black",
+]
+
+[[step]]
+text = "Then, in the same way as in the preceding theorem, it can be proved that the angles CBA, BAE, AED have been bisected by the straight lines BF, FA, FE respectively. Now since the angle BCD is equal to the angle CDE, and the angle FCD is half of the angle BCD, and CDF is half of CDE, the angle FCD is equal to the angle FDC. So the side FC is equal to the side FD (I.6). Similarly it can be proved that each of the straight lines FB, FA, FE is also equal to each of FC, FD. Therefore the five straight lines FA, FB, FC, FD, FE are equal to one another. Therefore the circle described with centre F and distance one of the straight lines FA, FB, FC, FD, FE will pass through the remaining points, and will have been circumscribed about the pentagon ABCDE."
+draw = [
+  "circle F A blue",
+]

@@ -1,0 +1,30 @@
+id = "IV.8"
+book = 4
+order = 8
+title = "Inscribe a circle in a square"
+statement = "In a given square to inscribe a circle."
+proof = "Therefore in the given square ABCD the circle EFGH has been inscribed. Being what it was required to do."
+
+[[step]]
+text = "Let ABCD be the given square. It is required to inscribe a circle in the square ABCD. Let each of the straight lines AD, AB be bisected at the points E, F (I.10), and through E let EH be drawn parallel to either AB or DC, and through F let FK be drawn parallel to either AD or BC (I.31)."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 6 0",
+  "point C 6 6",
+  "point D 0 6",
+  "point E 0 3",
+  "point F 3 0",
+  "point H 6 3",
+  "point K 3 6",
+  "point G 3 3",
+  "polygon A B C D blue",
+  "segment E H black",
+  "segment F K black",
+]
+
+[[step]]
+text = "Therefore each of the figures AK, KB, AH, HD, AG, GC, BG, GD is a parallelogram, and their opposite sides are evidently equal (I.34). Since AD is equal to AB, and AE is half of AD and AF is half of AB, AE is equal to AF. So the opposite sides are also equal, so FG is equal to GE. Similarly each of the straight lines GH, GK is equal to each of FG, GE. Therefore the four straight lines GE, GF, GH, GK are equal to one another. Therefore the circle described with centre G and distance one of the straight lines GE, GF, GH, GK will also pass through the remaining points. And it will touch the straight lines AB, BC, CD, DA, because the angles at E, F, H, K are right (III.16). Therefore the circle EFHK has been inscribed in the square ABCD."
+draw = [
+  "circle G E blue",
+]

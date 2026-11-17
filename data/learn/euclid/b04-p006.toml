@@ -1,0 +1,30 @@
+id = "IV.6"
+book = 4
+order = 6
+title = "Inscribe a square in a circle"
+statement = "In a given circle to inscribe a square."
+proof = "Therefore the square ABCD has been inscribed in the given circle. Being what it was required to do."
+
+[[step]]
+text = "Let ABCD be the given circle. It is required to inscribe a square in the circle ABCD. Let two diameters AC, BD of the circle be drawn at right angles to one another (I.11), and let AB, BC, CD, DA be joined."
+draw = [
+  "clear",
+  "point E 0 0",
+  "point A -4 0",
+  "point B 0 4",
+  "point C 4 0",
+  "point D 0 -4",
+  "circle E A blue",
+  "segment A C red",
+  "segment B D red",
+  "polygon A B C D teal fill",
+]
+
+[[step]]
+text = "Since BE is equal to ED, for E is the centre, and EA is common and at right angles, the base AB is equal to the base AD (I.4). For the same reason each of the straight lines BC, CD is equal to each of AB, AD. Therefore the quadrilateral ABCD is equilateral. I say next that it is also right-angled. Since the straight line BD is a diameter of the circle ABCD, BAD is a semicircle. Therefore the angle BAD is right (III.31). For the same reason each of the angles ABC, BCD, CDA is also right. Therefore the quadrilateral ABCD is right-angled. And it was also proved equilateral. Therefore it is a square, and it has been inscribed in the circle ABCD."
+draw = [
+  "angle B A D green fill",
+  "angle A B C green fill",
+  "angle B C D green fill",
+  "angle C D A green fill",
+]

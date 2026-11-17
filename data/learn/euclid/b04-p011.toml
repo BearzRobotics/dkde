@@ -1,0 +1,40 @@
+id = "IV.11"
+book = 4
+order = 11
+title = "Inscribe a regular pentagon"
+statement = "In a given circle to inscribe an equilateral and equiangular pentagon."
+proof = "Therefore in the given circle the equilateral and equiangular pentagon FCGHD has been inscribed. Being what it was required to do."
+
+[[step]]
+text = "Let ABCDE be the given circle. It is required to inscribe in the circle an equilateral and equiangular pentagon. Let the isosceles triangle FGH be set out having each of the angles at G, H double of the angle at F (IV.10), and let there be inscribed in the circle the triangle ACD equiangular with the triangle FGH, so that the angle CAD is equal to the angle at F and each of the angles at C, D is equal to each of the angles at G, H (IV.2). Therefore each of the angles ACD, CDA is also double of the angle CAD."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point A 0 4",
+  "point C -2.351 -3.236",
+  "point D 2.351 -3.236",
+  "circle O A blue",
+  "polygon A C D teal fill",
+  "angle C A D green fill",
+  "angle A C D orange fill",
+  "angle C D A orange fill",
+]
+
+[[step]]
+text = "Let each of the angles ACD, CDA be bisected by each of the straight lines CE, DB (I.9), and let AB, BC, DE, EA be joined."
+draw = [
+  "point B -3.804 1.236",
+  "point E 3.804 1.236",
+  "segment C E black",
+  "segment D B black",
+  "segment A B green",
+  "segment B C green",
+  "segment D E green",
+  "segment E A green",
+]
+
+[[step]]
+text = "Since each of the angles ACD, CDA is double of the angle CAD, and they have been bisected by the straight lines CE, DB, the five angles DAC, ACE, ECD, CDB, BDA are equal to one another. But equal angles stand on equal circumferences (III.26). Therefore the five circumferences AB, BC, CD, DE, EA are equal to one another. But equal circumferences are subtended by equal straight lines (III.29). Therefore the five straight lines AB, BC, CD, DE, EA are equal to one another. Therefore the pentagon ABCDE is equilateral. I say next that it is also equiangular. For since the circumference AB is equal to the circumference DE, add BCD to each. Then the whole circumference ABCD is equal to the whole circumference EDCB. And the angle AED stands on the circumference ABCD, and the angle BAE on the circumference EDCB. Therefore the angle BAE is also equal to the angle AED (III.27). For the same reason each of the angles ABC, BCD, CDE is also equal to each of the angles BAE, AED. Therefore the pentagon ABCDE is equiangular. And it was also proved equilateral."
+draw = [
+  "polygon A B C D E red",
+]

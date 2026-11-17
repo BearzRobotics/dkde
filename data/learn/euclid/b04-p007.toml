@@ -1,0 +1,35 @@
+id = "IV.7"
+book = 4
+order = 7
+title = "Circumscribe a square about a circle"
+statement = "About a given circle to circumscribe a square."
+proof = "Therefore the square GHKF has been circumscribed about the circle ABCD. Being what it was required to do."
+
+[[step]]
+text = "Let ABCD be the given circle. It is required to circumscribe a square about the circle ABCD. Let two diameters AC, BD of the circle be drawn at right angles to one another (I.11)."
+draw = [
+  "clear",
+  "point E 0 0",
+  "point A -4 0",
+  "point B 0 4",
+  "point C 4 0",
+  "point D 0 -4",
+  "circle E A blue",
+  "segment A C red",
+  "segment B D red",
+]
+
+[[step]]
+text = "Through the points A, B, C, D let FG, GH, HK, KF be drawn touching the circle ABCD (III.17)."
+draw = [
+  "point F -4 -4",
+  "point G -4 4",
+  "point H 4 4",
+  "point K 4 -4",
+  "polygon F G H K orange",
+]
+
+[[step]]
+text = "Since FG touches the circle ABCD, and EA has been joined from the centre E to the point of contact A, the angles at A are right (III.18). For the same reason the angles at the points B, C, D are right. Since the angle AEB is right, and EBG is also right, GH is parallel to AC (I.28). For the same reason AC is parallel to FK. Similarly each of GF, HK is parallel to BED. Therefore GK, GC, AK, FB, BK are parallelograms. Therefore GF is equal to HK, and GH to FK (I.34). Since AC is equal to BD, and AC is equal to each of GH, FK, while BD is equal to each of GF, HK, each of GH, FK is equal to each of GF, HK. Therefore the quadrilateral FGHK is equilateral. It is also right-angled, since the angle at G is right and so on. Therefore FGHK is a square, and it has been circumscribed about the circle ABCD."
+draw = [
+]

@@ -1,0 +1,26 @@
+id = "IV.9"
+book = 4
+order = 9
+title = "Circumscribe a circle about a square"
+statement = "About a given square to circumscribe a circle."
+proof = "Therefore the circle EABCD has been circumscribed about the square ABCD. Being what it was required to do."
+
+[[step]]
+text = "Let ABCD be the given square. It is required to circumscribe a circle about the square ABCD. Let AC, BD be joined and cut one another at E."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 6 0",
+  "point C 6 6",
+  "point D 0 6",
+  "point E 3 3",
+  "polygon A B C D blue",
+  "segment A C red",
+  "segment B D red",
+]
+
+[[step]]
+text = "Since DA is equal to AB, and AC is common, the two sides DA, AC are equal to the two sides BA, AC, and the base DC is equal to the base BC. Therefore the angle DAC is equal to the angle BAC (I.8). Therefore the angle DAB is bisected by AC. Similarly each of the angles ABC, BCD, CDA is bisected by the straight lines AC, DB. Since the angle DAB is equal to the angle ABC, and the angle EAB is half of DAB, and EBA half of ABC, the angle EAB is equal to the angle EBA. So the side EA is equal to the side EB (I.6). Similarly each of the straight lines EA, EB is equal to each of EC, ED. Therefore the four straight lines EA, EB, EC, ED are equal to one another. Therefore the circle described with centre E and distance one of EA, EB, EC, ED will pass through the remaining points, and will have been circumscribed about the square ABCD."
+draw = [
+  "circle E A blue",
+]

@@ -18,7 +18,7 @@ carries out the steps).
 | I | Triangles, parallels, area, Pythagoras | 48 | done (all 48) |
 | II | Geometric algebra | 14 | done (all 14) |
 | III | Circles | 37 | done (all 37) |
-| IV | Inscribed and circumscribed figures | 16 | |
+| IV | Inscribed and circumscribed figures | 16 | done (all 16) |
 | V | Proportion (Eudoxus) | 25 | |
 | VI | Similar figures | 33 | |
 | VII | Number theory: gcd, primes | 39 | |

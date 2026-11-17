@@ -1,0 +1,38 @@
+id = "IV.13"
+book = 4
+order = 13
+title = "Inscribe a circle in a pentagon"
+statement = "In a given pentagon, which is equilateral and equiangular, to inscribe a circle."
+proof = "Therefore in the given pentagon the circle has been inscribed. Being what it was required to do."
+
+[[step]]
+text = "Let ABCDE be the given equilateral and equiangular pentagon. It is required to inscribe a circle in the pentagon ABCDE. Let the angles BCD, CDE be bisected by the straight lines CF, DF (I.9), and let them meet at the point F."
+draw = [
+  "clear",
+  "point A 0 4.944",
+  "point B -4.702 1.528",
+  "point C -2.906 -4",
+  "point D 2.906 -4",
+  "point E 4.702 1.528",
+  "polygon A B C D E blue",
+  "point F 0 0",
+  "segment C F green",
+  "segment D F green",
+  "angle B C D orange fill",
+  "angle C D E orange fill",
+]
+
+[[step]]
+text = "Let FB, FA, FE be joined. Since BC is equal to CD, and CF is common, the two sides BC, CF are equal to the two sides DC, CF, and the angle BCF is equal to the angle DCF. Therefore the base BF is equal to the base DF, the triangle BCF is equal to the triangle DCF, and the remaining angles are equal to the remaining angles (I.4). Therefore the angle CBF is equal to the angle CDF. And since the angle CDE is double of the angle CDF, and CDE is equal to ABC, and CDF to CBF, the angle CBA is also double of the angle CBF. Therefore the angle ABF is equal to the angle FBC. Therefore the angle ABC has been bisected by the straight line BF. Similarly it can be proved that the angles BAE, AED have also been bisected by the straight lines FA, FE."
+draw = [
+  "segment F B black",
+  "segment F A black",
+  "segment F E black",
+]
+
+[[step]]
+text = "Now from the point F let FG, FH, FK, FL, FM be drawn perpendicular to the straight lines AB, BC, CD, DE, EA (I.12). Since the angle HCF is equal to the angle KCF, and the angle FHC is right and equal to the angle FKC, FHC, FKC are two triangles having two angles equal to two angles and one side equal to one side, namely FC, which is common and subtends one of the equal angles. Therefore they will also have the remaining sides equal to the remaining sides (I.26). Therefore the perpendicular FH is equal to the perpendicular FK. Similarly it can be proved that each of the straight lines FL, FM, FG is also equal to each of FH, FK. Therefore the five straight lines FG, FH, FK, FL, FM are equal to one another. Therefore the circle described with centre F and distance one of FG, FH, FK, FL, FM will pass through the remaining points, and it will touch the straight lines AB, BC, CD, DE, EA, because the angles at G, H, K, L, M are right. Therefore the circle has been inscribed in the given pentagon."
+draw = [
+  "point M -2.351 3.236",
+  "circle F M blue",
+]

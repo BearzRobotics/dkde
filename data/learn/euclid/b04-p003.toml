@@ -1,0 +1,42 @@
+id = "IV.3"
+book = 4
+order = 3
+title = "Circumscribe an equiangular triangle"
+statement = "About a given circle to circumscribe a triangle equiangular with a given triangle."
+proof = "Therefore about the given circle there has been circumscribed a triangle equiangular with the given triangle. Being what it was required to do."
+
+[[step]]
+text = "Let ABC be the given circle, and DEF the given triangle (angles 70, 60, 50 degrees). It is required to circumscribe about the circle ABC a triangle equiangular with DEF. Let the centre K be taken."
+draw = [
+  "clear",
+  "point K 0 0",
+  "point A 0 3",
+  "point B -2.819 -1.026",
+  "point C 2.298 -1.928",
+  "circle K A blue",
+]
+
+[[step]]
+text = "Let KB, KA, KC be drawn so that the angles at K are the supplements of the angles of DEF: the angle AKB is equal to the angle at D's supplement, 110 degrees, BKC to 120 degrees, and CKA to 130 degrees (I.23)."
+draw = [
+  "segment K A black",
+  "segment K B black",
+  "segment K C black",
+  "angle A K B orange fill",
+  "angle B K C green fill",
+  "angle C K A purple fill",
+]
+
+[[step]]
+text = "Through the points A, B, C let LMN, MN, NL be drawn touching the circle ABC (III.17)."
+draw = [
+  "point L -4.284 3",
+  "point M -1.042 -5.909",
+  "point N 6.434 3",
+  "polygon L M N red",
+]
+
+[[step]]
+text = "Since LM touches the circle ABC at A, and KA has been joined from the centre to the point of contact, the angles at A are right (III.18). Similarly at B and C. Since the four angles of the quadrilateral AMBK are equal to four right angles (I.32), and the angles KAM, KBM are right, the remaining angles AKB, AMB are equal to two right angles. But the angles DEF, DEF's supplement... the angle AKB was made the supplement of the angle at E, so the angle AMB is equal to the angle DEF. Similarly the other angles can be shown equal. Therefore the triangle LMN is equiangular with the triangle DEF, and it has been circumscribed about the circle ABC."
+draw = [
+]

@@ -1,0 +1,38 @@
+id = "IV.4"
+book = 4
+order = 4
+title = "Inscribe a circle in a triangle"
+statement = "In a given triangle to inscribe a circle."
+proof = "Therefore in the given triangle ABC the circle EFG has been inscribed. Being what it was required to do."
+
+[[step]]
+text = "Let ABC be the given triangle. It is required to inscribe a circle in the triangle ABC."
+draw = [
+  "clear",
+  "point A 1.5 4.5",
+  "point B -3 0",
+  "point C 5 0",
+  "polygon A B C blue",
+]
+
+[[step]]
+text = "Let the angles ABC, ACB be bisected by the straight lines BD, CD (I.9), and let them meet one another at the point D. From D let DE, DF, DG be drawn perpendicular to the straight lines AB, BC, CA (I.12)."
+draw = [
+  "point D 1.332 1.794",
+  "segment B D green",
+  "segment C D green",
+  "angle A B C orange fill",
+  "angle A C B orange fill",
+  "point E 0.063 3.063",
+  "point F 1.332 0",
+  "point G 2.748 2.896",
+  "segment D E red",
+  "segment D F red",
+  "segment D G red",
+]
+
+[[step]]
+text = "Since the angle ABD is equal to the angle CBD, and the right angle BED is equal to the right angle BFD, EBD, FBD are two triangles having two angles equal to two angles and one side equal to one side, namely BD, which is common and subtends one of the equal angles. Therefore they will also have the remaining sides equal to the remaining sides (I.26). Therefore DE is equal to DF. For the same reason DG is also equal to DF. Therefore the three straight lines DE, DF, DG are equal to one another. Therefore the circle described with centre D and distance one of the straight lines DE, DF, DG will also pass through the remaining points, and will touch the straight lines AB, BC, CA, because the angles at the points E, F, G are right (III.16). Therefore the circle EFG has been inscribed in the triangle ABC."
+draw = [
+  "circle D F blue",
+]

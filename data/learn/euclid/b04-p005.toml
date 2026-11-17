@@ -1,0 +1,35 @@
+id = "IV.5"
+book = 4
+order = 5
+title = "Circumscribe a circle about a triangle"
+statement = "About a given triangle to circumscribe a circle."
+proof = "Therefore the circle ABC has been circumscribed about the given triangle ABC. Being what it was required to do."
+
+[[step]]
+text = "Let ABC be the given triangle. It is required to circumscribe a circle about the triangle ABC."
+draw = [
+  "clear",
+  "point A 1.5 4.5",
+  "point B -3 0",
+  "point C 5 0",
+  "polygon A B C blue",
+]
+
+[[step]]
+text = "Let the straight lines AB, AC be bisected at the points D, E (I.10), and from D, E let DF, EF be drawn at right angles to AB, AC (I.11). They will meet within the triangle, on BC, or outside it. Let them meet at F."
+draw = [
+  "point D -0.75 2.25",
+  "point E 3.25 2.25",
+  "point F 1 0.5",
+  "line D F green",
+  "line E F green",
+]
+
+[[step]]
+text = "Let FB, FC, FA be joined. Since AD is equal to DB, and DF is common and at right angles, the base AF is equal to the base FB (I.4). Similarly CF is equal to AF. Therefore FB is also equal to FC, and the three straight lines FA, FB, FC are equal to one another. Therefore the circle described with centre F and distance one of FA, FB, FC will pass through the remaining points, and the circle has been circumscribed about the triangle ABC."
+draw = [
+  "segment F A red",
+  "segment F B red",
+  "segment F C red",
+  "circle F A blue",
+]

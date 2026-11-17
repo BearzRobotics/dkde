@@ -1,0 +1,37 @@
+id = "IV.10"
+book = 4
+order = 10
+title = "Isosceles triangle with angles 72, 72, 36"
+statement = "To construct an isosceles triangle having each of the angles at the base double of the remaining one."
+proof = "Therefore the isosceles triangle ABD has been constructed having each of the angles at B, D double of the angle at A. Being what it was required to do."
+
+[[step]]
+text = "Let any straight line AB be taken, and let it be cut at the point C so that the rectangle contained by AB, BC is equal to the square on CA (II.11). With centre A and distance AB let the circle BDE be described, and in the circle BDE let BD be fitted equal to the straight line AC, which is not greater than the diameter of the circle BDE (IV.1). Let AD, DC be joined."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 4 0",
+  "point C 2.472 0",
+  "point H 1.528 0",
+  "segment A B blue",
+  "circle A B blue",
+  "cross D cc A B B H 1",
+  "segment B D green",
+  "segment A D black",
+  "segment D C black",
+]
+
+[[step]]
+text = "Let the circle ACD be circumscribed about the triangle ACD (IV.5). Since the rectangle AB, BC is equal to the square on AC, and AC is equal to BD, the rectangle AB, BC is equal to the square on BD. And since a point B has been taken outside the circle ACD, and from B the two straight lines BA, BD have fallen on the circle ACD, of which one cuts it and the other falls on it, and the rectangle AB, BC is equal to the square on BD, BD touches the circle ACD (III.37)."
+draw = [
+  "point Q 1.236 1.701",
+  "circle Q A blue",
+]
+
+[[step]]
+text = "Since BD touches the circle, and DC is drawn across from the point of contact D, the angle BDC is equal to the angle DAC in the alternate segment of the circle (III.32). Since the angle BDC is equal to the angle DAC, add the angle CDA to each. Then the whole angle BDA is equal to the two angles CDA, DAC. But the exterior angle BCD is equal to the angles CDA, DAC (I.32). Therefore the angle BDA is also equal to the angle BCD. But the angle BDA is equal to the angle CBD, since the side AD is equal to AB (I.5). So the angle DBA is equal to the angle BCD. Therefore the three angles BDA, DBA, BCD are equal to one another. And since the angle DBC is equal to the angle BCD, the side BD is equal to the side DC (I.6). But BD was supposed equal to CA. Therefore CA is also equal to CD, so the angle CDA is equal to the angle DAC (I.5). Therefore the angles CDA, DAC are double of the angle DAC. But the angle BCD is equal to the angles CDA, DAC. Therefore the angle BCD is also double of the angle DAC. But the angle BCD is equal to each of the angles BDA, DBA. Therefore each of the angles DBA, BDA is also double of the angle DAB. Therefore the isosceles triangle ABD has been constructed having each of the angles at the base BD double of the remaining one."
+draw = [
+  "angle A B D orange fill",
+  "angle A D B orange fill",
+  "angle B A D green fill",
+]

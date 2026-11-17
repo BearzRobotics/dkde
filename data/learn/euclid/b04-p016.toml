@@ -1,0 +1,38 @@
+id = "IV.16"
+book = 4
+order = 16
+title = "Inscribe a regular fifteen-sided figure"
+statement = "In a given circle to inscribe a fifteen-angled figure which shall be both equilateral and equiangular."
+proof = "Therefore in the given circle a fifteen-angled figure which is both equilateral and equiangular has been inscribed. Being what it was required to do."
+
+[[step]]
+text = "Let ABCD be the given circle. It is required to inscribe in the circle ABCD a fifteen-angled figure which shall be both equilateral and equiangular. Let there be inscribed in the circle the side AC of an equilateral triangle inscribed in it (IV.2), and the side AB of an equilateral and equiangular pentagon (IV.11)."
+draw = [
+  "clear",
+  "point F 0 0",
+  "point A 0 4",
+  "point C -3.464 -2",
+  "point D 3.464 -2",
+  "circle F A blue",
+  "polygon A C D teal",
+]
+
+[[step]]
+text = "Of such parts as the circle ABCD contains fifteen, the circumference ABC, being a third of the circle, contains five, and the circumference AB, being a fifth of the circle, contains three. Therefore the remainder BC contains two of the parts."
+draw = [
+  "point B -3.804 1.236",
+  "segment A B green",
+  "segment B C red",
+  "point G -2.351 -3.236",
+  "point H 2.351 -3.236",
+  "point K 3.804 1.236",
+  "polygon A B G H K orange",
+]
+
+[[step]]
+text = "Let BC be bisected at E (III.30). Then each of the circumferences BE, EC is a fifteenth of the circle ABCD. If therefore we join BE, EC and fit into the circle ABCD straight lines equal to them in order (IV.1), a fifteen-angled figure which is both equilateral and equiangular will have been inscribed in it."
+draw = [
+  "point E -3.978 -0.418",
+  "segment B E red",
+  "segment E C red",
+]

@@ -1,0 +1,31 @@
+id = "IV.1"
+book = 4
+order = 1
+title = "To fit in a chord of given length"
+statement = "Into a given circle to fit a straight line equal to a given straight line which is not greater than the diameter of the circle."
+proof = "Therefore into the given circle ABC there has been fitted the straight line CA equal to the given straight line D, which is not greater than the diameter of the circle. Being what it was required to do."
+
+[[step]]
+text = "Let ABC be the given circle, and D the given straight line not greater than the diameter of the circle (here D is 5, the diameter 8). It is required to fit into the circle ABC a straight line equal to D. Let a diameter BC of the circle ABC be drawn."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point B -4 0",
+  "point C 4 0",
+  "circle O B blue",
+  "segment B C black",
+]
+
+[[step]]
+text = "If BC is equal to D, that is done. If not, BC is greater than D. Let CE be made equal to D (I.3), and with centre C and distance CE let the circle EAF be described. Let CA be joined."
+draw = [
+  "point E -1 0",
+  "circle C E orange",
+  "point A 0.875 3.903",
+  "segment C A red",
+]
+
+[[step]]
+text = "Since the point C is the centre of the circle EAF, CA is equal to CE. But CE is equal to D. Therefore D is also equal to CA. Therefore into the given circle ABC there has been fitted CA equal to the given straight line D, which is not greater than the diameter of the circle."
+draw = [
+]
