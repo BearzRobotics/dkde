@@ -1,0 +1,24 @@
+id = "C.1"
+course = "Calculus"
+book = 1
+order = 1
+title = "The derivative of a power"
+statement = "The derivative of x^n is n x^(n-1): the slope of the curve at each point."
+proof = "Bring the power down in front and lower the power by one."
+
+[[step]]
+text = "Idea: the derivative tells you the slope of a curve at any point. For y = x^2 the slope at x is 2x: flat at 0, steeper as x grows."
+graph = ["x^2"]
+
+[[step]]
+text = "By hand: for x^3, bring the 3 down and lower the power: 3x^2. For 5x^4, 5 times 4 is 20, so 20x^3."
+calc = ["diff(x^3, x)", "diff(5x^4, x)"]
+
+[[step]]
+text = "Picture both: the slope curve 2x is the straight line through the origin."
+graph = ["x^2", "2x"]
+
+[[exercise]]
+prompt = "The slope of y = x^3 at x = 2 is 3x^2 there. What is it?"
+answer = "3*2^2"
+hint = "3 times 4."

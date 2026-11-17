@@ -10,6 +10,9 @@ const common = @import("common");
 
 const figure = @import("figure.zig");
 const lessonfile = @import("lessonfile.zig");
+const eval = @import("eval.zig");
+const steps_mod = @import("steps.zig");
+const mathview = @import("mathview.zig");
 
 const t = common.tr;
 
@@ -23,7 +26,11 @@ pub const Hooks = struct {
     show_canvas: *const fn (ctx: *anyopaque) void,
     /// Put this line in the calculator's entry.
     use_calc: *const fn (ctx: *anyopaque, text: []const u8) void,
+    /// Show the Graph pane with these expressions plotted (replacing what was there).
+    graph: *const fn (ctx: *anyopaque, exprs: []const []const u8) void,
 };
+
+const Group = struct { course: []const u8, book: u8 };
 
 pub const Learn = struct {
     gpa: std.mem.Allocator,
@@ -41,9 +48,12 @@ pub const Learn = struct {
     back: *gtk.Button,
     next: *gtk.Button,
     all: *gtk.Button,
-    /// The lessons listed now (indexes into self.lessons), and the book chosen.
+    /// The lessons listed now (indexes into self.lessons), and the groups (course and book) in the dropdown.
     listed: std.ArrayList(usize) = .empty,
-    book_ids: std.ArrayList(u8) = .empty,
+    groups: std.ArrayList(Group) = .empty,
+    /// Where exercise answers and written-out solutions are worked (a session of its own).
+    session: eval.Session,
+    exercise_box: *gtk.Box,
     current: ?usize = null,
     /// How many steps are shown.
     shown: usize = 0,
@@ -75,18 +85,19 @@ pub const Learn = struct {
         lessonDirs(gpa, &dirs);
         const loaded = lessonfile.load(gpa, common.fsio.io(), dirs.items);
         for (loaded.problems) |p| std.log.warn("lesson: {s}", .{p});
-        // The books that have lessons, in order.
-        var book_ids: std.ArrayList(u8) = .empty;
-        for (loaded.lessons) |l| {
-            if (std.mem.indexOfScalar(u8, book_ids.items, l.book) == null) try book_ids.append(gpa, l.book);
-        }
-        std.mem.sort(u8, book_ids.items, {}, std.sort.asc(u8));
+        // The courses and books that have lessons, in teaching order.
+        var groups: std.ArrayList(Group) = .empty;
         const names = gtk.StringList.new(null);
-        for (book_ids.items) |b| {
-            var buf: [24]u8 = undefined;
-            const text = if (b == 0) "Foundations" else std.fmt.bufPrint(&buf, "Book {s}", .{roman(b)}) catch "Book";
-            var z: [40]u8 = undefined;
-            const zt = std.fmt.bufPrintSentinel(&z, "{s}", .{text}, 0) catch "Book";
+        for (loaded.lessons) |l| {
+            var seen = false;
+            for (groups.items) |g| {
+                if (g.book == l.book and std.mem.eql(u8, g.course, l.course)) seen = true;
+            }
+            if (seen) continue;
+            try groups.append(gpa, .{ .course = l.course, .book = l.book });
+            var z: [96]u8 = undefined;
+            const euclid = std.mem.eql(u8, l.course, "Euclid");
+            const zt = (if (euclid and l.book == 0) std.fmt.bufPrintSentinel(&z, "Euclid: Foundations", .{}, 0) else if (euclid) std.fmt.bufPrintSentinel(&z, "Euclid: Book {s}", .{roman(l.book)}, 0) else if (l.book <= 1) std.fmt.bufPrintSentinel(&z, "{s}", .{l.course}, 0) else std.fmt.bufPrintSentinel(&z, "{s}: unit {d}", .{ l.course, l.book }, 0)) catch "Lessons";
             names.append(zt);
         }
         self.* = .{
@@ -104,10 +115,12 @@ pub const Learn = struct {
             .back = gtk.Button.newWithLabel(t("◀ Back")),
             .next = gtk.Button.newWithLabel(t("Next step ▶")),
             .all = gtk.Button.newWithLabel(t("Show all")),
-            .book_ids = book_ids,
+            .groups = groups,
+            .session = .{ .gpa = gpa },
+            .exercise_box = gtk.Box.new(.vertical, 6),
         };
 
-        const heading = gtk.Label.new(t("Euclid's Elements"));
+        const heading = gtk.Label.new(t("Learn"));
         heading.setXalign(0);
         heading.as(gtk.Widget).addCssClass("heading");
         self.root.append(heading.as(gtk.Widget));
@@ -158,6 +171,9 @@ pub const Learn = struct {
         self.proof.as(gtk.Widget).setVisible(0);
         self.root.append(self.proof.as(gtk.Widget));
 
+        self.exercise_box.as(gtk.Widget).setVisible(0);
+        self.root.append(self.exercise_box.as(gtk.Widget));
+
         self.fillList();
         self.ready = true;
         return self;
@@ -169,8 +185,9 @@ pub const Learn = struct {
         if (std.c.getenv("DKDE_LEARN_LESSON")) |want_z| {
             const want = std.mem.span(want_z);
             for (self.lessons, 0..) |lesson, i| if (std.mem.eql(u8, lesson.id, want)) {
-                const sel = std.mem.indexOfScalar(u8, self.book_ids.items, lesson.book) orelse 0;
-                self.books.setSelected(@intCast(sel));
+                for (self.groups.items, 0..) |g, gi| {
+                    if (g.book == lesson.book and std.mem.eql(u8, g.course, lesson.course)) self.books.setSelected(@intCast(gi));
+                }
                 self.open(i);
                 if (std.c.getenv("DKDE_LEARN_STEPS")) |n| self.replay(std.fmt.parseInt(usize, std.mem.span(n), 10) catch 1);
                 return;
@@ -190,7 +207,8 @@ pub const Learn = struct {
 
     pub fn destroy(self: *Learn) void {
         self.listed.deinit(self.gpa);
-        self.book_ids.deinit(self.gpa);
+        self.groups.deinit(self.gpa);
+        self.session.deinit();
         self.loaded.deinit();
         self.gpa.destroy(self);
     }
@@ -208,9 +226,10 @@ pub const Learn = struct {
         while (self.list.as(gtk.Widget).getFirstChild()) |c| self.list.remove(c);
         self.listed.clearRetainingCapacity();
         const sel = self.books.getSelected();
-        const book: u8 = if (sel < self.book_ids.items.len) self.book_ids.items[sel] else 0;
+        if (sel >= self.groups.items.len) return;
+        const group = self.groups.items[sel];
         for (self.lessons, 0..) |l, i| {
-            if (l.book != book) continue;
+            if (l.book != group.book or !std.mem.eql(u8, l.course, group.course)) continue;
             self.listed.append(self.gpa, i) catch continue;
             var buf: [200]u8 = undefined;
             const text = std.fmt.bufPrintSentinel(&buf, "{s}   {s}", .{ l.id, l.title }, 0) catch continue;
@@ -235,7 +254,6 @@ pub const Learn = struct {
     /// Starts a lesson: its first step (the given figure) is drawn at once.
     fn open(self: *Learn, lesson: usize) void {
         self.current = lesson;
-        self.hooks.show_canvas(self.hooks.ctx);
         self.replay(1);
     }
 
@@ -244,9 +262,19 @@ pub const Learn = struct {
         const lesson = self.lessons[self.current orelse return];
         self.hooks.clear(self.hooks.ctx);
         const n = @min(count, lesson.steps.len);
-        for (lesson.steps[0..n]) |step| self.hooks.run(self.hooks.ctx, step.ops);
+        var drawn = false;
+        for (lesson.steps[0..n]) |step| {
+            if (step.ops.len > 0) drawn = true;
+            self.hooks.run(self.hooks.ctx, step.ops);
+        }
+        if (drawn) self.hooks.show_canvas(self.hooks.ctx);
         self.shown = n;
+        if (n > 0) self.showGraph(lesson.steps[n - 1]);
         self.refresh();
+    }
+
+    fn showGraph(self: *Learn, step: figure.Step) void {
+        if (step.graph.len > 0) self.hooks.graph(self.hooks.ctx, step.graph);
     }
 
     fn refresh(self: *Learn) void {
@@ -285,6 +313,7 @@ pub const Learn = struct {
                 _ = gtk.Widget.signals.destroy.connect(b, *CalcLine, &onCalcLineDestroy, ctx, .{});
                 self.steps_box.append(b.as(gtk.Widget));
             }
+            for (step.work) |line| self.addWork(line);
         }
         const done = self.shown >= lesson.steps.len;
         self.next.as(gtk.Widget).setSensitive(@intFromBool(!done));
@@ -295,6 +324,131 @@ pub const Learn = struct {
             self.proof.setText(std.fmt.bufPrintSentinel(&pb, "{s}", .{lesson.proof}, 0) catch "");
             self.proof.as(gtk.Widget).setVisible(1);
         } else self.proof.as(gtk.Widget).setVisible(0);
+        self.fillExercises(lesson, done);
+    }
+
+    /// The written-out solution of one entry: each step with what was done and the line after it.
+    fn addWork(self: *Learn, line: []const u8) void {
+        var arena: std.heap.ArenaAllocator = .init(self.gpa);
+        defer arena.deinit();
+        const got = steps_mod.explain(.{ .a = arena.allocator(), .session = &self.session, .mode = .{} }, line) catch null;
+        const list = got orelse return;
+        const head = gtk.Label.new(t("By hand"));
+        head.setXalign(0);
+        head.as(gtk.Widget).addCssClass("heading");
+        self.steps_box.append(head.as(gtk.Widget));
+        for (list, 0..) |st, n| {
+            var nb: [1024]u8 = undefined;
+            const note = std.fmt.bufPrintSentinel(&nb, "{d}. {s}", .{ n + 1, st.note }, 0) catch continue;
+            const nl = gtk.Label.new(note);
+            nl.setXalign(0);
+            nl.setWrap(1);
+            nl.setMaxWidthChars(40);
+            self.steps_box.append(nl.as(gtk.Widget));
+            if (mathview.MathView.create(self.gpa, st.math, null)) |w| {
+                w.setMarginStart(18);
+                self.steps_box.append(w);
+            } else {
+                var mb: [1024]u8 = undefined;
+                const ml = gtk.Label.new(std.fmt.bufPrintSentinel(&mb, "{s}", .{st.math}, 0) catch "");
+                ml.setXalign(0);
+                ml.as(gtk.Widget).setMarginStart(18);
+                ml.setSelectable(1);
+                self.steps_box.append(ml.as(gtk.Widget));
+            }
+        }
+    }
+
+    const Exercise = struct {
+        learn: *Learn,
+        ex: figure.Exercise,
+        entry: *gtk.Entry,
+        verdict: *gtk.Label,
+    };
+
+    fn fillExercises(self: *Learn, lesson: figure.Lesson, done: bool) void {
+        while (self.exercise_box.as(gtk.Widget).getFirstChild()) |c| self.exercise_box.remove(c);
+        const show = done and lesson.exercises.len > 0;
+        self.exercise_box.as(gtk.Widget).setVisible(@intFromBool(show));
+        if (!show) return;
+        const head = gtk.Label.new(t("Practice"));
+        head.setXalign(0);
+        head.as(gtk.Widget).addCssClass("heading");
+        self.exercise_box.append(head.as(gtk.Widget));
+        for (lesson.exercises) |ex| {
+            var pb: [1024]u8 = undefined;
+            const prompt = gtk.Label.new(std.fmt.bufPrintSentinel(&pb, "{s}", .{ex.prompt}, 0) catch "");
+            prompt.setXalign(0);
+            prompt.setWrap(1);
+            prompt.setMaxWidthChars(40);
+            self.exercise_box.append(prompt.as(gtk.Widget));
+            const row = gtk.Box.new(.horizontal, 6);
+            const entry = gtk.Entry.new();
+            entry.as(gtk.Widget).setHexpand(1);
+            entry.setPlaceholderText(t("Your answer"));
+            const check = gtk.Button.newWithLabel(t("Check"));
+            const hint = gtk.Button.newWithLabel(t("Hint"));
+            row.append(entry.as(gtk.Widget));
+            row.append(check.as(gtk.Widget));
+            if (ex.hint.len > 0) row.append(hint.as(gtk.Widget));
+            self.exercise_box.append(row.as(gtk.Widget));
+            const verdict = gtk.Label.new("");
+            verdict.setXalign(0);
+            verdict.setWrap(1);
+            verdict.setMaxWidthChars(40);
+            self.exercise_box.append(verdict.as(gtk.Widget));
+            const ctx = std.heap.c_allocator.create(Exercise) catch continue;
+            ctx.* = .{ .learn = self, .ex = ex, .entry = entry, .verdict = verdict };
+            _ = gtk.Button.signals.clicked.connect(check, *Exercise, &onCheck, ctx, .{});
+            _ = gtk.Entry.signals.activate.connect(entry, *Exercise, &onActivate, ctx, .{});
+            _ = gtk.Button.signals.clicked.connect(hint, *Exercise, &onHint, ctx, .{});
+            _ = gtk.Widget.signals.destroy.connect(check, *Exercise, &onExerciseDestroy, ctx, .{});
+        }
+    }
+
+    fn onExerciseDestroy(_: *gtk.Button, ctx: *Exercise) callconv(.c) void {
+        std.heap.c_allocator.destroy(ctx);
+    }
+
+    fn onHint(_: *gtk.Button, ctx: *Exercise) callconv(.c) void {
+        var b: [1024]u8 = undefined;
+        ctx.verdict.setText(std.fmt.bufPrintSentinel(&b, "{s}", .{ctx.ex.hint}, 0) catch "");
+    }
+
+    fn onActivate(_: *gtk.Entry, ctx: *Exercise) callconv(.c) void {
+        ctx.learn.grade(ctx);
+    }
+
+    fn onCheck(_: *gtk.Button, ctx: *Exercise) callconv(.c) void {
+        ctx.learn.grade(ctx);
+    }
+
+    /// The text of what an entry works out to, for comparing an answer with the right one.
+    fn valueText(self: *Learn, a: std.mem.Allocator, text: []const u8) ?[]const u8 {
+        var p: eval.Problem = .{};
+        var sess: eval.Session = .{ .gpa = self.gpa };
+        defer sess.deinit();
+        const out = eval.run(a, &sess, text, .{}, &p) catch return null;
+        const n = eval.plainValue(out) orelse return null;
+        return steps_mod.numText(a, n) catch null;
+    }
+
+    fn grade(self: *Learn, ctx: *Exercise) void {
+        var arena: std.heap.ArenaAllocator = .init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const given = std.mem.span(ctx.entry.as(gtk.Editable).getText());
+        if (given.len == 0) return;
+        const want = self.valueText(a, ctx.ex.answer) orelse return;
+        const got = self.valueText(a, given);
+        var b: [512]u8 = undefined;
+        if (got) |g| {
+            if (std.mem.eql(u8, g, want)) {
+                ctx.verdict.setText(t("Right."));
+                return;
+            }
+        }
+        ctx.verdict.setText(if (got == null) t("That is not a number or sum the calculator can read.") else (std.fmt.bufPrintSentinel(&b, "Not quite. Try again, or press Hint.", .{}, 0) catch ""));
     }
 
     const CalcLine = struct { learn: *Learn, text: []const u8 };
@@ -310,7 +464,10 @@ pub const Learn = struct {
     fn onNext(_: *gtk.Button, self: *Learn) callconv(.c) void {
         const lesson = self.lessons[self.current orelse return];
         if (self.shown >= lesson.steps.len) return;
-        self.hooks.run(self.hooks.ctx, lesson.steps[self.shown].ops);
+        const step = lesson.steps[self.shown];
+        self.hooks.run(self.hooks.ctx, step.ops);
+        if (step.ops.len > 0) self.hooks.show_canvas(self.hooks.ctx);
+        self.showGraph(step);
         self.shown += 1;
         self.refresh();
     }

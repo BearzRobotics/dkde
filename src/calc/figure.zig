@@ -92,6 +92,8 @@ pub const Lesson = struct {
     id: []const u8,
     /// 0 for the foundations, else the book (1 to 13).
     book: u8,
+    /// The subject ("Euclid" when a file does not say; "Arithmetic", "Algebra"...).
+    course: []const u8 = "Euclid",
     title: []const u8,
     /// What is to be shown or done, in Euclid's words (Heath's translation).
     statement: []const u8,

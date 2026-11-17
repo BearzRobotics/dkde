@@ -1,5 +1,6 @@
 id = "A.1"
-book = 0
+course = "Arithmetic"
+book = 1
 order = 1
 title = "Adding fractions"
 statement = "To add fractions with different denominators, first give them a common denominator."

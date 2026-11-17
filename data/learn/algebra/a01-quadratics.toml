@@ -1,0 +1,28 @@
+id = "AL.1"
+course = "Algebra"
+book = 1
+order = 1
+title = "Solving a quadratic by factoring"
+statement = "A quadratic equation x^2 + bx + c = 0 can be solved by writing it as a product of two brackets that equals zero."
+proof = "If a product is zero, one of its factors is zero. So each bracket set to zero gives a solution."
+
+[[step]]
+text = "Idea: we want two numbers that multiply to the last number (6) and add to the middle number (-5). Those numbers are -2 and -3."
+calc = ["x^2 - 5x + 6 = 0"]
+
+[[step]]
+text = "By hand: write x^2 - 5x + 6 as (x - 2)(x - 3). If (x - 2)(x - 3) = 0, then x - 2 = 0 or x - 3 = 0, so x = 2 or x = 3."
+work = ["x^2 - 5x + 6 = 0"]
+
+[[step]]
+text = "Picture it: the graph of x^2 - 5x + 6 crosses the x axis exactly at the solutions, x = 2 and x = 3."
+graph = ["x^2 - 5x + 6"]
+
+[[step]]
+text = "With the calculator: type the equation and it gives the solutions. Show Work writes out the steps."
+calc = ["x^2 - 5x + 6 = 0", "x^2 - 7x + 12 = 0"]
+
+[[exercise]]
+prompt = "Evaluate x^2 - 5x + 6 at x = 4."
+answer = "4^2 - 5*4 + 6"
+hint = "Replace x by 4: 16 - 20 + 6."

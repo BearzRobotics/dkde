@@ -296,7 +296,7 @@ const Calc = struct {
         };
         self.graph = try graph_mod.Graph.create(gpa, &self.session);
         self.geometry = try geometry_mod.Geometry.create(gpa, self, useGeometryValue);
-        self.learn = try learn_mod.Learn.create(gpa, .{ .ctx = self, .run = learnRun, .clear = learnClear, .show_canvas = learnShowCanvas, .use_calc = learnUseCalc });
+        self.learn = try learn_mod.Learn.create(gpa, .{ .ctx = self, .run = learnRun, .clear = learnClear, .show_canvas = learnShowCanvas, .use_calc = learnUseCalc, .graph = learnGraph });
         self.readSettings();
         self.loadState();
         self.loadManualRates();
@@ -3650,6 +3650,13 @@ const Calc = struct {
         self.fresh = false;
         self.entry.as(gtk.Editable).setPosition(-1);
         _ = self.entry.as(gtk.Widget).grabFocus();
+    }
+
+    /// A lesson step's functions are plotted in the Graph pane.
+    fn learnGraph(ctx: *anyopaque, exprs: []const []const u8) void {
+        const self: *Calc = @ptrCast(@alignCast(ctx));
+        if (self.pane != .graph) self.showPane(.graph);
+        for (exprs) |e| if (!self.graph.has(e)) self.graph.plot(e, null);
     }
 
     /// A lesson draws on the Geometry canvas, so it is shown beside the Learn view.

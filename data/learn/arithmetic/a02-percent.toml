@@ -1,0 +1,20 @@
+id = "A.2"
+course = "Arithmetic"
+book = 1
+order = 2
+title = "Percentages"
+statement = "A percentage is a fraction of 100: 25 percent means 25 out of every 100."
+proof = "To find a percent of a number, turn the percent into a fraction of 100 and multiply."
+
+[[step]]
+text = "Idea: 25 percent of 80 is 25/100 of 80, which is 1/4 of 80."
+calc = ["25/100 * 80"]
+
+[[step]]
+text = "By hand: 80 divided by 4 is 20. So 25 percent of 80 is 20."
+work = ["25/100 * 80"]
+
+[[exercise]]
+prompt = "What is 15 percent of 200?"
+answer = "15/100 * 200"
+hint = "10 percent is 20, and 5 percent is 10."

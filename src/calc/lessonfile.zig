@@ -2,7 +2,8 @@
 //! One file is one lesson:
 //!
 //!   id = "I.1"
-//!   book = 1
+//!   course = "Euclid"                # the subject; Euclid when left out
+//!   book = 1                         # the unit within the course (0 = the first/foundations)
 //!   order = 4                        # sorts the lessons within a book
 //!   title = "An equilateral triangle on a given line"
 //!   statement = "..."
@@ -12,6 +13,13 @@
 //!   text = "Let AB be the given finite straight line."
 //!   draw = ["point A -2.5 -1.5", "point B 2.5 -1.5", "segment A B black"]   # see figure.zig
 //!   calc = ["3/4 + 1/6"]             # optional: lines to try in the calculator
+//!   work = ["3/4 + 1/6"]             # optional: entries the solver writes out by hand
+//!   graph = ["x^2 - 4"]              # optional: expressions in x to plot beside the lesson
+//!
+//!   [[exercise]]                     # optional practice; the answer is an entry the engine works out
+//!   prompt = "Work out 2/3 + 1/4."
+//!   answer = "2/3 + 1/4"
+//!   hint = "A common denominator is 12."
 //!
 //! A file that does not read is left out, and the reason (file, step, line) is kept in `problems`.
 
@@ -128,6 +136,7 @@ pub fn parseLesson(arena: Allocator, text: []const u8, source: []const u8, probl
         .lesson = .{
             .id = arena.dupe(u8, id) catch return null,
             .book = book,
+            .course = arena.dupe(u8, root.getString("course") orelse "Euclid") catch return null,
             .title = arena.dupe(u8, title) catch return null,
             .statement = arena.dupe(u8, statement) catch return null,
             .steps = steps.items,
@@ -140,7 +149,18 @@ pub fn parseLesson(arena: Allocator, text: []const u8, source: []const u8, probl
 
 const Entry = struct { lesson: figure.Lesson, order: i64 };
 
+/// The order subjects are taught in; others follow alphabetically.
+pub fn courseRank(name: []const u8) usize {
+    const order = [_][]const u8{ "Arithmetic", "Euclid", "Algebra", "Trigonometry", "Calculus", "Linear Algebra" };
+    for (order, 0..) |n, i| if (std.mem.eql(u8, n, name)) return i;
+    return order.len;
+}
+
 fn lessThan(_: void, a: Entry, b: Entry) bool {
+    const ra = courseRank(a.lesson.course);
+    const rb = courseRank(b.lesson.course);
+    if (ra != rb) return ra < rb;
+    if (ra == 6 and !std.mem.eql(u8, a.lesson.course, b.lesson.course)) return std.mem.lessThan(u8, a.lesson.course, b.lesson.course);
     if (a.lesson.book != b.lesson.book) return a.lesson.book < b.lesson.book;
     if (a.order != b.order) return a.order < b.order;
     return std.mem.lessThan(u8, a.lesson.id, b.lesson.id);
