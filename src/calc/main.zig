@@ -188,6 +188,7 @@ const Calc = struct {
     tape_timer: c_uint = 0,
     /// The calculator column, scrolled when it is taller than the screen allows.
     left_scroll: *gtk.ScrolledWindow = undefined,
+    left_box: *gtk.Box = undefined,
     /// The right-click menu of a history line, and which line it is for.
     row_popover: ?*gtk.Popover = null,
     history_scroll: *gtk.ScrolledWindow = undefined,
@@ -401,6 +402,7 @@ const Calc = struct {
         left.as(gtk.Widget).setMarginStart(10);
         left.as(gtk.Widget).setMarginEnd(10);
         left.as(gtk.Widget).setHexpand(1);
+        self.left_box = left;
         left.append(display.as(gtk.Widget));
         left.append(self.bases.as(gtk.Widget));
         left.append(self.bits.as(gtk.Widget));
@@ -443,12 +445,15 @@ const Calc = struct {
         const side_scroll = gtk.ScrolledWindow.new();
         side_scroll.setPolicy(.automatic, .automatic);
         side_scroll.setMinContentWidth(210);
+        // The window grows to fit the pane, so it is not left half visible behind a scroll bar.
+        side_scroll.setPropagateNaturalWidth(1);
         side_scroll.setChild(self.side.as(gtk.Widget));
         side_scroll.as(gtk.Widget).setHexpand(1);
         body.append(side_scroll.as(gtk.Widget));
         // The Learn view stands beside whatever pane is open.
         self.learn_scroll.setPolicy(.never, .automatic);
         self.learn_scroll.setMinContentWidth(320);
+        self.learn_scroll.setMinContentHeight(440);
         self.learn_scroll.as(gtk.Widget).setMarginTop(10);
         self.learn_scroll.as(gtk.Widget).setMarginBottom(10);
         self.learn_scroll.as(gtk.Widget).setMarginEnd(10);
@@ -472,6 +477,7 @@ const Calc = struct {
         self.setMode(self.mode);
         self.showPane(self.pane);
         if (self.learn_open) self.ensureLearn().start();
+        self.fitLayout();
         self.fillHistory();
         self.fillVars();
         self.updateMemory();
@@ -495,7 +501,9 @@ const Calc = struct {
         self.style.decimals = @intCast(std.math.clamp(self.config.getInt("calc", "decimals", 10), 0, 30));
         self.style.grouping = self.config.getBool("calc", "grouping", true);
         stacked_on = self.config.getBool("calc", "stacked-fractions", true);
-        self.learn_open = self.config.getBool("calc", "learn", false);
+        // Learn never starts open: it reads hundreds of lesson files, and the calculator should open at once.
+        // (A developer picking a lesson with DKDE_LEARN_LESSON gets it open, for screenshots.)
+        self.learn_open = std.c.getenv("DKDE_LEARN_LESSON") != null;
         self.fraction_results = self.config.getBool("calc", "fraction-results", false);
         self.expanded = self.config.getBool("calc", "expanded", false);
         self.rpn = self.config.getBool("calc", "rpn", false);
@@ -558,7 +566,7 @@ const Calc = struct {
                 mb.checkKey("_Date Calculation", "pane-dates", self.pane == .dates, "<Control>e"),
                 mb.checkKey("_Graph", "pane-graph", self.pane == .graph, "<Control>g"),
                 mb.checkKey("G_eometry", "pane-geometry", self.pane == .geometry, "<Control><Shift>g"),
-                mb.checkKey("_Learn (Euclid)", "learn", self.learn_open, "<Control><Shift>l"),
+                mb.checkKey("_Learn", "learn", self.learn_open, "<Control><Shift>l"),
                 mb.checkKey("_Formulas", "pane-formulas", self.pane == .formulas, "<Control><Shift>f"),
                 mb.checkKey("Show _Work", "pane-steps", self.pane == .steps, "<Control>l"),
                 mb.checkKey("Fu_nctions", "pane-functions", self.pane == .functions, "<Control><Shift>y"),
@@ -3694,8 +3702,19 @@ const Calc = struct {
         self.learn_scroll.as(gtk.Widget).setVisible(@intFromBool(on));
         if (on) self.ensureLearn().start();
         common.menubar.setChecked(self.window, "learn", on);
-        self.config.setBool("calc", "learn", on) catch {};
+        self.fitLayout();
         self.window.as(gtk.Window).setDefaultSize(-1, -1);
+    }
+
+    /// With a pane or Learn beside it the calculator keeps to its own size (smaller keys, no growing), so the
+    /// room goes to the pane; alone it fills the window as before.
+    fn fitLayout(self: *Calc) void {
+        const beside = self.pane != .none or self.learn_open;
+        const win = self.window.as(gtk.Widget);
+        if (beside) win.addCssClass("dkde-calc-panes") else win.removeCssClass("dkde-calc-panes");
+        self.left_scroll.as(gtk.Widget).setHexpand(@intFromBool(!beside));
+        self.keypad.as(gtk.Widget).setVexpand(@intFromBool(!beside));
+        self.left_box.as(gtk.Widget).setValign(if (beside) .start else .fill);
     }
 
     fn showPane(self: *Calc, pane: Pane) void {
@@ -3707,6 +3726,7 @@ const Calc = struct {
             common.menubar.setChecked(self.window, "pane-" ++ name, std.mem.eql(u8, @tagName(pane), name));
         }
         self.config.setString("calc", "pane", @tagName(pane)) catch {};
+        self.fitLayout();
         // The window shrinks back when the pane closes.
         self.window.as(gtk.Window).setDefaultSize(-1, -1);
     }

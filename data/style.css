@@ -1108,6 +1108,20 @@ popover.menu modelbutton {
     padding-right: 14px;
 }
 
+/* With a pane or the Learn view beside the calculator the keys are smaller, so the pane gets the room. */
+window.dkde-calc-panes .dkde-calc-key {
+  min-height: 26px;
+  min-width: 32px;
+  padding: 2px 4px;
+}
+window.dkde-calc-panes .dkde-calc-key label {
+  font-size: 11pt;
+}
+window.dkde-calc-panes .dkde-calc-enter label,
+window.dkde-calc-panes .dkde-calc-equals label {
+  font-size: 14pt;
+}
+
 /* Programmer mode stacks the bases and the bits above a two-part keypad; tighter rows keep it all on a
    720-pixel screen, with the tape open too. */
 window.dkde-calc-compact .dkde-calc-key {
