@@ -1,0 +1,40 @@
+id = "V.17"
+book = 5
+order = 17
+title = "Separando"
+statement = "If magnitudes be proportional componendo, they will also be proportional separando."
+proof = "Therefore if magnitudes be proportional componendo, they will also be proportional separando. Q.E.D. (In algebra: if (a + b) : b = (c + d) : d then a : b = c : d.)"
+
+[[step]]
+text = "Let AB, BE, CD, DF be magnitudes proportional componendo, so that AB:BE = CD:DF. I say that they will also be proportional separando, that is, AE:EB = CF:FD."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 5 0",
+  "segment AB ab blue",
+  "point BE 0 -0.9",
+  "point be 3 -0.9",
+  "segment BE be red",
+  "point CD 0 -1.8",
+  "point cd 10 -1.8",
+  "segment CD cd green",
+  "point DF 0 -2.7",
+  "point df 6 -2.7",
+  "segment DF df orange",
+  "point AE 0 -3.6",
+  "point ae 2 -3.6",
+  "segment AE ae purple",
+  "point CF 0 -4.5",
+  "point cf 4 -4.5",
+  "segment CF cf teal",
+]
+
+[[step]]
+text = "Take equimultiples GH, HK, LM, MN of AE, EB, CF, FD, and other equimultiples KO, NP of EB, FD. Since GH is the same multiple of AE that HK is of EB, GH is the same multiple of AE that GK is of AB (V.1). But GH is the same multiple of AE that LM is of CF. Therefore GK is the same multiple of AB that LM is of CF. Again, since LM is the same multiple of CF that MN is of FD, LM is the same multiple of CF that LN is of CD. Therefore GK, LN are equimultiples of AB, CD."
+draw = [
+]
+
+[[step]]
+text = "Again, since HK is the same multiple of EB that MN is of FD, and KO is the same multiple of EB that NP is of FD, the sum HO is the same multiple of EB that MP is of FD (V.2). Since AB:BE = CD:DF, and GK, LN are equimultiples of AB, CD, and HO, MP of BE, DF, then if GK exceeds HO, LN exceeds MP; if equal, equal; if less, less. Take away HK from GK and MN from LN; then if GH exceeds KO, LM exceeds NP; and so on. Therefore AE:EB = CF:FD."
+draw = [
+]

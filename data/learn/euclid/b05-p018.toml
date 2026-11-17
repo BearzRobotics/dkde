@@ -1,0 +1,40 @@
+id = "V.18"
+book = 5
+order = 18
+title = "Componendo"
+statement = "If magnitudes be proportional separando, they will also be proportional componendo."
+proof = "Therefore if magnitudes be proportional separando, they will also be proportional componendo. Q.E.D. (In algebra: if a : b = c : d then (a + b) : b = (c + d) : d.)"
+
+[[step]]
+text = "Let AE, EB, CF, FD be magnitudes proportional separando, so that AE:EB = CF:FD. I say that they will also be proportional componendo, that is, AB:BE = CD:DF."
+draw = [
+  "clear",
+  "point AE 0 0",
+  "point ae 2 0",
+  "segment AE ae blue",
+  "point EB 0 -0.9",
+  "point eb 3 -0.9",
+  "segment EB eb red",
+  "point CF 0 -1.8",
+  "point cf 4 -1.8",
+  "segment CF cf green",
+  "point FD 0 -2.7",
+  "point fd 6 -2.7",
+  "segment FD fd orange",
+  "point AB 0 -3.6",
+  "point ab 5 -3.6",
+  "segment AB ab purple",
+  "point CD 0 -4.5",
+  "point cd 10 -4.5",
+  "segment CD cd teal",
+]
+
+[[step]]
+text = "For if AB is not to BE as CD to DF, then AB is to BE as CD is to some magnitude either less than DF or greater. Let it be to DG, less than DF. Since AB:BE = CD:DG, they are proportional componendo, and so separando (V.17). Therefore AE:EB = CG:GD. But by hypothesis AE:EB = CF:FD. Therefore CG:GD = CF:FD. But CG is greater than CF, and so GD is greater than FD (V.14). But it is also less, which is impossible."
+draw = [
+]
+
+[[step]]
+text = "Similarly we can prove that it is not to a greater magnitude either. Therefore AB:BE = CD:DF."
+draw = [
+]

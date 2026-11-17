@@ -1,0 +1,40 @@
+id = "V.5"
+book = 5
+order = 5
+title = "Equimultiples of a difference"
+statement = "If a magnitude be the same multiple of a magnitude that a part taken away is of a part taken away, the remainder will also be the same multiple of the remainder that the whole is of the whole."
+proof = "Therefore if a magnitude be the same multiple of a magnitude that a part taken away is of a part taken away, the remainder will also be the same multiple of the remainder that the whole is of the whole. Q.E.D. (In algebra: m(a - b) = ma - mb.)"
+
+[[step]]
+text = "Let the magnitude AB be the same multiple of CD that a part taken away AE is of a part taken away CF. Let AB be the same multiple of CD that AE is of CF. I say that the remainder EB is the same multiple of the remainder FD that the whole AB is of the whole CD."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 15 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 9 -0.9",
+  "segment CD cd red",
+  "point AE 0 -1.8",
+  "point ae 10 -1.8",
+  "segment AE ae green",
+  "point CF 0 -2.7",
+  "point cf 6 -2.7",
+  "segment CF cf orange",
+  "point EB 0 -3.6",
+  "point eb 5 -3.6",
+  "segment EB eb purple",
+  "point FD 0 -4.5",
+  "point fd 3 -4.5",
+  "segment FD fd teal",
+]
+
+[[step]]
+text = "Let EB be the same multiple of CG that AE is of CF. Since AE is the same multiple of CF that EB is of GC, AE is the same multiple of CF that AB is of GF (V.1). But AE is the same multiple of CF that AB is of CD, by hypothesis. Therefore AB is the same multiple of each of GF, CD. So GF is equal to CD."
+draw = [
+]
+
+[[step]]
+text = "Take away CF from each. Then the remainder GC is equal to the remainder FD. And since AE is the same multiple of CF that EB is of GC, and GC is equal to FD, AE is the same multiple of CF that EB is of FD. But AE is the same multiple of CF that AB is of CD. Therefore EB is the same multiple of FD that AB is of CD."
+draw = [
+]

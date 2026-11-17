@@ -1,0 +1,40 @@
+id = "V.12"
+book = 5
+order = 12
+title = "Sums of proportionals"
+statement = "If any number of magnitudes be proportional, as one of the antecedents is to one of the consequents, so will all the antecedents be to all the consequents."
+proof = "Therefore, as one of the antecedents is to one of the consequents, so will all the antecedents be to all the consequents. Q.E.D."
+
+[[step]]
+text = "Let any number of magnitudes A, B, C, D, E, F be proportional, so that A:B = C:D = E:F. I say that as A is to B, so are A, C, E together to B, D, F together."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 3 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 6 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 6 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 9 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Let equimultiples G, H, K be taken of A, C, E, and other equimultiples L, M, N of B, D, F. Then since A:B = C:D = E:F, if G exceeds L, H exceeds M and K exceeds N; if equal, equal; if less, less. Therefore if G exceeds L, then G, H, K together exceed L, M, N together; if equal, equal; if less, less."
+draw = [
+]
+
+[[step]]
+text = "But G and G, H, K together are equimultiples of A and A, C, E together (V.1), and L and L, M, N together are equimultiples of B and B, D, F together. Therefore A:B = A, C, E together : B, D, F together."
+draw = [
+]

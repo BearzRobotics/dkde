@@ -1,0 +1,37 @@
+id = "V.1"
+book = 5
+order = 1
+title = "Equimultiples add"
+statement = "If any number of magnitudes be equimultiples of as many others, each of each, whatever multiple one of the magnitudes is of one, that multiple also will all be of all."
+proof = "Therefore, whatever multiple AB is of E, that multiple also is AB, CD together of E, F together. Q.E.D. (In algebra: ma + mb + ... = m(a + b + ...).)"
+
+[[step]]
+text = "Let any number of magnitudes AB, CD be equimultiples of as many magnitudes E, F, each of each (here AB is three times E, and CD three times F, with E = 2 and F = 3). I say that whatever multiple AB is of E, that multiple will AB, CD together be of E, F together."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 6 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 9 -0.9",
+  "segment CD cd red",
+  "point E 0 -1.8",
+  "point e 2 -1.8",
+  "segment E e green",
+  "point F 0 -2.7",
+  "point f 3 -2.7",
+  "segment F f orange",
+  "point ABCD 0 -3.6",
+  "point abcd 15 -3.6",
+  "segment ABCD abcd black",
+]
+
+[[step]]
+text = "Since AB is the same multiple of E that CD is of F, as many magnitudes as there are in AB equal to E, so many are there in CD equal to F. Divide AB into magnitudes AG, GB equal to E, and CD into CH, HK equal to F. Then the multitude of AG, GB, ... will be equal to the multitude of CH, HK, ...."
+draw = [
+]
+
+[[step]]
+text = "Since AG is equal to E, and CH to F, AG and CH together are equal to E and F together. For the same reason each further pair is equal to E and F together. Therefore as many as there are in AB equal to E, so many are there in AB, CD together equal to E, F together. Therefore, whatever multiple AB is of E, that multiple also is AB, CD together of E, F together."
+draw = [
+]

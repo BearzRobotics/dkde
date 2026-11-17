@@ -1,0 +1,41 @@
+id = "V.6"
+book = 5
+order = 6
+title = "Equimultiples diminished"
+statement = "If two magnitudes be equimultiples of two magnitudes, and any magnitudes subtracted from them be equimultiples of the same, the remainders also are either equal to the same or equimultiples of them."
+proof = "Therefore if two magnitudes be equimultiples of two magnitudes, and any magnitudes subtracted from them be equimultiples of the same, the remainders also are either equal to the same or equimultiples of them. Q.E.D."
+
+[[step]]
+text = "Let two magnitudes AB, CD be equimultiples of two magnitudes E, F, and let AG, CH subtracted from them be equimultiples of the same E, F. I say that the remainders GB, HD are either equal to E, F or equimultiples of them."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 10 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 15 -0.9",
+  "segment CD cd red",
+  "point E 0 -1.8",
+  "point e 2 -1.8",
+  "segment E e green",
+  "point F 0 -2.7",
+  "point f 3 -2.7",
+  "segment F f orange",
+  "point AG 0 -3.6",
+  "point ag 8 -3.6",
+  "segment AG ag purple",
+  "point CH 0 -4.5",
+  "point ch 12 -4.5",
+  "segment CH ch teal",
+  "point GB 0 -5.4",
+  "point gb 2 -5.4",
+  "segment GB gb blue",
+  "point HD 0 -6.3",
+  "point hd 3 -6.3",
+  "segment HD hd red",
+]
+
+[[step]]
+text = "First let GB be equal to E. I say that HD is also equal to F. Make CK equal to F. Since AG is the same multiple of E that CH is of F, and GB is equal to E, and KC to F, AB is the same multiple of E that KH is of F (V.2). But AB is the same multiple of E that CD is of F by hypothesis. Therefore KH is the same multiple of F that CD is of F. Since each of KH, CD is the same multiple of F, KH is equal to CD. Take away CH from each. Then the remainder KC is equal to the remainder HD. But KC is equal to F. Therefore HD is also equal to F. Hence if GB is equal to E, HD is equal to F. Similarly we can prove that, even if GB be a multiple of E, HD is the same multiple of F."
+draw = [
+]

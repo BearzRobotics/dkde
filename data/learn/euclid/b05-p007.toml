@@ -1,0 +1,31 @@
+id = "V.7"
+book = 5
+order = 7
+title = "Equal magnitudes have the same ratio"
+statement = "Equal magnitudes have to the same magnitude the same ratio; and the same has to the equal magnitudes the same ratio."
+proof = "Therefore equal magnitudes have to the same magnitude the same ratio, and the same has to the equal magnitudes the same ratio. Q.E.D."
+
+[[step]]
+text = "Let A, B be equal magnitudes and C any other magnitude. I say that each of the magnitudes A, B has the same ratio to C, and C has the same ratio to each of the magnitudes A, B."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 4 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 3 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Let equimultiples D, E of A, B be taken, and of C another magnitude, any multiple F. Since D is the same multiple of A that E is of B, and A is equal to B, D is equal to E. But F is another magnitude. If D exceeds F, E exceeds F; if equal, equal; if less, less. And D, E are equimultiples of A, B, and F is any multiple of C. Therefore A:C = B:C (definition 5)."
+draw = [
+]
+
+[[step]]
+text = "I say next that C also has the same ratio to each of the magnitudes A, B. With the same construction we can prove similarly that D is equal to E; and F is some other magnitude. If F exceeds D, it exceeds E; if equal, equal; if less, less. And F is a multiple of C, while D, E are other equimultiples of A, B. Therefore C:A = C:B."
+draw = [
+]

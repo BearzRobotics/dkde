@@ -1,0 +1,34 @@
+id = "V.15"
+book = 5
+order = 15
+title = "Parts have the same ratio as their multiples"
+statement = "Parts have the same ratio as their equimultiples."
+proof = "Therefore parts have the same ratio as their equimultiples. Q.E.D."
+
+[[step]]
+text = "For let AB be the same multiple of C that DE is of F. I say that C is to F as AB is to DE."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 6 0",
+  "segment AB ab blue",
+  "point DE 0 -0.9",
+  "point de 9 -0.9",
+  "segment DE de red",
+  "point C 0 -1.8",
+  "point c 2 -1.8",
+  "segment C c green",
+  "point F 0 -2.7",
+  "point f 3 -2.7",
+  "segment F f orange",
+]
+
+[[step]]
+text = "Since AB is the same multiple of C that DE is of F, there are as many magnitudes in AB equal to C as there are in DE equal to F. Let AB be divided into the magnitudes AG, GH, HB equal to C, and DE into DK, KL, LE equal to F. Then the multitude of AG, GH, HB is equal to the multitude of DK, KL, LE."
+draw = [
+]
+
+[[step]]
+text = "Since AG, GH, HB are equal to one another, and DK, KL, LE are also equal to one another, AG is to DK as GH is to KL and as HB is to LE (V.7). Therefore, as one of the antecedents is to one of the consequents, so are all the antecedents to all the consequents (V.12). Therefore AG:DK = AB:DE. But AG is equal to C, and DK to F. Therefore C:F = AB:DE."
+draw = [
+]

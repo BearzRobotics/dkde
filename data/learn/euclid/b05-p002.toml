@@ -1,0 +1,40 @@
+id = "V.2"
+book = 5
+order = 2
+title = "Sums of multiples"
+statement = "If a first magnitude be the same multiple of a second that a third is of a fourth, and a fifth also be the same multiple of the second that a sixth is of the fourth, the sum of the first and fifth will also be the same multiple of the second that the sum of the third and sixth is of the fourth."
+proof = "Therefore the sum of the first and fifth is the same multiple of the second that the sum of the third and sixth is of the fourth. Q.E.D."
+
+[[step]]
+text = "Let a first magnitude AB be the same multiple of a second C that a third DE is of a fourth F, and let a fifth BG be the same multiple of the second C that a sixth EH is of the fourth F (here AB is 3C, DE is 3F, BG is 2C, EH is 2F). I say that the sum of the first and fifth, AG, is the same multiple of the second, C, that the sum of the third and sixth, DH, is of the fourth, F."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 6 0",
+  "segment AB ab blue",
+  "point DE 0 -0.9",
+  "point de 9 -0.9",
+  "segment DE de red",
+  "point C 0 -1.8",
+  "point c 2 -1.8",
+  "segment C c green",
+  "point F 0 -2.7",
+  "point f 3 -2.7",
+  "segment F f orange",
+  "point BG 0 -3.6",
+  "point bg 4 -3.6",
+  "segment BG bg purple",
+  "point EH 0 -4.5",
+  "point eh 6 -4.5",
+  "segment EH eh teal",
+]
+
+[[step]]
+text = "Since AB is the same multiple of C that DE is of F, there are as many magnitudes in AB equal to C as there are in DE equal to F. For the same reason there are as many in BG equal to C as in EH equal to F. Therefore there are as many in the whole AG equal to C as in the whole DH equal to F."
+draw = [
+]
+
+[[step]]
+text = "Therefore AG is the same multiple of C that DH is of F. Therefore the sum of the first and fifth, AG, is the same multiple of the second, C, that the sum of the third and sixth, DH, is of the fourth, F."
+draw = [
+]

@@ -1,0 +1,37 @@
+id = "V.8"
+book = 5
+order = 8
+title = "The greater has the greater ratio"
+statement = "Of unequal magnitudes, the greater has to the same a greater ratio than the less has; and the same has to the less a greater ratio than it has to the greater."
+proof = "Therefore of unequal magnitudes the greater has to the same a greater ratio than the less has; and the same has to the less a greater ratio than it has to the greater. Q.E.D."
+
+[[step]]
+text = "Let AB, C be unequal magnitudes and AB the greater, and let D be another magnitude. I say that AB has to D a greater ratio than C has to D, and D has to C a greater ratio than it has to AB."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 7 0",
+  "segment AB ab blue",
+  "point C 0 -0.9",
+  "point c 4 -0.9",
+  "segment C c red",
+  "point D 0 -1.8",
+  "point d 3 -1.8",
+  "segment D d green",
+  "point E 0 -2.7",
+  "point e 2 -2.7",
+  "segment E e orange",
+  "point BE 0 -3.6",
+  "point be 2 -3.6",
+  "segment BE be purple",
+]
+
+[[step]]
+text = "Since AB is greater than C, make BE equal to C. Then the less of AE, EB, multiplied, will some time be greater than D (definition 4). Take equimultiples FG, GH of AE, EB which exceed D, and take K the multiple of D which first exceeds GH, so that K is the least multiple of D that exceeds GH."
+draw = [
+]
+
+[[step]]
+text = "Then GH is not less than K... and FG is greater than D. Therefore the whole FH is greater than D, K together; but FH exceeds K while the equimultiple of C does not exceed K. So there exist equimultiples of AB and C and a multiple of D such that the multiple of AB exceeds the multiple of D but the multiple of C does not. Therefore AB has to D a greater ratio than C has to D (definition 7). Similarly D has to C a greater ratio than D has to AB."
+draw = [
+]

@@ -1,0 +1,40 @@
+id = "V.24"
+book = 5
+order = 24
+title = "Adding ratios"
+statement = "If a first magnitude have to a second the same ratio as a third has to a fourth, and a fifth have to the second the same ratio as a sixth to the fourth, the first and fifth added together will have to the second the same ratio as the third and sixth added together have to the fourth."
+proof = "Therefore if a first magnitude have to a second the same ratio as a third has to a fourth, and a fifth have to the second the same ratio as a sixth to the fourth, the first and fifth added together will have to the second the same ratio as the third and sixth added together have to the fourth. Q.E.D."
+
+[[step]]
+text = "Let a first magnitude AB have to a second C the same ratio as a third DE has to a fourth F, and let a fifth BG have to the second C the same ratio as a sixth EH has to the fourth F. I say that the first and fifth added together, AG, will have to the second C the same ratio as the third and sixth added together, DH, have to the fourth F."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 4 0",
+  "segment AB ab blue",
+  "point C 0 -0.9",
+  "point c 2 -0.9",
+  "segment C c red",
+  "point DE 0 -1.8",
+  "point de 6 -1.8",
+  "segment DE de green",
+  "point F 0 -2.7",
+  "point f 3 -2.7",
+  "segment F f orange",
+  "point BG 0 -3.6",
+  "point bg 2 -3.6",
+  "segment BG bg purple",
+  "point EH 0 -4.5",
+  "point eh 3 -4.5",
+  "segment EH eh teal",
+]
+
+[[step]]
+text = "Since BG:C = EH:F, inversely C:BG = F:EH. Since AB:C = DE:F, and C:BG = F:EH, ex aequali AB:BG = DE:EH (V.22). Since the magnitudes are proportional separando, they will also be proportional componendo (V.18): AG:GB = DH:HE. But GB:C = HE:F. Therefore ex aequali AG:C = DH:F (V.22)."
+draw = [
+]
+
+[[step]]
+text = "Therefore the first and fifth added together, AG, have to the second C the same ratio as the third and sixth added together, DH, have to the fourth F."
+draw = [
+]

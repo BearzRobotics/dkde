@@ -1,0 +1,40 @@
+id = "V.3"
+book = 5
+order = 3
+title = "Multiples of multiples"
+statement = "If a first magnitude be the same multiple of a second that a third is of a fourth, and equimultiples be taken of the first and third, then also ex aequali the magnitudes taken will be equimultiples respectively, the one of the second and the other of the fourth."
+proof = "Therefore the magnitudes taken are equimultiples respectively, the one of the second and the other of the fourth. Q.E.D. (In algebra: n(ma) is a multiple of a, and n(mb) the same multiple of b.)"
+
+[[step]]
+text = "Let a first magnitude A be the same multiple of a second B that a third C is of a fourth D, and let equimultiples EF, GH be taken of A, C. I say that EF is the same multiple of B that GH is of D."
+draw = [
+  "clear",
+  "point EF 0 0",
+  "point ef 12 0",
+  "segment EF ef blue",
+  "point GH 0 -0.9",
+  "point gh 18 -0.9",
+  "segment GH gh red",
+  "point A 0 -1.8",
+  "point a 2 -1.8",
+  "segment A a green",
+  "point C 0 -2.7",
+  "point c 3 -2.7",
+  "segment C c orange",
+  "point B 0 -3.6",
+  "point b 6 -3.6",
+  "segment B b purple",
+  "point D 0 -4.5",
+  "point d 9 -4.5",
+  "segment D d teal",
+]
+
+[[step]]
+text = "Since EF is the same multiple of A that GH is of C, there are as many magnitudes in EF equal to A as there are in GH equal to C. Divide EF into EK, KL, ... each equal to A, and GH into GM, MN, ... each equal to C."
+draw = [
+]
+
+[[step]]
+text = "Since A is the same multiple of B that C is of D, and EK equals A, GM equals C, EK is the same multiple of B that GM is of D. For the same reason KL is the same multiple of B that MN is of D, and so on. Therefore, by the preceding proposition, EF is the same multiple of B that GH is of D."
+draw = [
+]

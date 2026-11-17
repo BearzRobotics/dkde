@@ -1,0 +1,40 @@
+id = "V.21"
+book = 5
+order = 21
+title = "Perturbed proportion: three magnitudes"
+statement = "If there be three magnitudes, and others equal to them in multitude, which taken two and two together are in the same ratio, and the proportion of them be perturbed, then, if ex aequali the first magnitude is greater than the third, the fourth will also be greater than the sixth; if equal, equal; and if less, less."
+proof = "Therefore if there be three magnitudes, and others equal to them in multitude, which taken two and two together are in the same ratio, and the proportion of them be perturbed, then, if ex aequali the first magnitude is greater than the third, the fourth will also be greater than the sixth; if equal, equal; and if less, less. Q.E.D."
+
+[[step]]
+text = "Let there be three magnitudes A, B, C, and others D, E, F equal to them in multitude, which taken two and two together are in the same ratio, and let their proportion be perturbed, so that A:B = E:F and B:C = D:E, and let A be greater than C ex aequali. I say that D will also be greater than F."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 6 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 2 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 3 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 1 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Since A is greater than C, and B is some other magnitude, A has to B a greater ratio than C has to B (V.8). But A:B = E:F, and, inversely, C:B = E:D. Therefore E has to F a greater ratio than E has to D (V.13). But that to which the same has a greater ratio is less (V.10). Therefore F is less than D. Therefore D is greater than F."
+draw = [
+]
+
+[[step]]
+text = "Similarly we can prove that if A is equal to C, D is equal to F; and if A is less than C, D is less than F."
+draw = [
+]

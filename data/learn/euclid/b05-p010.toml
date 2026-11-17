@@ -1,0 +1,31 @@
+id = "V.10"
+book = 5
+order = 10
+title = "A greater ratio, a greater magnitude"
+statement = "Of magnitudes which have a ratio to the same, that which has a greater ratio is greater; and that to which the same has a greater ratio is less."
+proof = "Therefore of magnitudes which have a ratio to the same, that which has a greater ratio is greater; and that to which the same has a greater ratio is less. Q.E.D."
+
+[[step]]
+text = "Let A have to C a greater ratio than B has to C. I say that A is greater than B."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 3 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "For if not, either A is equal to B or less. A is not equal to B, for then each of A, B would have the same ratio to C (V.7), which is not the case. Nor is A less than B, for then A would have to C a less ratio than B has to C (V.8), which is not the case. Therefore A is greater than B."
+draw = [
+]
+
+[[step]]
+text = "Again, let C have to B a greater ratio than C has to A. I say that B is less than A. For if not, B is either equal to A or greater. B is not equal to A, nor greater than A, by the same reasoning (V.7, V.8). Therefore B is less than A."
+draw = [
+]

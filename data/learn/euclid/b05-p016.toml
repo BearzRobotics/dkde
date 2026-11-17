@@ -1,0 +1,34 @@
+id = "V.16"
+book = 5
+order = 16
+title = "Alternately"
+statement = "If four magnitudes be proportional, they will also be proportional alternately."
+proof = "Therefore if four magnitudes be proportional, they will also be proportional alternately. Q.E.D. (In algebra: if a : b = c : d then a : c = b : d.)"
+
+[[step]]
+text = "Let A, B, C, D be four proportional magnitudes, so that as A is to B, so is C to D. I say that they will also be so alternately, that is, as A is to C, so is B to D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 3 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 6 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Take equimultiples E, F of A, B, and other equimultiples G, H of C, D. Since E is the same multiple of A that F is of B, and parts have the same ratio as their equimultiples (V.15), A:B = E:F. But A:B = C:D. Therefore C:D = E:F. Again, since G, H are equimultiples of C, D, C:D = G:H. But C:D = E:F. Therefore E:F = G:H."
+draw = [
+]
+
+[[step]]
+text = "If four magnitudes are proportional and the first is greater than the third, the second will be greater than the fourth; if equal, equal; if less, less (V.14). Therefore, if E exceeds G, F exceeds H; if equal, equal; if less, less. And E, F are equimultiples of A, B, and G, H of C, D. Therefore A:C = B:D."
+draw = [
+]

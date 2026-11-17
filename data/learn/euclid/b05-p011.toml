@@ -1,0 +1,40 @@
+id = "V.11"
+book = 5
+order = 11
+title = "Ratios the same as the same ratio"
+statement = "Ratios which are the same with the same ratio are the same with one another."
+proof = "Therefore ratios which are the same with the same ratio are the same with one another. Q.E.D."
+
+[[step]]
+text = "For let A be to B as C is to D, and C to D as E to F. I say that A is to B as E is to F."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 3 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 6 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 6 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 9 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Let equimultiples G, H, K be taken of A, C, E, and other equimultiples L, M, N of B, D, F. Since A:B = C:D, and G, H are equimultiples of A, C and L, M of B, D, then if G exceeds L, H exceeds M; if equal, equal; if less, less. Again, since C:D = E:F, and H, K are equimultiples of C, E and M, N of D, F, then if H exceeds M, K exceeds N; if equal, equal; if less, less."
+draw = [
+]
+
+[[step]]
+text = "But we saw that if H exceeds M, G exceeds L; if equal, equal; if less, less. Therefore also if G exceeds L, K exceeds N; if equal, equal; if less, less. And G, K are equimultiples of A, E, and L, N of B, F. Therefore A:B = E:F."
+draw = [
+]

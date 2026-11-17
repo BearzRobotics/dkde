@@ -1,0 +1,40 @@
+id = "V.23"
+book = 5
+order = 23
+title = "Perturbed ex aequali"
+statement = "If there be three magnitudes, and others which are equal to them in multitude, which taken two and two together are in the same ratio, and the proportion of them be perturbed, they will also be in the same ratio ex aequali."
+proof = "Therefore if there be three magnitudes, and others which are equal to them in multitude, which taken two and two together are in the same ratio, and the proportion of them be perturbed, they will also be in the same ratio ex aequali. Q.E.D."
+
+[[step]]
+text = "Let there be three magnitudes A, B, C, and others D, E, F equal to them in multitude, which taken two and two together are in the same ratio, and let their proportion be perturbed, so that A:B = E:F and B:C = D:E. I say that A:C = D:F."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 3 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 6 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 2 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 4 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 6 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Take equimultiples G, H, K of A, B, D, and other equimultiples L, M, N of C, E, F. Since G, H are equimultiples of A, B, and parts have the same ratio as their equimultiples, A:B = G:H. For the same reason E:F = M:N. But A:B = E:F. Therefore G:H = M:N. Again, since B:C = D:E, and H, K are equimultiples of B, D, and L, M of C, E, H:L = K:M."
+draw = [
+]
+
+[[step]]
+text = "Since there are three magnitudes G, H, L and others K, M, N equal to them in multitude which taken two and two are in the same ratio, and the proportion of them is perturbed, then, if G exceeds L ex aequali, K exceeds N; if equal, equal; if less, less (V.21). And G, K are equimultiples of A, D, and L, N of C, F. Therefore A:C = D:F."
+draw = [
+]

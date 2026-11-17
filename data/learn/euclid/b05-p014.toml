@@ -1,0 +1,34 @@
+id = "V.14"
+book = 5
+order = 14
+title = "Ratios in order"
+statement = "If a first magnitude have to a second the same ratio as a third has to a fourth, and the first be greater than the third, the second will also be greater than the fourth; if equal, equal; and if less, less."
+proof = "Therefore if a first magnitude have to a second the same ratio as a third has to a fourth, and the first be greater than the third, the second will also be greater than the fourth; if equal, equal; and if less, less. Q.E.D."
+
+[[step]]
+text = "For let a first magnitude A have to a second B the same ratio as a third C to a fourth D, and let A be greater than C. I say that B is also greater than D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 6 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 3 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Since A is greater than C, and B is another magnitude, A has to B a greater ratio than C has to B (V.8). But A:B = C:D. Therefore C has to D a greater ratio than C has to B. But that to which the same has a greater ratio is less (V.10). Therefore D is less than B. Therefore B is greater than D."
+draw = [
+]
+
+[[step]]
+text = "Similarly we can prove that if A is equal to C, B is also equal to D; and if A is less than C, B is also less than D."
+draw = [
+]

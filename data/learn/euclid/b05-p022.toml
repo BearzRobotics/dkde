@@ -1,0 +1,40 @@
+id = "V.22"
+book = 5
+order = 22
+title = "Ex aequali"
+statement = "If there be any number of magnitudes, and others equal to them in multitude, which taken two and two together are in the same ratio, they will also be in the same ratio ex aequali."
+proof = "Therefore if there be any number of magnitudes, and others equal to them in multitude, which taken two and two together are in the same ratio, they will also be in the same ratio ex aequali. Q.E.D."
+
+[[step]]
+text = "Let there be any number of magnitudes A, B, C, and others D, E, F equal to them in multitude, which taken two and two together are in the same ratio, so that A:B = D:E and B:C = E:F. I say that they will also be in the same ratio ex aequali, that is, A:C = D:F."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 3 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 6 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 4 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 6 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 12 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Take equimultiples G, H of A, D, and other equimultiples K, L of B, E, and still other equimultiples M, N of C, F. Since A:B = D:E, and G, H are equimultiples of A, D, and K, L of B, E, G:K = H:L (V.4). For the same reason K:M = L:N."
+draw = [
+]
+
+[[step]]
+text = "Since there are three magnitudes G, K, M and others H, L, N equal to them in multitude, which taken two and two together are in the same ratio, then, if G exceeds M ex aequali, H exceeds N; if equal, equal; if less, less (V.20). And G, H are equimultiples of A, D, and M, N of C, F. Therefore A:C = D:F."
+draw = [
+]

@@ -1,0 +1,31 @@
+id = "V.9"
+book = 5
+order = 9
+title = "Same ratio, equal magnitudes"
+statement = "Magnitudes which have the same ratio to the same are equal to one another; and magnitudes to which the same has the same ratio are equal."
+proof = "Therefore magnitudes which have the same ratio to the same are equal to one another; and magnitudes to which the same has the same ratio are equal. Q.E.D."
+
+[[step]]
+text = "Let each of the magnitudes A, B have the same ratio to C. I say that A is equal to B."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 4 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 3 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "For if not, A and B would not each have the same ratio to C. But they have. Therefore A is equal to B. For if A were greater or less than B, A would have a greater or a less ratio to C than B has (V.8), which is contrary to the hypothesis."
+draw = [
+]
+
+[[step]]
+text = "Again, let C have the same ratio to each of the magnitudes A, B. I say that A is equal to B. For if not, C would not have the same ratio to each of A, B (V.8). But it has. Therefore A is equal to B."
+draw = [
+]

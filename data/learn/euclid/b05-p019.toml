@@ -1,0 +1,40 @@
+id = "V.19"
+book = 5
+order = 19
+title = "Subtraction of proportions"
+statement = "If, as a whole is to a whole, so is a part subtracted to a part subtracted, the remainder will also be to the remainder as whole to whole."
+proof = "Therefore if, as a whole is to a whole, so is a part subtracted to a part subtracted, the remainder will also be to the remainder as whole to whole. Q.E.D."
+
+[[step]]
+text = "For, as the whole AB is to the whole CD, so let the part subtracted AE be to the part subtracted CF. I say that the remainder EB will also be to the remainder FD as the whole AB to the whole CD."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 6 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 9 -0.9",
+  "segment CD cd red",
+  "point AE 0 -1.8",
+  "point ae 4 -1.8",
+  "segment AE ae green",
+  "point CF 0 -2.7",
+  "point cf 6 -2.7",
+  "segment CF cf orange",
+  "point EB 0 -3.6",
+  "point eb 2 -3.6",
+  "segment EB eb purple",
+  "point FD 0 -4.5",
+  "point fd 3 -4.5",
+  "segment FD fd teal",
+]
+
+[[step]]
+text = "Since AB:CD = AE:CF, alternately BA:AE = DC:CF (V.16). Since the magnitudes are proportional componendo, they will also be proportional separando (V.17), that is, BE:EA = DF:FC. Alternately BE:DF = EA:FC. But AE:CF = AB:CD by hypothesis."
+draw = [
+]
+
+[[step]]
+text = "Therefore the remainder BE is also to the remainder FD as the whole AB is to the whole CD. Corollary: if magnitudes are proportional componendo, they are also proportional convertendo, that is, (a + b) : a = (c + d) : c."
+draw = [
+]

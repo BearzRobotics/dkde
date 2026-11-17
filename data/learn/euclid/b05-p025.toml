@@ -1,0 +1,40 @@
+id = "V.25"
+book = 5
+order = 25
+title = "The greatest and least"
+statement = "If four magnitudes be proportional, the greatest and the least are greater than the remaining two."
+proof = "Therefore if four magnitudes be proportional, the greatest and the least are greater than the remaining two. Q.E.D. (In algebra: if a : b = c : d, with a the greatest and d the least, then a + d > b + c.)"
+
+[[step]]
+text = "Let the four magnitudes AB, CD, E, F be proportional, so that AB:CD = E:F, and let AB be the greatest of them and F the least. I say that AB, F are greater than CD, E."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 9 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 3 -0.9",
+  "segment CD cd red",
+  "point E 0 -1.8",
+  "point e 6 -1.8",
+  "segment E e green",
+  "point F 0 -2.7",
+  "point f 2 -2.7",
+  "segment F f orange",
+  "point AG 0 -3.6",
+  "point ag 6 -3.6",
+  "segment AG ag purple",
+  "point CH 0 -4.5",
+  "point ch 2 -4.5",
+  "segment CH ch teal",
+]
+
+[[step]]
+text = "Let AG be made equal to E, and CH equal to F. Since AB:CD = E:F, and E is equal to AG, and F to CH, AB:CD = AG:CH. And since the whole AB is to the whole CD as the part taken away AG is to the part taken away CH, the remainder GB will also be to the remainder HD as the whole AB is to the whole CD (V.19). But AB is greater than CD. Therefore GB is also greater than HD."
+draw = [
+]
+
+[[step]]
+text = "Since AG is equal to E, and CH to F, AG, F are equal to CH, E. And if equals be added to unequals, the wholes are unequal: if GB, HD, which are unequal, GB being the greater, be added to AG, F and to CH, E respectively, it follows that AB, F are greater than CD, E."
+draw = [
+]

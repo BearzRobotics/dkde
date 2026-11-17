@@ -1,0 +1,40 @@
+id = "V.13"
+book = 5
+order = 13
+title = "A greater ratio"
+statement = "If a first magnitude have to a second the same ratio as a third to a fourth, and the third have to the fourth a greater ratio than a fifth has to a sixth, the first will also have to the second a greater ratio than the fifth to the sixth."
+proof = "Therefore if a first magnitude have to a second the same ratio as a third to a fourth, and the third have to the fourth a greater ratio than a fifth has to a sixth, the first will also have to the second a greater ratio than the fifth to the sixth. Q.E.D."
+
+[[step]]
+text = "For let a first magnitude A have to a second B the same ratio as a third C to a fourth D, and let the third C have to the fourth D a greater ratio than a fifth E has to a sixth F. I say that the first A will also have to the second B a greater ratio than the fifth E to the sixth F."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 3 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 6 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 3 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 6 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Since C has to D a greater ratio than E to F, there exist some equimultiples of C, E and other equimultiples of D, F such that the multiple of C exceeds the multiple of D, while the multiple of E does not exceed the multiple of F (definition 7). Let them be taken, and let them be G, H of C, E and K, L of D, F, so that G exceeds K but H does not exceed L. Let G be the same multiple of C that M is of A, and K the same multiple of D that N is of B."
+draw = [
+]
+
+[[step]]
+text = "Since A:B = C:D, and M, G are equimultiples of A, C and N, K of B, D, then if M exceeds N, G exceeds K; if equal, equal; if less, less. But G exceeds K. Therefore M exceeds N. But H does not exceed L. And M, H are equimultiples of A, E, and N, L of B, F. Therefore A has to B a greater ratio than E has to F."
+draw = [
+]
