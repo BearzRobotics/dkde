@@ -1,0 +1,42 @@
+id = "II.14"
+book = 2
+order = 14
+title = "A square equal to a given figure"
+statement = "To construct a square equal to a given rectilineal figure."
+proof = "Therefore a square, namely that described on EH, has been constructed equal to the given rectilineal figure A. Being what it was required to do."
+
+[[step]]
+text = "Let A be the given rectilineal figure. It is required to construct a square equal to the rectilineal figure A. Let the rectangle BD be constructed equal to the rectilineal figure A (I.45)."
+draw = [
+  "clear",
+  "point B -4 0",
+  "point C -4 2",
+  "point D 0 2",
+  "point E 0 0",
+  "polygon B E D C blue fill",
+]
+
+[[step]]
+text = "If BE is equal to ED, that is already done. If not, one of them is greater. Let BE be the greater, and let it be produced to F, and let EF be made equal to ED. Let BF be bisected at G."
+draw = [
+  "point F 2 0",
+  "point G -1 0",
+  "segment B F black",
+]
+
+[[step]]
+text = "With centre G and distance one of the straight lines GB, GF let the semicircle BHF be described, and let DE be produced to H, and let GH be joined."
+draw = [
+  "circle G F orange",
+  "point H 0 -2.828",
+  "line D H black",
+  "segment G H red",
+]
+
+[[step]]
+text = "Since the straight line BF has been cut into equal segments at G and into unequal segments at E, the rectangle contained by BE, EF together with the square on EG is equal to the square on GF (II.5). But GF is equal to GH. Therefore the rectangle BE, EF together with the square on GE is equal to the square on GH. But the squares on HE, EG are equal to the square on GH (I.47). Therefore the rectangle BE, EF together with the square on GE is equal to the squares on HE, EG. Take away the square on GE from each. Then the remaining rectangle contained by BE, EF is equal to the square on EH. But the rectangle BD is the rectangle contained by BE, EF, for EF is equal to ED. Therefore the parallelogram BD is equal to the square on HE. And BD is equal to the rectilineal figure A. Therefore the rectilineal figure A is also equal to the square that can be described on EH."
+draw = [
+  "point M 2.828 0",
+  "point N 2.828 -2.828",
+  "polygon E M N H teal fill",
+]

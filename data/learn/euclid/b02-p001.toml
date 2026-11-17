@@ -1,0 +1,44 @@
+id = "II.1"
+book = 2
+order = 1
+title = "A line cut into pieces"
+statement = "If there be two straight lines, and one of them be cut into any number of segments whatever, the rectangle contained by the two straight lines is equal to the rectangles contained by the uncut straight line and each of the segments."
+proof = "Therefore if there be two straight lines, and one of them be cut into any number of segments whatever, the rectangle contained by the two straight lines is equal to the rectangles contained by the uncut straight line and each of the segments. Q.E.D."
+
+[[step]]
+text = "Let A and BC be the two straight lines, and let BC be cut at random at the points D, E. I say that the rectangle contained by A, BC is equal to the rectangle contained by A, BD, that contained by A, DE, and that contained by A, EC. (Here A is the vertical side, of length 3.)"
+draw = [
+  "clear",
+  "point B 0 0",
+  "point C 6 0",
+  "point D 2 0",
+  "point E 4 0",
+  "point G 0 3",
+  "point K 6 3",
+  "point L 2 3",
+  "point H 4 3",
+  "segment B C blue",
+  "segment B G red",
+]
+
+[[step]]
+text = "From B let BG be drawn at right angles to BC (I.11), and let BG be made equal to A (I.3). Through G let GK be drawn parallel to BC, and through D, E, C let DL, EH, CK be drawn parallel to BG (I.31)."
+draw = [
+  "segment G K black",
+  "segment D L black",
+  "segment E H black",
+  "segment C K black",
+]
+
+[[step]]
+text = "Then BK is equal to BL, DH, EK. Now BK is the rectangle contained by A, BC, for it is contained by GB, BC, and GB is equal to A. BL is the rectangle contained by A, BD, for it is contained by GB, BD, and GB is equal to A. And DH is the rectangle contained by DL, DE, that is, by A, DE, since DL is equal to BG, that is, to A. Similarly EK is the rectangle contained by A, EC."
+draw = [
+  "polygon B D L G blue fill",
+  "polygon D E H L green fill",
+  "polygon E C K H orange fill",
+]
+
+[[step]]
+text = "Therefore the rectangle contained by A, BC is equal to the rectangle by A, BD, that by A, DE, and that by A, EC."
+draw = [
+]

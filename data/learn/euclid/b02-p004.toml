@@ -1,0 +1,50 @@
+id = "II.4"
+book = 2
+order = 4
+title = "The square on a whole line"
+statement = "If a straight line be cut at random, the square on the whole is equal to the squares on the segments and twice the rectangle contained by the segments."
+proof = "Therefore if a straight line be cut at random, the square on the whole is equal to the squares on the segments and twice the rectangle contained by the segments. Q.E.D. (In algebra: (a + b)^2 = a^2 + b^2 + 2ab.)"
+
+[[step]]
+text = "Let the straight line AB be cut at random at C. I say that the square on AB is equal to the squares on AC, CB and twice the rectangle contained by AC, CB."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 6 0",
+  "point C 4 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "Let the square ADEB be described on AB (I.46), and let BD be joined. Through C let CF be drawn parallel to AD or EB, and through G let HK be drawn parallel to AB or DE (I.31)."
+draw = [
+  "point D 0 6",
+  "point E 6 6",
+  "point F 4 6",
+  "point G 4 2",
+  "point H 0 2",
+  "point K 6 2",
+  "polygon A B E D blue",
+  "segment B D black",
+  "segment C F black",
+  "segment H K black",
+]
+
+[[step]]
+text = "Since CF is parallel to AD, the angle CGB is equal to the angle ADB (I.29). And the angle ADB is equal to the angle ABD, since BA is equal to AD (I.5). Therefore the angle CGB is equal to the angle GBC, so the side BC is equal to the side CG. But CB is equal to GK, and CG to KB. Therefore GK is equal to KB, and CGKB is equilateral. It is also right-angled, so CGKB is a square, and it is on CB."
+draw = [
+  "polygon C B K G orange fill",
+]
+
+[[step]]
+text = "For the same reason HF is a square, and it is on HG, that is, on AC. Therefore HF, KC are squares and are on AC, CB."
+draw = [
+  "polygon H G F D green fill",
+]
+
+[[step]]
+text = "Now AG is equal to GE (I.43), and AG is the rectangle contained by AC, CB, for GC is equal to CB. Therefore GE is also equal to the rectangle AC, CB. Therefore AG, GE are equal to twice the rectangle AC, CB. And HF, CK are the squares on AC, CB. Therefore the four figures HF, CK, AG, GE are equal to the squares on AC, CB and twice the rectangle contained by AC, CB. But HF, CK, AG, GE are the whole ADEB, which is the square on AB."
+draw = [
+  "polygon A C G H red fill",
+  "polygon G K E F red fill",
+]

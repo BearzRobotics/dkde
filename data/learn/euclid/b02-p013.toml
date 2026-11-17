@@ -1,0 +1,31 @@
+id = "II.13"
+book = 2
+order = 13
+title = "Acute triangles (the law of cosines)"
+statement = "In acute-angled triangles the square on the side subtending the acute angle is less than the squares on the sides containing the acute angle by twice the rectangle contained by one of the sides about the acute angle, namely that on which the perpendicular falls, and the straight line cut off within by the perpendicular towards the acute angle."
+proof = "Therefore in acute-angled triangles the square on the side subtending the acute angle is less than the squares on the sides containing the acute angle by twice the rectangle contained by one of the sides about the acute angle, namely that on which the perpendicular falls, and the straight line cut off within by the perpendicular towards the acute angle. Q.E.D."
+
+[[step]]
+text = "Let ABC be an acute-angled triangle having the angle at B acute, and let AD be drawn from A perpendicular to BC (I.12). I say that the square on AC is less than the squares on CB, BA by twice the rectangle contained by CB, BD."
+draw = [
+  "clear",
+  "point A 1.5 3",
+  "point B 0 0",
+  "point C 5 0",
+  "point D 1.5 0",
+  "polygon A B C blue",
+  "segment A D red",
+  "angle A B C orange fill",
+]
+
+[[step]]
+text = "Since the straight line CB has been cut at random at D, the squares on CB, BD are equal to twice the rectangle contained by CB, BD and the square on DC (II.7). Add the square on DA to each. Then the squares on CB, BD, DA are equal to twice the rectangle contained by CB, BD and the squares on AD, DC."
+draw = [
+  "polygon A B D yellow",
+]
+
+[[step]]
+text = "But the square on AB is equal to the squares on BD, DA, and the square on AC is equal to the squares on AD, DC (I.47). Therefore the squares on CB, BA are equal to the square on AC and twice the rectangle contained by CB, BD. Therefore the square on AC alone is less than the squares on CB, BA by twice the rectangle contained by CB, BD."
+draw = [
+  "polygon A D C green fill",
+]

@@ -1,0 +1,38 @@
+id = "II.2"
+book = 2
+order = 2
+title = "The square on the whole"
+statement = "If a straight line be cut at random, the rectangle contained by the whole and both of the segments is equal to the square on the whole."
+proof = "Therefore if a straight line be cut at random, the rectangle contained by the whole and both of the segments is equal to the square on the whole. Q.E.D."
+
+[[step]]
+text = "Let the straight line AB be cut at random at the point C. I say that the rectangle contained by AB, BC together with the rectangle contained by BA, AC is equal to the square on AB."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 5 0",
+  "point C 3 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "Let the square ADEB be described on AB (I.46), and let CF be drawn through C parallel to either AD or BE (I.31)."
+draw = [
+  "point D 0 5",
+  "point E 5 5",
+  "point F 3 5",
+  "polygon A B E D blue",
+  "segment C F black",
+]
+
+[[step]]
+text = "Then AE is equal to AF, CE. Now AE is the square on AB. AF is the rectangle contained by BA, AC, for it is contained by DA, AC, and AD is equal to AB. And CE is the rectangle contained by AB, BC, for BE is equal to AB."
+draw = [
+  "polygon A C F D green fill",
+  "polygon C B E F orange fill",
+]
+
+[[step]]
+text = "Therefore the rectangle contained by AB, AC together with the rectangle contained by AB, BC is equal to the square on AB."
+draw = [
+]

@@ -1,0 +1,49 @@
+id = "II.11"
+book = 2
+order = 11
+title = "The golden section"
+statement = "To cut a given straight line so that the rectangle contained by the whole and one of the segments is equal to the square on the remaining segment."
+proof = "Therefore the given straight line AB has been cut at H so that the rectangle contained by AB, BH is equal to the square on AH. Being what it was required to do."
+
+[[step]]
+text = "Let AB be the given straight line. It is required to cut AB so that the rectangle contained by the whole and one of the segments is equal to the square on the remaining segment."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 4 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "On AB let the square ABDC be described (I.46). Let AC be bisected at the point E, and let BE be joined."
+draw = [
+  "point D 4 4",
+  "point C 0 4",
+  "point E 0 2",
+  "polygon A B D C blue",
+  "segment B E black",
+]
+
+[[step]]
+text = "Let CA be drawn through to F, and let EF be made equal to BE (I.3). On AF let the square FH be described, and let GH be drawn through to K."
+draw = [
+  "point F 0 -2.472",
+  "point H 2.472 0",
+  "point G 2.472 -2.472",
+  "point K 2.472 4",
+  "line C A black",
+  "circle E B orange",
+  "polygon F G H A red fill",
+  "line G H black",
+]
+
+[[step]]
+text = "I say that AB has been cut at H so that the rectangle contained by AB, BH is equal to the square on AH. Since the straight line CA has been bisected at E and FA is added to it, the rectangle contained by CF, FA together with the square on AE is equal to the square on EF (II.6). But EF is equal to EB. Therefore the rectangle CF, FA together with the square on AE is equal to the square on EB."
+draw = [
+]
+
+[[step]]
+text = "But the squares on BA, AE are equal to the square on EB, for the angle at A is right (I.47). Therefore the rectangle CF, FA together with the square on AE is equal to the squares on BA, AE. Take away the square on AE from each. Then the remaining rectangle contained by CF, FA is equal to the square on AB. Now the figure FK is the rectangle contained by CF, FA, for AF is equal to FG, and AD is the square on AB. Therefore FK is equal to AD. Take away AK from each. Then FH, which is the square on AH, is equal to HD, which is the rectangle contained by DK, KH, that is, by AB, BH. Therefore AB has been cut at H so that the rectangle contained by AB, BH is equal to the square on AH."
+draw = [
+  "polygon H B D K green fill",
+]

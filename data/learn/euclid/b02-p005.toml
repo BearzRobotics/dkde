@@ -1,0 +1,48 @@
+id = "II.5"
+book = 2
+order = 5
+title = "A difference of squares"
+statement = "If a straight line be cut into equal and unequal segments, the rectangle contained by the unequal segments of the whole together with the square on the straight line between the points of section is equal to the square on the half. (In algebra: (a + b)(a - b) + b^2 = a^2.)"
+proof = "Therefore if a straight line be cut into equal and unequal segments, the rectangle contained by the unequal segments of the whole together with the square on the straight line between the points of section is equal to the square on the half. Q.E.D."
+
+[[step]]
+text = "Let a straight line AB be cut into equal segments at C and into unequal segments at D. I say that the rectangle contained by AD, DB together with the square on CD is equal to the square on CB."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 8 0",
+  "point C 4 0",
+  "point D 6 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "Let the square CEFB be described on CB (I.46), and let BE be joined. Through D let DG be drawn parallel to CE or BF, through H let KM be drawn parallel to AB or EF, and through A let AK be drawn parallel to CL or BM (I.31)."
+draw = [
+  "point E 4 4",
+  "point F 8 4",
+  "point G 6 4",
+  "point H 6 2",
+  "point K 0 2",
+  "point L 4 2",
+  "point M 8 2",
+  "polygon C B F E blue",
+  "segment B E black",
+  "segment D G black",
+  "segment K M black",
+  "segment A K black",
+  "segment C L black",
+]
+
+[[step]]
+text = "Since the complement CH is equal to the complement HF (I.43), let DM be added to each. Then the whole CM is equal to the whole DF. But CM is equal to AL, since AC is equal to CB. Therefore AL is also equal to DF. Add CH to each. Then the whole AH is equal to the gnomon NOP."
+draw = [
+  "polygon A D H K red fill",
+  "polygon L H G E orange fill",
+]
+
+[[step]]
+text = "But AH is the rectangle contained by AD, DB, for DH is equal to DB. Therefore the gnomon NOP is also equal to the rectangle contained by AD, DB. Add LG, which is equal to the square on CD, to each. Then the gnomon NOP and LG are equal to the rectangle contained by AD, DB and the square on CD. But the gnomon NOP and LG are the whole square CEFB, which is on CB. Therefore the rectangle contained by AD, DB together with the square on CD is equal to the square on CB."
+draw = [
+  "polygon C D H L teal fill",
+]

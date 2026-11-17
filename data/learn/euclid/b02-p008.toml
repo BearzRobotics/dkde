@@ -1,0 +1,48 @@
+id = "II.8"
+book = 2
+order = 8
+title = "Four rectangles and a square"
+statement = "If a straight line be cut at random, four times the rectangle contained by the whole and one of the segments together with the square on the remaining segment is equal to the square described on the whole and the aforesaid segment as on one straight line. (In algebra: 4ab + (a - b)^2 = (a + b)^2.)"
+proof = "Therefore if a straight line be cut at random, four times the rectangle contained by the whole and one of the segments together with the square on the remaining segment is equal to the square described on the whole and the aforesaid segment as on one straight line. Q.E.D."
+
+[[step]]
+text = "Let a straight line AB be cut at random at the point C. I say that four times the rectangle contained by AB, BC together with the square on AC is equal to the square on AB and BC taken as one straight line. Here AB is 4, BC is 1, AC is 3; let BD be made equal to CB, so AD is 5."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point C 3 0",
+  "point B 4 0",
+  "point D 5 0",
+  "segment A D blue",
+]
+
+[[step]]
+text = "On AD let the square AEFD be described, and let the figure be drawn double."
+draw = [
+  "point E 0 5",
+  "point F 5 5",
+  "polygon A D F E blue",
+]
+
+[[step]]
+text = "The four equal rectangles each contained by AB, BC (4 by 1) stand round the middle square, which is equal to the square on AC (3 by 3)."
+draw = [
+  "point P 0 1",
+  "point Q 1 5",
+  "point R 5 4",
+  "point S 4 0",
+  "point T 1 1",
+  "point U 4 1",
+  "point V 1 4",
+  "point X 4 4",
+  "polygon A S U P red fill",
+  "polygon S D R X orange fill",
+  "polygon V R F Q red fill",
+  "polygon P T Q E orange fill",
+  "polygon T U X V green fill",
+]
+
+[[step]]
+text = "Therefore the four rectangles together with the square on AC make the whole square on AD, that is, on AB and BC taken as one straight line."
+draw = [
+]

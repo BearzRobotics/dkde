@@ -1,0 +1,45 @@
+id = "II.7"
+book = 2
+order = 7
+title = "Two squares and a rectangle"
+statement = "If a straight line be cut at random, the square on the whole and that on one of the segments both together are equal to twice the rectangle contained by the whole and the said segment and the square on the remaining segment."
+proof = "Therefore if a straight line be cut at random, the square on the whole and that on one of the segments both together are equal to twice the rectangle contained by the whole and the said segment and the square on the remaining segment. Q.E.D. (In algebra: (a + b)^2 + b^2 = 2(a + b)b + a^2.)"
+
+[[step]]
+text = "Let the straight line AB be cut at random at the point C. I say that the squares on AB, BC are equal to twice the rectangle contained by AB, BC and the square on CA."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 6 0",
+  "point C 4 0",
+  "point D 0 6",
+  "point E 6 6",
+  "point F 4 6",
+  "point G 4 2",
+  "point H 0 2",
+  "point K 6 2",
+  "segment A B blue",
+]
+
+[[step]]
+text = "Let the square ADEB be described on AB (I.46), and let the figure be drawn as in the last proposition."
+draw = [
+  "polygon A B E D blue",
+  "segment B D black",
+  "segment C F black",
+  "segment H K black",
+]
+
+[[step]]
+text = "Since AG is equal to GE (I.43), add CK to each. Then the whole AK is equal to the whole CE. Therefore AK, CE are double of AK. But AK, CE are the gnomon LMN together with the square CK. Therefore the gnomon LMN and the square CK are double of AK. But twice the rectangle AB, BC is double of AK, for BK is equal to BC. Therefore the gnomon LMN and the square CK are equal to twice the rectangle AB, BC."
+draw = [
+  "polygon A C G H red fill",
+  "polygon G K E F red fill",
+  "polygon C B K G orange fill",
+]
+
+[[step]]
+text = "Add HF, which is the square on AC, to each. Then the gnomon LMN and the squares CK, HF are equal to twice the rectangle contained by AB, BC and the square on AC. But the gnomon LMN and the squares CK, HF are the whole ADEB and CK, which are the squares on AB, BC. Therefore the squares on AB, BC are equal to twice the rectangle contained by AB, BC together with the square on AC."
+draw = [
+  "polygon H G F D green fill",
+]

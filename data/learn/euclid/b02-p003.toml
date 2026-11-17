@@ -1,0 +1,39 @@
+id = "II.3"
+book = 2
+order = 3
+title = "A rectangle and a square"
+statement = "If a straight line be cut at random, the rectangle contained by the whole and one of the segments is equal to the rectangle contained by the segments and the square on the aforesaid segment."
+proof = "Therefore if a straight line be cut at random, the rectangle contained by the whole and one of the segments is equal to the rectangle contained by the segments and the square on the aforesaid segment. Q.E.D."
+
+[[step]]
+text = "Let the straight line AB be cut at random at C. I say that the rectangle contained by AB, BC is equal to the rectangle contained by AC, CB together with the square on BC."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point C 4 0",
+  "point B 6 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "Let the square CDEB be described on CB (I.46), let ED be drawn through to F, and through A let AF be drawn parallel to either CD or BE (I.31)."
+draw = [
+  "point D 4 2",
+  "point E 6 2",
+  "point F 0 2",
+  "polygon C B E D teal fill",
+  "line E D black",
+  "segment A F black",
+]
+
+[[step]]
+text = "Then AE is equal to AD, CE. Now AE is the rectangle contained by AB, BC, for it is contained by AB, BE, and BE is equal to BC. AD is the rectangle contained by AC, CB, for DC is equal to CB. And DB is the square on CB."
+draw = [
+  "polygon A C D F blue fill",
+  "polygon C B E D teal fill",
+]
+
+[[step]]
+text = "Therefore the rectangle contained by AB, BC is equal to the rectangle contained by AC, CB together with the square on BC."
+draw = [
+]

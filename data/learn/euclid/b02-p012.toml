@@ -1,0 +1,32 @@
+id = "II.12"
+book = 2
+order = 12
+title = "Obtuse triangles (the law of cosines)"
+statement = "In obtuse-angled triangles the square on the side subtending the obtuse angle is greater than the squares on the sides containing the obtuse angle by twice the rectangle contained by one of the sides about the obtuse angle, namely that on which the perpendicular falls, and the straight line cut off outside by the perpendicular towards the obtuse angle."
+proof = "Therefore in obtuse-angled triangles the square on the side subtending the obtuse angle is greater than the squares on the sides containing the obtuse angle by twice the rectangle contained by one of the sides about the obtuse angle, namely that on which the perpendicular falls, and the straight line cut off outside by the perpendicular towards the obtuse angle. Q.E.D."
+
+[[step]]
+text = "Let ABC be an obtuse-angled triangle having the angle BAC obtuse (here the obtuse angle is at C), and let AD be drawn from the point A perpendicular to BC produced (I.12). I say that the square on AB is greater than the squares on AC, CB by twice the rectangle contained by BC, CD."
+draw = [
+  "clear",
+  "point A 1.5 3",
+  "point B -4 0",
+  "point C 0 0",
+  "point D 1.5 0",
+  "polygon A B C blue",
+  "segment C D black",
+  "segment A D red",
+  "angle A C B orange fill",
+]
+
+[[step]]
+text = "Since the straight line BD has been cut at random at the point C, the square on DB is equal to the squares on BC, CD and twice the rectangle contained by BC, CD (II.4). Add the square on DA to each. Then the squares on BD, DA are equal to the squares on BC, CD, DA and twice the rectangle BC, CD."
+draw = [
+  "polygon A B D yellow",
+]
+
+[[step]]
+text = "But the square on BA is equal to the squares on BD, DA, for the angle at D is right (I.47). And the square on CA is equal to the squares on CD, DA. Therefore the square on BA is equal to the squares on AC, CB and twice the rectangle contained by BC, CD. Therefore the square on AB is greater than the squares on AC, CB by twice the rectangle contained by BC, CD."
+draw = [
+  "polygon A C D green fill",
+]

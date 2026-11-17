@@ -1,0 +1,46 @@
+id = "II.9"
+book = 2
+order = 9
+title = "Squares on the segments"
+statement = "If a straight line be cut into equal and unequal segments, the squares on the unequal segments of the whole are double of the square on the half and of the square on the straight line between the points of section."
+proof = "Therefore if a straight line be cut into equal and unequal segments, the squares on the unequal segments of the whole are double of the square on the half and of the square on the straight line between the points of section. Q.E.D."
+
+[[step]]
+text = "Let a straight line AB be cut into equal segments at C and into unequal segments at D. I say that the squares on AD, DB are double of the squares on AC, CD."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 8 0",
+  "point C 4 0",
+  "point D 6 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "From C let CE be drawn at right angles to AB (I.11), and let it be made equal to AC or CB. Let EA, EB be joined. Through D let DF be drawn parallel to CE, and through F let FG be drawn parallel to AB. Let AF be joined."
+draw = [
+  "point E 4 4",
+  "point F 6 2",
+  "point G 4 2",
+  "segment C E black",
+  "segment E A black",
+  "segment E B black",
+  "segment D F black",
+  "segment F G black",
+  "segment A F orange",
+]
+
+[[step]]
+text = "Since AC is equal to CE, the angle EAC is equal to the angle AEC (I.5). And the angle at C is right, so each of the angles EAC, AEC is half a right angle (I.32). For the same reason each of the angles CEB, EBC is half a right angle. Therefore the angle AEB is right. Since the angle GEF is half a right angle, and EGF is right, the remaining angle EFG is half a right angle. Therefore GE is equal to GF. Similarly DB is equal to DF."
+draw = [
+  "angle E A C green fill",
+  "angle A E C green fill",
+  "angle C E B orange fill",
+  "angle E B C orange fill",
+]
+
+[[step]]
+text = "Since AC is equal to CE, the square on AC is equal to the square on CE. Therefore the squares on AC, CE are double of the square on AC. But the square on EA is equal to the squares on AC, CE (I.47). Therefore the square on EA is double of the square on AC. Again, since EG is equal to GF, the square on EG is equal to the square on GF. Therefore the squares on EG, GF are double of the square on GF. But the square on EF is equal to the squares on EG, GF. Therefore the square on EF is double of the square on GF, that is, on CD. But the square on EA was also proved double of the square on AC. Therefore the squares on AE, EF are double of the squares on AC, CD. But the square on AF is equal to the squares on AE, EF, since the angle AEF is right. Therefore the square on AF is double of the squares on AC, CD. But the squares on AD, DF are equal to the square on AF, and DF is equal to DB. Therefore the squares on AD, DB are double of the squares on AC, CD."
+draw = [
+  "polygon A D F orange fill",
+]

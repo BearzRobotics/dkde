@@ -1,0 +1,49 @@
+id = "II.10"
+book = 2
+order = 10
+title = "Squares on a produced line"
+statement = "If a straight line be bisected, and a straight line be added to it in a straight line, the square on the whole with the added straight line and the square on the added straight line both together are double of the square on the half and of the square described on the straight line made up of the half and the added straight line as on one straight line."
+proof = "Therefore if a straight line be bisected, and a straight line be added to it in a straight line, the square on the whole with the added straight line and the square on the added straight line both together are double of the square on the half and of the square described on the straight line made up of the half and the added straight line as on one straight line. Q.E.D."
+
+[[step]]
+text = "Let a straight line AB be bisected at C, and let a straight line BD be added to it in a straight line. I say that the squares on AD, DB are double of the squares on AC, CD."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 6 0",
+  "point C 3 0",
+  "point D 8 0",
+  "segment A D blue",
+]
+
+[[step]]
+text = "From C let CE be drawn at right angles to AB (I.11), and made equal to AC or CB. Let EA, EB be joined. Through E let EF be drawn parallel to AD, and through D let DF be drawn parallel to CE."
+draw = [
+  "point E 3 3",
+  "point F 8 3",
+  "segment C E black",
+  "segment E A black",
+  "segment E B black",
+  "segment E F black",
+  "segment D F black",
+]
+
+[[step]]
+text = "Since a straight line EF falls on the parallel straight lines EC, FD, the angles CEF, EFD are equal to two right angles (I.29). Therefore the angles FEB, EFD are less than two right angles. So EB, FD produced will meet, towards B, D. Let them be produced and meet at G, and let AG be joined."
+draw = [
+  "point G 8 -2",
+  "line E B black",
+  "line F D black",
+  "segment A G orange",
+]
+
+[[step]]
+text = "Since AC is equal to CE, the angle EAC is equal to the angle AEC, and each is half a right angle. For the same reason each of the angles CEB, EBC is half a right angle. Therefore the angle AEB is right. And the angle EBC is half a right angle, so DBG is also half a right angle, and the angle BDG is right. Therefore the remaining angle DGB is half a right angle, so DG is equal to DB. Also EGF is half a right angle and the angle at F is right, so EF is equal to FG."
+draw = [
+]
+
+[[step]]
+text = "Then the square on EG is double of the square on EF, and the square on EA is double of the square on AC. But the square on AG is equal to the squares on AE, EG. Therefore the square on AG is double of the squares on AC, EF. And the squares on AD, DG are equal to the square on AG, so the squares on AD, DG are double of the squares on AC, EF. But DG is equal to DB, and EF to CD. Therefore the squares on AD, DB are double of the squares on AC, CD."
+draw = [
+  "polygon A D G orange fill",
+]
