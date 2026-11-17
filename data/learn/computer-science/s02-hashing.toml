@@ -1,0 +1,32 @@
+id = "CS.2"
+course = "Computer Science"
+book = 1
+order = 2
+title = "Hashing and buckets"
+statement = "A hash function turns data into a number; taking it mod the table size picks the bucket."
+
+[[step]]
+text = "Idea: a toy hash adds the character codes. cat is 99 + 97 + 116 = 312. With 10 buckets the bucket is 312 mod 10 = 2."
+calc = ["99 + 97 + 116", "312 mod 10"]
+
+[[step]]
+text = "When the table size is a power of two, mod can be replaced by a mask: 312 and 15 is the same as 312 mod 16, which is 8. This is why real hash tables use sizes like 16, 32, 64."
+calc = ["312 mod 16", "312 and 15"]
+
+[[step]]
+text = "Two keys landing in one bucket is a collision. The load factor is items divided by buckets; tables resize before it gets above about 0.75."
+calc = ["48/64"]
+
+[[step]]
+text = "Words with the same letters collide with a sum-hash: tac gives 312 too. Good hashes mix the bits, for example multiplying by a prime like 31 at each step."
+calc = ["(99*31 + 97)*31 + 116"]
+
+[[exercise]]
+prompt = "The toy hash of dog is 100 + 111 + 103 = 314. Which of 7 buckets does it fall in? (314 mod 7)"
+answer = "314 mod 7"
+hint = "7 x 44 = 308."
+
+[[exercise]]
+prompt = "What is the load factor of a table with 48 items in 64 buckets?"
+answer = "48/64"
+hint = "Items divided by buckets."

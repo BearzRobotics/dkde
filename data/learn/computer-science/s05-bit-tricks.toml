@@ -1,0 +1,36 @@
+id = "CS.5"
+course = "Computer Science"
+book = 1
+order = 5
+title = "Bit tricks"
+statement = "A handful of one-line bit expressions test, clear and isolate bits without loops."
+
+[[step]]
+text = "Idea: subtracting 1 flips the lowest 1 bit and all zeros below it. So x and (x - 1) clears the lowest set bit: 12 (1100) and 11 (1011) is 8 (1000)."
+calc = ["12 and 11", "12 to binary"]
+
+[[step]]
+text = "A power of two has exactly one 1 bit, so x and (x - 1) is zero. 64 and 63 is 0. Any other number leaves something behind."
+calc = ["64 and 63", "100 and 99"]
+
+[[step]]
+text = "x and -x keeps only the lowest set bit: 12 and -12 is 4. Negative numbers are stored as two's complement, so the lowest 1 bit is the same in x and -x."
+calc = ["12 and -12", "40 and -40"]
+
+[[step]]
+text = "Counting ones (popcount): clear the lowest set bit repeatedly and count the steps. 22 is 10110: 22 -> 20 -> 16 -> 0, three steps, so three ones."
+calc = ["22 and 21", "20 and 19", "16 and 15"]
+
+[[step]]
+text = "Swap without a temporary: a = a xor b, b = a xor b, a = a xor b. Since x xor x is 0 and x xor 0 is x, the values trade places."
+calc = ["(5 xor 9) xor 9", "(5 xor 9) xor 5"]
+
+[[exercise]]
+prompt = "What is 40 and 39? (This clears the lowest set bit of 40.)"
+answer = "40 and 39"
+hint = "101000 and 100111."
+
+[[exercise]]
+prompt = "What is 96 and 95?"
+answer = "96 and 95"
+hint = "1100000 clears to 1000000."

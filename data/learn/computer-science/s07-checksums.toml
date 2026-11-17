@@ -1,0 +1,32 @@
+id = "CS.7"
+course = "Computer Science"
+book = 1
+order = 7
+title = "Check digits and CRC"
+statement = "Check digits (Luhn) and CRC checksums add a little redundancy so that an accidental change is detected."
+
+[[step]]
+text = "Idea: Luhn is the check on card numbers. From the right, double every second digit (subtracting 9 if the result is over 9) and add everything. A valid number gives a total divisible by 10."
+calc = ["8*2 - 9"]
+
+[[step]]
+text = "Take 79927398713. From the right, keep 3, double 1 to 2, keep 7, double 8 to 16 (and 7), keep 9, double 3 to 6, keep 7, double 2 to 4, keep 9, double 9 to 18 (and 9), keep 7. The total is 70, a multiple of 10: valid."
+calc = ["3+2+7+7+9+6+7+4+9+9+7", "70 mod 10"]
+
+[[step]]
+text = "CRC treats the message as a polynomial in binary and divides by a fixed generator, using XOR instead of subtraction. Message 1101 with generator 1011 (x^3 + x + 1): add three zeros, giving 1101000, and divide."
+calc = ["0b1101000 xor 0b1011000", "0b110000 xor 0b101100", "0b11100 xor 0b10110", "0b1010 xor 0b1011"]
+
+[[step]]
+text = "The remainder, 001, is the CRC. Send 1101001. The receiver divides the whole thing and expects remainder 0; any single flipped bit or short burst of errors changes it."
+calc = ["0b1101001 xor 0b1011000", "0b110001 xor 0b101100", "0b11101 xor 0b10110", "0b1011 xor 0b1011"]
+
+[[exercise]]
+prompt = "In Luhn, a doubled digit 8 becomes 16, so you subtract 9. What do you get?"
+answer = "8*2 - 9"
+hint = "16 - 9."
+
+[[exercise]]
+prompt = "What is the last step of the CRC division above: 0b1010 xor 0b1011?"
+answer = "0b1010 xor 0b1011"
+hint = "The remainder is the last bit."

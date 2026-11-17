@@ -1,0 +1,38 @@
+id = "CS.6"
+course = "Computer Science"
+book = 1
+order = 6
+title = "Bytes and endianness"
+statement = "A value bigger than a byte is stored as several bytes; big-endian puts the most significant first, little-endian the least significant first."
+
+[[step]]
+text = "Idea: the 32-bit value 0x12345678 has four bytes: 12, 34, 56, 78. Big-endian writes them in that order in memory; little-endian (x86 and ARM) writes 78 56 34 12."
+calc = ["0x12345678", "0x12*2^24 + 0x34*2^16 + 0x56*2^8 + 0x78"]
+
+[[step]]
+text = "Pick bytes out with shift and mask (the calculator is now in Hex, 32 bits, so results show as hex digits): the lowest byte is x and 0xFF. The next is shift(x, -8) and 0xFF, then shift(x, -16) and 0xFF."
+calc = ["0x12345678 and 0xFF", "shift(0x12345678,-8) and 0xFF", "shift(0x12345678,-16) and 0xFF"]
+mode = "programmer"
+base = 16
+bits = 32
+
+[[step]]
+text = "Back in decimal. Reading memory the wrong way gives a different number. Bytes 34 12 read as a little-endian 16-bit value are 0x1234 = 4660; read as big-endian they are 0x3412 = 13330."
+calc = ["0x12*256 + 0x34", "0x34*256 + 0x12"]
+mode = "programmer"
+base = 10
+bits = 32
+
+[[step]]
+text = "Network protocols use big-endian (\"network byte order\"), so little-endian machines swap bytes when sending. This is why a byte-swap is a few shifts and masks."
+calc = ["shift(0x1234,-8) or shift(0x1234 and 0xFF, 8)"]
+
+[[exercise]]
+prompt = "What is the second-lowest byte of 0x12345678, as a decimal? (shift right 8, and 0xFF)"
+answer = "shift(0x12345678,-8) and 0xFF"
+hint = "0x56."
+
+[[exercise]]
+prompt = "Bytes 34 12 are stored in a little-endian 16-bit field. What number is it?"
+answer = "0x12*256 + 0x34"
+hint = "The second byte is the high one."

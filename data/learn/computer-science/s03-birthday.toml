@@ -1,0 +1,32 @@
+id = "CS.3"
+course = "Computer Science"
+book = 1
+order = 3
+title = "The birthday problem and collisions"
+statement = "With only 23 people the chance that two share a birthday is already above one half; collisions come far sooner than you expect."
+
+[[step]]
+text = "Idea: the chance that 3 people have all different birthdays is 365/365 x 364/365 x 363/365. Subtract from 1 for the chance of a match."
+calc = ["365*364*363/365^3", "1 - 365*364*363/365^3"]
+
+[[step]]
+text = "The same for 23 people: 1 - 365!/(342! x 365^23), which the calculator writes with nPr. The answer is just over one half."
+calc = ["1 - nPr(365,23)/365^23"]
+
+[[step]]
+text = "Why so soon: 23 people make 23 x 22 / 2 = 253 pairs, and each pair is a chance."
+calc = ["23*22/2"]
+
+[[step]]
+text = "The same effect decides hash collisions. With N possible hash values you expect a collision after about sqrt(N) items, not N. A 32-bit hash has N = 2^32, so about 65536 items are enough."
+calc = ["sqrt(2^32)", "1 - exp(-23*22/(2*365))"]
+
+[[exercise]]
+prompt = "How many pairs are there among 23 people? (23 x 22 / 2)"
+answer = "23*22/2"
+hint = "Choose 2 from 23."
+
+[[exercise]]
+prompt = "About how many items are needed before a 32-bit hash is likely to collide? (sqrt of 2^32)"
+answer = "sqrt(2^32)"
+hint = "The square root of 2^32 is 2^16."

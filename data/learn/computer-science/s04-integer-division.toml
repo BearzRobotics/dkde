@@ -1,0 +1,32 @@
+id = "CS.4"
+course = "Computer Science"
+book = 1
+order = 4
+title = "Integer division and remainders"
+statement = "Division and mod must satisfy a = b x q + r; with negative numbers languages disagree on whether q is rounded down or toward zero."
+
+[[step]]
+text = "Idea: 17 divided by 5 is 3 with remainder 2, because 17 = 5 x 3 + 2. The calculator: floor gives the quotient, mod the remainder."
+calc = ["floor(17/5)", "17 mod 5", "5*3 + 2"]
+
+[[step]]
+text = "With a negative: -17 / 5 is -3.4. Rounding down (floor) gives -4, so the remainder is -17 - 5x(-4) = 3. Python and this calculator work this way, so the remainder is never negative."
+calc = ["floor(-17/5)", "-17 mod 5", "-17 - 5*floor(-17/5)"]
+
+[[step]]
+text = "C, Java and most CPUs round toward zero instead: the quotient is -3 and the remainder is -17 - 5x(-3) = -2. The same a = b x q + r holds, but the remainder takes the sign of the dividend."
+calc = ["trunc(-17/5)", "-17 - 5*trunc(-17/5)"]
+
+[[step]]
+text = "Why it matters: array index = n mod size works for negative n only with the flooring rule. With truncation you must add the size back: ((n mod 5) + 5) mod 5."
+calc = ["((-17 mod 5) + 5) mod 5"]
+
+[[exercise]]
+prompt = "What is floor(-17/5)?"
+answer = "floor(-17/5)"
+hint = "-3.4 rounded down."
+
+[[exercise]]
+prompt = "What is the remainder of -17 divided by 5 when the quotient is rounded toward zero? (-17 - 5 x trunc(-17/5))"
+answer = "-17 - 5*trunc(-17/5)"
+hint = "The quotient is -3."

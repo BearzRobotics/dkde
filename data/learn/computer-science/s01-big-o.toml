@@ -1,0 +1,33 @@
+id = "CS.1"
+course = "Computer Science"
+book = 1
+order = 1
+title = "Growth rates and Big-O"
+statement = "Big-O says how the work of an algorithm grows with the size n of its input; log n, n, n log n, n squared and 2 to the n grow at very different speeds."
+
+[[step]]
+text = "Idea: count the steps, not the seconds. Looking through a list of n items takes about n steps. Comparing every pair takes about n x n. Halving the problem each time takes about log2(n) steps."
+calc = ["1000", "1000^2", "log2(1000)"]
+
+[[step]]
+text = "For n = 1000: log n is about 10, n is 1000, n log n is about 9966, n squared is 1000000. For n = 30, the 2^n growth already reaches 2^30 = 1073741824, which is why brute force fails."
+calc = ["1000*log2(1000)", "2^30"]
+graph = ["log2(x)", "x", "x*log2(x)"]
+
+[[step]]
+text = "Doubling n: n doubles, n log n slightly more than doubles, n squared quadruples, 2^n squares. Binary search on a million items needs only ceil(log2(1000000)) = 20 steps."
+calc = ["ceil(log2(1000000))", "(2*1000)^2 / 1000^2"]
+
+[[step]]
+text = "Big-O ignores constants and small terms: 3n^2 + 50n + 7 is O(n^2), because for large n the n squared term dominates."
+calc = ["3*1000^2 + 50*1000 + 7", "3*1000^2"]
+
+[[exercise]]
+prompt = "Binary search among 1000 sorted items needs at most about ceil(log2(1000)) steps. How many?"
+answer = "ceil(log2(1000))"
+hint = "2^10 = 1024."
+
+[[exercise]]
+prompt = "A nested loop over n = 200 items does n x n steps. How many?"
+answer = "200^2"
+hint = "200 times 200."

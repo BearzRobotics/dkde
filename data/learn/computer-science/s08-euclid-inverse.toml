@@ -1,0 +1,32 @@
+id = "CS.8"
+course = "Computer Science"
+book = 1
+order = 8
+title = "The Euclidean algorithm and modular inverses"
+statement = "gcd(a, b) = gcd(b, a mod b) finds the greatest common divisor fast; when it is 1, a has an inverse mod b, which is how division works in modular arithmetic."
+
+[[step]]
+text = "Idea: gcd(252, 105). 252 mod 105 = 42, so gcd(105, 42). 105 mod 42 = 21, so gcd(42, 21). 42 mod 21 = 0, so the answer is 21. Each step shrinks the numbers at least by half, so it is O(log n)."
+calc = ["252 mod 105", "105 mod 42", "42 mod 21", "gcd(252,105)"]
+
+[[step]]
+text = "A modular inverse of a mod n is a number x with a x = 1 mod n. It exists exactly when gcd(a, n) = 1. For 3 mod 7 it is 5, since 15 = 2x7 + 1."
+calc = ["gcd(3,7)", "(3*5) mod 7"]
+
+[[step]]
+text = "Finding it for 7 mod 40: run Euclid on 40 and 7: 40 = 5x7 + 5; 7 = 1x5 + 2; 5 = 2x2 + 1. Work back up writing 1 as a combination of 7 and 40: 1 = 5 - 2x2 = 5 - 2(7 - 5) = 3x5 - 2x7 = 3(40 - 5x7) - 2x7 = 3x40 - 17x7. So the inverse of 7 is -17, which is 23 mod 40."
+calc = ["40 - 5*7", "7 - 1*5", "5 - 2*2", "(7*23) mod 40", "-17 mod 40"]
+
+[[step]]
+text = "Why it matters: dividing by 7 modulo 40 means multiplying by 23. This is the key step in RSA and in checking hash functions that work modulo a prime."
+calc = ["(7*23) mod 40", "(6 * 23) mod 40"]
+
+[[exercise]]
+prompt = "What is gcd(1071, 462)?"
+answer = "gcd(1071,462)"
+hint = "1071 mod 462 = 147, then 462 mod 147 = 21."
+
+[[exercise]]
+prompt = "Find x with 7x = 1 mod 40. Type x."
+answer = "23"
+hint = "7 x 23 = 161 = 4 x 40 + 1."
