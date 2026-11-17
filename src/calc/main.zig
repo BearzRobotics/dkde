@@ -526,6 +526,8 @@ const Calc = struct {
             .{ .label = "_File", .entries = &.{
                 mb.item("_Open Session…", "open-session", "<Control>o"),
                 mb.item("_Save Session…", "save-session", "<Control>s"),
+                mb.item("Save _Figure…", "save-figure", null),
+                mb.item("Open F_igure…", "open-figure", null),
                 mb.item("_Export Session…", "export-session", null),
                 .separator,
                 mb.item("_Close", "close", "<Control>w"),
@@ -3699,6 +3701,8 @@ const Calc = struct {
         const eql = std.mem.eql;
         if (eql(u8, action, "close")) return self.window.as(gtk.Window).close();
         if (eql(u8, action, "save-session")) return self.sessionDialog(true);
+        if (eql(u8, action, "save-figure")) return self.figureDialog(true);
+        if (eql(u8, action, "open-figure")) return self.figureDialog(false);
         if (eql(u8, action, "open-session")) return self.sessionDialog(false);
         if (eql(u8, action, "export-session")) return self.exportDialog();
         if (eql(u8, action, "update-rates")) return self.updateRates();
@@ -3892,6 +3896,66 @@ const Calc = struct {
         } else {
             dialog.open(parent, null, onSessionOpened, self);
         }
+    }
+
+    /// File > Save Figure… / Open Figure…: the Geometry figure as a lesson file (TOML), which Learn can also list.
+    fn figureDialog(self: *Calc, saving: bool) void {
+        const dialog = gtk.FileDialog.new();
+        defer dialog.as(gobject.Object).unref();
+        const filters = gio.ListStore.new(gtk.FileFilter.getGObjectType());
+        defer filters.as(gobject.Object).unref();
+        const filter = gtk.FileFilter.new();
+        filter.setName(t("Figures"));
+        filter.addPattern("*.toml");
+        filters.append(filter.as(gobject.Object));
+        filter.as(gobject.Object).unref();
+        dialog.setFilters(filters.as(gio.ListModel));
+        const parent = self.window.as(gtk.Window);
+        if (saving) {
+            dialog.setInitialName("figure.toml");
+            dialog.save(parent, null, onFigureSaved, self);
+        } else {
+            dialog.open(parent, null, onFigureOpened, self);
+        }
+    }
+
+    fn onFigureSaved(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *Calc = @ptrCast(@alignCast(data.?));
+        const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
+        const file = dialog.saveFinish(result, null) orelse return;
+        defer file.as(gobject.Object).unref();
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        var full: []const u8 = std.mem.span(path);
+        if (!std.ascii.endsWithIgnoreCase(full, ".toml")) full = std.fmt.allocPrint(a, "{s}.toml", .{full}) catch return;
+        const base = std.fs.path.stem(full);
+        const text = self.geometry.scene.figureToml(a, base) catch return self.preview.setText(t("The figure could not be saved."));
+        common.fsio.writeFileAtomic(full, text) catch return self.preview.setText(t("The figure could not be saved."));
+        self.preview.setText(t("Figure saved."));
+    }
+
+    fn onFigureOpened(source: ?*gobject.Object, result: *gio.AsyncResult, data: ?*anyopaque) callconv(.c) void {
+        const self: *Calc = @ptrCast(@alignCast(data.?));
+        const dialog: *gtk.FileDialog = @ptrCast(@alignCast(source.?));
+        const file = dialog.openFinish(result, null) orelse return;
+        defer file.as(gobject.Object).unref();
+        const path = file.getPath() orelse return;
+        defer glib.free(path);
+        const text = (common.fsio.readFile(self.gpa, std.mem.span(path), 4 << 20) catch null) orelse return self.preview.setText(t("The figure could not be read."));
+        defer self.gpa.free(text);
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        var problems: std.ArrayList([]const u8) = .empty;
+        const got = @import("lessonfile.zig").parseLesson(arena.allocator(), text, std.mem.span(path), &problems) orelse return self.preview.setText(t("The figure could not be read."));
+        if (self.pane != .geometry) self.showPane(.geometry);
+        self.geometry.clearCanvas();
+        for (got.lesson.steps) |step| self.geometry.runOps(step.ops);
+        self.geometry.syncThreeD();
+        self.geometry.fitToFigure();
+        self.preview.setText(t("Figure opened."));
     }
 
     /// File > Export Session…: the history, variables and functions as plain text or HTML.

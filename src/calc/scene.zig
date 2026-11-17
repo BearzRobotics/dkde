@@ -331,6 +331,47 @@ pub const Scene = struct {
         self.scale = std.math.clamp(@min((sz[0] - 40) / w, (sz[1] - 40) / h), 6, 120);
     }
 
+    /// The figure as a one-step lesson file (the text form of figure.zig inside TOML), so it can be opened
+    /// again, or found in the Learn view.
+    pub fn figureToml(self: *Scene, a: std.mem.Allocator, title: []const u8) ![]u8 {
+        var out: std.ArrayList(u8) = .empty;
+        const w = &out;
+        try w.print(a, "id = \"{s}\"\ncourse = \"My figures\"\nbook = 1\norder = 1\ntitle = \"{s}\"\nstatement = \"A figure you drew.\"\n\n[[step]]\ntext = \"{s}\"\ndraw = [\n  \"clear\",\n", .{ title, title, title });
+        if (self.view3d) try w.appendSlice(a, "  \"view3d\",\n");
+        var nb: [8]u8 = undefined;
+        for (self.points.items, 0..) |p, i| {
+            if (!p.alive) continue;
+            const name = self.nameOf(&nb, i);
+            if (self.view3d or p.z != 0) {
+                try w.print(a, "  \"point {s} {d} {d} {d}\",\n", .{ name, p.p.x, p.p.y, p.z });
+            } else try w.print(a, "  \"point {s} {d} {d}\",\n", .{ name, p.p.x, p.p.y });
+        }
+        for (self.shapes.items, 0..) |shape, si| {
+            const st = self.styles.items[si];
+            const colour = figure.colour_names[@min(st.color, figure.colour_names.len - 1)];
+            const fill: []const u8 = if (st.fill) " fill" else "";
+            var b1: [8]u8 = undefined;
+            var b2: [8]u8 = undefined;
+            var b3: [8]u8 = undefined;
+            switch (shape) {
+                .segment => |e| try w.print(a, "  \"segment {s} {s} {s}\",\n", .{ self.nameOf(&b1, e[0]), self.nameOf(&b2, e[1]), colour }),
+                .line => |e| try w.print(a, "  \"line {s} {s} {s}\",\n", .{ self.nameOf(&b1, e[0]), self.nameOf(&b2, e[1]), colour }),
+                .circle => |e| try w.print(a, "  \"circle {s} {s} {s}{s}\",\n", .{ self.nameOf(&b1, e[0]), self.nameOf(&b2, e[1]), colour, fill }),
+                .angle => |e| try w.print(a, "  \"angle {s} {s} {s} {s}{s}\",\n", .{ self.nameOf(&b1, e[0]), self.nameOf(&b2, e[1]), self.nameOf(&b3, e[2]), colour, fill }),
+                .polygon => |ids| {
+                    try w.appendSlice(a, "  \"polygon");
+                    for (ids) |id| {
+                        var b: [8]u8 = undefined;
+                        try w.print(a, " {s}", .{self.nameOf(&b, id)});
+                    }
+                    try w.print(a, " {s}{s}\",\n", .{ colour, fill });
+                },
+            }
+        }
+        try w.appendSlice(a, "]\n");
+        return out.toOwnedSlice(a);
+    }
+
     pub fn drawText(cr: *cairo.Context, x: f64, y: f64, s: []const u8) void {
         const layout = pangocairo.createLayout(cr);
         defer layout.as(gobject.Object).unref();
@@ -532,3 +573,30 @@ pub const Scene = struct {
         }
     }
 };
+
+test "a figure written out reads back the same" {
+    const lessonfile = @import("lessonfile.zig");
+    const gpa = std.testing.allocator;
+    var scene = Scene.init(gpa);
+    defer scene.deinit();
+    scene.runOps(&.{
+        figure.P("A", 0, 0),
+        figure.P("B", 4, 0),
+        figure.P("C", 2, 3.5),
+        figure.S("A", "B", 1),
+        figure.T(&.{ "A", "B", "C" }, 2, true),
+        figure.C("A", "B", 0, false),
+    });
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const text = try scene.figureToml(arena.allocator(), "test");
+    var problems: std.ArrayList([]const u8) = .empty;
+    const got = lessonfile.parseLesson(arena.allocator(), text, "test.toml", &problems) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(usize, 1), got.lesson.steps.len);
+    var again = Scene.init(gpa);
+    defer again.deinit();
+    again.runOps(got.lesson.steps[0].ops);
+    try std.testing.expectEqual(scene.points.items.len, again.points.items.len);
+    try std.testing.expectEqual(scene.shapes.items.len, again.shapes.items.len);
+    try std.testing.expectEqual(@as(usize, 0), problems.items.len);
+}
