@@ -1,0 +1,29 @@
+id = "X.11"
+book = 10
+order = 11
+title = "Proportion and commensurability"
+statement = "If four magnitudes be proportional, and the first be commensurable with the second, the third will also be commensurable with the fourth; and, if the first be incommensurable with the second, the third will also be incommensurable with the fourth."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let A, B, C, D be four proportional magnitudes, so that A is to B as C is to D (here 4, 6, 6, 9), and let A be commensurable with B. I say that C is also commensurable with D."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 2.8 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 4.2 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 4.2 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 6.3 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Since A is commensurable with B, A has to B the ratio which a number has to a number (X.5). And as A is to B, so is C to D. Therefore C has to D the ratio which a number has to a number. Therefore C is commensurable with D (X.6). Likewise if A is incommensurable with B, then A has not to B the ratio of a number to a number (X.7), nor therefore has C to D, so that C, D are incommensurable (X.8)."
+draw = [
+]

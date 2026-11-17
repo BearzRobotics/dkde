@@ -1,0 +1,23 @@
+id = "X.26"
+book = 10
+order = 26
+title = "A medial area does not exceed a medial by a rational"
+statement = "A medial area does not exceed a medial area by a rational area."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "For, if possible, let the medial area AB exceed the medial area AC by the rational area DB. Let a rational straight line EF be set out, and let the rectangle FH equal to AB be applied to EF, producing EH, and let FG equal to AC be cut off, so that the remainder KB equals DB, which is rational, and is applied giving GH as breadth."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.99 0",
+  "segment AB ab blue",
+  "point AC 0 -0.9",
+  "point ac 0.495 -0.9",
+  "segment AC ac red",
+]
+
+[[step]]
+text = "Since each of AB, AC is medial, EH, EG are rational and incommensurable in length with EF (X.22). Since DB is rational, GH is rational and commensurable with EF (X.20). Therefore EG is incommensurable in length with GH (X.13). So EG, GH are rational straight lines commensurable in square only. Therefore EH is a binomial straight line (X.36), and so irrational. But it was also rational (X.22), which is impossible. Therefore a medial area does not exceed a medial area by a rational area."
+draw = [
+]

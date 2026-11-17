@@ -1,0 +1,26 @@
+id = "X.13"
+book = 10
+order = 13
+title = "Commensurable and incommensurable"
+statement = "If two magnitudes be commensurable, and the one of them be incommensurable with any magnitude, the remaining one will also be incommensurable with the same."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let A, B be two commensurable magnitudes, and let one of them, A, be incommensurable with any other magnitude C. I say that B is also incommensurable with C."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 4.2 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 6.3 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2.97 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "For, if B were commensurable with C, then, since A is commensurable with B, A would also be commensurable with C (X.12). But A is incommensurable with C. Therefore B is incommensurable with C."
+draw = [
+]

@@ -1,0 +1,26 @@
+id = "X.48"
+book = 10
+order = 48
+title = "To find the first binomial"
+statement = "To find the first binomial straight line."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "The first binomial is the binomial with the greater term commensurable in length with the assigned rational line, and the square on the greater exceeding the square on the less by the square on a line commensurable with the greater. It is required to find one. (Example: the terms 2 and the square root of 3 (the difference of their squares is 1); the whole is 3.732.)"
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.4 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 1.212 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 2.612 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "Construction. Take two numbers whose sum is a square number but which are not in the ratio of a square to a square, and set them so that the greater term has to the less the ratio of the larger number to the smaller. Then the terms of the binomial are two rational straight lines commensurable in square only, with the stated relation to the assigned rational line and the stated excess of squares (X.29 and X.30 give the excess; X.6 and X.9 the commensurability). Then the sum is the first binomial straight line, as defined."
+draw = [
+]

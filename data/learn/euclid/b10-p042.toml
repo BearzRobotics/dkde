@@ -1,0 +1,26 @@
+id = "X.42"
+book = 10
+order = 42
+title = "A binomial is divided at one point only"
+statement = "A binomial straight line is divided into its terms at one point only."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be a binomial straight line divided into its terms at D, so that AD, DB are rational and commensurable in square only (here 2 and the square root of 3, with the whole 3.732). I say that AB is not divided at any other point into two rational straight lines commensurable in square only."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 2.612 0",
+  "segment AB ab blue",
+  "point AD 0 -0.9",
+  "point ad 1.4 -0.9",
+  "segment AD ad red",
+  "point DB 0 -1.8",
+  "point db 1.212 -1.8",
+  "segment DB db green",
+]
+
+[[step]]
+text = "For, if possible, let it also be divided at E, so that AE, EB are rational and commensurable in square only. Then the squares on AD, DB differ from the squares on AE, EB by a quantity which is a difference of two rational areas, and by twice the rectangles AE, EB and AD, DB (II.4, since both sums equal the square on AB). Since twice the rectangle AD, DB and twice the rectangle AE, EB are both medial, and the squares on each pair are rational, the difference of the rational sums would be the difference of two medial areas, a rational area; but a medial area does not exceed a medial area by a rational area (X.26). This is impossible. So a binomial is divided into its terms at one point only."
+draw = [
+]

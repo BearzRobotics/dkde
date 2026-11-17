@@ -1,0 +1,26 @@
+id = "X.20"
+book = 10
+order = 20
+title = "A rational area applied to a rational line"
+statement = "If a rational area be applied to a rational straight line, it produces as breadth a straight line rational and commensurable in length with the straight line to which it is applied."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let the rational area AC be applied to the rational straight line AB, producing as breadth the straight line BC (here an area of 6 applied to a line of 2 gives a breadth of 3). I say that BC is rational and commensurable in length with BA."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.4 0",
+  "segment A a blue",
+  "point BC 0 -0.9",
+  "point bc 4.2 -0.9",
+  "segment BC bc red",
+  "point CD 0 -1.8",
+  "point cd 2.1 -1.8",
+  "segment CD cd green",
+]
+
+[[step]]
+text = "Describe on AB the square AD. Then AD is rational. And AC is rational. So AD is commensurable with AC. But, as AD is to AC, so is DB to BC (VI.1). Therefore DB is commensurable in length with BC (X.11). But DB is equal to BA. Therefore AB is commensurable in length with BC. And AB is rational. Therefore BC is also rational and commensurable in length with AB."
+draw = [
+]

@@ -1,0 +1,26 @@
+id = "X.29"
+book = 10
+order = 29
+title = "Two rational lines: the first binomial type"
+statement = "To find two rational straight lines commensurable in square only and such that the square on the greater is greater than the square on the less by the square on a straight line commensurable in length with the greater."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let there be set out a rational straight line AB, and two square numbers CD, DE such that their difference CE is not square. On AB describe the semicircle AFB, let it be that, as DC is to CE, so is the square on BA to the square on AF, and let FB be joined. I say that AB, AF are rational straight lines commensurable in square only, and that the square on AB is greater than the square on AF by the square on FB, which is commensurable in length with AB. (Here take the numbers 4, 3, 1: AB = 2, AF = the square root of 3, FB = 1.)"
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.4 0",
+  "segment AB ab blue",
+  "point AC 0 -0.9",
+  "point ac 1.212 -0.9",
+  "segment AC ac red",
+  "point R 0 -1.8",
+  "point r 0.7 -1.8",
+  "segment R r green",
+]
+
+[[step]]
+text = "Since the square on BA is to the square on AF as the number DC is to CE, the squares are commensurable, so AB, AF, which are rational (AB is rational, AF is commensurable in square with it), are rational straight lines commensurable in square. But CD, CE are not in the ratio of squares, so the lines are incommensurable in length (X.9). Since, as DC is to CE, so is the square on BA to the square on AF, convertendo as CD is to DE, so is the square on AB to the square on BF (III.31, I.47). But CD has to DE the ratio of a square to a square, so AB is commensurable in length with BF (X.9). The square on AB is the squares on AF, FB. So the square on AB is greater than the square on AF by the square on FB, which is commensurable with AB."
+draw = [
+]

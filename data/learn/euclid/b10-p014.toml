@@ -1,0 +1,35 @@
+id = "X.14"
+book = 10
+order = 14
+title = "Squares on proportional lines"
+statement = "If four straight lines be proportional, and the square on the first be greater than the square on the second by the square on a straight line commensurable with the first, the square on the third will also be greater than the square on the fourth by the square on a straight line commensurable with the third. And, if the square on the first be greater than the square on the second by the square on a straight line incommensurable with the first, the square on the third will also be greater than the square on the fourth by the square on a straight line incommensurable with the third."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let A, B, C, D be four proportional straight lines (here 5, 3, 10, 6), and let the square on A be greater than the square on B by the square on E (E = 4, since 25 less 9 is 16), where E is commensurable with A. I say that the square on C is greater than the square on D by the square on a line F commensurable with C (F = 8)."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 3.5 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 2.1 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 7 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 4.2 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 2.8 -3.6",
+  "segment E e purple",
+  "point F 0 -4.5",
+  "point f 5.6 -4.5",
+  "segment F f teal",
+]
+
+[[step]]
+text = "Since A is to B as C is to D, the square on A is to the square on B as the square on C is to the square on D. Componendo/convertendo, the square on A is to the square on E as the square on C is to the square on F, where F² = C² − D². Hence A is to E as C is to F. Since A is commensurable with E, C is commensurable with F (X.11). The incommensurable case follows in the same way: A incommensurable with E gives C incommensurable with F."
+draw = [
+]

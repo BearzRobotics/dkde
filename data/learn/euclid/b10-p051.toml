@@ -1,0 +1,26 @@
+id = "X.51"
+book = 10
+order = 51
+title = "To find the fourth binomial"
+statement = "To find the fourth binomial straight line."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "The fourth binomial is the binomial with the greater term commensurable in length with the assigned rational line, and the square on the greater exceeding the square on the less by the square on a line incommensurable with the greater. It is required to find one. (Example: the terms 2 and the square root of 2 (the difference of squares is 2); the whole is 3.414.)"
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.4 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.99 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 2.39 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "Construction. Take two numbers whose sum is not a square, and proceed as for the first. Then the terms of the binomial are two rational straight lines commensurable in square only, with the stated relation to the assigned rational line and the stated excess of squares (X.29 and X.30 give the excess; X.6 and X.9 the commensurability). Then the sum is the fourth binomial straight line, as defined."
+draw = [
+]

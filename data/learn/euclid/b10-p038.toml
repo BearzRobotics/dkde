@@ -1,0 +1,26 @@
+id = "X.38"
+book = 10
+order = 38
+title = "The second bimedial"
+statement = "If two medial straight lines commensurable in square only and containing a medial rectangle be added together, the whole is irrational; and let it be called a second bimedial straight line."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let two medial straight lines AB, BC commensurable in square only and containing a medial rectangle be added together (here the fourth root of 2 and the square root of 3 over the fourth root of 2; their rectangle is the square root of 3). I say that AC is irrational, and is called a second bimedial straight line (its length is 2.505)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.832 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 1.02 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 1.852 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "As before, AB, BC are incommensurable in length, so AC is incommensurable with each (X.16). The square on AC is the squares on AB, BC with twice the rectangle AB, BC. The squares on AB, BC are medial and commensurable; twice the rectangle is medial; and the squares are incommensurable with the rectangle (since AB is incommensurable with BC). Let a rational line DE be set out and apply to it the areas: the breadths are rational and incommensurable with DE (X.22), and one of the two summands is incommensurable with the other. Then the sum is a binomial's breadth, which is irrational (X.36); so the square on AC is irrational and AC is irrational. It is called a second bimedial."
+draw = [
+]

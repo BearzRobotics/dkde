@@ -1,0 +1,26 @@
+id = "X.24"
+book = 10
+order = 24
+title = "Rectangle of two medial lines commensurable in length"
+statement = "A rectangle contained by medial straight lines commensurable in length is medial."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "For let the rectangle AB be contained by the medial straight lines A, B commensurable in length (here the fourth root of 2 and twice it). I say that the rectangle is medial."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.832 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.665 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.98 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Describe on A the square AC. Then AC is medial. Since A is commensurable in length with B, and A is equal to AD, the rectangle AB is to the square AC as B is to A (VI.1), a ratio of numbers (2 to 1). So the rectangle is commensurable with the medial area AC (X.6). But an area commensurable with a medial area is medial (the same argument as X.23). Therefore the rectangle AB is medial (here its area is twice the square root of 2)."
+draw = [
+]

@@ -1,0 +1,26 @@
+id = "X.44"
+book = 10
+order = 44
+title = "A second bimedial is divided at one point only"
+statement = "A second bimedial straight line is divided at one point only."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be a second bimedial divided at D (the terms are 1.189 and 1.316). I say that it is not divided at any other point into medial lines commensurable in square only containing a medial rectangle."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.852 0",
+  "segment AB ab blue",
+  "point AD 0 -0.9",
+  "point ad 0.832 -0.9",
+  "segment AD ad red",
+  "point DB 0 -1.8",
+  "point db 1.02 -1.8",
+  "segment DB db green",
+]
+
+[[step]]
+text = "Suppose it were also divided at E. Then the squares on AD, DB and AE, EB are medial, commensurable among themselves, and twice the rectangles are medial; with a rational line set out and the areas applied to it, the breadths of the squares are rational, those of the rectangles are rational and of the same kinds, so the division would give a binomial divided at two points, contrary to X.42. So a second bimedial is divided at one point only."
+draw = [
+]

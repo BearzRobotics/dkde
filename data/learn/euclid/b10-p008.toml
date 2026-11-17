@@ -1,0 +1,23 @@
+id = "X.8"
+book = 10
+order = 8
+title = "No ratio of numbers: incommensurable"
+statement = "If two magnitudes have not to one another the ratio which a number has to a number, the magnitudes will be incommensurable."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let the two magnitudes A, B not have to one another the ratio which a number has to a number. I say that A, B are incommensurable."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.99 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.7 -0.9",
+  "segment B b red",
+]
+
+[[step]]
+text = "For, if they were commensurable, A would have to B the ratio which a number has to a number (X.5). But it has not. Therefore A, B are incommensurable."
+draw = [
+]

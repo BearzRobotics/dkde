@@ -1,0 +1,26 @@
+id = "X.19"
+book = 10
+order = 19
+title = "A rational rectangle"
+statement = "The rectangle contained by rational straight lines commensurable in length is rational."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let the rational straight lines A, B (here 2 and 3, with the assigned rational line C = 1) be commensurable in length. I say that the rectangle contained by A, B is rational. (A rational area is one commensurable with the square on the assigned rational line.)"
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 2.1 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 0.7 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Describe on A the square AC. Then AC is rational, being the square on a rational line. Since A is commensurable in length with B, and A is equal to AD, the rectangle contained by A, B is to the square AC as B is to A (VI.1). Therefore the rectangle is to the square on A as the straight line B is to A, which is a ratio of numbers (3 to 2). So the rectangle is commensurable with the rational square AC (X.6). Therefore it is rational (here 2 times 3 = 6, commensurable with the unit square)."
+draw = [
+]

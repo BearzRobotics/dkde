@@ -1,0 +1,29 @@
+id = "X.32"
+book = 10
+order = 32
+title = "Two medial lines: second kind"
+statement = "To find two medial straight lines commensurable in square only, containing a rational rectangle, and such that the square on the greater is greater than the square on the less by the square on a straight line incommensurable in length with the greater."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let there be set out two rational straight lines A, B commensurable in square only, such that the square on A exceeds the square on B by the square on a line incommensurable with A (X.30; here 2 and the square root of 2). Let C be a mean proportional between A, B, and let A be to B as C is to D. I say that C, D are medial straight lines commensurable in square only, containing a rational rectangle, and that the square on C is greater than the square on D by the square on a straight line incommensurable with C."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 1.4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.99 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.177 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 0.832 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "As in the last proposition, C, D are medial straight lines commensurable in square only containing a rational rectangle. Since A is to B as C is to D, and the square on A exceeds the square on B by the square on a line incommensurable with A, the square on C exceeds the square on D by the square on a line incommensurable with C (X.14)."
+draw = [
+]

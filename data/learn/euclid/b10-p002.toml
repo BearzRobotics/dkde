@@ -1,0 +1,29 @@
+id = "X.2"
+book = 10
+order = 2
+title = "A test for incommensurability"
+statement = "If, when the less of two unequal magnitudes is continually subtracted in turn from the greater, that which is left never measures the one before it, the magnitudes will be incommensurable."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB, CD be two unequal magnitudes (here a diagonal of a square and its side, 1.4142 and 1), and let the less be continually subtracted in turn from the greater: 1.4142 less 1 leaves 0.4142; 1 less twice 0.4142 leaves 0.1716; and so on, never ending. I say that AB, CD are incommensurable."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.99 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 0.7 -0.9",
+  "segment CD cd red",
+  "point R1 0 -1.8",
+  "point r1 0.29 -1.8",
+  "segment R1 r1 green",
+  "point R2 0 -2.7",
+  "point r2 0.12 -2.7",
+  "segment R2 r2 orange",
+]
+
+[[step]]
+text = "If they were commensurable, some magnitude would measure both. Let it be E. Then CD, measuring BF, leaves AF less than itself; AF, measuring DG, leaves GC less than itself; and so on. E measures CD, which measures BF, so E measures BF; and E measures the whole AB, so it measures the remainder AF; and so on at each step, so E measures each of the remainders. But the remainders become less than E (X.1: continued subtraction of more than a half would leave less than any magnitude; here each remainder is less than half the preceding one). A magnitude cannot measure a smaller magnitude. This is absurd. Therefore AB, CD are incommensurable. (The same process on numbers must end, VII.1, so this is the test that separates lengths from numbers.)"
+draw = [
+]

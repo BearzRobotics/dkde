@@ -1,0 +1,26 @@
+id = "X.39"
+book = 10
+order = 39
+title = "The major line"
+statement = "If two straight lines incommensurable in square, which make the sum of the squares on them rational but the rectangle contained by them medial, be added together, the whole straight line is irrational; and let it be called major."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let the two straight lines AB, BC incommensurable in square, making the sum of the squares on them rational and the rectangle contained by them medial, be added together (as found in X.33: here AB = 1.848, BC = 0.765, the sum of squares is 4 and the rectangle is the square root of 2). I say that AC is irrational, and is called major (its length is 2.613)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.293 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.536 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 1.829 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "The square on AC is the squares on AB, BC (rational) together with twice the rectangle AB, BC (medial). A rational plus a medial area is irrational, since otherwise a medial area would equal a rational area less a rational area, i.e. be rational. So the square on AC is irrational and AC is irrational. It is called major."
+draw = [
+]

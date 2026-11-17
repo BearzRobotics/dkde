@@ -1,0 +1,26 @@
+id = "X.43"
+book = 10
+order = 43
+title = "A first bimedial is divided at one point only"
+statement = "A first bimedial straight line is divided at one point only."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be a first bimedial divided at D (the terms are 1.189 and 1.682). I say that it is not divided at any other point into two medial lines commensurable in square only containing a rational rectangle."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 2.01 0",
+  "segment AB ab blue",
+  "point AD 0 -0.9",
+  "point ad 0.832 -0.9",
+  "segment AD ad red",
+  "point DB 0 -1.8",
+  "point db 1.177 -1.8",
+  "segment DB db green",
+]
+
+[[step]]
+text = "Suppose also AE, EB are medial, commensurable in square only, containing a rational rectangle. Then, as in X.42, the squares on AD, DB exceed the squares on AE, EB by twice the rectangle AE, EB less twice the rectangle AD, DB, a difference of two rational areas, which is rational (X.19 and X.20 reversed); but each pair of squares is medial and a medial area does not exceed a medial area by a rational (X.26). This is impossible. So a first bimedial is divided at one point only."
+draw = [
+]

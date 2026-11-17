@@ -1,0 +1,26 @@
+id = "X.34"
+book = 10
+order = 34
+title = "Two lines: medial sum of squares, rational rectangle"
+statement = "To find two straight lines incommensurable in square which make the sum of the squares on them medial but the rectangle contained by them rational."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let there be set out two medial straight lines AB, BC commensurable in square only and containing a rational rectangle, such that the square on AB is greater than the square on BC by the square on a straight line incommensurable with AB (X.32). On AB describe the semicircle ADB, bisect BC at E, apply to AB a parallelogram equal to the square on BE and deficient by a square, namely the rectangle AF, FB, and draw FD at right angles to AB and join AD, DB. I say that AD, DB are incommensurable in square, that the sum of the squares on them is medial, and that the rectangle contained by them is rational."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.177 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.832 -0.9",
+  "segment BC bc red",
+  "point R 0 -1.8",
+  "point r 0.7 -1.8",
+  "segment R r green",
+]
+
+[[step]]
+text = "Since AF is incommensurable with FB (X.18), the squares on AD, DB, which are in that ratio, are incommensurable (as in X.33), so AD, DB are incommensurable in square. The sum of the squares on AD, DB is the square on AB, which is medial (AB is medial). The rectangle AD, DB equals the rectangle AB, DF (as before). Now DF is the mean of AF, FB and the rectangle AB, DF equals the rectangle AB, BE... equal to half of the rectangle AB, BC, which is rational. So the rectangle contained by AD, DB is rational."
+draw = [
+]

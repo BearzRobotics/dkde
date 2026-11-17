@@ -1,0 +1,26 @@
+id = "X.50"
+book = 10
+order = 50
+title = "To find the third binomial"
+statement = "To find the third binomial straight line."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "The third binomial is the binomial with neither term commensurable in length with the assigned rational line, and the square on the greater exceeding the square on the less by the square on a line commensurable with the greater. It is required to find one. (Example: the terms the square root of 2 and the square root of 3/2 (the difference of squares is 1/2); the whole is 2.639.)"
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.99 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.857 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 1.847 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "Construction. Take three numbers A, B, C not in the ratio of squares, with B to C a square ratio, and so that the terms are in the ratios found; the terms are then irrational and commensurable in square only. Then the terms of the binomial are two rational straight lines commensurable in square only, with the stated relation to the assigned rational line and the stated excess of squares (X.29 and X.30 give the excess; X.6 and X.9 the commensurability). Then the sum is the third binomial straight line, as defined."
+draw = [
+]

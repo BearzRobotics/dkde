@@ -1,0 +1,29 @@
+id = "X.33"
+book = 10
+order = 33
+title = "Two lines: rational sum of squares, medial rectangle"
+statement = "To find two straight lines incommensurable in square which make the sum of the squares on them rational but the rectangle contained by them medial."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let there be set out two rational straight lines AB, BC commensurable in square only, such that the square on AB is greater than the square on BC by the square on a straight line incommensurable with AB (X.30; here AB = 2, BC = the square root of 2). Let BC be bisected at D, apply to AB a parallelogram equal to the square on BD and deficient by a square, namely the rectangle AE, EB, and describe on AB the semicircle AFB; draw EF at right angles to AB and join AF, FB. I say that AF, FB are incommensurable in square, and make the sum of their squares rational and the rectangle contained by them medial."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.4 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.99 -0.9",
+  "segment BC bc red",
+  "point AD 0 -1.8",
+  "point ad 0.99 -1.8",
+  "segment AD ad green",
+  "point R 0 -2.7",
+  "point r 0.7 -2.7",
+  "segment R r orange",
+]
+
+[[step]]
+text = "Since AB is incommensurable in length with BC (the square on AB exceeds that on BC by a square on a line incommensurable with AB), AE is incommensurable with EB (X.18). Since, as AE is to EB, so is the rectangle BA, AE to the rectangle AB, BE, and these are equal to the squares on AF, FB (VI.8 corollary), the squares on AF, FB are incommensurable; so AF, FB are incommensurable in square. The sum of the squares on AF, FB is the square on AB (I.47), which is rational. The rectangle AF, FB equals the rectangle AB, EF (equal areas, I.35 and similar triangles), and EF is a mean proportional between AE, EB, so that the rectangle AB, EF is medial, since it is contained by the rational AB and EF, which is incommensurable in length with it. Therefore the rectangle AF, FB is medial."
+draw = [
+]

@@ -1,0 +1,26 @@
+id = "X.35"
+book = 10
+order = 35
+title = "Two lines: medial sum, medial rectangle, incommensurable"
+statement = "To find two straight lines incommensurable in square which make the sum of the squares on them medial and the rectangle contained by them medial and moreover incommensurable with the sum of the squares on them."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let there be set out two medial straight lines AB, BC commensurable in square only and containing a medial rectangle, such that the square on AB is greater than the square on BC by the square on a straight line incommensurable with AB (as in X.28: here AB = 1.457 and BC = 1.189, whose rectangle is the square root of 3, and the square on AB exceeds the square on BC by the square on a line incommensurable with AB). On AB describe the semicircle ADB, and do the rest as in X.34. I say that AD, DB are incommensurable in square, and make the sum of the squares on them medial and the rectangle contained by them medial and incommensurable with the sum of the squares."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.02 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.832 -0.9",
+  "segment BC bc red",
+  "point D 0 -1.8",
+  "point d 0.7 -1.8",
+  "segment D d green",
+]
+
+[[step]]
+text = "Since AB is incommensurable with BC, AF is incommensurable with FB, so AD, DB are incommensurable in square. The sum of the squares on them is the square on AB, which is medial. The rectangle AD, DB equals the rectangle AB, DF, and the rectangle AB, BE... since AB, BC contain a medial rectangle, so does the rectangle AB, BE, and the rectangle AD, DB is medial. And since the square on AB is incommensurable with the rectangle AB, BC (AB is incommensurable with BC), the sum of the squares on AD, DB is incommensurable with the rectangle AD, DB."
+draw = [
+]

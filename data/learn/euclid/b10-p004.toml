@@ -1,0 +1,29 @@
+id = "X.4"
+book = 10
+order = 4
+title = "Greatest common measure of three magnitudes"
+statement = "Given three commensurable magnitudes, to find their greatest common measure."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let A, B, C be the three given commensurable magnitudes (12, 18, 30). It is required to find their greatest common measure. Take the greatest common measure D of A, B (X.3): it is 6."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 8.4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 12.6 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 21 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 4.2 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "Then D either measures C or does not. If it measures C, it is the greatest common measure of A, B, C. If not, take the greatest common measure E of C, D (X.3). Since E measures D, and D measures A, B, E also measures A, B; and it measures C. So E is a common measure of A, B, C. It is the greatest: for any greater common measure F of A, B, C would measure A, B and so D, and measure C, so it would measure C, D and hence E, which is less, absurd. (Here D = 6 measures 30, so the answer is 6.)"
+draw = [
+]

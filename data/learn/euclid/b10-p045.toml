@@ -1,0 +1,26 @@
+id = "X.45"
+book = 10
+order = 45
+title = "A major line is divided at one point only"
+statement = "A major straight line is divided at one point only."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be a major straight line divided at D (the terms are 1.848 and 0.765). I say that it is not divided at any other point into lines incommensurable in square which make the sum of the squares rational and the rectangle medial."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.829 0",
+  "segment AB ab blue",
+  "point AD 0 -0.9",
+  "point ad 1.293 -0.9",
+  "segment AD ad red",
+  "point DB 0 -1.8",
+  "point db 0.536 -1.8",
+  "segment DB db green",
+]
+
+[[step]]
+text = "Suppose it were also divided at E in that way. The sums of squares are both rational, so their difference is rational; it equals twice the rectangle AE, EB less twice the rectangle AD, DB (II.4), a difference of two medial areas. But a medial area does not exceed a medial area by a rational (X.26). This is impossible. So a major line is divided at one point only."
+draw = [
+]

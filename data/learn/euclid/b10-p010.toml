@@ -1,0 +1,26 @@
+id = "X.10"
+book = 10
+order = 10
+title = "Lines incommensurable with a given line"
+statement = "To find two straight lines incommensurable, the one in length only, the other in square also, with an assigned straight line."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let A be the assigned straight line (take it as 1). It is required to find two straight lines incommensurable with A, the one in length only and the other in square also."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.7 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.99 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.212 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Set out two numbers D, E which have not to one another the ratio which a square number has to a square number, that is, which are not similar plane numbers (here 1 and 2 for the first line, and 1 and 3 for the second). Let it be that, as D is to E, so is the square on A to the square on B (VI.12 and X.6). Then the square on A is commensurable with the square on B. But D has not to E the ratio of a square number to a square number, so the square on A has not to the square on B that ratio, and therefore A is incommensurable in length with B (X.9). Here B is the square root of 2: commensurable in square with A (its square is double A's), incommensurable in length. Next take C a mean proportional between A, B (VI.13): the square on A is to the square on C as A is to B, which is not a ratio of numbers, so C is incommensurable with A both in length and in square (here C is the fourth root of 2, and its square is the square root of 2, incommensurable with A's square)."
+draw = [
+]

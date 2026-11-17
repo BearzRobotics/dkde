@@ -1,0 +1,29 @@
+id = "X.18"
+book = 10
+order = 18
+title = "Application deficient by a square: incommensurable parts"
+statement = "If there be two unequal straight lines, and to the greater there be applied a parallelogram equal to the fourth part of the square on the less and deficient by a square figure, and if it divide it into parts which are incommensurable, then the square on the greater will be greater than the square on the less by the square on a straight line incommensurable with the greater. And, if the square on the greater be greater than the square on the less by the square on a straight line incommensurable with the greater, and if there be applied to the greater a parallelogram equal to the fourth part of the square on the less and deficient by a square figure, it divides it into parts which are incommensurable."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let A, BC be two unequal straight lines, BC being the greater (here BC = 4 and A = 2), and apply to BC a parallelogram equal to the fourth part of the square on A and deficient by a square figure: BD times DC = 1 with BD + DC = 4, so BD = 2 + the square root of 3 and DC = 2 less the square root of 3. These are incommensurable. I say that the square on BC exceeds the square on A by the square on a line incommensurable with BC (here 16 less 4 = 12, the square on 2 times the square root of 3)."
+draw = [
+  "clear",
+  "point BC 0 0",
+  "point bc 2.8 0",
+  "segment BC bc blue",
+  "point A 0 -0.9",
+  "point a 1.4 -0.9",
+  "segment A a red",
+  "point BD 0 -1.8",
+  "point bd 2.612 -1.8",
+  "segment BD bd green",
+  "point DC 0 -2.7",
+  "point dc 0.188 -2.7",
+  "segment DC dc orange",
+]
+
+[[step]]
+text = "As in the preceding proposition, the square on BC exceeds the square on A by the square on BD less DC. Since BD, DC are incommensurable, BD less DC is incommensurable with BC (X.16). Therefore the line whose square is the excess is incommensurable with BC. The converse follows by reversing the argument. (Note that the preceding example, with the same proof, had commensurable parts and a commensurable excess.)"
+draw = [
+]

@@ -1,0 +1,32 @@
+id = "X.1"
+book = 10
+order = 1
+title = "Exhaustion"
+statement = "Two unequal magnitudes being set out, if from the greater there be subtracted a magnitude greater than its half, and from that which is left a magnitude greater than its half, and if this process be repeated continually, there will be left some magnitude which will be less than the lesser magnitude set out."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB, C be two unequal magnitudes of which AB is the greater (here 10 and 1.5). I say that if from AB there be subtracted a magnitude greater than its half, and from the remainder a magnitude greater than its half, and so on, there will be left some magnitude less than C."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 7 0",
+  "segment AB ab blue",
+  "point C 0 -0.9",
+  "point c 1.05 -0.9",
+  "segment C c red",
+  "point R1 0 -1.8",
+  "point r1 2.8 -1.8",
+  "segment R1 r1 green",
+  "point R2 0 -2.7",
+  "point r2 1.12 -2.7",
+  "segment R2 r2 orange",
+  "point R3 0 -3.6",
+  "point r3 0.42 -3.6",
+  "segment R3 r3 purple",
+]
+
+[[step]]
+text = "For some multiple of C will, if multiplied, sometime be greater than AB (V, definition 4). Let it be DE, divided into the parts DF, FG, GE equal to C, and from AB let BH be subtracted greater than its half, from AH let HK be subtracted greater than its half, and so on until the divisions in AB are equal in multitude with those in DE. Now, since DE is greater than AB, and from DE there has been subtracted EG less than its half, while from AB there has been subtracted BH greater than its half, the remainder GD is greater than the remainder HA; and the same holds at each step. So the remainder at the last step, AK, is less than the corresponding part DF, which is equal to C. Therefore the magnitude AK left is less than C. (This is the principle used in the method of exhaustion in Book XII.)"
+draw = [
+]

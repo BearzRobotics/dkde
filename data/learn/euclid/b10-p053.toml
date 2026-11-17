@@ -1,0 +1,26 @@
+id = "X.53"
+book = 10
+order = 53
+title = "To find the sixth binomial"
+statement = "To find the sixth binomial straight line."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "The sixth binomial is the binomial with neither term commensurable in length with the assigned rational line, and the square on the greater exceeding the square on the less by the square on a line incommensurable with the greater. It is required to find one. (Example: the terms the square root of 3 and the square root of 2 (the difference of squares is 1); the whole is 3.146.)"
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.212 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.99 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 2.202 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "Construction. Take numbers A, B, C so that the ratios are as for the third, with the first not to the second as a square. Then the terms of the binomial are two rational straight lines commensurable in square only, with the stated relation to the assigned rational line and the stated excess of squares (X.29 and X.30 give the excess; X.6 and X.9 the commensurability). Then the sum is the sixth binomial straight line, as defined."
+draw = [
+]

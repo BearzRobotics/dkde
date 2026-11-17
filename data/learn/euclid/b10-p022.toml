@@ -1,0 +1,26 @@
+id = "X.22"
+book = 10
+order = 22
+title = "The square on a medial line"
+statement = "The square on a medial straight line, if applied to a rational straight line, produces as breadth a straight line rational and incommensurable in length with that to which it is applied."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let A be a medial straight line (the fourth root of 2) and CB a rational straight line (1), and let the rectangle BD equal to the square on A be applied to CB, producing CD as breadth. I say that CD is rational and incommensurable in length with CB (here CD = the square root of 2)."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.832 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.7 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 0.99 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Since A is medial, the square on it is equal to a rectangle contained by rational straight lines commensurable in square only, say the lines EF, FG (1 and the square root of 2). So the rectangle BD, equal to it, is equal to the rectangle EF, FG. But the rectangle BD is the rectangle CB, CD; so, as CB is to EF, so is FG to CD. Now CB is commensurable with EF (both rational and, as the figure is set, equal), so FG is commensurable with CD (X.11). But FG is rational, so CD is rational. And since EF is incommensurable in length with FG, CB is incommensurable in length with CD, which is therefore incommensurable in length with CB."
+draw = [
+]

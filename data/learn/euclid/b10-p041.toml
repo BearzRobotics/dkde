@@ -1,0 +1,26 @@
+id = "X.41"
+book = 10
+order = 41
+title = "The side of the sum of two medial areas"
+statement = "If two straight lines incommensurable in square, which make the sum of the squares on them medial and the rectangle contained by them medial and moreover incommensurable with the sum of the squares on them, be added together, the whole straight line is irrational; and let it be called the side of the sum of two medial areas."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let the two straight lines AB, BC incommensurable in square, making the sum of the squares on them medial and the rectangle contained by them medial and incommensurable with the sum of the squares, be added together (as found in X.35: here 1.293 and 0.670). I say that AC is irrational, and is called the side of the sum of two medial areas (its length is 1.963)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.905 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.469 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 1.374 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "The square on AC is the squares on AB, BC together with twice the rectangle AB, BC; both parts are medial, and they are incommensurable with one another. Set out a rational line DE and apply to it the areas equal to them: the breadths are rational and incommensurable in length with DE (X.22) and incommensurable with one another (X.13), so their sum is a binomial, which is irrational (X.36). Therefore the square on AC is irrational and AC is irrational. It is called the side of the sum of two medial areas."
+draw = [
+]

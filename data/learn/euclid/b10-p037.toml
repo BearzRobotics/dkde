@@ -1,0 +1,26 @@
+id = "X.37"
+book = 10
+order = 37
+title = "The first bimedial"
+statement = "If two medial straight lines commensurable in square only and containing a rational rectangle be added together, the whole is irrational; and let it be called a first bimedial straight line."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let two medial straight lines AB, BC commensurable in square only and containing a rational rectangle be added together (here the fourth root of 2 and the fourth root of 8: their rectangle is 2). I say that AC is irrational, and is called a first bimedial straight line (its length is 2.871)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.832 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 1.177 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 2.01 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "Since AB is incommensurable in length with BC (they are commensurable in square only), AC is incommensurable with each (X.16). The square on AC is the squares on AB, BC with twice the rectangle AB, BC (II.4). The squares on AB, BC are medial (the squares on medial lines), commensurable with each other, and twice the rectangle is rational. A medial area added to a rational area gives an irrational area (as medial does not exceed rational by medial... X.26 and its companions). So the square on AC is irrational and AC is irrational. It is called a first bimedial."
+draw = [
+]

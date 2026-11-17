@@ -1,0 +1,26 @@
+id = "X.46"
+book = 10
+order = 46
+title = "The side of a rational plus a medial area is divided at one point only"
+statement = "The side of a rational plus a medial area is divided at one point only."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be the side of a rational plus a medial area, divided at D (the terms are 1.554 and 0.644). I say that it is not divided at any other point in the same way."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.539 0",
+  "segment AB ab blue",
+  "point AD 0 -0.9",
+  "point ad 1.088 -0.9",
+  "segment AD ad red",
+  "point DB 0 -1.8",
+  "point db 0.451 -1.8",
+  "segment DB db green",
+]
+
+[[step]]
+text = "Suppose it were also divided at E. Then the rectangles AD, DB and AE, EB are rational, so twice each is rational, and the difference of the sums of squares (the difference of two medial areas) equals the difference of two rational areas, a rational area. But a medial area does not exceed a medial area by a rational area (X.26). Impossible."
+draw = [
+]

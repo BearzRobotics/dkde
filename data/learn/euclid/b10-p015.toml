@@ -1,0 +1,26 @@
+id = "X.15"
+book = 10
+order = 15
+title = "Sums of commensurable magnitudes"
+statement = "If two commensurable magnitudes be added together, the whole will also be commensurable with each of them; and, if the whole be commensurable with one of them, the original magnitudes will also be commensurable."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "For let the two commensurable magnitudes AB, BC be added together (here 4 and 6). I say that the whole AC is commensurable with each of the magnitudes AB, BC."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 2.8 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 4.2 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 7 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "Since AB, BC are commensurable, some magnitude will measure them. Let it measure them, and let it be D. Since D measures AB, BC, it will also measure the whole AC. But it also measures AB, BC. Therefore D measures AB, BC, AC. Therefore AC is commensurable with each of AB, BC (here D = 2). Next let AC be commensurable with AB. I say that AB, BC are commensurable. For some magnitude will measure AC, AB; let it be D. Since D measures CA, AB, it will also measure the remainder BC. But it also measures AB. Therefore D measures AB, BC. Therefore AB, BC are commensurable."
+draw = [
+]

@@ -1,0 +1,29 @@
+id = "X.17"
+book = 10
+order = 17
+title = "Application deficient by a square: commensurable parts"
+statement = "If there be two unequal straight lines, and to the greater there be applied a parallelogram equal to the fourth part of the square on the less and deficient by a square figure, and if it divide it into parts which are commensurable in length, then the square on the greater will be greater than the square on the less by the square on a straight line commensurable with the greater. And, if the square on the greater be greater than the square on the less by the square on a straight line commensurable with the greater, and if there be applied to the greater a parallelogram equal to the fourth part of the square on the less and deficient by a square figure, it divides it into parts which are commensurable in length."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let A, BC be two unequal straight lines of which BC is the greater (here 5 and 3, so BC = 5 and A = 3). Apply to BC a parallelogram equal to the fourth part of the square on A (that is 9/4) and deficient by a square figure: this is the rectangle BD, DC with BD times DC = 9/4 and BD + DC = 5. Then BD = 4.5, DC = 0.5? (In numbers: x(5 - x) = 9/4 gives x = 4.5 or 0.5, so BD = 4.5 and DC = 0.5.) These are commensurable in length. I say that the square on BC is greater than the square on A by the square on a line commensurable with BC."
+draw = [
+  "clear",
+  "point BC 0 0",
+  "point bc 3.5 0",
+  "segment BC bc blue",
+  "point A 0 -0.9",
+  "point a 2.1 -0.9",
+  "segment A a red",
+  "point BD 0 -1.8",
+  "point bd 3.15 -1.8",
+  "segment BD bd green",
+  "point DC 0 -2.7",
+  "point dc 0.35 -2.7",
+  "segment DC dc orange",
+]
+
+[[step]]
+text = "Let BC be bisected at E. Then the rectangle BD, DC together with the square on ED is equal to the square on EC (II.5). Multiply by four: four times the rectangle plus four times the square on ED equals four times the square on EC, i.e. the square on A plus the square on 2ED equals the square on BC. So the square on BC exceeds the square on A by the square on BD less DC, that is 2ED. Since BD, DC are commensurable, BD less DC is commensurable with BC (X.15), so the line whose square is the excess is commensurable with BC. (Here 25 less 9 = 16 = 4 squared, and 4 is commensurable with 5.) The converse is proved by reversing the steps."
+draw = [
+]

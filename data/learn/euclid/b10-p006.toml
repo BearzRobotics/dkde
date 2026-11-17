@@ -1,0 +1,26 @@
+id = "X.6"
+book = 10
+order = 6
+title = "A ratio of numbers gives commensurable magnitudes"
+statement = "If two magnitudes have to one another the ratio which a number has to a number, the magnitudes will be commensurable."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let the two magnitudes A, B have to one another the ratio which the number D has to the number E (here 3 to 2). I say that A, B are commensurable."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 8.4 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 5.6 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2.8 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Let A be divided into as many equal parts as there are units in D, and let one of them be C. Let F be made up of as many magnitudes equal to C as there are units in E. Since there are as many magnitudes in A equal to C as there are units in D, whatever part the unit is of D, the same part is C of A. Therefore, as C is to A, so is the unit to D. But, as A is to B, so is D to E. So, ex aequali, as C is to B, so is the unit to E. But the unit measures E; therefore C measures B. And C measures A. Therefore C measures A, B, so A, B are commensurable."
+draw = [
+]

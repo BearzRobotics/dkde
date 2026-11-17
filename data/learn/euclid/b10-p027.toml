@@ -1,0 +1,29 @@
+id = "X.27"
+book = 10
+order = 27
+title = "Medial lines containing a rational rectangle"
+statement = "To find medial straight lines commensurable in square only which contain a rational rectangle."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let there be set out two rational straight lines A, B commensurable in square only (1 and the square root of 2), and let C be taken a mean proportional between them (the fourth root of 2), and let it be that, as A is to B, so is C to D (so D is the fourth root of 8). I say that C, D are medial straight lines commensurable in square only which contain a rational rectangle."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.7 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.99 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 0.832 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 1.177 -2.7",
+  "segment D d orange",
+]
+
+[[step]]
+text = "C is medial, being the side of a square equal to the rectangle A, B (X.21). And D is medial, being commensurable with C (since C is to D as A to B... C² to D² = A²·... ). Since, as A is to B, so is C to D, alternately as A is to C, so is B to D; so the squares: the lines C, D are commensurable in square only because A, B are. Next, as A is to B so is C to D, and C is the mean between A and B, so the rectangle C, D equals the rectangle contained by B and... : by the proportion, C·D = B·B·... For these numbers C·D = 2^{1/4}·2^{3/4} = 2, which is rational. Therefore C, D are medial lines commensurable in square only which contain a rational rectangle."
+draw = [
+]

@@ -1,0 +1,26 @@
+id = "X.21"
+book = 10
+order = 21
+title = "The medial line"
+statement = "The rectangle contained by rational straight lines commensurable in square only is irrational, and the side of the square equal to it is irrational. Let the latter be called medial."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let A, B be rational straight lines commensurable in square only (here 1 and the square root of 2). I say that the rectangle contained by A, B is irrational, and the side of the square equal to it is irrational, namely the line called medial (here the fourth root of 2, about 1.189)."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.7 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.99 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 0.832 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Describe on A the square AC. Then AC is rational. Since A is incommensurable in length with B, the rectangle contained by A, B is to the square on A as B is to A (VI.1), which is not the ratio of a number to a number (X.8 backwards: incommensurable). So the rectangle is incommensurable with the square AC, which is rational; therefore it is irrational (here its area is the square root of 2). And the side of the square equal to it is irrational: for if it were rational its square would be rational. Call it medial, since it is a mean proportional between A and B (VI.13)."
+draw = [
+]

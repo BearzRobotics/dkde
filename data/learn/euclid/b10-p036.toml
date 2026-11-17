@@ -1,0 +1,26 @@
+id = "X.36"
+book = 10
+order = 36
+title = "The binomial"
+statement = "If two rational straight lines commensurable in square only be added together, the whole is irrational; and let it be called binomial."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let the two rational straight lines AB, BC commensurable in square only be added together (here 2 and the square root of 3). I say that the whole AC is irrational, and that it is called a binomial straight line (here its length is 3.732)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.4 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 1.212 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 2.612 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "Since AB is incommensurable in length with BC (they are commensurable in square only), AB, BC are incommensurable, so AC is incommensurable with each of them (X.16). But then, also, the rectangle AB, BC is irrational (X.21), and the square on AC is the squares on AB, BC together with twice the rectangle AB, BC (II.4). The squares on AB, BC are rational; twice the rectangle is irrational (medial). A rational plus an irrational is irrational: for if the sum were rational, the irrational part, being the excess of a rational area over a rational one, would be rational (X.19 and its converse). So the square on AC is irrational, and AC is irrational. It is called binomial because it is made of two names, AB and BC."
+draw = [
+]

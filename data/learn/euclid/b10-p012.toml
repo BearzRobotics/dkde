@@ -1,0 +1,26 @@
+id = "X.12"
+book = 10
+order = 12
+title = "Commensurable with the same"
+statement = "Magnitudes commensurable with the same magnitude are commensurable with one another also."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "For let each of the magnitudes A, B be commensurable with C (here 6 and 9 with 3). I say that A is also commensurable with B."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 4.2 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 6.3 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 2.1 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Since A is commensurable with C, A has to C the ratio which a number has to a number (X.5), say D to E. Again, since C is commensurable with B, C has to B the ratio which a number has to a number, say F to G. Take numbers H, K, L in continued proportion in the ratios D to E and F to G (VIII.4). Then, as A is to C, so is D to E, and so is H to K; and, as C is to B, so is F to G, and so is K to L. Therefore, ex aequali, as A is to B, so is H to L. Therefore A has to B the ratio which a number has to a number, and so A is commensurable with B (X.6)."
+draw = [
+]

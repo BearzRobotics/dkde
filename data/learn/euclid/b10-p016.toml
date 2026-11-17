@@ -1,0 +1,26 @@
+id = "X.16"
+book = 10
+order = 16
+title = "Sums of incommensurable magnitudes"
+statement = "If two incommensurable magnitudes be added together, the whole will also be incommensurable with each of them; and, if the whole be incommensurable with one of them, the original magnitudes will also be incommensurable."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "For let the two incommensurable magnitudes AB, BC be added together (a side of a square and its diagonal, 1 and 1.4142). I say that the whole AC is incommensurable with each of the magnitudes AB, BC."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.7 0",
+  "segment AB ab blue",
+  "point BC 0 -0.9",
+  "point bc 0.99 -0.9",
+  "segment BC bc red",
+  "point AC 0 -1.8",
+  "point ac 1.69 -1.8",
+  "segment AC ac green",
+]
+
+[[step]]
+text = "For, if CA, AB are not incommensurable, some magnitude will measure them. Let it, if possible, measure them, and let it be D. Since D measures CA, AB, it will also measure the remainder BC. But it also measures AB. Therefore D measures AB, BC. Therefore AB, BC are commensurable. But they were also supposed incommensurable, which is impossible. Therefore no magnitude will measure CA, AB. Therefore CA, AB are incommensurable. Similarly we can prove that AC, CB are incommensurable. The converse is proved the same way: if AC is incommensurable with AB, then AB, BC are incommensurable, for otherwise (X.15) AC would be commensurable with AB."
+draw = [
+]

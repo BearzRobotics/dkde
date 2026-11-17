@@ -1,0 +1,26 @@
+id = "X.3"
+book = 10
+order = 3
+title = "Greatest common measure of two magnitudes"
+statement = "Given two commensurable magnitudes, to find their greatest common measure."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB, CD be the two given commensurable magnitudes (12 and 8), of which AB is the less... take AB as 8 and CD as 12 if needed. It is required to find their greatest common measure."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 8.4 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 5.6 -0.9",
+  "segment CD cd red",
+  "point CF 0 -1.8",
+  "point cf 2.8 -1.8",
+  "segment CF cf green",
+]
+
+[[step]]
+text = "Subtract the less from the greater in turn: 12 less 8 leaves 4, and 4 measures 8. If the remainder measures the one before it, it is the greatest common measure; for it measures both (it measures the one before it, and so the one before that, and so on back to AB, CD), and no greater magnitude can measure both, since it would measure the remainder, the greater the less. The process must end because the magnitudes are commensurable: if it never ended they would be incommensurable (X.2). (Corollary: a magnitude measuring two magnitudes measures their greatest common measure.)"
+draw = [
+]

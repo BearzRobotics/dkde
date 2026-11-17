@@ -1,0 +1,32 @@
+id = "X.28"
+book = 10
+order = 28
+title = "Medial lines containing a medial rectangle"
+statement = "To find medial straight lines commensurable in square only which contain a medial rectangle."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let there be set out three rational straight lines A, B, C commensurable in square only (1, the square root of 2, the square root of 3), and let D be taken a mean proportional between A, B (D = the fourth root of 2), and let it be that, as B is to C, so is D to E. I say that D, E are medial straight lines commensurable in square only which contain a medial rectangle."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.7 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.99 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.212 -1.8",
+  "segment C c green",
+  "point D 0 -2.7",
+  "point d 0.832 -2.7",
+  "segment D d orange",
+  "point E 0 -3.6",
+  "point e 1.02 -3.6",
+  "segment E e purple",
+]
+
+[[step]]
+text = "D is medial (X.21). Since B is to C as D is to E, and B, C are commensurable in square only, D, E are commensurable in square only (the ratio of squares is the ratio of the squares on B, C), and E is commensurable with a medial line... so E is medial (X.23). Further, since B is to C as D is to E, alternately as B is to D so is C to E; but B is to D as D is to A; therefore, as D is to A, so is C to E, so the rectangle A, C is equal to the rectangle D, E. But the rectangle A, C is medial (X.21), as the rectangle of rational lines commensurable in square only. So the rectangle D, E is medial (here its area is the square root of 3)."
+draw = [
+]

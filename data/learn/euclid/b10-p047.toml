@@ -1,0 +1,26 @@
+id = "X.47"
+book = 10
+order = 47
+title = "The side of the sum of two medial areas is divided at one point only"
+statement = "The side of the sum of two medial areas is divided at one point only."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be the side of the sum of two medial areas, divided at D (the terms are 1.293 and 0.670). I say that it is not divided at any other point in the same way."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 1.374 0",
+  "segment AB ab blue",
+  "point AD 0 -0.9",
+  "point ad 0.905 -0.9",
+  "segment AD ad red",
+  "point DB 0 -1.8",
+  "point db 0.469 -1.8",
+  "segment DB db green",
+]
+
+[[step]]
+text = "Suppose it were also divided at E. Since AD, DB and AE, EB make the sums of squares medial and the rectangles medial and incommensurable with the sums, set out a rational line and apply the areas: the squares on AD, DB give breadths which are rational and incommensurable, and twice the rectangle AD, DB gives a breadth of the same kind, and likewise for AE, EB. The equal areas then give a binomial divided at two points, contrary to X.42. Impossible."
+draw = [
+]

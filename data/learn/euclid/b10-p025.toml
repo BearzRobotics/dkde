@@ -1,0 +1,26 @@
+id = "X.25"
+book = 10
+order = 25
+title = "Rectangle of two medial lines commensurable in square only"
+statement = "A rectangle contained by medial straight lines commensurable in square only is either rational or medial."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "For let the rectangle AC be contained by medial straight lines AB, BC commensurable in square only (here the fourth root of 2 and its cube-like partner, the fourth root of 8; their rectangle is the rational area 2). I say that the rectangle AC is either rational or medial."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.832 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 1.177 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 1.4 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Describe on AB, BC the squares AD, BE. Each is medial. Set out a rational straight line FG, and apply to FG the rectangle GH equal to AD, producing FH as breadth, and to HM the rectangle MK equal to the rectangle AC, producing HK, and then NO equal to BE. Then FH, HK, KL are rational and incommensurable with FG... Since AD, BE are commensurable (the lines are commensurable in square), FH is commensurable in length with KL. And since AD, AC, BE are in the ratio of AB, BC, FH, HK, KL are in continued proportion: HK is a mean proportional between FH, KL. So the rectangle FH, KL is equal to the square on HK. Now either FH, KL are commensurable in length or not; if they are, HK is commensurable with them and rational, so the rectangle AC is rational; if not, HK is medial and so is the rectangle AC. In the example the first case occurs: the rectangle is 2."
+draw = [
+]

@@ -1,0 +1,26 @@
+id = "X.58"
+book = 10
+order = 58
+title = "The area on the fifth binomial"
+statement = "If an area be contained by a rational straight line and the fifth binomial, the side of the square equal to the area is the irrational straight line which is called side of a rational plus a medial area."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let the area be contained by the rational straight line AB (here 1) and the fifth binomial AD, divided into its terms at E, AE being the greater (here AD = 2.732). I say that the side of the square equal to the area is the side of a rational plus a medial area (here 1.653)."
+draw = [
+  "clear",
+  "point R 0 0",
+  "point r 0.7 0",
+  "segment R r blue",
+  "point AD 0 -0.9",
+  "point ad 1.912 -0.9",
+  "segment AD ad red",
+  "point AB 0 -1.8",
+  "point ab 1.157 -1.8",
+  "segment AB ab green",
+]
+
+[[step]]
+text = "Bisect ED at F, and apply to AE a rectangle AG, GE equal to the square on EF and deficient by a square (VI.28). Let x be the side of the square equal to the rectangle AB, AG, and y the side of the square equal to the rectangle AB, GE. Then x squared plus y squared is the rectangle AB, AE, and twice xy is twice AB times EF, which is the rectangle AB, ED. So the square on x + y is the rectangle AB, AE plus the rectangle AB, ED, that is, the rectangle AB, AD: the side of the square equal to the area is x + y. Here x and y are incommensurable in square, the sum of their squares AB times AE is medial and xy = AB times EF is rational, so x + y is the side of a rational plus a medial area (X.40). Therefore the side of the area is the side of a rational plus a medial area."
+draw = [
+]
