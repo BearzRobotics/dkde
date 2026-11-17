@@ -1,0 +1,26 @@
+id = "X.113"
+book = 10
+order = 113
+title = "A rational square applied to an apotome"
+statement = "The square on a rational straight line, if applied to an apotome, produces as breadth a binomial whose terms are commensurable with the terms of the apotome and in the same ratio; and further the binomial so arising has the same order as the apotome."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let A be a rational straight line (1) and BD an apotome with the whole BC and annex CD (here 2 less the square root of 3). Apply to BD the rectangle equal to the square on A, producing the breadth EF. I say that EF is a binomial whose terms are commensurable with BC, CD in the same ratio, and of the same order (here 1 divided by 0.268 is 2 plus the square root of 3)."
+draw = [
+  "clear",
+  "point R 0 0",
+  "point r 0.7 0",
+  "segment R r blue",
+  "point AB 0 -0.9",
+  "point ab 0.188 -0.9",
+  "segment AB ab red",
+  "point GH 0 -1.8",
+  "point gh 2.612 -1.8",
+  "segment GH gh green",
+]
+
+[[step]]
+text = "Let GH be the binomial whose terms are BC, CD. The product of the binomial and the apotome is the difference of the squares on BC, CD, a rational area. So the square on A has to it the ratio of a number to a number; the breadth EF has to the binomial GH the ratio of a number to a number, so EF is commensurable with GH, with terms commensurable with BC, CD in the same ratio. A line commensurable with a binomial is a binomial of the same order (X.66). Therefore EF is a binomial of the same order as the apotome."
+draw = [
+]

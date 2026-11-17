@@ -24,7 +24,7 @@ carries out the steps).
 | VII | Number theory: gcd, primes | 39 | done (all 39; numbers are drawn as bars) |
 | VIII | Continued proportion in numbers | 27 | done (all 27; numbers are drawn as bars) |
 | IX | Numbers: primes are infinite, perfect numbers | 36 | done (all 36) |
-| X | Incommensurables | 115 | |
+| X | Incommensurables | 115 | done (all 115; the long classification proofs are given in outline, with numeric examples) |
 | XI | Solid geometry | 39 | done (all 39, in the 3D view) |
 | XII | Areas and volumes by exhaustion | 18 | done (all 18) |
 | XIII | The five regular solids | 18 | done (all 18; XIII.6-11 give Euclid's idea and a numeric check) |

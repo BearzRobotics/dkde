@@ -1,0 +1,26 @@
+id = "X.110"
+book = 10
+order = 110
+title = "A medial area subtracted from a medial area"
+statement = "If from a medial area there be subtracted a medial area incommensurable with the whole, the remaining two irrational straight lines arise, either a second apotome of a medial straight line or a straight line which produces with a medial area a medial whole."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let BC be a medial area and BD a medial area incommensurable with BC subtracted from it (here the square root of 3 and the square root of 2; the remainder is 0.318, with side 0.564). I say that the side of the remainder becomes either a second apotome of a medial or a straight line which produces with a medial area a medial whole."
+draw = [
+  "clear",
+  "point BC 0 0",
+  "point bc 1.212 0",
+  "segment BC bc blue",
+  "point BD 0 -0.9",
+  "point bd 0.99 -0.9",
+  "segment BD bd red",
+  "point FG 0 -1.8",
+  "point fg 0.222 -1.8",
+  "segment FG fg green",
+]
+
+[[step]]
+text = "Set out a rational straight line FG, and apply GH equal to BC and GK equal to BD. Then FH, FK are rational and incommensurable with FG (X.22) and with one another (X.13). So FH, FK are commensurable in square only and KH is an apotome neither of whose terms is commensurable with FG: a third apotome if the excess is commensurable (X.87), a sixth if incommensurable (X.90). The sides of the corresponding areas are a second apotome of a medial (X.93) or a straight line which produces with a medial area a medial whole (X.96). Therefore the side of the remainder is one of these two."
+draw = [
+]

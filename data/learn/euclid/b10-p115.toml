@@ -1,0 +1,26 @@
+id = "X.115"
+book = 10
+order = 115
+title = "Infinitely many irrational lines from a medial"
+statement = "From a medial straight line there arise irrational straight lines infinite in number, and none of them is the same as any preceding."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let A be a medial straight line (the fourth root of 2, 1.189). I say that from A there arise irrational straight lines infinite in number, and none of them is the same as any preceding."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point a 0.832 0",
+  "segment A a blue",
+  "point B 0 -0.9",
+  "point b 0.763 -0.9",
+  "segment B b red",
+  "point C 0 -1.8",
+  "point c 0.731 -1.8",
+  "segment C c green",
+]
+
+[[step]]
+text = "Set out a rational straight line B, and let the square on C be equal to the rectangle B, A (VI.13, a mean proportional). Then C is irrational, since the rectangle of a rational and an irrational line is irrational. It is not the same as any preceding line: for the square on C, applied to B, produces A as breadth, and a medial line A is not the same as the preceding lines of which the squares produce rational breadths (the squares on the apotome and binomial lines produce binomials and apotomes, X.60 to X.65 and X.97 to X.102; the square on a medial produces a rational breadth, X.22). Again, let the square on D be equal to the rectangle B, C: D is irrational, different from all the preceding ones, and so on without end. Therefore from a medial straight line there arise irrational straight lines infinite in number, and none of them is the same as any preceding. (In the figure: the fourth root of 2, its square root, and so on: the eighth, sixteenth roots of 2 are all irrational and all different.)"
+draw = [
+]

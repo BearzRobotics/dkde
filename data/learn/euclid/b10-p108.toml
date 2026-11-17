@@ -1,0 +1,26 @@
+id = "X.108"
+book = 10
+order = 108
+title = "A medial area subtracted from a rational area"
+statement = "If from a rational area a medial area be subtracted, the side of the remainder becomes one of two irrational straight lines, either an apotome or a minor straight line."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let BC be a rational area and BD a medial area subtracted from it (here 4 and the square root of 3 in square units; the remainder is 2.268, with side 1.506). I say that the side of the remainder EC becomes either an apotome or a minor straight line."
+draw = [
+  "clear",
+  "point BC 0 0",
+  "point bc 1.4 0",
+  "segment BC bc blue",
+  "point BD 0 -0.9",
+  "point bd 1.212 -0.9",
+  "segment BD bd red",
+  "point FG 0 -1.8",
+  "point fg 0.188 -1.8",
+  "segment FG fg green",
+]
+
+[[step]]
+text = "Set out a rational straight line FG and apply to it the rectangle GH equal to BC and GK equal to BD. Then FH is rational and commensurable with FG, and FK is rational and incommensurable with FG (X.20, X.22). So FH, FK are commensurable in square only, and the remainder KH is an apotome (X.73), the annex being FK. The square on the whole FH exceeds that on the annex by the square on a line commensurable or incommensurable with FH. If commensurable, then the whole FH being commensurable with FG, KH is a first apotome, and the side of the area is an apotome (X.91). If incommensurable, KH is a fourth apotome, and the side of the area is minor (X.94). Therefore the side of the remainder is one of the two."
+draw = [
+]

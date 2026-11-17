@@ -1,0 +1,23 @@
+id = "X.111"
+book = 10
+order = 111
+title = "The apotome is not the binomial"
+statement = "The apotome is not the same with the binomial."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be an apotome (here 2 less the square root of 3, 0.268). I say that AB is not the same with a binomial (here 2 plus the square root of 3, 3.732)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.188 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 2.612 -0.9",
+  "segment CD cd red",
+]
+
+[[step]]
+text = "Euclid's proof. If possible let it be a binomial. Set out a rational straight line CD, and apply to it the rectangle equal to the square on AB, producing a breadth. Since AB is an apotome, the breadth is a first apotome (X.97); and since AB would be a binomial, the same breadth is a first binomial (X.60). So the one line would be both a first apotome and a first binomial. Divide it as an apotome, into the whole DF and annex FE, and as a binomial into its terms: the same line would be the difference of two rational lines commensurable in square only and also the sum of two such lines. A binomial is divided into its terms at one point only (X.42) and an apotome has one annex only (X.79); comparing the two ways of dividing the same line, the rational lines in one would be commensurable with the rational lines of the other in length and also not, which is impossible. Therefore the apotome is not the same as the binomial."
+draw = [
+]

@@ -1,0 +1,32 @@
+id = "X.97"
+book = 10
+order = 97
+title = "The square on the apotome"
+statement = "The square on an apotome, if applied to a rational straight line, produces as breadth the first apotome."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be an apotome with the annex BC, and let a rational straight line DE be set out. Apply to DE the rectangle DF equal to the square on AB, producing DG as breadth. I say that DG is the first apotome. Example: (2 less the square root of 3) squared is 7 less 4 times the square root of 3 (terms 7.000 and 6.928, the remainder 0.072)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.188 0",
+  "segment AB ab blue",
+  "point R 0 -0.9",
+  "point r 0.7 -0.9",
+  "segment R r red",
+  "point GH 0 -1.8",
+  "point gh 4.9 -1.8",
+  "segment GH gh green",
+  "point HK 0 -2.7",
+  "point hk 4.85 -2.7",
+  "segment HK hk orange",
+  "point GK 0 -3.6",
+  "point gk 0.05 -3.6",
+  "segment GK gk purple",
+]
+
+[[step]]
+text = "The square on AB is the squares on AC, CB (the whole and the annex) less twice the rectangle AC, CB (II.7). Apply to DE the areas equal to the squares and to twice the rectangle: the breadth for the squares is a sum of two terms, and the breadth for the twice-rectangle is the annex to it. As in X.60 to X.65 the breadths are rational lines with the commensurabilities with DE and the excess relations belonging to the first apotome (X.20, X.22, X.14); their difference is an apotome (X.73) of the first kind. Therefore DG is the first apotome."
+draw = [
+]

@@ -1,0 +1,26 @@
+id = "X.114"
+book = 10
+order = 114
+title = "An apotome and a binomial: the area is rational"
+statement = "If an area be contained by an apotome and the binomial the terms of which are commensurable with the terms of the apotome and in the same ratio, the side of the area is rational."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let the area be contained by the apotome AB (here 2 less the square root of 3) and the binomial CD (2 plus the square root of 3) whose terms are commensurable with the terms of the apotome and in the same ratio. I say that the side of the area is rational (here the area is 1 and the side 1)."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.188 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 2.612 -0.9",
+  "segment CD cd red",
+  "point E 0 -1.8",
+  "point e 0.7 -1.8",
+  "segment E e green",
+]
+
+[[step]]
+text = "By the preceding proposition, a rational square applied to the apotome produces as breadth a binomial commensurable with CD, with terms in the same ratio. So the rectangle contained by the apotome and the binomial CD has to the rational square the ratio of a number to a number, so it is a rational area (X.6). Therefore the side of the square equal to it is rational. (Corollary: a rational area can be contained by irrational straight lines.)"
+draw = [
+]

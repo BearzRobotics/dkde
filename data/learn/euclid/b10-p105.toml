@@ -1,0 +1,23 @@
+id = "X.105"
+book = 10
+order = 105
+title = "Commensurable with the minor straight line"
+statement = "A straight line commensurable in length with a minor straight line is also minor."
+proof = "Q.E.D. (Lengths in the figure are drawn to scale with the rational line taken as 1.)"
+
+[[step]]
+text = "Let AB be a minor straight line and let CD be commensurable in length with AB (here 1.082 and 0.541). I say that CD is minor."
+draw = [
+  "clear",
+  "point AB 0 0",
+  "point ab 0.758 0",
+  "segment AB ab blue",
+  "point CD 0 -0.9",
+  "point cd 0.379 -0.9",
+  "segment CD cd red",
+]
+
+[[step]]
+text = "Let BE be the annex to AB, and make CF the annex to CD in the same ratio as BE is to AB, that is, as AB is to CD, so is BE to DF (VI.12). Then AE is to CF as BE is to DF, and the whole AE has to the whole CF the ratio of AB to CD; so the lines are commensurable with one another throughout (X.11). The whole and annex of CD are therefore commensurable in length with the whole and annex of AB and have the same commensurabilities with the assigned rational line and the same excess relation (X.12, X.13, X.14). Therefore CD is of the same kind and order as AB."
+draw = [
+]
