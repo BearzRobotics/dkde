@@ -1,0 +1,72 @@
+id = "Common notions"
+book = 0
+order = 3
+title = "The five common notions"
+statement = "Besides the postulates, Euclid asks for five things that need no argument."
+
+[[step]]
+text = "1. Things which are equal to the same thing are also equal to one another."
+draw = [
+  "clear",
+  "point A -4 2",
+  "point B -1 2",
+  "point C -4 0",
+  "point D -1 0",
+  "point E -4 -2",
+  "point F -1 -2",
+  "segment A B blue",
+  "segment C D blue",
+  "segment E F blue",
+]
+
+[[step]]
+text = "2. If equals be added to equals, the wholes are equal."
+draw = [
+  "clear",
+  "point A -4 1",
+  "point B -1 1",
+  "point C 2 1",
+  "point D -4 -1",
+  "point E -1 -1",
+  "point F 2 -1",
+  "segment A B blue",
+  "segment B C green",
+  "segment D E blue",
+  "segment E F green",
+]
+
+[[step]]
+text = "3. If equals be subtracted from equals, the remainders are equal."
+draw = [
+  "clear",
+  "point A -4 1",
+  "point B 0 1",
+  "point C 3 1",
+  "point D -4 -1",
+  "point E -1 -1",
+  "point F 3 -1",
+  "segment A B red",
+  "segment B C red",
+  "segment D E red",
+  "segment E F red",
+]
+
+[[step]]
+text = "4. Things which coincide with one another are equal to one another."
+draw = [
+  "clear",
+  "point A -2 0",
+  "point B 2 0",
+  "circle A B blue fill",
+]
+
+[[step]]
+text = "5. The whole is greater than the part."
+draw = [
+  "clear",
+  "point A -4 0",
+  "point B 0 0",
+  "point C 3 0",
+  "segment A B blue",
+  "segment B C orange",
+]

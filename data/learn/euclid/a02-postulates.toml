@@ -1,0 +1,85 @@
+id = "Postulates"
+book = 0
+order = 2
+title = "The five postulates"
+statement = "Let the following be postulated: what we are allowed to ask for, before any proof begins."
+
+[[step]]
+text = "1. To draw a straight line from any point to any point."
+draw = [
+  "clear",
+  "point A -3 -1",
+  "point B 3 1.5",
+  "segment A B blue",
+]
+
+[[step]]
+text = "2. To produce a finite straight line continuously in a straight line."
+draw = [
+  "clear",
+  "point A -3 -1",
+  "point B 0 0.5",
+  "segment A B blue",
+  "point C 4.5 1.75",
+  "segment B C red",
+]
+
+[[step]]
+text = "3. To describe a circle with any centre and distance."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 2.5 0",
+  "circle A B blue",
+  "segment A B red",
+]
+
+[[step]]
+text = "4. That all right angles are equal to one another."
+draw = [
+  "clear",
+  "point A -5 2",
+  "point B -1 2",
+  "point C -3 2",
+  "point D -3 5",
+  "segment A B blue",
+  "segment C D blue",
+  "angle B C D green fill",
+  "point E 1 -2",
+  "point F 5 -2",
+  "point G 3 -2",
+  "point H 3 1",
+  "segment E F red",
+  "segment G H red",
+  "angle F G H green fill",
+]
+
+[[step]]
+text = "5. That, if a straight line falling on two straight lines makes the interior angles on the same side less than two right angles, the two straight lines, if produced indefinitely, meet on that side on which are the angles less than two right angles."
+draw = [
+  "clear",
+  "point A -5 3",
+  "point B 4 1",
+  "point C -5 -1.5",
+  "point D 4 0.5",
+  "point E -3 4",
+  "point F -3 -3",
+  "line A B blue",
+  "line C D red",
+  "line E F black",
+]
+
+[[step]]
+text = "The two angles on the right of the transversal are shaded. Together they are less than two right angles, so the blue and red lines slope towards each other on that side."
+draw = [
+  "cross G ll A B E F",
+  "cross H ll C D E F",
+  "angle B G F green fill",
+  "angle D H E orange fill",
+]
+
+[[step]]
+text = "Continue the lines far enough to the right and they meet, as the postulate says. Without this postulate there is no theory of parallels."
+draw = [
+  "cross X ll A B C D",
+]

@@ -1,0 +1,41 @@
+id = "I.1"
+book = 1
+order = 4
+title = "An equilateral triangle on a given line"
+statement = "On a given finite straight line to construct an equilateral triangle."
+proof = "Therefore the triangle ABC is equilateral, and it has been constructed on the given finite straight line AB. (Being) what it was required to do."
+
+[[step]]
+text = "Let AB be the given finite straight line."
+draw = [
+  "clear",
+  "point A -2.5 -1.5",
+  "point B 2.5 -1.5",
+  "segment A B black",
+]
+
+[[step]]
+text = "With centre A and distance AB let the circle BCD be described (postulate 3)."
+draw = [
+  "circle A B red",
+]
+
+[[step]]
+text = "With centre B and distance BA let the circle ACE be described (postulate 3)."
+draw = [
+  "circle B A blue",
+]
+
+[[step]]
+text = "From the point C, in which the circles cut one another, let the straight lines CA and CB be joined to A and B (postulate 1)."
+draw = [
+  "cross C cc A B B A 1",
+  "segment C A red",
+  "segment C B blue",
+]
+
+[[step]]
+text = "Then ABC is equilateral. A is the centre of the circle CDB, so AC is equal to AB. B is the centre of the circle CAE, so BC is equal to BA. Things equal to the same thing are equal to one another (common notion 1), so CA is equal to CB. The three straight lines CA, AB, BC are equal to one another."
+draw = [
+  "polygon A B C green fill",
+]

@@ -1,0 +1,48 @@
+id = "I.4"
+book = 1
+order = 7
+title = "Side, angle, side"
+statement = "If two triangles have the two sides equal to two sides respectively, and have the angles contained by the equal straight lines equal, they will also have the base equal to the base, the triangle will be equal to the triangle, and the remaining angles will be equal to the remaining angles respectively, namely those which the equal sides subtend."
+proof = "Therefore, if two triangles have the two sides equal to two sides respectively, and have the angles contained by the equal straight lines equal, they will also have the base equal to the base, the triangle equal to the triangle, and the remaining angles equal to the remaining angles respectively, namely those which the equal sides subtend. (Being) what it was required to prove."
+
+[[step]]
+text = "Let ABC and DEF be two triangles having the two sides AB, AC equal to the two sides DE, DF respectively, namely AB to DE and AC to DF, and the angle BAC equal to the angle EDF."
+draw = [
+  "clear",
+  "point A -5.5 -2",
+  "point B -1.5 -2",
+  "point C -3.5 1.5",
+  "point D 1.5 -2",
+  "point E 5.5 -2",
+  "point F 3.5 1.5",
+  "polygon A B C blue",
+  "polygon D E F red",
+  "segment A B green",
+  "segment D E green",
+  "segment A C orange",
+  "segment D F orange",
+  "angle B A C purple fill",
+  "angle E D F purple fill",
+]
+
+[[step]]
+text = "If the triangle ABC is applied to the triangle DEF, and the point A is placed on the point D and the straight line AB on DE, then the point B will also coincide with E, because AB is equal to DE."
+draw = [
+  "segment B C teal",
+  "segment E F teal",
+]
+
+[[step]]
+text = "AB coinciding with DE, the straight line AC will also coincide with DF, because the angle BAC is equal to the angle EDF. Hence the point C will also coincide with F, because AC is again equal to DF."
+
+[[step]]
+text = "But B also coincided with E, so the base BC will coincide with the base EF. For if B coincides with E and C with F, and the base BC did not coincide with EF, two straight lines would enclose a space, which is impossible. Therefore BC coincides with EF and is equal to it."
+
+[[step]]
+text = "So the whole triangle ABC will coincide with the whole triangle DEF and will be equal to it, and the remaining angles will coincide with the remaining angles and be equal to them: the angle ABC to DEF, and the angle ACB to DFE."
+draw = [
+  "angle A B C green fill",
+  "angle D E F green fill",
+  "angle A C B orange fill",
+  "angle D F E orange fill",
+]

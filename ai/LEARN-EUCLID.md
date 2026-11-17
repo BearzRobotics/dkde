@@ -5,8 +5,10 @@ Geometry pane and draws the given figure; *Next step* adds one step at a time, i
 words for the statement and plain words for each step and the proof. The wording of definitions, postulates,
 common notions and statements follows T. L. Heath's translation (public domain).
 
-Where things are: `src/calc/figure.zig` (the drawing language of a step), `src/calc/euclid.zig` (the
-lessons), `src/calc/learn.zig` (the view), `src/calc/geometry.zig` (the canvas that carries out the steps).
+Where things are: the lessons are TOML files in `data/learn/euclid/` (one file per lesson, format in
+`src/calc/lessonfile.zig`; your own go in `~/.local/share/dkde/learn/`), `src/calc/figure.zig` (the
+drawing lines of a step), `src/calc/learn.zig` (the view), `src/calc/geometry.zig` (the canvas that
+carries out the steps).
 
 ## All of the Elements
 

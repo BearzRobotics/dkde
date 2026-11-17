@@ -295,7 +295,7 @@ const Calc = struct {
         };
         self.graph = try graph_mod.Graph.create(gpa, &self.session);
         self.geometry = try geometry_mod.Geometry.create(gpa, self, useGeometryValue);
-        self.learn = try learn_mod.Learn.create(gpa, .{ .ctx = self, .run = learnRun, .clear = learnClear, .show_canvas = learnShowCanvas });
+        self.learn = try learn_mod.Learn.create(gpa, .{ .ctx = self, .run = learnRun, .clear = learnClear, .show_canvas = learnShowCanvas, .use_calc = learnUseCalc });
         self.readSettings();
         self.loadState();
         self.loadManualRates();
@@ -3642,6 +3642,15 @@ const Calc = struct {
         self.geometry.clearCanvas();
     }
 
+    /// A calculator line of a lesson goes into the entry, replacing what was there.
+    fn learnUseCalc(ctx: *anyopaque, text: []const u8) void {
+        const self: *Calc = @ptrCast(@alignCast(ctx));
+        self.setEntry(text);
+        self.fresh = false;
+        self.entry.as(gtk.Editable).setPosition(-1);
+        _ = self.entry.as(gtk.Widget).grabFocus();
+    }
+
     /// A lesson draws on the Geometry canvas, so it is shown beside the Learn view.
     fn learnShowCanvas(ctx: *anyopaque) void {
         const self: *Calc = @ptrCast(@alignCast(ctx));
@@ -4180,7 +4189,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
 test {
     _ = @import("typeset.zig");
     _ = @import("geom.zig");
-    _ = @import("euclid.zig");
+    _ = @import("figure.zig");
+    _ = @import("lessonfile.zig");
     _ = @import("num.zig");
     _ = @import("eval.zig");
     _ = @import("units.zig");

@@ -185,9 +185,9 @@ pub const Geometry = struct {
         colours.append(self.shade.as(gtk.Widget));
         self.root.append(colours.as(gtk.Widget));
 
-        self.lengths = gtk.CheckButton.newWithLabel(t("Lengths"));
+        self.lengths = gtk.CheckButton.newWithLabel(t("Numbers"));
         self.lengths.setActive(1);
-        self.lengths.as(gtk.Widget).setTooltipText(t("Write each segment's length beside it"));
+        self.lengths.as(gtk.Widget).setTooltipText(t("Write the length of each segment and the size of each angle on the figure"));
         _ = gtk.CheckButton.signals.toggled.connect(self.lengths, *Geometry, &onLengths, self, .{});
         colours.append(self.lengths.as(gtk.Widget));
 
@@ -1055,11 +1055,13 @@ pub const Geometry = struct {
                     cr.setSourceRgb(col[0], col[1], col[2]);
                 }
                 cr.stroke();
-                var buf: [32]u8 = undefined;
-                var lab: [40]u8 = undefined;
-                const label = std.fmt.bufPrint(&lab, "{s}°", .{num(&buf, geom.angleDeg(self.pt(e[0]), self.pt(e[1]), self.pt(e[2])))}) catch "";
-                const mid = ha + diff / 2;
-                drawText(cr, v.x + @cos(mid) * 34 - 10, v.y + @sin(mid) * 34 - 8, label);
+                if (self.lengths.getActive() != 0) {
+                    var buf: [32]u8 = undefined;
+                    var lab: [40]u8 = undefined;
+                    const label = std.fmt.bufPrint(&lab, "{s}°", .{num(&buf, geom.angleDeg(self.pt(e[0]), self.pt(e[1]), self.pt(e[2])))}) catch "";
+                    const mid = ha + diff / 2;
+                    drawText(cr, v.x + @cos(mid) * 34 - 10, v.y + @sin(mid) * 34 - 8, label);
+                }
                 cr.setLineWidth(2);
             },
             }

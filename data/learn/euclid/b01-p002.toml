@@ -1,0 +1,59 @@
+id = "I.2"
+book = 1
+order = 5
+title = "A line equal to a given line, at a given point"
+statement = "To place at a given point (as an extremity) a straight line equal to a given straight line."
+proof = "Therefore at the given point A the straight line AL has been placed equal to the given straight line BC. (Being) what it was required to do."
+
+[[step]]
+text = "Let A be the given point, and BC the given straight line. It is required to place at the point A a straight line equal to the given straight line BC."
+draw = [
+  "clear",
+  "point A -5 -2.5",
+  "point B 0.5 1",
+  "point C 3.5 1",
+  "segment B C red",
+]
+
+[[step]]
+text = "From the point A to the point B let the straight line AB be joined (postulate 1)."
+draw = [
+  "segment A B black",
+]
+
+[[step]]
+text = "On AB let the equilateral triangle DAB be constructed (I.1)."
+draw = [
+  "cross D cc A B B A 1",
+  "segment D A black",
+  "segment D B black",
+  "polygon D A B teal fill",
+]
+
+[[step]]
+text = "Let the straight lines AE and BF be produced in a straight line with DA and DB (postulate 2)."
+draw = [
+  "line D A black",
+  "line D B black",
+]
+
+[[step]]
+text = "With centre B and distance BC let the circle CGH be described. It meets DF at G (postulate 3)."
+draw = [
+  "circle B C red",
+  "cross G lc D B B C 1",
+]
+
+[[step]]
+text = "With centre D and distance DG let the circle GKL be described. It meets DA produced at L (postulate 3)."
+draw = [
+  "circle D G blue",
+  "cross L lc D A D G 1",
+]
+
+[[step]]
+text = "Then AL is equal to BC. D is the centre of the circle GKL, so DL is equal to DG. In these DA is equal to DB, so the remainder AL is equal to the remainder BG (common notion 3). But BC was also shown equal to BG, because B is the centre of the circle CGH. Therefore AL is equal to BC (common notion 1)."
+draw = [
+  "segment A L green",
+  "segment B G green",
+]

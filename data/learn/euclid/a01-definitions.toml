@@ -1,0 +1,121 @@
+id = "Definitions"
+book = 0
+order = 1
+title = "Definitions (Book I)"
+statement = "Euclid begins with twenty-three definitions. Here are the ones about points, lines, angles and circles."
+
+[[step]]
+text = "1. A point is that which has no part."
+draw = [
+  "clear",
+  "point A 0 0",
+]
+
+[[step]]
+text = "2. A line is breadthless length. 3. The extremities of a line are points."
+draw = [
+  "point A -3 0",
+  "point B 3 0",
+  "segment A B blue",
+]
+
+[[step]]
+text = "4. A straight line is a line which lies evenly with the points on itself."
+draw = [
+  "clear",
+  "point A -4 -1",
+  "point B 4 2",
+  "line A B blue",
+]
+
+[[step]]
+text = "8, 9. A plane angle is the inclination to one another of two lines in a plane which meet one another and do not lie in a straight line; when the lines are straight, it is a rectilineal angle."
+draw = [
+  "clear",
+  "point B -2 -1",
+  "point A 2 2",
+  "point C 3 -1",
+  "segment B A blue",
+  "segment B C blue",
+  "angle A B C red fill",
+]
+
+[[step]]
+text = "10. When a straight line standing on a straight line makes the adjacent angles equal to one another, each of the equal angles is right, and the straight line standing on the other is called a perpendicular."
+draw = [
+  "clear",
+  "point A -4 0",
+  "point B 4 0",
+  "point C 0 0",
+  "point D 0 3.5",
+  "segment A B blue",
+  "segment C D blue",
+  "angle B C D green fill",
+  "angle D C A teal fill",
+]
+
+[[step]]
+text = "11, 12. An obtuse angle is greater than a right angle; an acute angle is less than a right angle."
+draw = [
+  "clear",
+  "point O 0 0",
+  "point A 4 0",
+  "point B 3 3",
+  "point C -2.5 3",
+  "segment O A blue",
+  "segment O B blue",
+  "segment O C blue",
+  "angle A O B green fill",
+  "angle A O C orange fill",
+]
+
+[[step]]
+text = "15, 16. A circle is a plane figure contained by one line such that all the straight lines falling upon it from one point among those lying within the figure are equal to one another; and the point is called the centre of the circle."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 3 0",
+  "circle A B blue fill",
+  "segment A B red",
+]
+
+[[step]]
+text = "17. A diameter of the circle is any straight line drawn through the centre and terminated in both directions by the circumference, and such a straight line also bisects the circle."
+draw = [
+  "clear",
+  "point A 0 0",
+  "point B 3 0",
+  "point D -3 0",
+  "circle A B blue",
+  "segment D B red",
+]
+
+[[step]]
+text = "20. Of trilateral figures, an equilateral triangle is that which has its three sides equal, an isosceles triangle that which has two of its sides alone equal, a scalene triangle that which has its three sides unequal."
+draw = [
+  "clear",
+  "point A -5 -2",
+  "point B -2 -2",
+  "point C -3.5 0.6",
+  "point D 0 -2",
+  "point E 3 -2",
+  "point F 1.5 1.8",
+  "point G 4.6 -2",
+  "point H 6.2 -2",
+  "point I 5.2 0.5",
+  "polygon A B C green fill",
+  "polygon D E F blue fill",
+  "polygon G H I orange fill",
+]
+
+[[step]]
+text = "23. Parallel straight lines are straight lines which, being in the same plane and being produced indefinitely in both directions, do not meet one another in either direction."
+draw = [
+  "clear",
+  "point A -4 1.5",
+  "point B 4 1.5",
+  "point C -4 -1.5",
+  "point D 4 -1.5",
+  "line A B blue",
+  "line C D red",
+]
