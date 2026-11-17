@@ -51,3 +51,7 @@ step, or every step as its own file) to PNG or SVG with the same code as the win
 
 `DKDE_LEARN_LESSON=I.2 DKDE_LEARN_STEPS=7 dkde-calc` (with `learn = true` and `pane = "geometry"` in
 calc.toml) opens that lesson with that many steps drawn, for a screenshot.
+
+## 3D
+
+A figure can be drawn in space: `view3d` turns the Geometry pane into a parallel projection (x and y along the floor, z up), `point A x y z` gives a point a height, and the same `segment`, `line`, `polygon ... fill` lines draw edges and faces. Faces are drawn far to near and lit by their slope; a name starting with `_` is a point that is not drawn or labelled. Drag to turn the view. The 3D switch in the Geometry tool bar does the same by hand. Books XI to XIII use this.

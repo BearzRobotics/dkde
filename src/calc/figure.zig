@@ -9,7 +9,9 @@ pub const Cross = enum { circle_circle, line_circle, line_line };
 pub const Op = union(enum) {
     /// Start from an empty canvas.
     clear,
-    pt: struct { n: []const u8, x: f64, y: f64 },
+    pt: struct { n: []const u8, x: f64, y: f64, z: f64 = 0 },
+    /// Show the figure in three dimensions (x and y along the floor, z up); points may then have a z.
+    view3d,
     seg: struct { a: []const u8, b: []const u8, colour: Colour = 7 },
     line: struct { a: []const u8, b: []const u8, colour: Colour = 7 },
     /// The circle with the centre `c`, through the point `t`.
@@ -108,7 +110,8 @@ pub const Lesson = struct {
 // In a lesson file a step's drawing is a list of lines, one operation each:
 //
 //   clear
-//   point A -2.5 -1.5
+//   point A -2.5 -1.5 [z]            a z makes it a point in space (see view3d)
+//   view3d                            draw the figure in three dimensions; drag to turn it
 //   segment A B [colour]
 //   line A B [colour]
 //   circle C T [colour] [fill]        centre C, through T
@@ -141,9 +144,11 @@ pub fn parseOp(arena: std.mem.Allocator, line: []const u8) ParseError!Op {
     const cmd = w[0];
     const args = w[1..];
     if (std.mem.eql(u8, cmd, "clear")) return .clear;
+    if (std.mem.eql(u8, cmd, "view3d")) return .view3d;
     if (std.mem.eql(u8, cmd, "point")) {
-        if (args.len != 3) return error.MissingWord;
-        return .{ .pt = .{ .n = args[0], .x = std.fmt.parseFloat(f64, args[1]) catch return error.BadNumber, .y = std.fmt.parseFloat(f64, args[2]) catch return error.BadNumber } };
+        if (args.len != 3 and args.len != 4) return error.MissingWord;
+        const z = if (args.len == 4) std.fmt.parseFloat(f64, args[3]) catch return error.BadNumber else 0;
+        return .{ .pt = .{ .n = args[0], .x = std.fmt.parseFloat(f64, args[1]) catch return error.BadNumber, .y = std.fmt.parseFloat(f64, args[2]) catch return error.BadNumber, .z = z } };
     }
     if (std.mem.eql(u8, cmd, "segment") or std.mem.eql(u8, cmd, "line")) {
         if (args.len < 2 or args.len > 3) return error.MissingWord;
@@ -218,7 +223,7 @@ test "drawing lines are read" {
 pub fn uses(op: Op, out: *[8][]const u8) usize {
     var n: usize = 0;
     switch (op) {
-        .clear, .pt => {},
+        .clear, .pt, .view3d => {},
         .seg => |o| {
             out[0] = o.a;
             out[1] = o.b;

@@ -3633,6 +3633,7 @@ const Calc = struct {
         // Lessons draw plain figures: no lengths written on them, and the view fitted to the figure.
         self.geometry.lengths.setActive(0);
         self.geometry.runOps(ops);
+        self.geometry.syncThreeD();
         self.geometry.fitToFigure();
     }
 

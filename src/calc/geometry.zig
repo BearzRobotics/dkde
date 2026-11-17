@@ -61,6 +61,11 @@ pub const Geometry = struct {
     shade: *gtk.CheckButton = undefined,
     /// Lengths written beside segments (off while a lesson draws, on for your own figures).
     lengths: *gtk.CheckButton = undefined,
+    /// Three dimensions: the figure is shown in parallel projection and a drag turns it.
+    three_d: *gtk.CheckButton = undefined,
+    rotating: bool = false,
+    rot_yaw: f64 = 0,
+    rot_pitch: f64 = 0,
     tool: Tool = .move,
     /// Points picked so far for the shape being made.
     picks: std.ArrayList(usize) = .empty,
@@ -166,6 +171,10 @@ pub const Geometry = struct {
         self.lengths.as(gtk.Widget).setTooltipText(t("Write the length of each segment and the size of each angle on the figure"));
         _ = gtk.CheckButton.signals.toggled.connect(self.lengths, *Geometry, &onLengths, self, .{});
         colours.append(self.lengths.as(gtk.Widget));
+        self.three_d = gtk.CheckButton.newWithLabel(t("3D"));
+        self.three_d.as(gtk.Widget).setTooltipText(t("Show the figure in three dimensions; drag to turn it"));
+        _ = gtk.CheckButton.signals.toggled.connect(self.three_d, *Geometry, &onThreeD, self, .{});
+        colours.append(self.three_d.as(gtk.Widget));
 
         const options = gtk.Box.new(.horizontal, 8);
         self.snap.setActive(1);
@@ -305,6 +314,17 @@ pub const Geometry = struct {
     fn onColour(b: *gtk.ToggleButton, ctx: *ColourCtx) callconv(.c) void {
         if (b.getActive() == 0) return;
         ctx.geo.current.color = @intCast(ctx.index);
+    }
+
+    fn onThreeD(_: *gtk.CheckButton, self: *Geometry) callconv(.c) void {
+        self.scene.view3d = self.three_d.getActive() != 0;
+        self.scene.fitToFigure();
+        self.area.as(gtk.Widget).queueDraw();
+    }
+
+    /// Makes the 3D switch show what the scene is (a lesson may turn 3D on).
+    pub fn syncThreeD(self: *Geometry) void {
+        if ((self.three_d.getActive() != 0) != self.scene.view3d) self.three_d.setActive(@intFromBool(self.scene.view3d));
     }
 
     fn onLengths(_: *gtk.CheckButton, self: *Geometry) callconv(.c) void {
@@ -524,11 +544,21 @@ pub const Geometry = struct {
 
     fn onDragBegin(_: *gtk.GestureDrag, x: f64, y: f64, self: *Geometry) callconv(.c) void {
         self.drag_start = .{ .x = x, .y = y };
+        if (self.scene.view3d) {
+            self.rotating = true;
+            self.rot_yaw = self.scene.yaw;
+            self.rot_pitch = self.scene.pitch;
+            return;
+        }
         self.press(x, y);
     }
 
     fn onDragUpdate(_: *gtk.GestureDrag, dx: f64, dy: f64, self: *Geometry) callconv(.c) void {
-        if (self.dragging) |i| {
+        if (self.rotating) {
+            self.scene.yaw = self.rot_yaw + dx * 0.01;
+            self.scene.pitch = std.math.clamp(self.rot_pitch + dy * 0.01, -1.5, 1.5);
+            self.area.as(gtk.Widget).queueDraw();
+        } else if (self.dragging) |i| {
             const p = self.snapped(self.toWorld(self.drag_start.x + dx, self.drag_start.y + dy));
             self.scene.points.items[i].p = p;
             self.changed();
@@ -542,6 +572,7 @@ pub const Geometry = struct {
     fn onDragEnd(_: *gtk.GestureDrag, _: f64, _: f64, self: *Geometry) callconv(.c) void {
         self.dragging = null;
         self.pan = false;
+        self.rotating = false;
     }
 
     fn onScroll(_: *gtk.EventControllerScroll, _: f64, dy: f64, self: *Geometry) callconv(.c) c_int {

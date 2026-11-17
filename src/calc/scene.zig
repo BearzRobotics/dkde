@@ -11,7 +11,7 @@ const geom = @import("geom.zig");
 const figure = @import("figure.zig");
 const Pt = geom.Pt;
 
-pub const Point = struct { p: Pt, alive: bool = true, name: [6]u8 = @splat(0) };
+pub const Point = struct { p: Pt, z: f64 = 0, alive: bool = true, name: [6]u8 = @splat(0) };
 
 /// How a shape is drawn: one of the palette's colours, and shaded or not.
 pub const Style = struct { color: u8 = 0, fill: bool = false };
@@ -59,6 +59,10 @@ pub const Scene = struct {
     numbers: bool = true,
     /// A fit asked for before the canvas had a size: done at the first drawing.
     fit_pending: bool = false,
+    /// Three dimensions: points have a height, and are drawn in parallel projection turned by yaw and pitch.
+    view3d: bool = false,
+    yaw: f64 = -0.62,
+    pitch: f64 = 0.42,
 
     pub fn init(gpa: std.mem.Allocator) Scene {
         return .{ .gpa = gpa };
@@ -81,8 +85,69 @@ pub const Scene = struct {
         return .{ self.width, self.height };
     }
 
+    /// Where a point is on the flat figure: its own place, or in 3D its projection.
     pub fn pt(self: *Scene, i: usize) Pt {
-        return self.points.items[i].p;
+        const q = self.points.items[i];
+        if (!self.view3d) return q.p;
+        const c = @cos(self.yaw);
+        const sn = @sin(self.yaw);
+        const x1 = q.p.x * c - q.p.y * sn;
+        const y1 = q.p.x * sn + q.p.y * c;
+        return .{ .x = x1, .y = y1 * @sin(self.pitch) + q.z * @cos(self.pitch) };
+    }
+
+    /// How far a point is from the viewer in 3D (larger is further away).
+    pub fn depth(self: *Scene, i: usize) f64 {
+        const q = self.points.items[i];
+        const y1 = q.p.x * @sin(self.yaw) + q.p.y * @cos(self.yaw);
+        return y1 * @cos(self.pitch) - q.z * @sin(self.pitch);
+    }
+
+    /// How lit a face is (0.2 to 0.8): its normal against a light up, to the left and in front.
+    fn faceLight(self: *Scene, ids: []const usize) f64 {
+        const v = struct {
+            fn at(sc: *Scene, i: usize) [3]f64 {
+                const q = sc.pt(i);
+                return .{ q.x, q.y, sc.depth(i) };
+            }
+        }.at;
+        const a = v(self, ids[0]);
+        const b = v(self, ids[1]);
+        const c = v(self, ids[2]);
+        const u = [3]f64{ b[0] - a[0], b[1] - a[1], b[2] - a[2] };
+        const w = [3]f64{ c[0] - a[0], c[1] - a[1], c[2] - a[2] };
+        const n = [3]f64{ u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0] };
+        const len = @sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        if (len == 0) return 0.35;
+        const l = [3]f64{ -0.35, 0.55, -0.76 };
+        const d = @abs((n[0] * l[0] + n[1] * l[1] + n[2] * l[2]) / len);
+        return 0.2 + 0.6 * d;
+    }
+
+    fn shapeDepth(self: *Scene, s: Shape) f64 {
+        var sum: f64 = 0;
+        var n: f64 = 0;
+        switch (s) {
+            .segment, .line, .circle => |e| {
+                for (e) |i| {
+                    sum += self.depth(i);
+                    n += 1;
+                }
+            },
+            .angle => |e| {
+                for (e) |i| {
+                    sum += self.depth(i);
+                    n += 1;
+                }
+            },
+            .polygon => |ids| {
+                for (ids) |i| {
+                    sum += self.depth(i);
+                    n += 1;
+                }
+            },
+        }
+        return if (n > 0) sum / n else 0;
     }
 
     pub fn toWorld(self: *Scene, px: f64, py: f64) Pt {
@@ -170,13 +235,19 @@ pub const Scene = struct {
             .clear => {
                 self.clearShapes();
                 self.points.clearRetainingCapacity();
+                self.view3d = false;
+                self.yaw = -0.62;
+                self.pitch = 0.42;
             },
+            .view3d => self.view3d = true,
             .pt => |o| {
                 if (self.findPoint(o.n)) |i| {
                     self.points.items[i].p = .{ .x = o.x, .y = o.y };
+                    self.points.items[i].z = o.z;
                     return;
                 }
                 self.addNamed(o.n, .{ .x = o.x, .y = o.y });
+                self.points.items[self.points.items.len - 1].z = o.z;
             },
             .seg => |o| {
                 const a = self.findPoint(o.a) orelse return;
@@ -230,14 +301,15 @@ pub const Scene = struct {
         var max_x: f64 = -std.math.inf(f64);
         var min_y: f64 = std.math.inf(f64);
         var max_y: f64 = -std.math.inf(f64);
-        for (self.points.items) |p| {
+        for (self.points.items, 0..) |p, i| {
             if (!p.alive) continue;
-            min_x = @min(min_x, p.p.x);
-            max_x = @max(max_x, p.p.x);
-            min_y = @min(min_y, p.p.y);
-            max_y = @max(max_y, p.p.y);
+            const q = self.pt(i);
+            min_x = @min(min_x, q.x);
+            max_x = @max(max_x, q.x);
+            min_y = @min(min_y, q.y);
+            max_y = @max(max_y, q.y);
         }
-        for (self.shapes.items) |s| if (s == .circle) {
+        if (!self.view3d) for (self.shapes.items) |s| if (s == .circle) {
             const c = self.pt(s.circle[0]);
             const r = geom.dist(c, self.pt(s.circle[1]));
             min_x = @min(min_x, c.x - r);
@@ -271,37 +343,55 @@ pub const Scene = struct {
         self.width = w;
         self.height = h;
         if (self.fit_pending) self.fitToFigure();
-        // The grid and the axes.
+        // The grid and the axes (not in 3D).
         const step = gridStep(self.scale);
         cr.setLineWidth(1);
         cr.setSourceRgba(fg[0], fg[1], fg[2], 0.12);
         const left = self.toWorld(0, 0);
         const right = self.toWorld(w, h);
         var gx = @ceil(left.x / step) * step;
-        while (gx <= right.x) : (gx += step) {
+        while (!self.view3d and gx <= right.x) : (gx += step) {
             const px = self.toPx(.{ .x = gx, .y = 0 }).x;
             cr.moveTo(px + 0.5, 0);
             cr.lineTo(px + 0.5, h);
         }
         var gy = @ceil(right.y / step) * step;
-        while (gy <= left.y) : (gy += step) {
+        while (!self.view3d and gy <= left.y) : (gy += step) {
             const py = self.toPx(.{ .x = 0, .y = gy }).y;
             cr.moveTo(0, py + 0.5);
             cr.lineTo(w, py + 0.5);
         }
         cr.stroke();
         const origin = self.toPx(.{ .x = 0, .y = 0 });
-        cr.setSourceRgba(fg[0], fg[1], fg[2], 0.35);
-        cr.moveTo(origin.x + 0.5, 0);
-        cr.lineTo(origin.x + 0.5, h);
-        cr.moveTo(0, origin.y + 0.5);
-        cr.lineTo(w, origin.y + 0.5);
-        cr.stroke();
+        if (!self.view3d) {
+            cr.setSourceRgba(fg[0], fg[1], fg[2], 0.35);
+            cr.moveTo(origin.x + 0.5, 0);
+            cr.lineTo(origin.x + 0.5, h);
+            cr.moveTo(0, origin.y + 0.5);
+            cr.lineTo(w, origin.y + 0.5);
+            cr.stroke();
+        }
 
         const blue = palette[0];
         // The shapes.
         cr.setLineWidth(2);
-        for (self.shapes.items, 0..) |s, si| {
+        // In 3D the shapes are drawn far to near, so the near ones cover the far ones.
+        const order = self.gpa.alloc(usize, self.shapes.items.len) catch return;
+        defer self.gpa.free(order);
+        for (order, 0..) |*o, k| o.* = k;
+        if (self.view3d) {
+            const keys = self.gpa.alloc(f64, order.len) catch return;
+            defer self.gpa.free(keys);
+            for (keys, 0..) |*k, i| k.* = self.shapeDepth(self.shapes.items[i]);
+            const Ctx = struct { keys: []const f64 };
+            std.mem.sort(usize, order, Ctx{ .keys = keys }, struct {
+                fn less(c: Ctx, a: usize, b: usize) bool {
+                    return c.keys[a] > c.keys[b];
+                }
+            }.less);
+        }
+        for (order) |si| {
+            const s = self.shapes.items[si];
             const st = self.styles.items[si];
             const col = palette[st.color];
             switch (s) {
@@ -312,7 +402,7 @@ pub const Scene = struct {
                 cr.moveTo(a.x, a.y);
                 cr.lineTo(b.x, b.y);
                 cr.stroke();
-                if (self.numbers) {
+                if (self.numbers and !self.view3d) {
                     var buf: [32]u8 = undefined;
                     const m = geom.midpoint(a, b);
                     cr.setSourceRgba(fg[0], fg[1], fg[2], 0.85);
@@ -359,7 +449,8 @@ pub const Scene = struct {
                     if (k == 0) cr.moveTo(p.x, p.y) else cr.lineTo(p.x, p.y);
                 }
                 cr.closePath();
-                cr.setSourceRgba(col[0], col[1], col[2], if (st.fill) 0.35 else 0.08);
+                const light = if (self.view3d and ids.len >= 3) self.faceLight(ids) else 0.35;
+                cr.setSourceRgba(col[0], col[1], col[2], if (st.fill) light else 0.08);
                 cr.fillPreserve();
                 cr.setSourceRgb(col[0], col[1], col[2]);
                 cr.stroke();
@@ -390,7 +481,7 @@ pub const Scene = struct {
                     cr.setSourceRgb(col[0], col[1], col[2]);
                 }
                 cr.stroke();
-                if (self.numbers) {
+                if (self.numbers and !self.view3d) {
                     var buf: [32]u8 = undefined;
                     var lab: [40]u8 = undefined;
                     const label = std.fmt.bufPrint(&lab, "{s}°", .{num(&buf, geom.angleDeg(self.pt(e[0]), self.pt(e[1]), self.pt(e[2])))}) catch "";
@@ -423,7 +514,8 @@ pub const Scene = struct {
         // The points, with their names.
         for (self.points.items, 0..) |p, i| {
             if (!p.alive) continue;
-            const q = self.toPx(p.p);
+            if (p.name[0] == '_') continue;
+            const q = self.toPx(self.pt(i));
             const picked = std.mem.indexOfScalar(usize, overlay.picks, i) != null;
             cr.newSubPath();
             cr.arc(q.x, q.y, if (picked) 6 else 4.5, 0, 2 * std.math.pi);
