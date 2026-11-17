@@ -25,6 +25,7 @@ pub const i18n = core.i18n;
 pub const icons = core.icons;
 pub const ics = core.ics;
 pub const labwc = core.labwc;
+pub const settingspages = @import("settingspages.zig");
 pub const log = core.log;
 pub const migrate = core.migrate;
 pub const notify = core.notify;

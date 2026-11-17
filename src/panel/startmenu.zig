@@ -262,7 +262,7 @@ pub const StartMenu = struct {
 
         const search = gtk.SearchEntry.new();
         search.as(gtk.Widget).addCssClass("dkde-menu-search");
-        search.setPlaceholderText(common.tr("Search programs"));
+        search.setPlaceholderText(common.tr("Search programs and settings"));
         search.setKeyCaptureWidget(self.window.as(gtk.Widget));
         _ = gtk.SearchEntry.signals.search_changed.connect(search, *StartMenu, &onSearchChanged, self, .{});
         _ = gtk.SearchEntry.signals.activate.connect(search, *StartMenu, &onSearchActivate, self, .{});
@@ -498,6 +498,49 @@ pub const StartMenu = struct {
 
         for (hits.items) |hit| self.results.append(self.appButton(hit.app).as(gtk.Widget));
         if (hits.items.len > 0) self.first_result = hits.items[0].app;
+
+        // Settings and Task Manager pages that match: a link that opens that page.
+        var shown: usize = 0;
+        for (common.settingspages.all) |entry| {
+            if (!common.settingspages.matches(entry, query)) continue;
+            if (shown >= 6) break;
+            shown += 1;
+            self.results.append(self.pageButton(entry).as(gtk.Widget));
+        }
+    }
+
+    fn pageButton(self: *StartMenu, entry: common.settingspages.Entry) *gtk.Button {
+        const content = gtk.Box.new(.horizontal, 8);
+        var icon_buf: [96]u8 = undefined;
+        const icon = gtk.Image.newFromIconName(std.fmt.bufPrintSentinel(&icon_buf, "{s}", .{entry.icon}, 0) catch "preferences-system-symbolic");
+        icon.setPixelSize(24);
+        var buf: [160]u8 = undefined;
+        const text = std.fmt.bufPrintSentinel(&buf, "{s}", .{entry.title}, 0) catch "Settings";
+        const label = gtk.Label.new(text);
+        label.setXalign(0);
+        label.setEllipsize(.end);
+        content.append(icon.as(gtk.Widget));
+        content.append(label.as(gtk.Widget));
+        const button = gtk.Button.new();
+        button.setChild(content.as(gtk.Widget));
+        button.setHasFrame(0);
+        button.as(gtk.Widget).addCssClass("dkde-menu-app");
+        const ctx = std.heap.c_allocator.create(PageLink) catch return button;
+        ctx.* = .{ .menu = self, .entry = entry };
+        _ = gtk.Button.signals.clicked.connect(button, *PageLink, &onPageClicked, ctx, .{});
+        _ = gtk.Widget.signals.destroy.connect(button, *PageLink, &onPageDestroy, ctx, .{});
+        return button;
+    }
+
+    const PageLink = struct { menu: *StartMenu, entry: common.settingspages.Entry };
+
+    fn onPageClicked(_: *gtk.Button, ctx: *PageLink) callconv(.c) void {
+        common.appinfo.spawn(ctx.menu.allocator, &.{ ctx.entry.program, "--page", ctx.entry.id });
+        ctx.menu.close();
+    }
+
+    fn onPageDestroy(_: *gtk.Button, ctx: *PageLink) callconv(.c) void {
+        std.heap.c_allocator.destroy(ctx);
     }
 
     // ---- signal handlers ----------------------------------------------
@@ -654,7 +697,12 @@ pub const StartMenu = struct {
     }
 
     fn onSearchActivate(_: *gtk.SearchEntry, self: *StartMenu) callconv(.c) void {
-        if (self.first_result) |app| self.launch(app);
+        if (self.first_result) |app| return self.launch(app);
+        const text = std.mem.span(self.search.as(gtk.Editable).getText());
+        for (common.settingspages.all) |entry| if (common.settingspages.matches(entry, text)) {
+            common.appinfo.spawn(self.allocator, &.{ entry.program, "--page", entry.id });
+            return self.close();
+        };
     }
 
     fn closeIdle(data: ?*anyopaque) callconv(.c) c_int {

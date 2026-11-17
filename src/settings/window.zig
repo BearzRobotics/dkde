@@ -2484,3 +2484,14 @@ pub const SettingsWindow = struct {
         }
     }
 };
+
+test "the Start menu's page list names only pages Settings has" {
+    for (common.settingspages.all) |e| {
+        if (!std.mem.eql(u8, e.program, "dkde-settings")) continue;
+        var known = false;
+        for (pages) |p| if (std.mem.eql(u8, p.id, e.id)) {
+            known = true;
+        };
+        try std.testing.expect(known);
+    }
+}
