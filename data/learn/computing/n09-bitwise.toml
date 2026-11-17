@@ -1,0 +1,33 @@
+id = "N.9"
+course = "Computing"
+book = 2
+order = 3
+title = "Bitwise AND, OR and XOR"
+statement = "Bitwise operations act on each place separately: AND keeps ones present in both, OR keeps ones in either, XOR keeps ones in exactly one."
+
+[[step]]
+text = "Idea: take 12 = 1100 and 10 = 1010. AND is 1000 = 8. OR is 1110 = 14. XOR is 0110 = 6."
+calc = ["12 and 10", "12 or 10", "12 xor 10"]
+
+[[step]]
+text = "A mask picks bits out. To keep only the low four bits of 0xAB, AND with 0x0F: you get 0xB, which is 11."
+calc = ["0xAB and 0x0F", "0xAB and 0xF0"]
+
+[[step]]
+text = "XOR twice undoes itself: (x xor k) xor k is x. This is the idea behind simple ciphers and parity checks."
+calc = ["(57 xor 23) xor 23"]
+
+[[exercise]]
+prompt = "What is 0xFF and 0x3C?"
+answer = "0xFF and 0x3C"
+hint = "ANDing with all ones changes nothing."
+
+[[exercise]]
+prompt = "What is 13 xor 6?"
+answer = "13 xor 6"
+hint = "1101 xor 0110."
+
+[[exercise]]
+prompt = "What is 0b1010 or 0b0101?"
+answer = "0b1010 or 0b0101"
+hint = "Every place has exactly one 1."

@@ -1,0 +1,28 @@
+id = "N.12"
+course = "Computing"
+book = 3
+order = 2
+title = "Signed ranges and overflow"
+statement = "In n bits two's complement holds -2^(n-1) up to 2^(n-1) - 1; going past the end wraps around."
+
+[[step]]
+text = "Idea: 8 bits signed run from -128 to 127. The top bit is the sign. So half the 256 patterns are negative."
+calc = ["-2^7", "2^7 - 1"]
+
+[[step]]
+text = "Overflow is arithmetic modulo 2^n. In 8 bits unsigned, 250 + 10 is 260, which wraps to 260 mod 256 = 4."
+calc = ["(250 + 10) mod 256"]
+
+[[step]]
+text = "In signed 8 bits, 127 + 1 wraps to -128. That is how a counter can suddenly go negative. 16-bit signed tops out at 2^15 - 1 = 32767."
+calc = ["2^15 - 1", "-2^15"]
+
+[[exercise]]
+prompt = "What is (250 + 10) mod 256?"
+answer = "(250 + 10) mod 256"
+hint = "260 - 256."
+
+[[exercise]]
+prompt = "What is the largest signed 16-bit value?"
+answer = "2^15 - 1"
+hint = "One bit is the sign."

@@ -1,0 +1,27 @@
+id = "N.5"
+course = "Computing"
+book = 1
+order = 5
+title = "Octal"
+statement = "Base 8 uses the digits 0 to 7; one octal digit is exactly three bits, which is why file permissions are written in it."
+
+[[step]]
+text = "Idea: the places are 1, 8, 64, 512. So 17 in octal is 1x8 + 7 = 15. Write 0o in front of the digits."
+calc = ["0o17", "1*8 + 7"]
+
+[[step]]
+text = "Unix file permissions use three bits each for owner, group and others: read = 4, write = 2, execute = 1. rwx is 4 + 2 + 1 = 7, r-x is 4 + 1 = 5, r-- is 4. So 755 is rwx r-x r-x."
+calc = ["4 + 2 + 1", "4 + 1"]
+
+[[step]]
+text = "Octal 755 as a plain number is 7x64 + 5x8 + 5 = 493."
+calc = ["0o755", "7*64 + 5*8 + 5", "493 to octal"]
+
+[[exercise]]
+prompt = "What is 0o644 in decimal?"
+answer = "0o644"
+hint = "6x64 + 4x8 + 4."
+
+[[exercise]]
+prompt = "Permission bits read (4) and write (2) together make which digit?"
+answer = "4 + 2"

@@ -1,0 +1,28 @@
+id = "N.6"
+course = "Computing"
+book = 1
+order = 6
+title = "Converting between 2, 8 and 16"
+statement = "Group binary digits in fours for hex, in threes for octal; no arithmetic needed."
+
+[[step]]
+text = "Idea: 16 = 2^4, so each hex digit is exactly four bits. Split 11010111 into 1101 and 0111. 1101 is D (13), 0111 is 7. So 0xD7."
+calc = ["0b1101", "0b0111", "0b11010111", "0xD7"]
+
+[[step]]
+text = "Octal is the same with groups of three: 11 010 111 is 3, 2, 7, so 0o327. Both are 215."
+calc = ["0o327", "0xD7"]
+
+[[step]]
+text = "Start grouping from the right, and pad the left end with zeros. This is why programmers like hex: a byte is always two hex digits."
+calc = ["0xFF to binary", "0xA5 to binary"]
+
+[[exercise]]
+prompt = "How many bits are there in four hex digits?"
+answer = "4*4"
+hint = "Each hex digit is 4 bits."
+
+[[exercise]]
+prompt = "What is 0b11010110 in decimal?"
+answer = "0b11010110"
+hint = "0xD6."

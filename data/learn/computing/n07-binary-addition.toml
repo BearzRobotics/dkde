@@ -1,0 +1,28 @@
+id = "N.7"
+course = "Computing"
+book = 2
+order = 1
+title = "Adding in binary"
+statement = "Binary addition is long addition with only two digits: 1 + 1 makes 10, so write 0 and carry 1."
+
+[[step]]
+text = "Idea: 0+0=0, 0+1=1, 1+1=10 (write 0, carry 1), 1+1+1=11 (write 1, carry 1). Add 1011 and 0110 from the right."
+calc = ["0b1011 + 0b0110", "17 to binary"]
+
+[[step]]
+text = "By hand: 1+0=1; 1+1=10, write 0 carry 1; 0+1+1=10, write 0 carry 1; 1+0+1=10, write 0 carry 1; the last carry becomes the leading 1. The result is 10001, which is 17."
+calc = ["0b10001"]
+
+[[step]]
+text = "Adding one to a run of ones carries all the way: 0b111 + 1 is 0b1000, which is 8."
+calc = ["0b111 + 1", "8 to binary"]
+
+[[exercise]]
+prompt = "Add 0b1101 and 0b0111. Give the answer in decimal."
+answer = "0b1101 + 0b0111"
+hint = "13 + 7."
+
+[[exercise]]
+prompt = "Add 0b111 and 0b1. Give the answer in decimal."
+answer = "0b111 + 0b1"
+hint = "The carry runs through every place."

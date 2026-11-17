@@ -1,0 +1,27 @@
+id = "N.11"
+course = "Computing"
+book = 3
+order = 1
+title = "Powers of two and sizes"
+statement = "n bits can hold 2^n different values, from 0 to 2^n - 1."
+
+[[step]]
+text = "Idea: each extra bit doubles the count. 1 bit: 2 values. 2 bits: 4. 3 bits: 8. 8 bits: 256. 10 bits: 1024."
+calc = ["2^1", "2^2", "2^3", "2^8", "2^10"]
+
+[[step]]
+text = "The biggest value in n bits is 2^n - 1: 8 bits give 255, 16 bits give 65535, 32 bits give 4294967295."
+calc = ["2^8 - 1", "2^16 - 1", "2^32 - 1"]
+
+[[step]]
+text = "Computer sizes use powers of two: 1024 bytes is a kibibyte, 2^20 is a mebibyte, 2^30 a gibibyte. Disk makers use powers of ten (1000), so the numbers differ by a few percent."
+calc = ["2^20", "2^30", "2^30 / 10^9"]
+
+[[exercise]]
+prompt = "What is the largest value that fits in 12 bits?"
+answer = "2^12 - 1"
+hint = "All twelve bits set to one."
+
+[[exercise]]
+prompt = "How many different values does 5 bits give?"
+answer = "2^5"

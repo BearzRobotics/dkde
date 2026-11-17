@@ -1,0 +1,28 @@
+id = "N.14"
+course = "Computing"
+book = 4
+order = 1
+title = "Characters are numbers"
+statement = "Text is stored as numbers: ASCII gives A the code 65, B 66, and so on; a lowercase letter is 32 more."
+
+[[step]]
+text = "Idea: the letter A is 65 = 0x41. B is 66, C is 67. The digits start at 0x30: the character 0 is 48."
+calc = ["0x41", "0x30"]
+
+[[step]]
+text = "Lowercase a is 97 = 0x61, exactly 32 more than A. Flipping that single bit changes the case: 65 xor 32 is 97."
+calc = ["0x61", "97 - 65", "65 xor 32"]
+
+[[step]]
+text = "So the letter z is 97 + 25 = 122 and the hex code is 0x7A. Seven bits are enough for ASCII; modern text uses Unicode, which extends the same idea with larger numbers."
+calc = ["97 + 25", "122 to hex"]
+
+[[exercise]]
+prompt = "What is the ASCII code of lowercase z? (a is 97, and z is 25 letters later.)"
+answer = "97 + 25"
+hint = "a to z is 25 steps."
+
+[[exercise]]
+prompt = "What is 0x61 in decimal?"
+answer = "0x61"
+hint = "6 x 16 + 1."

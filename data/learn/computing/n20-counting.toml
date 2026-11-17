@@ -1,0 +1,28 @@
+id = "N.20"
+course = "Computing"
+book = 4
+order = 6
+title = "Counting possibilities"
+statement = "n bits make 2^n patterns; choosing k items from n is nCr(n, k)."
+
+[[step]]
+text = "Idea: a switch has 2 states, two switches 4, ten switches 2^10 = 1024. Every added independent yes-or-no doubles the count."
+calc = ["2^10"]
+
+[[step]]
+text = "A set of n things has 2^n subsets, since each thing is in or out. A set of 10 has 1024 subsets."
+calc = ["2^10"]
+
+[[step]]
+text = "Choosing exactly k of the n is nCr(n, k): from 5 items pick 2 in 10 ways. Add them all up and you get the 2^n total: 1+5+10+10+5+1 = 32."
+calc = ["nCr(5,2)", "1 + 5 + 10 + 10 + 5 + 1", "2^5"]
+
+[[exercise]]
+prompt = "How many subsets does a set of 10 elements have?"
+answer = "2^10"
+hint = "In or out for each element."
+
+[[exercise]]
+prompt = "In how many ways can you choose 2 items from 5?"
+answer = "nCr(5,2)"
+hint = "5 x 4 / 2."

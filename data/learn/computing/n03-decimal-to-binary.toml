@@ -1,0 +1,28 @@
+id = "N.3"
+course = "Computing"
+book = 1
+order = 3
+title = "Decimal to binary"
+statement = "Divide by 2 again and again; the remainders, read from last to first, are the binary digits."
+
+[[step]]
+text = "Idea: 45 / 2 = 22 remainder 1; 22 / 2 = 11 remainder 0; 11 / 2 = 5 r 1; 5 / 2 = 2 r 1; 2 / 2 = 1 r 0; 1 / 2 = 0 r 1. Read the remainders upward: 101101."
+calc = ["45 mod 2", "22 mod 2", "11 mod 2", "5 mod 2", "2 mod 2", "1 mod 2"]
+
+[[step]]
+text = "Let the calculator check it: asking for 45 to binary gives the digits directly."
+calc = ["45 to binary", "0b101101"]
+
+[[step]]
+text = "Another way: take the biggest power of two that fits and subtract. 37 = 32 + 4 + 1, so the 32, 4 and 1 places hold a one: 100101."
+calc = ["37 to binary", "32 + 4 + 1"]
+
+[[exercise]]
+prompt = "Write 37 in binary (type just the digits)."
+answer = "100101"
+hint = "37 = 32 + 4 + 1."
+
+[[exercise]]
+prompt = "Write 20 in binary (type just the digits)."
+answer = "10100"
+hint = "16 + 4."

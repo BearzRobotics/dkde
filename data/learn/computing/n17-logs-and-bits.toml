@@ -1,0 +1,28 @@
+id = "N.17"
+course = "Computing"
+book = 3
+order = 4
+title = "Logarithms: how many bits?"
+statement = "The number of bits needed for N values is log base 2 of N, rounded up."
+
+[[step]]
+text = "Idea: 2^10 = 1024, so log2(1024) = 10. The log asks which power of two gives the number."
+calc = ["log2(1024)", "log2(4096)"]
+
+[[step]]
+text = "To label 500 different things you need 2^n >= 500. log2(500) is about 8.97, so round up: 9 bits."
+calc = ["log2(500)", "ceil(log2(500))"]
+
+[[step]]
+text = "Doubling the data adds one bit. Binary search finds an item among a million in about 20 steps: log2(1000000) is about 19.9."
+calc = ["log2(1000000)", "ceil(log2(1000000))"]
+
+[[exercise]]
+prompt = "How many bits are needed to give 500 values a different number?"
+answer = "ceil(log2(500))"
+hint = "2^9 = 512."
+
+[[exercise]]
+prompt = "What is log2(4096)?"
+answer = "log2(4096)"
+hint = "2^12."

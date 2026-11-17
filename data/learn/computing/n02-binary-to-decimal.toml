@@ -1,0 +1,29 @@
+id = "N.2"
+course = "Computing"
+book = 1
+order = 2
+title = "Binary to decimal"
+statement = "Binary has places 1, 2, 4, 8, 16, ...; add up the places that hold a 1."
+
+[[step]]
+text = "Idea: the places from the right are 1, 2, 4, 8, 16, 32, 64, 128. Write 1011: that is 8 + 0 + 2 + 1 = 11."
+calc = ["0b1011", "2^0 + 2^1 + 2^3"]
+
+[[step]]
+text = "Type 0b in front of digits and the calculator reads them as binary. 0b11111111 is eight ones: 128+64+32+16+8+4+2+1 = 255, the largest value in a byte."
+calc = ["0b11111111"]
+
+[[step]]
+text = "By hand: write the place values over the digits and add the ones. 110101 is 32 + 16 + 4 + 1 = 53."
+calc = ["0b110101"]
+work = ["32 + 16 + 4 + 1"]
+
+[[exercise]]
+prompt = "What is 0b110101 in decimal?"
+answer = "0b110101"
+hint = "32 + 16 + 4 + 1."
+
+[[exercise]]
+prompt = "What is 0b10000000 in decimal?"
+answer = "0b10000000"
+hint = "A single 1 in the 8th place."

@@ -1,0 +1,28 @@
+id = "N.10"
+course = "Computing"
+book = 2
+order = 4
+title = "Shifting bits"
+statement = "Shifting left one place doubles a binary number; shifting right halves it, dropping the remainder."
+
+[[step]]
+text = "Idea: in decimal, adding a zero on the right multiplies by 10. In binary it multiplies by 2. 101 (5) becomes 1010 (10) becomes 10100 (20)."
+calc = ["5*2", "5*2*2", "5*2^3"]
+
+[[step]]
+text = "The shift function moves bits: shift(1, 4) is 1 moved left four places, which is 16. A negative count shifts right: shift(48, -2) is 48/4 = 12."
+calc = ["shift(1,4)", "shift(48,-2)"]
+
+[[step]]
+text = "So shifts are fast multiply and divide by powers of two. 200 shifted right 2 places is 200 / 4 = 50."
+calc = ["shift(200,-2)"]
+
+[[exercise]]
+prompt = "What is 5 shifted left by 3 places?"
+answer = "shift(5,3)"
+hint = "5 x 2^3."
+
+[[exercise]]
+prompt = "What is 200 shifted right by 2 places?"
+answer = "shift(200,-2)"
+hint = "200 / 4."

@@ -1,0 +1,28 @@
+id = "N.18"
+course = "Computing"
+book = 4
+order = 4
+title = "IP addresses and subnets"
+statement = "An IPv4 address is four bytes; a subnet mask ANDed with the address gives the network."
+
+[[step]]
+text = "Idea: 192.168.1.130 is four numbers, each one byte, so 32 bits in all. The mask 255.255.255.192 has 26 ones followed by 6 zeros, written /26."
+calc = ["2^32", "255 - 63"]
+
+[[step]]
+text = "The network is the address AND the mask, byte by byte. In the last byte, 130 and 192 is 10000010 and 11000000 = 10000000 = 128. So the network address is 192.168.1.128."
+calc = ["130 and 192", "130 to binary"]
+
+[[step]]
+text = "The 6 zero bits are the host part: 2^6 = 64 addresses, 62 usable once the network and broadcast addresses are set aside."
+calc = ["2^6", "2^6 - 2"]
+
+[[exercise]]
+prompt = "What is 200 and 240?"
+answer = "200 and 240"
+hint = "11001000 and 11110000."
+
+[[exercise]]
+prompt = "How many usable hosts are there in a /24 network (8 host bits)?"
+answer = "2^8 - 2"
+hint = "Take away the network and broadcast addresses."

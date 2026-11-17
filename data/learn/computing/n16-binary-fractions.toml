@@ -1,0 +1,28 @@
+id = "N.16"
+course = "Computing"
+book = 4
+order = 3
+title = "Fractions in binary"
+statement = "Places to the right of the point are halves, quarters, eighths and so on; most decimals such as 0.1 cannot be written exactly."
+
+[[step]]
+text = "Idea: 0.1 in binary means one half; 0.01 is one quarter; 0.101 is 1/2 + 1/8 = 0.625."
+calc = ["1/2 + 1/8"]
+
+[[step]]
+text = "Only fractions whose denominator is a power of two end. 1/10 is a repeating binary fraction (0.000110011...), like 1/3 in decimal."
+calc = ["1/4 + 1/16", "1/8"]
+
+[[step]]
+text = "That is why computers using binary floating point show 0.1 + 0.2 as 0.30000000000000004. This calculator uses exact rational arithmetic for such sums, so it gets 0.3."
+calc = ["0.1 + 0.2"]
+
+[[exercise]]
+prompt = "What is the value of the binary fraction 0.0101? (1/4 + 1/16)"
+answer = "1/4 + 1/16"
+hint = "Add the places that hold a one."
+
+[[exercise]]
+prompt = "What is the value of the binary fraction 0.1101?"
+answer = "1/2 + 1/4 + 1/16"
+hint = "0.8125."

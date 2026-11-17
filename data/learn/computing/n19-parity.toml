@@ -1,0 +1,28 @@
+id = "N.19"
+course = "Computing"
+book = 4
+order = 5
+title = "Parity and XOR checksums"
+statement = "XOR-ing bytes together gives a check value that changes if one bit flips."
+
+[[step]]
+text = "Idea: the parity of a bit string is 1 if it has an odd number of ones. XOR of all the bits gives exactly that."
+calc = ["1 xor 0 xor 1 xor 1"]
+
+[[step]]
+text = "A checksum XORs whole bytes: 0b1011 xor 0b0110 xor 0b1100. First 1011 xor 0110 = 1101; then 1101 xor 1100 = 0001."
+calc = ["0b1011 xor 0b0110 xor 0b1100"]
+
+[[step]]
+text = "Send the data with the checksum; the receiver XORs it all and expects 0. Any single flipped bit gives a non-zero answer, so the error is caught."
+calc = ["5 xor 9 xor 12", "5 xor 9 xor 12 xor 0"]
+
+[[exercise]]
+prompt = "What is 5 xor 9 xor 12?"
+answer = "5 xor 9 xor 12"
+hint = "0101 xor 1001 = 1100."
+
+[[exercise]]
+prompt = "What is 0b1011 xor 0b0110 xor 0b1100?"
+answer = "0b1011 xor 0b0110 xor 0b1100"
+hint = "The answer is the last bit only."

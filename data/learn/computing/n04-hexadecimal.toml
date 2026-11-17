@@ -1,0 +1,28 @@
+id = "N.4"
+course = "Computing"
+book = 1
+order = 4
+title = "Hexadecimal"
+statement = "Base 16 has sixteen digits, 0 to 9 then A to F; one hex digit is exactly four bits."
+
+[[step]]
+text = "Idea: A=10, B=11, C=12, D=13, E=14, F=15. The places are 1, 16, 256, 4096. So 0xFF is 15x16 + 15 = 255."
+calc = ["0xFF", "15*16 + 15"]
+
+[[step]]
+text = "Write 0x in front of hex digits. 0x1A3 is 1x256 + 10x16 + 3 = 419."
+calc = ["0x1A3", "1*256 + 10*16 + 3"]
+
+[[step]]
+text = "Going the other way, ask the calculator: 255 to hex, 419 to hex. Or divide by 16 and read the remainders upward, just as for binary."
+calc = ["255 to hex", "419 to hex", "419 mod 16"]
+
+[[exercise]]
+prompt = "What is 0x2F in decimal?"
+answer = "0x2F"
+hint = "2x16 + 15."
+
+[[exercise]]
+prompt = "What is 0xC0 in decimal?"
+answer = "0xC0"
+hint = "12 x 16."

@@ -1,0 +1,28 @@
+id = "N.8"
+course = "Computing"
+book = 2
+order = 2
+title = "Negative numbers: two's complement"
+statement = "To store -x in n bits, store 2^n - x; flip every bit of x and add one."
+
+[[step]]
+text = "Idea: in 8 bits there are 256 patterns. We let the top half stand for negatives: -5 is stored as 256 - 5 = 251, which is 0xFB, or 11111011."
+calc = ["256 - 5", "251 to hex", "251 to binary"]
+
+[[step]]
+text = "The shortcut: flip the bits of 5 (00000101 becomes 11111010) and add 1 to get 11111011. The calculator's not does the flip, and not(x) + 1 gives -x."
+calc = ["not(5)", "not(5) + 1"]
+
+[[step]]
+text = "Why it works: adding 5 and -5 gives 256, which overflows 8 bits and leaves 0. So ordinary binary addition handles negatives with no special case."
+calc = ["5 + 251", "(5 + 251) mod 256"]
+
+[[exercise]]
+prompt = "What unsigned value stores -1 in 8 bits?"
+answer = "256 - 1"
+hint = "2^8 - 1."
+
+[[exercise]]
+prompt = "What unsigned value stores -20 in 8 bits?"
+answer = "256 - 20"
+hint = "2^8 - 20."

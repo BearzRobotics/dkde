@@ -1,0 +1,28 @@
+id = "N.13"
+course = "Computing"
+book = 3
+order = 3
+title = "Modular arithmetic"
+statement = "a mod n is the remainder of a divided by n; arithmetic mod n wraps around like a clock."
+
+[[step]]
+text = "Idea: on a 12-hour clock, 5 hours after 10 o'clock is 3 o'clock. That is (10 + 5) mod 12 = 3."
+calc = ["(10 + 5) mod 12"]
+
+[[step]]
+text = "Mod 2 tells even from odd: 17 mod 2 is 1, 18 mod 2 is 0. Mod 10 gives the last digit, and mod 256 the low byte."
+calc = ["17 mod 2", "18 mod 2", "1234 mod 10", "1000 mod 256"]
+
+[[step]]
+text = "You may reduce before or after: (7 x 8) mod 5 equals ((7 mod 5) x (8 mod 5)) mod 5 = (2 x 3) mod 5 = 1."
+calc = ["(7*8) mod 5", "((7 mod 5)*(8 mod 5)) mod 5"]
+
+[[exercise]]
+prompt = "What hour is 50 hours after 9 o'clock on a 12-hour clock?"
+answer = "(9 + 50) mod 12"
+hint = "59 mod 12."
+
+[[exercise]]
+prompt = "What is (7 * 8) mod 5?"
+answer = "(7*8) mod 5"
+hint = "56 mod 5."

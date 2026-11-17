@@ -1,0 +1,28 @@
+id = "N.15"
+course = "Computing"
+book = 4
+order = 2
+title = "Colours as hex"
+statement = "A web colour is three bytes, red, green and blue, written as six hex digits."
+
+[[step]]
+text = "Idea: #FF8000 splits into FF, 80 and 00: red is 255, green is 128, blue is 0. That is a strong orange."
+calc = ["0xFF", "0x80", "0x00"]
+
+[[step]]
+text = "Each channel is 0 to 255. As a fraction of full brightness, 128 is about half."
+calc = ["0x80 / 255 * 100"]
+
+[[step]]
+text = "Packing: red x 65536 + green x 256 + blue is the whole 24-bit number, 16744448 for #FF8000. There are 2^24 = 16777216 possible colours."
+calc = ["255*65536 + 128*256 + 0", "2^24"]
+
+[[exercise]]
+prompt = "What is the green channel of #1E90FF in decimal? (The middle byte is 0x90.)"
+answer = "0x90"
+hint = "9 x 16."
+
+[[exercise]]
+prompt = "How many different colours do three bytes give?"
+answer = "2^24"
+hint = "Three bytes are 24 bits."

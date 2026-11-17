@@ -1,0 +1,27 @@
+id = "N.1"
+course = "Computing"
+book = 1
+order = 1
+title = "Place value and bases"
+statement = "A number is written in digits whose places are powers of the base; we use base 10, computers use base 2, and programmers also use 8 and 16."
+
+[[step]]
+text = "Idea: 4096 means 4x1000 + 0x100 + 9x10 + 6x1. Each place is ten times the one to its right: a power of ten."
+calc = ["4*10^3 + 0*10^2 + 9*10 + 6"]
+
+[[step]]
+text = "Nothing special about ten. In base 5 the places are 1, 5, 25, 125. The digits 1 2 3 in base 5 mean 1x25 + 2x5 + 3."
+calc = ["1*5^2 + 2*5 + 3"]
+
+[[step]]
+text = "A base needs as many digits as its size: base 2 uses 0 and 1, base 8 uses 0 to 7, base 16 uses 0 to 9 and then A to F for ten to fifteen."
+
+[[exercise]]
+prompt = "The digits 1 2 3 in base 5 mean 1x25 + 2x5 + 3. What is that in ordinary decimal?"
+answer = "1*5^2 + 2*5 + 3"
+hint = "25 + 10 + 3."
+
+[[exercise]]
+prompt = "How many different values can three decimal digits show, from 000 to 999?"
+answer = "10^3"
+hint = "Ten choices for each of three places."
