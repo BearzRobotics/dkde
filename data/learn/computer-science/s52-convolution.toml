@@ -1,0 +1,39 @@
+id = "CS.52"
+course = "Computer Science"
+book = 12
+order = 2
+title = "Convolution: blurs and edges in images"
+statement = "A filter slides a small grid of weights over an image; each output pixel is the dot product of the weights with the pixels beneath, which blurs, sharpens or finds edges."
+
+[[step]]
+text = "Idea: the 3 x 3 box blur has nine weights of 1/9. Place it over a 3 x 3 patch of pixels (10, 20, 30; 40, 50, 60; 70, 80, 90): the output is the average, 50. Smooth areas stay the same and noise is averaged out."
+calc = ["(10+20+30+40+50+60+70+80+90)/9", "dot([1,1,1,1,1,1,1,1,1]/9,[10,20,30,40,50,60,70,80,90])"]
+
+[[step]]
+text = "Edge finding: the Sobel filter for horizontal change has rows (-1, 0, 1), (-2, 0, 2), (-1, 0, 1). It subtracts the left side from the right. Over the same patch: dot product of the flattened weights with the flattened patch is 80, a clear horizontal gradient."
+calc = ["dot([-1,0,1,-2,0,2,-1,0,1],[10,20,30,40,50,60,70,80,90])"]
+
+[[step]]
+text = "Over a flat patch (all pixels 50) the same filter gives 0: the positive and negative weights cancel, so flat regions are black and edges light up."
+calc = ["dot([-1,0,1,-2,0,2,-1,0,1],[50,50,50,50,50,50,50,50,50])"]
+
+[[step]]
+text = "Cost: a w by h image with a k by k kernel needs w x h x k^2 multiplications. For a 1920 x 1080 image and k = 3 that is about 18.7 million."
+calc = ["1920*1080*3^2", "1920*1080*5^2"]
+
+[[step]]
+text = "Separable kernels (a Gaussian blur is one) factor into a row filter then a column filter: 2k multiplications per pixel instead of k^2. For k = 3 that is 6 instead of 9, and for k = 9 it is 18 against 81, a 4.5 times saving."
+calc = ["1920*1080*2*3", "81/18"]
+
+[[step]]
+text = "Convolutional neural networks use exactly this operation with learned weights; the same arithmetic powers image filters, audio effects and signal processing."
+
+[[exercise]]
+prompt = "What is the dot product of the Sobel weights (-1, 0, 1, -2, 0, 2, -1, 0, 1) with the patch (10, 20, 30, 40, 50, 60, 70, 80, 90)?"
+answer = "dot([-1,0,1,-2,0,2,-1,0,1],[10,20,30,40,50,60,70,80,90])"
+hint = "(-10+30) + (-80+120) + (-70+90)."
+
+[[exercise]]
+prompt = "How many multiplications does a 3 x 3 filter need on a 1920 x 1080 image? (w x h x 9)"
+answer = "1920*1080*9"
+hint = "Nine per pixel."

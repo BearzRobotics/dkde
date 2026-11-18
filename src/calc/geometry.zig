@@ -98,6 +98,7 @@ pub const Geometry = struct {
         tools.setMaxChildrenPerLine(4);
         tools.setColumnSpacing(4);
         tools.setRowSpacing(4);
+        tools.as(gtk.Widget).addCssClass("dkde-calc-compact-row");
         var leader: ?*gtk.ToggleButton = null;
         inline for (tool_names) |entry| {
             const b = gtk.ToggleButton.newWithLabel(t(entry.label));
@@ -116,7 +117,7 @@ pub const Geometry = struct {
         const area = self.area.as(gtk.Widget);
         area.setVexpand(1);
         area.setHexpand(1);
-        area.setSizeRequest(360, 300);
+        area.setSizeRequest(240, 200);
         area.addCssClass("dkde-calc-graph");
         self.area.setDrawFunc(onDraw, self, null);
         const drag = gtk.GestureDrag.new();
@@ -177,6 +178,7 @@ pub const Geometry = struct {
         colours.append(self.three_d.as(gtk.Widget));
 
         const options = gtk.Box.new(.horizontal, 8);
+        options.as(gtk.Widget).addCssClass("dkde-calc-compact-row");
         self.snap.setActive(1);
         self.snap.as(gtk.Widget).setTooltipText(t("Snap points to the grid"));
         options.append(self.snap.as(gtk.Widget));

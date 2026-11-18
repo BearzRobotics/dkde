@@ -1,0 +1,35 @@
+id = "CS.48"
+course = "Computer Science"
+book = 11
+order = 1
+title = "Diffie-Hellman key exchange"
+statement = "Two people agree on a secret over a public channel using modular exponentiation: g^(ab) is the same whichever exponent is raised first, but recovering a from g^a is hard."
+
+[[step]]
+text = "Idea: publicly agree on a prime p = 23 and a base g = 5. Alice picks a secret a = 6, Bob picks b = 15."
+calc = ["isprime(23)"]
+
+[[step]]
+text = "Alice sends A = g^a mod p = 5^6 mod 23 = 8. Bob sends B = g^b mod p = 5^15 mod 23 = 19. Everyone can see 23, 5, 8 and 19."
+calc = ["powmod(5,6,23)", "powmod(5,15,23)"]
+
+[[step]]
+text = "Alice computes B^a mod p = 19^6 mod 23. Bob computes A^b mod p = 8^15 mod 23. Both get 2, because both equal g^(ab) mod p = 5^90 mod 23."
+calc = ["powmod(19,6,23)", "powmod(8,15,23)", "powmod(5,6*15,23)"]
+
+[[step]]
+text = "An eavesdropper knows A = 8 and wants a: the discrete logarithm. For p = 23 it is a trial. For a 2048-bit prime there is no known fast method, and powmod does the legitimate side in a few thousand multiplications by repeated squaring."
+calc = ["2^2048", "log2(2048)"]
+
+[[step]]
+text = "Real deployments use the elliptic-curve version (ECDH) with 256-bit keys, and authenticate the exchange so no one can sit in the middle. The shared number is run through a hash to make the actual cipher key."
+
+[[exercise]]
+prompt = "What is 5^6 mod 23 (Alice's public value)?"
+answer = "powmod(5,6,23)"
+hint = "5^6 = 15625."
+
+[[exercise]]
+prompt = "What shared secret do both get? (19^6 mod 23)"
+answer = "powmod(19,6,23)"
+hint = "Bob's public value to Alice's secret."

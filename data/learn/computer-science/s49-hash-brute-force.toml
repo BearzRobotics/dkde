@@ -1,0 +1,36 @@
+id = "CS.49"
+course = "Computer Science"
+book = 11
+order = 2
+title = "Hash sizes and brute-force time"
+statement = "An n-bit hash needs about 2^n guesses to reverse and about 2^(n/2) to find any two inputs that collide (the birthday bound), so size decides how long an attack takes."
+
+[[step]]
+text = "Idea: SHA-256 gives 256-bit hashes: 2^256 possible values. Finding an input for a given hash by guessing needs about 2^256 tries. That is far beyond anything physical."
+calc = ["2^256", "log10(2^256)"]
+
+[[step]]
+text = "Collisions are easier (CS.3): you expect one after about the square root, 2^128 hashes. Hence a hash used where collisions matter should be twice the security level you want: 256 bits for 128-bit security."
+calc = ["2^(256/2)", "256/2"]
+
+[[step]]
+text = "Time at a trillion (10^12) hashes a second: 2^64 takes 0.58 years, 2^80 takes about 38000 years, and 2^128 takes about 10^19 years, a billion times the age of the universe."
+calc = ["2^64 / 10^12 / (86400*365.25)", "2^80 / 10^12 / (86400*365.25)", "2^128 / 10^12 / (86400*365.25)"]
+
+[[step]]
+text = "Hence old hashes fail by size or design. MD5 (128-bit) has known collisions found in seconds; SHA-1 (160-bit) had a collision found at about 2^63 work against the ideal 2^80, so both are retired for signatures."
+calc = ["2^63", "2^80/2^63"]
+
+[[step]]
+text = "Stretching: password hashes repeat the work. If one hash costs 1 microsecond and bcrypt costs 100 milliseconds, every guess is 100000 times slower, which turns an attack of a week into two thousand years."
+calc = ["0.1/10^-6", "7 * 100000 / 365.25"]
+
+[[exercise]]
+prompt = "How many hashes before a collision is expected for a 256-bit hash? Give the exponent, 256/2."
+answer = "256/2"
+hint = "The square root halves the exponent."
+
+[[exercise]]
+prompt = "How many years does 2^64 hashes take at 10^12 per second? (2^64 / 10^12 / (86400 x 365.25))"
+answer = "2^64/10^12/(86400*365.25)"
+hint = "About 0.58."

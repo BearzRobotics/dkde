@@ -1,0 +1,36 @@
+id = "CS.50"
+course = "Computer Science"
+book = 11
+order = 3
+title = "XOR ciphers and the one-time pad"
+statement = "XORing a message with a key of the same length gives a cipher that is perfectly secret if the key is random and used once; reusing the key leaks the XOR of the messages."
+
+[[step]]
+text = "Idea: XOR is its own inverse (CS.5, N.9). Encrypt the byte for the letter h (104 = 01101000) with the key byte 179 (10110011): 104 xor 179 = 219."
+calc = ["104 xor 179", "104 to binary", "179 to binary"]
+
+[[step]]
+text = "Decrypt with the same key: 219 xor 179 = 104 again."
+calc = ["219 xor 179"]
+
+[[step]]
+text = "Why it is unbreakable: if the key is truly random, every plaintext byte is equally consistent with the cipher byte 219. The key 179 gives h; the key 178 would give 105, the letter i. The cipher byte tells you nothing (Shannon, 1949)."
+calc = ["219 xor 178", "219 xor 179"]
+
+[[step]]
+text = "But reuse is fatal. If two messages m1 and m2 share a key, then c1 xor c2 = m1 xor m2: the key cancels. With m1 = 104 and m2 = 105 the attacker sees m1 xor m2 = 1 and learns they differ in one bit; with some guessed text the rest unravels."
+calc = ["(104 xor 179) xor (105 xor 179)", "104 xor 105"]
+
+[[step]]
+text = "Known plaintext also gives the key outright: if you know m and see c then k = c xor m. So a simple XOR with a short repeated key (Vigenere-style) is weak, and real stream ciphers (ChaCha20, AES-CTR) generate a long keystream from a short key and a nonce that must never repeat."
+calc = ["219 xor 104"]
+
+[[exercise]]
+prompt = "Encrypt 104 with the key 179 by XOR. What is the cipher byte?"
+answer = "104 xor 179"
+hint = "01101000 xor 10110011."
+
+[[exercise]]
+prompt = "If c1 = 104 xor 179 and c2 = 105 xor 179, what is c1 xor c2?"
+answer = "(104 xor 179) xor (105 xor 179)"
+hint = "The key cancels, leaving 104 xor 105."

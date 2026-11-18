@@ -1,0 +1,36 @@
+id = "CS.45"
+course = "Computer Science"
+book = 9
+order = 3
+title = "A/B tests: significance and sample size"
+statement = "To compare two versions, ask how many standard errors apart their results are; a z score beyond 1.96 is significant at the 5 percent level, but peeking and many tests inflate false alarms."
+
+[[step]]
+text = "Idea: version A converts 10 percent of 2000 visitors and version B 12 percent of 2000. Is B really better, or is that luck? The difference is 0.02."
+calc = ["0.12 - 0.10"]
+
+[[step]]
+text = "If there were no difference the best estimate of the rate is the pooled p = 0.11, and the standard error of the difference is sqrt(p(1 - p) x 2/n) = 0.0099."
+calc = ["(0.10 + 0.12)/2", "sqrt(0.11*0.89*2/2000)"]
+
+[[step]]
+text = "The z score is the difference over its standard error: 0.02 / 0.0099 = 2.02. A z beyond 1.96 means a result this large would happen less than 5 percent of the time by chance. The two-sided p-value is erfc(z/sqrt 2) = 0.043."
+calc = ["0.02/sqrt(0.11*0.89*2/2000)", "erfc(2.02/sqrt(2))"]
+
+[[step]]
+text = "Sample size: to detect a difference d at 5 percent significance with 80 percent power you need about n = 16 p(1 - p)/d^2 per group. For p = 0.11 and d = 0.02 that is 3916 per group, so the 2000 in the example were too few to be convincing."
+calc = ["16*0.11*0.89/0.02^2"]
+
+[[step]]
+text = "Pitfalls: looking at the result every day and stopping when it is significant inflates false positives (peeking). Running 20 tests at 5 percent makes at least one false alarm 64 percent likely, so correct for multiple tests or decide the sample size in advance."
+calc = ["1 - 0.95^20", "0.05/20"]
+
+[[exercise]]
+prompt = "What is the standard error of the difference, sqrt(0.11 x 0.89 x 2 / 2000)?"
+answer = "sqrt(0.11*0.89*2/2000)"
+hint = "About 0.0099."
+
+[[exercise]]
+prompt = "How likely is at least one false alarm in 20 independent tests at the 5 percent level? (1 - 0.95^20)"
+answer = "1 - 0.95^20"
+hint = "1 minus the chance of none."

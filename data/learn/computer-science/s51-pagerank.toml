@@ -1,0 +1,36 @@
+id = "CS.51"
+course = "Computer Science"
+book = 12
+order = 1
+title = "PageRank: an eigenvector of the web"
+statement = "A page is important if important pages link to it; the ranks are the eigenvector (eigenvalue 1) of the link matrix, found by repeated multiplication."
+
+[[step]]
+text = "Idea: three pages. A links to B and C, B links to A and C, C links to A. Each page splits its rank equally among its links. As a matrix M (column j is where page j sends its rank): A is column 1 = (0, 1/2, 1/2), B is column 2 = (1/2, 0, 1/2), C is column 3 = (1, 0, 0)."
+calc = ["[[0,0.5,1],[0.5,0,0],[0.5,0.5,0]]"]
+
+[[step]]
+text = "Start with equal rank 1/3 each and multiply by M. One step gives A = 0.5, B = 0.167, C = 0.333; the ranks still add to 1. A gained because both B and C link to it."
+calc = ["[[0,0.5,1],[0.5,0,0],[0.5,0.5,0]]*[[1/3],[1/3],[1/3]]"]
+
+[[step]]
+text = "Repeat: after 20 steps the ranks settle at (0.4444, 0.2222, 0.3333) = (4/9, 2/9, 3/9). Further steps no longer change them: that is a vector r with M r = r, an eigenvector with eigenvalue 1."
+calc = ["[[0,0.5,1],[0.5,0,0],[0.5,0.5,0]]^20*[[1/3],[1/3],[1/3]]", "4/9 + 2/9 + 3/9"]
+
+[[step]]
+text = "The calculator confirms 1 is an eigenvalue. The other two (here -0.5) have size below 1, so their parts shrink with every step and the answer is dominated by the eigenvalue-1 part: this is why repeated multiplication (power iteration) converges."
+calc = ["eigenvalues([[0,0.5,1],[0.5,0,0],[0.5,0.5,0]])"]
+
+[[step]]
+text = "Real PageRank adds damping: with probability 0.15 the surfer jumps to a random page, so r = 0.15/n + 0.85 M r. That makes the matrix well behaved for any web graph. The web has billions of pages, so the matrix is stored sparsely and 50 to 100 iterations are enough."
+calc = ["0.15/3", "0.85*[[0,0.5,1],[0.5,0,0],[0.5,0.5,0]]*[[4/9],[2/9],[3/9]] + 0.05"]
+
+[[exercise]]
+prompt = "After one step from rank 1/3 each, what is page A's rank? (0 x 1/3 + 0.5 x 1/3 + 1 x 1/3)"
+answer = "0.5*(1/3) + 1*(1/3)"
+hint = "A is linked from B (half its rank) and C (all of its rank)."
+
+[[exercise]]
+prompt = "What is the rank of page A in the long run? (4/9 as a decimal)"
+answer = "4/9"
+hint = "The eigenvector (4, 2, 3)/9."

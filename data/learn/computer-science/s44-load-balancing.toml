@@ -1,0 +1,35 @@
+id = "CS.44"
+course = "Computer Science"
+book = 9
+order = 2
+title = "Random load balancing and two choices"
+statement = "Throwing requests at random servers leaves some much busier than others; picking the lighter of two random servers makes the worst load drop dramatically."
+
+[[step]]
+text = "Idea: n requests go to m servers at random. The average load is lambda = n/m. When n = m, lambda = 1, and the chance a server gets nothing is e^-1 = 0.368: over a third of the servers sit idle."
+calc = ["1000/1000", "exp(-1)"]
+
+[[step]]
+text = "The busiest server is much worse than the average. For n requests on n servers the maximum load is about ln n / ln ln n. With n = one million: 5.3 requests, against an average of 1."
+calc = ["ln(10^6)", "ln(ln(10^6))", "ln(10^6)/ln(ln(10^6))"]
+
+[[step]]
+text = "Power of two choices: pick two servers at random and send the request to the less loaded. The maximum drops to about ln ln n / ln 2 = 3.8 for a million requests, and the gap grows with n. One extra random choice turns ln n / ln ln n into ln ln n."
+calc = ["ln(ln(10^6))/ln(2)"]
+
+[[step]]
+text = "Spread: for a Poisson load with mean lambda the standard deviation is sqrt(lambda). At 100 requests per server on average you see typical swings of 10, or 10 percent; at an average of 1 the swing is 100 percent."
+calc = ["sqrt(100)", "sqrt(100)/100", "sqrt(1)/1"]
+
+[[step]]
+text = "Used in practice by hash tables (the two-choice hash table), by schedulers such as Sparrow and by load balancers like Envoy's least-request with random pairs."
+
+[[exercise]]
+prompt = "What fraction of servers get no requests when n requests go to n servers at random? (e^-1)"
+answer = "exp(-1)"
+hint = "The chance of none, with mean 1."
+
+[[exercise]]
+prompt = "The typical swing in load for a mean of 100 requests is its square root. What is it?"
+answer = "sqrt(100)"
+hint = "sqrt of the mean."

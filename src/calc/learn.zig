@@ -147,8 +147,8 @@ pub const Learn = struct {
         _ = gtk.ListBox.signals.row_selected.connect(self.list, *Learn, &onRow, self, .{});
         const list_scroll = gtk.ScrolledWindow.new();
         list_scroll.setChild(self.list.as(gtk.Widget));
-        list_scroll.setMinContentHeight(110);
-        list_scroll.setMaxContentHeight(150);
+        list_scroll.setMinContentHeight(150);
+        list_scroll.setMaxContentHeight(300);
         list_scroll.setPolicy(.never, .automatic);
         self.content.append(list_scroll.as(gtk.Widget));
 
@@ -316,7 +316,7 @@ pub const Learn = struct {
             self.groups.append(self.gpa, .{ .course = l.course, .book = l.book }) catch continue;
             var z: [96]u8 = undefined;
             const euclid = std.mem.eql(u8, l.course, "Euclid");
-            const zt = (if (euclid and l.book == 0) std.fmt.bufPrintSentinel(&z, "Euclid: Foundations", .{}, 0) else if (euclid) std.fmt.bufPrintSentinel(&z, "Euclid: Book {s}", .{roman(l.book)}, 0) else if (l.book <= 1) std.fmt.bufPrintSentinel(&z, "{s}", .{l.course}, 0) else std.fmt.bufPrintSentinel(&z, "{s}: unit {d}", .{ l.course, l.book }, 0)) catch "Lessons";
+            const zt = (if (euclid and l.book == 0) std.fmt.bufPrintSentinel(&z, "Euclid: Foundations", .{}, 0) else if (euclid) std.fmt.bufPrintSentinel(&z, "Euclid: Book {s}", .{roman(l.book)}, 0) else if (unitName(l.course, l.book)) |u| std.fmt.bufPrintSentinel(&z, "{s}: {s}", .{ l.course, u }, 0) else if (l.book <= 1) std.fmt.bufPrintSentinel(&z, "{s}", .{l.course}, 0) else std.fmt.bufPrintSentinel(&z, "{s}: unit {d}", .{ l.course, l.book }, 0)) catch "Lessons";
             self.names.append(zt);
         }
         self.books.setSelected(0);
@@ -333,12 +333,55 @@ pub const Learn = struct {
     }
 
     fn onPop(_: *gtk.Button, self: *Learn) callconv(.c) void {
+        // Not now: the button being clicked is about to move to another window, so wait until the click is done.
+        _ = @import("glib2").idleAdd(popIdle, self);
+    }
+
+    fn popIdle(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Learn = @ptrCast(@alignCast(data.?));
         self.hooks.toggle_window(self.hooks.ctx);
+        return 0; // G_SOURCE_REMOVE
     }
 
     fn onRefresh(_: *gtk.Button, self: *Learn) callconv(.c) void {
         self.want_start = true;
         self.beginLoad(true);
+    }
+
+    /// What a unit (book) of a course is about, for the dropdown.
+    fn unitName(course: []const u8, book: u8) ?[]const u8 {
+        const Unit = struct { []const u8, u8, []const u8 };
+        const units = [_]Unit{
+            .{ "Arithmetic", 1, "whole numbers and fractions" },
+            .{ "Arithmetic", 2, "decimals, ratios and averages" },
+            .{ "Arithmetic", 3, "powers and roots" },
+            .{ "Algebra", 1, "equations and factoring" },
+            .{ "Algebra", 2, "functions and logarithms" },
+            .{ "Trigonometry", 1, "right triangles" },
+            .{ "Calculus", 1, "limits and derivatives" },
+            .{ "Calculus", 2, "integrals and series" },
+            .{ "Linear Algebra", 1, "vectors and matrices" },
+            .{ "Linear Algebra", 2, "eigenvalues" },
+            .{ "Computing", 1, "number bases" },
+            .{ "Computing", 2, "binary arithmetic and bits" },
+            .{ "Computing", 3, "sizes, limits and logarithms" },
+            .{ "Computing", 4, "data and encodings" },
+            .{ "Computing", 5, "logic and floating point" },
+            .{ "Computer Science", 1, "hashing, bits and checks" },
+            .{ "Computer Science", 2, "graphics maths and random numbers" },
+            .{ "Computer Science", 3, "information, precision and cryptography" },
+            .{ "Computer Science", 4, "algorithms and counting" },
+            .{ "Computer Science", 5, "logic and hardware" },
+            .{ "Computer Science", 6, "formats and text encoding" },
+            .{ "Computer Science", 7, "memory and networks" },
+            .{ "Computer Science", 8, "complexity" },
+            .{ "Computer Science", 9, "probability for systems" },
+            .{ "Computer Science", 10, "patterns and passwords" },
+            .{ "Computer Science", 11, "cryptography" },
+            .{ "Computer Science", 12, "linear algebra in practice" },
+        };
+        for (units) |u| if (u[1] == book and std.mem.eql(u8, u[0], course)) return u[2];
+        return null;
     }
 
     fn roman(n: u8) []const u8 {
@@ -365,9 +408,24 @@ pub const Learn = struct {
             const label = gtk.Label.new(text);
             label.setXalign(0);
             label.setEllipsize(.end);
-            label.as(gtk.Widget).setMarginTop(4);
-            label.as(gtk.Widget).setMarginBottom(4);
-            self.list.append(label.as(gtk.Widget));
+            // Under the title, one line on what the lesson covers.
+            const row = gtk.Box.new(.vertical, 1);
+            row.as(gtk.Widget).setMarginTop(4);
+            row.as(gtk.Widget).setMarginBottom(4);
+            row.append(label.as(gtk.Widget));
+            if (l.statement.len > 0) {
+                var sb: [400]u8 = undefined;
+                const st = std.fmt.bufPrintSentinel(&sb, "{s}", .{l.statement}, 0) catch "";
+                const about = gtk.Label.new(st);
+                about.setXalign(0);
+                about.setEllipsize(.end);
+                about.setMaxWidthChars(34);
+                about.as(gtk.Widget).addCssClass("dim-label");
+                about.as(gtk.Widget).addCssClass("caption");
+                row.append(about.as(gtk.Widget));
+                row.as(gtk.Widget).setTooltipText(st);
+            }
+            self.list.append(row.as(gtk.Widget));
         }
         if (self.list.getRowAtIndex(0)) |first| self.list.selectRow(first);
     }
@@ -475,7 +533,7 @@ pub const Learn = struct {
             nl.setWrap(1);
             nl.setMaxWidthChars(40);
             self.steps_box.append(nl.as(gtk.Widget));
-            if (mathview.MathView.create(self.gpa, st.math, null)) |w| {
+            if (mathview.MathView.create(std.heap.c_allocator, st.math, null)) |w| {
                 w.setMarginStart(18);
                 self.steps_box.append(w);
             } else {

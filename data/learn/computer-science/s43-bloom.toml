@@ -1,0 +1,36 @@
+id = "CS.43"
+course = "Computer Science"
+book = 9
+order = 1
+title = "Bloom filters"
+statement = "A Bloom filter answers \"have I seen this?\" in a few bits per item: it never misses something added, but sometimes says yes to something new; the false-positive chance is about (1 - e^(-kn/m))^k."
+
+[[step]]
+text = "Idea: keep a bit array of m bits and k hash functions. To add an item, set the k bits its hashes point to. To ask about an item, look at its k bits: if any is 0 the item is definitely new; if all are 1 it is probably there."
+calc = ["10000/1000", "2^10000"]
+
+[[step]]
+text = "After n items are added each of the k bits per item was set, so a given bit is still 0 with probability about e^(-kn/m). With m = 10000 bits, n = 1000 items and k = 7 hashes: kn/m = 0.7 and e^-0.7 = 0.4966."
+calc = ["7*1000/10000", "exp(-0.7)"]
+
+[[step]]
+text = "A false positive needs all k bits of a new item to be 1: (1 - e^(-kn/m))^k = (1 - 0.4966)^7 = 0.0082, under one percent."
+calc = ["(1 - exp(-0.7))^7"]
+
+[[step]]
+text = "The best number of hashes is k = (m/n) ln 2 = 10 x 0.693 = 6.93, so 7. For a target false-positive rate p the filter needs m/n = -ln(p)/(ln 2)^2 bits per item: 9.6 bits for 1 percent, 14.4 for 0.1 percent."
+calc = ["(10000/1000)*ln(2)", "-ln(0.01)/ln(2)^2", "-ln(0.001)/ln(2)^2"]
+
+[[step]]
+text = "Why use one: storing 1000 64-bit keys takes 64000 bits, the filter 10000 bits, and it still answers almost every query. Databases use Bloom filters to skip disk reads for keys that are not there, and browsers use them for blocklists."
+calc = ["1000*64", "64000/10000"]
+
+[[exercise]]
+prompt = "For a 1 percent false-positive rate, how many bits per item does a Bloom filter need? (-ln(0.01)/ln(2)^2)"
+answer = "-ln(0.01)/ln(2)^2"
+hint = "About 9.6."
+
+[[exercise]]
+prompt = "What is the best number of hashes for m = 10000 bits and n = 1000 items? ((m/n) ln 2)"
+answer = "(10000/1000)*ln(2)"
+hint = "10 times 0.693."

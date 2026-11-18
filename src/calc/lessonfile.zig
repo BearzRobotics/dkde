@@ -228,7 +228,7 @@ fn loadDir(arena: Allocator, io: std.Io, path: []const u8, depth: u8, entries: *
 // read instead, and a lesson's file is read only when the lesson is opened. The index is tied to the
 // program version, and "Refresh lessons" in the Learn view makes a new one (for lessons you added).
 
-const index_magic = "dkde-learn-index 1";
+const index_magic = "dkde-learn-index 2";
 
 fn clean(arena: Allocator, text: []const u8) []const u8 {
     const out = arena.dupe(u8, text) catch return text;
@@ -270,7 +270,8 @@ pub fn loadIndex(gpa: Allocator, io: std.Io, cache_path: []const u8, version: []
         const course = f.next() orelse continue;
         const book = std.fmt.parseInt(u8, f.next() orelse continue, 10) catch continue;
         const title = f.next() orelse continue;
-        lessons.append(arena, .{ .id = id, .course = course, .book = book, .title = title, .statement = "", .steps = &.{}, .exercises = &.{}, .proof = "" }) catch {
+        const statement = f.next() orelse "";
+        lessons.append(arena, .{ .id = id, .course = course, .book = book, .title = title, .statement = statement, .steps = &.{}, .exercises = &.{}, .proof = "" }) catch {
             out.arena.deinit();
             return null;
         };
@@ -303,7 +304,7 @@ pub fn writeIndex(gpa: Allocator, io: std.Io, cache_path: []const u8, version: [
     out.print(arena, "{s} {s}\n", .{ index_magic, version }) catch return;
     for (loaded.lessons, 0..) |l, i| {
         if (i >= loaded.paths.len) break;
-        out.print(arena, "{s}\t{s}\t{s}\t{d}\t{s}\n", .{ clean(arena, loaded.paths[i]), clean(arena, l.id), clean(arena, l.course), l.book, clean(arena, l.title) }) catch return;
+        out.print(arena, "{s}\t{s}\t{s}\t{d}\t{s}\t{s}\n", .{ clean(arena, loaded.paths[i]), clean(arena, l.id), clean(arena, l.course), l.book, clean(arena, l.title), clean(arena, l.statement) }) catch return;
     }
     _ = io;
     if (std.fs.path.dirname(cache_path)) |dir| common.fsio.makePath(dir) catch {};

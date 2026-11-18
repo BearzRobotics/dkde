@@ -1,0 +1,36 @@
+id = "CS.46"
+course = "Computer Science"
+book = 10
+order = 1
+title = "Finite automata and counting strings"
+statement = "A finite automaton reads symbols and changes state; counting the strings it accepts is counting paths, which a matrix power does."
+
+[[step]]
+text = "Idea: a machine with two states reads a binary string. State A means the last bit was 0 (or nothing yet), state B means the last bit was 1. Reading 1 in state B would break the rule (no two 1s in a row) and fall into a dead state."
+calc = ["2^5"]
+
+[[step]]
+text = "Count the accepted strings of length n: 2, 3, 5, 8, 13... each is the sum of the two before, because a string ends in 0 (any accepted string of length n - 1 before it) or in 01 (any accepted string of length n - 2). These are Fibonacci numbers: the count is F(n + 2)."
+calc = ["fibonacci(3)", "fibonacci(4)", "fibonacci(5)", "fibonacci(6)", "fibonacci(7)"]
+
+[[step]]
+text = "For length 5 that is 13 of the 32 strings. Out of 2^n the fraction shrinks as (0.618...)^n x 1.17, roughly (phi/2)^n."
+calc = ["13/32", "fibonacci(7)/2^5"]
+
+[[step]]
+text = "Matrix form: the transition matrix [[1,1],[1,0]] says from A go to A (read 0) or B (read 1) and from B go to A only (read 0). Raising it to the n-th power counts paths of length n."
+calc = ["[[1,1],[1,0]]^5", "[[1,1],[1,0]]^10"]
+
+[[step]]
+text = "The same idea counts strings matching any regular expression: build the automaton, take the adjacency matrix to the power n and add the right entries. Strings of length 8 that do contain two 1s in a row: 2^8 minus F(10)."
+calc = ["2^8 - fibonacci(10)", "fibonacci(10)"]
+
+[[exercise]]
+prompt = "How many binary strings of length 6 have no two 1s in a row? (F(8))"
+answer = "fibonacci(8)"
+hint = "13 + 8."
+
+[[exercise]]
+prompt = "How many binary strings of length 8 do contain two 1s in a row? (2^8 - F(10))"
+answer = "2^8 - fibonacci(10)"
+hint = "All strings minus the 55 that avoid it."
