@@ -2,7 +2,7 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
-## Unreleased
+## 0.3.3 (2026-11-17)
 
 dkde-calc learning and geometry:
 - **New functions**: modinv, popcount (bitcount), nand, nor, xnor, parity, bitlen, tobcd, frombcd, f32bits, f32, f64bits, f64.
