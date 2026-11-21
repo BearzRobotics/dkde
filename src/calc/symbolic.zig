@@ -334,6 +334,7 @@ pub fn format(a: std.mem.Allocator, x: Sym) Error![]u8 {
     for (ordered) |t| {
         const d = t.c.exact.den;
         var g = try Big.init(a);
+        try g.ensureCapacity(@max(den.len(), d.len()) + 1); // the stdlib gcd copies into g without growing it
         try g.gcd(&den, &d);
         var q = try Big.init(a);
         var r = try Big.init(a);

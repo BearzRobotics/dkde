@@ -1443,11 +1443,13 @@ pub const Eval = struct {
             // Choosing more than there are: no way to do it.
             if (r > nn) return num.fromInt(a, 0);
             if (nn > 100_000) return error.TooLarge;
+            // C(n, r) = C(n, n - r): multiply only the shorter run (nCr(n + 4, 4) is four steps, not n).
+            const rr: i64 = if (eql(u8, f, "ncr") and r > nn - r) nn - r else r;
             var acc = try num.fromInt(a, 1);
             var i: i64 = 0;
-            while (i < r) : (i += 1) acc = try num.mul(a, acc, try num.fromInt(a, nn - i));
+            while (i < rr) : (i += 1) acc = try num.mul(a, acc, try num.fromInt(a, nn - i));
             if (eql(u8, f, "npr")) return acc;
-            return num.div(a, acc, try num.factorial(a, args[1]));
+            return num.div(a, acc, try num.factorial(a, try num.fromInt(a, rr)));
         }
         if (eql(u8, f, "atan2")) {
             if (x != .approx and args[1] != .approx) {
@@ -2203,17 +2205,57 @@ pub fn findRootsIn(a: std.mem.Allocator, ev: *Eval, f: *const Node, x_name: []co
     while (i <= samples) : (i += 1) {
         const x = lo + step * @as(f64, @floatFromInt(i));
         const y = ev.float(f, x_name, x);
-        if (std.math.isFinite(py) and std.math.isFinite(y)) {
+        // An infinite end (a pole or the edge of log's domain) still has a sign; only NaN has none.
+        if (!std.math.isNan(py) and !std.math.isNan(y)) {
             if (py == 0) {
                 try addRoot(a, &roots, px, step);
             } else if ((py < 0) != (y < 0) and y != 0) {
                 const root = refine(ev, f, x_name, px, x, py, y);
                 // A sign change across a pole (1/x) is not a root.
-                if (root) |rt| if (@abs(ev.float(f, x_name, rt)) < 1e-6 * @max(1, @max(@abs(py), @abs(y)))) try addRoot(a, &roots, rt, step);
+                if (root) |rt| if (@abs(ev.float(f, x_name, rt)) < 1e-6 * rootScale(py, y)) try addRoot(a, &roots, rt, step);
             } else if (std.math.isFinite(ppy) and @abs(py) < @abs(ppy) and @abs(py) < @abs(y) and (ppy < 0) == (py < 0)) {
                 // A touching root (x² = 0): |f| has a small minimum here.
                 const m = minimise(ev, f, x_name, px - step, x);
                 if (@abs(ev.float(f, x_name, m)) < 1e-10) try addRoot(a, &roots, m, step);
+            }
+        }
+        if (std.math.isNan(py) != std.math.isNan(y)) {
+            // One end is outside the function's domain (log of a negative, acos past 1): look for a sign
+            // change on the defined side, creeping towards the edge, since the root can sit right at it.
+            const fx = if (std.math.isNan(py)) x else px;
+            const fy = if (std.math.isNan(py)) y else py;
+            const nx = if (std.math.isNan(py)) px else x;
+            var prev = fx;
+            var prev_y = fy;
+            for ([_]f64{ 0.5, 0.9, 0.99, 0.999, 0.9999, 0.99999, 0.999999, 0.9999999 }) |t| {
+                const qx = fx + (nx - fx) * t;
+                const qy = ev.float(f, x_name, qx);
+                if (std.math.isNan(qy)) {
+                    // Found the edge between prev (defined) and qx (not): close in on it by bisection
+                    // and test the sign at the edge itself.
+                    var good = prev;
+                    var bad = qx;
+                    var it: usize = 0;
+                    while (it < 80) : (it += 1) {
+                        const mid = (good + bad) / 2;
+                        if (std.math.isNan(ev.float(f, x_name, mid))) bad = mid else good = mid;
+                    }
+                    const ey = ev.float(f, x_name, good);
+                    if (!std.math.isNan(ey) and prev_y != 0 and ey != 0 and (ey < 0) != (prev_y < 0)) {
+                        if (refine(ev, f, x_name, @min(prev, good), @max(prev, good), if (prev < good) prev_y else ey, if (prev < good) ey else prev_y)) |rt| {
+                            if (@abs(ev.float(f, x_name, rt)) < 1e-6 * rootScale(prev_y, ey)) try addRoot(a, &roots, rt, step);
+                        }
+                    }
+                    break;
+                }
+                if (prev_y != 0 and (qy < 0) != (prev_y < 0) and qy != 0) {
+                    if (refine(ev, f, x_name, @min(prev, qx), @max(prev, qx), if (prev < qx) prev_y else qy, if (prev < qx) qy else prev_y)) |rt| {
+                        if (@abs(ev.float(f, x_name, rt)) < 1e-6 * rootScale(prev_y, qy)) try addRoot(a, &roots, rt, step);
+                    }
+                    break;
+                }
+                prev = qx;
+                prev_y = qy;
             }
         }
         ppy = py;
@@ -2224,6 +2266,15 @@ pub fn findRootsIn(a: std.mem.Allocator, ev: *Eval, f: *const Node, x_name: []co
     if (std.math.isFinite(py) and py == 0) try addRoot(a, &roots, px, step);
     std.mem.sort(f64, roots.items, {}, std.sort.asc(f64));
     return roots.toOwnedSlice(a);
+}
+
+/// The size |f| should be small against for a sign change to be a root: the larger finite end (an
+/// infinite end, from a pole or the edge of a domain, says nothing about how close the root is).
+fn rootScale(p: f64, q: f64) f64 {
+    var m: f64 = 1;
+    if (std.math.isFinite(p)) m = @max(m, @abs(p));
+    if (std.math.isFinite(q)) m = @max(m, @abs(q));
+    return m;
 }
 
 fn addRoot(a: std.mem.Allocator, roots: *std.ArrayList(f64), x: f64, step: f64) Error!void {
@@ -2281,6 +2332,40 @@ fn findRoots(a: std.mem.Allocator, ev: *Eval, f: *const Node, x_name: []const u8
             if (!near) try all.append(a, r);
         }
         if (all.items.len > 0) break;
+    }
+    // The even grids above step over zero itself (where 1/x or log(x) is undefined), so a root between
+    // 0 and the first grid point (60 = 0.2/A gives 1/300, 4 = -log(H) gives 0.0001) is found here, on a
+    // geometric grid, 16 points per decade from 1e-14 to 100 on either side of zero.
+    var pts: std.ArrayList(f64) = .empty;
+    var side: usize = 0;
+    while (side < 2) : (side += 1) {
+        var j: usize = 0;
+        while (j <= 16 * 16) : (j += 1) {
+            // negatives run from -100 up to -1e-14; positives from 1e-14 up to 100
+            const k: f64 = if (side == 0) 2.0 - @as(f64, @floatFromInt(j)) / 16.0 else -14.0 + @as(f64, @floatFromInt(j)) / 16.0;
+            const m = std.math.pow(f64, 10.0, k);
+            try pts.append(a, if (side == 0) -m else m);
+        }
+    }
+    var qx = pts.items[0];
+    var qy = ev.float(f, x_name, qx);
+    for (pts.items[1..]) |x| {
+        const y = ev.float(f, x_name, x);
+        if (!std.math.isNan(qy) and !std.math.isNan(y) and (qy < 0) != (y < 0) and y != 0 and qx * x > 0) {
+            if (refine(ev, f, x_name, qx, x, qy, y)) |rt| {
+                // A pole (1/x, x^-3) also changes sign, but |f| only grows towards it; at a root it is far
+                // smaller than at both ends.
+                const fr = @abs(ev.float(f, x_name, rt));
+                if (fr < 1e-6 * rootScale(qy, y) and fr < 1e-3 * @min(@abs(qy), @abs(y))) {
+                    const near = for (all.items) |o| {
+                        if (@abs(o - rt) <= 1e-9 * @max(1e-9, @abs(rt))) break true;
+                    } else false;
+                    if (!near) try all.append(a, rt);
+                }
+            }
+        }
+        qx = x;
+        qy = y;
     }
     std.mem.sort(f64, all.items, {}, std.sort.asc(f64));
     return all.toOwnedSlice(a);
@@ -2484,6 +2569,16 @@ test "equations" {
     try t.expect("5n", "2n + 3n");
     // A pole is not a root.
     try std.testing.expectError(error.NoSolution, t.out("1/r = 0", .{}));
+    // A root between zero and the first grid point (the grids step over zero, where 1/x is undefined).
+    try t.expect("0.003333", "60 = 0.2/A");
+    try t.expect("0.693361", "3 = n^(-3)"); // 0 is a pole here, not a root
+    try t.expect("0.0001", "4 = -log(H)");
+    try t.expect("0", "u² = 0");
+    // A root beside a pole or the edge of a domain (ln of 0, acos past 1) between two grid points.
+    try t.expect("119.851447", "30 = -ln(1 - P*0.25/30)/ln(1.25)");
+    try t.expect("4.444505", "0.3 = acos(20/(p*4.5))");
+    // C(n + 4, 4) is four steps whatever n is, so solving for n does not run for minutes.
+    try t.expect("35", "nCr(7, 4)");
     // A variable already set is set again, even from itself.
     try t.expect("2", "k = 2");
     try t.expect("3", "k = k + 1");

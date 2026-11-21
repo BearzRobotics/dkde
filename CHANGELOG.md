@@ -2,7 +2,16 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
-## Unreleased
+## 0.3.4 (2026-11-20)
+
+dkde-calc, checked against independent references:
+- **Fixed**: solving a finance formula for its unknown could crash the calculator (a panic in the big-number gcd: Compound interest for the principal, Future value of regular payments, loan payments and others). Roots between 0 and the first search point were missed (pH for the hydrogen concentration, Sound level, Information in an outcome, Gravitation for r, Pressure for the area). Roots next to a pole or the edge of a domain were missed (Number of payments for the amount, Angle between vectors). Solving `nCr(n + 4, 4) = x` ran for minutes. A pole such as 0 in `n^(-3) = 3` was reported as a root.
+- **Checked**: every calculator line and exercise answer in the 650 lessons (1,844 entries) against mpmath, scipy and sympy: 1,821 agree, none disagree, 23 cannot be checked from the command line (binary and hex display conversions, multi-bit logic gates). Every formula in the Formulas pane, solved for each of its letters, against sympy: 1,273 agree and none give a wrong value (95 are beyond sympy's solver). The scripts are in tools/calc-compare (verify_lessons.py, verify_formulas.py).
+- **Command line**: `dkde-calc eval` takes `--solve` (as the Formulas pane works), and `--programmer --base N --bits N`.
+
+Dependencies: util-unix 0.4.0, util-core 0.1.0 (new), dkman 0.5.1.
+
+Also in this release:
 
 - **Learn**: a new Networking course (12 lessons): VLSM subnet planning, route aggregation, IPv6 address space, ports and NAT, serialisation and propagation delay, TCP throughput and the Mathis formula, loss and retransmission, queueing, Nyquist and Shannon capacity, decibels and link budgets, Ethernet frame overhead, and availability.
 - **Learn**: three more courses of 12 lessons each. Statistics (mean, median and spread, quartiles and outliers, the normal, binomial and Poisson distributions, Bayes' theorem, confidence intervals, t-tests, sample size, correlation, regression). Electronics (Ohm's law, series and parallel, dividers, LED resistors, Kirchhoff, RC timing and filters, reactance, resonance, op-amps, battery life, transistor switches and PWM). Finance (compound interest, APR and APY, present value, annuities, loans and extra payments, inflation, CAGR, NPV and IRR, risk and return, retirement, exchange rates and premiums).

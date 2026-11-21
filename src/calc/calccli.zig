@@ -1,7 +1,8 @@
 //! dkde-calc on the command line: the same engine and the same figure drawing as the window, with no
 //! window. It is how lessons are checked and how their figures are looked at.
 //!
-//!   dkde-calc eval [-v] [--decimals N] [--rad|--grad] EXPR...      work entries out (one session)
+//!   dkde-calc eval [-v] [--decimals N] [--rad|--grad] [--solve] [--programmer [--base N] [--bits N]] EXPR...
+//!                                                                 work entries out (one session)
 //!   dkde-calc steps EXPR                                          the written-out solution
 //!   dkde-calc render LESSON.toml [--step N | --each] [--size WxH] -o OUT.png|OUT.svg
 //!   dkde-calc check-lessons [DIR...]                              load every lesson, run every step
@@ -105,6 +106,16 @@ fn cmdEval(args: []const []const u8) u8 {
             mode.angle = .radians;
         } else if (std.mem.eql(u8, arg, "--grad")) {
             mode.angle = .gradians;
+        } else if (std.mem.eql(u8, arg, "--solve")) {
+            mode.solve_only = true;
+        } else if (std.mem.eql(u8, arg, "--programmer")) {
+            mode.programmer = true;
+        } else if (std.mem.eql(u8, arg, "--base") and i + 1 < args.len) {
+            i += 1;
+            mode.base = std.fmt.parseInt(u8, args[i], 10) catch 10;
+        } else if (std.mem.eql(u8, arg, "--bits") and i + 1 < args.len) {
+            i += 1;
+            mode.bits = std.fmt.parseInt(u8, args[i], 10) catch 64;
         } else if (std.mem.eql(u8, arg, "--decimals") and i + 1 < args.len) {
             i += 1;
             decimals = std.fmt.parseInt(u8, args[i], 10) catch 10;
@@ -121,7 +132,7 @@ fn cmdEval(args: []const []const u8) u8 {
         }
     }
     if (!any) {
-        err("usage: dkde-calc eval [-v] [--decimals N] [--rad|--grad] EXPR...\n", .{});
+        err("usage: dkde-calc eval [-v] [--decimals N] [--rad|--grad] [--solve] [--programmer [--base N] [--bits N]] EXPR...\n", .{});
         return 2;
     }
     return status;

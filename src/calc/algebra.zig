@@ -414,6 +414,7 @@ fn bigGcd(a: std.mem.Allocator, x: Big, y: Big) Error!Big {
     var ya = try y.clone();
     xa.abs();
     ya.abs();
+    try g.ensureCapacity(@max(xa.len(), ya.len()) + 1); // the stdlib gcd copies into g without growing it
     try g.gcd(&xa, &ya);
     return g;
 }

@@ -346,6 +346,7 @@ const Done = struct {
 
 fn lcmBig(a: std.mem.Allocator, x: Big, y: Big) Error!Big {
     var g = try Big.init(a);
+    try g.ensureCapacity(@max(x.len(), y.len()) + 1); // the stdlib gcd copies into g without growing it
     try g.gcd(&x, &y);
     var q = try Big.init(a);
     var r = try Big.init(a);

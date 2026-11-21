@@ -134,6 +134,7 @@ pub fn fromParts(a: std.mem.Allocator, num: Big, den: Big) Error!Number {
     var g = try Big.init(a);
     var abs_n = try n.clone();
     abs_n.abs();
+    try g.ensureCapacity(@max(abs_n.len(), d.len()) + 1); // the stdlib gcd copies into g without growing it
     try g.gcd(&abs_n, &d);
     if (!isOne(g) and !g.eqlZero()) {
         var r = try Big.init(a);
