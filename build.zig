@@ -183,6 +183,8 @@ pub fn build(b: *std.Build) void {
     // /etc/passwd and /etc/group parsing (no NSS), shared with the other Unix tools.
     const util_unix = b.dependency("util_unix", .{ .target = target, .optimize = optimize }).module("util_unix");
     core.addImport("util_unix", util_unix);
+    // The shared core utilities (text, hashing, regular expressions), for the apps that need them.
+    core.addImport("util_core", b.dependency("util_core", .{ .target = target, .optimize = optimize }).module("util_core"));
 
     const common = b.addModule("common", .{ .root_source_file = b.path("src/common/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
     common.addImport("core", core);
