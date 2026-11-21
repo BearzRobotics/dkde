@@ -1,0 +1,36 @@
+id = "NET.9"
+course = "Networking"
+book = 3
+order = 9
+title = "Channel capacity: Nyquist and Shannon"
+statement = "Bandwidth in hertz and signal-to-noise ratio set the most bits per second any channel can carry: C = B log2(1 + S/N)."
+
+[[step]]
+text = "Idea (Nyquist, noiseless): with L signal levels and bandwidth B hertz, the maximum rate is 2 B log2(L). A 3 kHz line with 4 levels carries 2 x 3000 x 2 = 12000 bit/s."
+calc = ["2 * 3000 * log2(4)"]
+
+[[step]]
+text = "With noise (Shannon): C = B x log2(1 + S/N), where S/N is a power ratio, not decibels. A 3 kHz voice line at S/N = 1000 (30 dB) gets about 29.9 kbit/s, the ceiling that analogue modems approached."
+calc = ["3000 * log2(1 + 1000)"]
+
+[[step]]
+text = "Wi-Fi: a 20 MHz channel at 25 dB S/N. First convert: 10^(25/10) = 316. Then C = 20 x 10^6 x log2(317) = 166 Mbit/s per spatial stream."
+calc = ["10^(25/10)", "20 * 10^6 * log2(1 + 10^(25/10)) / 10^6"]
+
+[[step]]
+text = "Two ways to gain: more bandwidth (linear: double B doubles C) or more signal (logarithmic: doubling S/N adds only B bits per second). Wider channels are the efficient route, which is why 80 and 160 MHz channels exist."
+calc = ["20*10^6 * log2(1 + 316)", "40*10^6 * log2(1 + 316)", "20*10^6 * log2(1 + 2*316)"]
+
+[[step]]
+text = "A useful rule: each extra 3 dB of S/N is about one more bit per hertz at high S/N, since log2 of 2 is 1."
+calc = ["log2(1 + 632) - log2(1 + 316)"]
+
+[[exercise]]
+prompt = "Shannon capacity in bits/s for B = 1 MHz and S/N = 255?"
+answer = "10^6 * log2(1 + 255)"
+hint = "log2(256) = 8."
+
+[[exercise]]
+prompt = "Convert 20 dB to a power ratio."
+answer = "10^(20/10)"
+hint = "Ratio = 10^(dB/10)."

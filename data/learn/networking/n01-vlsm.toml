@@ -1,0 +1,36 @@
+id = "NET.1"
+course = "Networking"
+book = 1
+order = 1
+title = "Subnet planning with VLSM"
+statement = "Variable-length subnet masks give each subnet just enough host bits: size the biggest subnet first, round each up to a power of two, and place them without overlap."
+
+[[step]]
+text = "Idea: a subnet needing H usable hosts needs h host bits with 2^h - 2 >= H. Needs of 100, 50, 20 and 2 hosts (a router link) become h = 7, 6, 5 and 2."
+calc = ["ceil(log2(100 + 2))", "ceil(log2(50 + 2))", "ceil(log2(20 + 2))", "ceil(log2(2 + 2))"]
+
+[[step]]
+text = "Their prefixes are 32 - h: /25, /26, /27 and /30. Their sizes are 128, 64, 32 and 4 addresses."
+calc = ["32 - 7", "2^7", "2^6", "2^5", "2^2"]
+
+[[step]]
+text = "Place the largest first so every block starts on a multiple of its own size. Starting at 192.168.1.0: the /25 takes .0-.127, the /26 takes .128-.191, the /27 takes .192-.223 and the /30 takes .224-.227."
+calc = ["0 + 128", "128 + 64", "192 + 32", "224 + 4"]
+
+[[step]]
+text = "Total used: 128 + 64 + 32 + 4 = 228 of the 256 addresses in a /24, so 28 are left over, and they are still one contiguous run (.228-.255) that can be cut into smaller subnets later."
+calc = ["128 + 64 + 32 + 4", "256 - 228"]
+
+[[step]]
+text = "Efficiency: the 100-host subnet wastes 128 - 2 - 100 = 26 addresses. The rounding to powers of two is the price of masks being bit counts."
+calc = ["128 - 2 - 100", "100 / (128 - 2) * 100"]
+
+[[exercise]]
+prompt = "How many host bits does a subnet of 500 hosts need? (smallest h with 2^h - 2 >= 500)"
+answer = "ceil(log2(502))"
+hint = "2^8 = 256 is too small, 2^9 = 512 fits."
+
+[[exercise]]
+prompt = "A /27 holds how many usable hosts?"
+answer = "2^5 - 2"
+hint = "32 - 27 = 5 host bits."

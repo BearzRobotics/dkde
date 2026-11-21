@@ -379,6 +379,10 @@ pub const Learn = struct {
             .{ "Computer Science", 10, "patterns and passwords" },
             .{ "Computer Science", 11, "cryptography" },
             .{ "Computer Science", 12, "linear algebra in practice" },
+            .{ "Networking", 1, "addressing" },
+            .{ "Networking", 2, "delay, throughput and loss" },
+            .{ "Networking", 3, "signals and frames" },
+            .{ "Networking", 4, "reliability" },
         };
         for (units) |u| if (u[1] == book and std.mem.eql(u8, u[0], course)) return u[2];
         return null;

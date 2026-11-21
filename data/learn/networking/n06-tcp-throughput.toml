@@ -1,0 +1,36 @@
+id = "NET.6"
+course = "Networking"
+book = 2
+order = 6
+title = "TCP throughput: window, RTT and loss"
+statement = "TCP can send at most one window per round trip, and loss shrinks the window; the Mathis formula puts the two together."
+
+[[step]]
+text = "Idea: throughput <= window / RTT. With a 64 KiB window and a 100 ms round trip: 65536 x 8 / 0.1 = 5.2 Mbit/s, however fast the link."
+calc = ["65536 * 8 / 0.1", "65536 * 8 / 0.1 / 10^6"]
+
+[[step]]
+text = "To fill a 1 Gbit/s path at 100 ms the window must be the bandwidth-delay product: 10^9 x 0.1 / 8 bytes = 12.5 MB."
+calc = ["10^9 * 0.1 / 8", "10^9 * 0.1 / 8 / 65536"]
+
+[[step]]
+text = "Loss limits it too. The Mathis formula: rate ~ (MSS / RTT) x (C / sqrt(p)), with C about 1.22. MSS 1460 bytes, RTT 50 ms, loss p = 0.01% (0.0001)."
+calc = ["1460 * 8 / 0.05", "1.22 / sqrt(0.0001)"]
+
+[[step]]
+text = "Put together: 233600 x 122 = 28.5 Mbit/s. Loss of only 1 packet in 10000 caps a long path far below a gigabit."
+calc = ["1460 * 8 / 0.05 * 1.22 / sqrt(0.0001) / 10^6"]
+
+[[step]]
+text = "Because of the square root, cutting loss 100 times (to 0.000001) only gives 10 times the throughput, and doubling the RTT halves it. That is why a CDN near the user helps more than a faster link."
+calc = ["sqrt(0.0001 / 0.000001)", "1.22 / sqrt(0.000001)"]
+
+[[exercise]]
+prompt = "Maximum throughput in bits/s for a 131072-byte window and a 0.2 s RTT?"
+answer = "131072 * 8 / 0.2"
+hint = "window bits divided by RTT."
+
+[[exercise]]
+prompt = "By what factor does the Mathis rate change if loss drops from 0.04 to 0.01? (sqrt of the ratio)"
+answer = "sqrt(0.04 / 0.01)"
+hint = "Rate scales as 1 / sqrt(p)."

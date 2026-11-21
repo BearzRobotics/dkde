@@ -1,0 +1,36 @@
+id = "NET.3"
+course = "Networking"
+book = 1
+order = 3
+title = "IPv6 address space"
+statement = "An IPv6 address has 128 bits; with a /64 for every subnet the numbers are so large that planning is about structure, not scarcity."
+ 
+[[step]]
+text = "Idea: 2^128 addresses. Compare with IPv4's 2^32 = 4.29 billion. The ratio is 2^96."
+calc = ["2^32", "2^128", "2^96"]
+
+[[step]]
+text = "A normal subnet is a /64: 64 bits of network and 64 of interface. Hosts per subnet: 2^64, about 1.8 x 10^19, which is not a limit anybody meets."
+calc = ["2^64", "2^64 / 2^32"]
+
+[[step]]
+text = "A site is usually given a /48, which leaves 64 - 48 = 16 bits to number subnets: 65536 subnets of /64."
+calc = ["64 - 48", "2^16"]
+
+[[step]]
+text = "An ISP given a /32 can hand out 2^(48 - 32) = 65536 /48 sites. Each hex digit of an address is 4 bits, so prefixes on multiples of 4 (/32, /36, /40, /48, /56, /64) line up with the written address."
+calc = ["2^(48 - 32)", "128 / 4", "48 / 4"]
+
+[[step]]
+text = "Writing: leading zeros in a group drop and one run of all-zero groups becomes ::. 2001:0db8:0000:0000:0000:0000:0000:0001 is 2001:db8::1. There are 8 groups of 16 bits, and 8 x 16 = 128."
+calc = ["8 * 16", "16^4", "0x0db8"]
+
+[[exercise]]
+prompt = "How many /64 subnets are in a /56?"
+answer = "2^(64 - 56)"
+hint = "8 bits of subnet number."
+
+[[exercise]]
+prompt = "How many bits is 8 groups of 4 hex digits?"
+answer = "8 * 4 * 4"
+hint = "One hex digit is 4 bits."

@@ -1,0 +1,36 @@
+id = "NET.2"
+course = "Networking"
+book = 1
+order = 2
+title = "Route aggregation (supernetting)"
+statement = "Adjacent blocks that share a prefix can be advertised as one shorter prefix, if together they fill a block whose start is a multiple of its size."
+
+[[step]]
+text = "Idea: 2^k equal, adjacent blocks that start on a multiple of 2^k times their size merge into one prefix k bits shorter. Four /24s at 10.1.0.0, 10.1.1.0, 10.1.2.0 and 10.1.3.0 can become 10.1.0.0/22."
+calc = ["24 - log2(4)", "4 * 256"]
+
+[[step]]
+text = "The check: the third octet of the first block must be a multiple of 4 (the number of /24s). 0 is. Test with a modulus."
+calc = ["0 mod 4", "2 mod 4"]
+
+[[step]]
+text = "So 10.1.2.0, .3.0, .4.0 and .5.0 do not merge into a /22: 2 mod 4 is 2. They need a /23 (.2 and .3) and another /23 (.4 and .5)."
+calc = ["2 mod 2", "4 mod 2", "4 mod 4"]
+
+[[step]]
+text = "Another way: the common prefix of two addresses is where their bits first differ. 10.1.2.0 and 10.1.3.0 differ only in the last bit of the third octet, so the shared prefix is 16 + 7 = 23 bits."
+calc = ["2 xor 3", "16 + 8 - bitlen(2 xor 3)"]
+
+[[step]]
+text = "Why it matters: the internet routing table stays small. Aggregating 256 /24s into one /16 replaces 256 routes with one, and longest-prefix match still lets a more specific route win."
+calc = ["2^(24 - 16)", "256 - 1"]
+
+[[exercise]]
+prompt = "How many /24 blocks make up a /20?"
+answer = "2^(24 - 20)"
+hint = "Each bit you remove from the prefix doubles the size."
+
+[[exercise]]
+prompt = "What is 6 mod 4? (Can the third-octet block 6 start a /22?)"
+answer = "6 mod 4"
+hint = "Not 0, so no."

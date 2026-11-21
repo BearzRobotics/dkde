@@ -2,6 +2,10 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
+## Unreleased
+
+- **Learn**: a new Networking course (12 lessons): VLSM subnet planning, route aggregation, IPv6 address space, ports and NAT, serialisation and propagation delay, TCP throughput and the Mathis formula, loss and retransmission, queueing, Nyquist and Shannon capacity, decibels and link budgets, Ethernet frame overhead, and availability.
+
 ## 0.3.3 (2026-11-17)
 
 dkde-calc learning and geometry:

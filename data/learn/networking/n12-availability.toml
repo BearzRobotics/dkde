@@ -1,0 +1,36 @@
+id = "NET.12"
+course = "Networking"
+book = 4
+order = 12
+title = "Availability: the nines"
+statement = "Availability is uptime over total time; in series components multiply, in parallel the failure chances multiply."
+
+[[step]]
+text = "Idea: 99.9% uptime ('three nines') allows 0.1% downtime. A year has 365 x 24 x 60 = 525600 minutes, so that is 525.6 minutes, about 8.76 hours of outage."
+calc = ["365 * 24 * 60", "525600 * 0.001", "525600 * 0.001 / 60"]
+
+[[step]]
+text = "Each extra nine divides the budget by 10: 99.99% allows 52.6 minutes a year, 99.999% only 5.26 minutes."
+calc = ["525600 * 0.0001", "525600 * 0.00001"]
+
+[[step]]
+text = "In series (every part must work) availabilities multiply. A link at 99.9%, a router at 99.95% and a server at 99.9% give 0.999 x 0.9995 x 0.999 = 99.75%, worse than any single part."
+calc = ["0.999 * 0.9995 * 0.999 * 100"]
+
+[[step]]
+text = "In parallel (any one will do) the failure chances multiply. Two independent 99% links: failure 0.01 x 0.01 = 0.0001, so availability is 1 - 0.0001 = 99.99%."
+calc = ["1 - (1 - 0.99)^2", "1 - (1 - 0.99)^3"]
+
+[[step]]
+text = "From failures: availability = MTBF / (MTBF + MTTR). With a mean time between failures of 1000 hours and 2 hours to repair, 1000 / 1002 = 99.8%. Halving repair time helps as much as doubling reliability."
+calc = ["1000 / (1000 + 2)", "1000 / (1000 + 1)", "2000 / (2000 + 2)"]
+
+[[exercise]]
+prompt = "Minutes of downtime per year at 99.95% availability? (525600 x 0.0005)"
+answer = "525600 * 0.0005"
+hint = "A year has 525600 minutes."
+
+[[exercise]]
+prompt = "Availability (as a fraction) of two independent 95% links in parallel?"
+answer = "1 - 0.05^2"
+hint = "Both must fail for an outage."

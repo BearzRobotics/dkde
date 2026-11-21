@@ -1,0 +1,36 @@
+id = "NET.7"
+course = "Networking"
+book = 2
+order = 7
+title = "Packet loss, retransmission and expected sends"
+statement = "If each attempt is lost with probability p, the expected number of transmissions is 1/(1-p); loss compounds across hops and packets."
+ 
+[[step]]
+text = "Idea: with loss rate p each send succeeds with probability 1 - p. The number of tries until success is geometric, with mean 1 / (1 - p). At p = 0.1 that is 1 / 0.9 = 1.11 sends per packet."
+calc = ["1 / (1 - 0.1)", "1 / (1 - 0.5)", "1 / (1 - 0.9)"]
+
+[[step]]
+text = "Loss on a path of independent hops multiplies the survival chances: 5 hops each losing 1% deliver (0.99)^5 = 95.1% of packets, so the path loses 4.9%."
+calc = ["0.99^5", "1 - 0.99^5"]
+
+[[step]]
+text = "A whole message needs every packet. A 100-packet transfer with no retransmission at 1% loss arrives complete with probability 0.99^100 = 36.6%. Retransmission is not an optimisation, it is what makes TCP usable."
+calc = ["0.99^100", "100 * 0.01"]
+
+[[step]]
+text = "Cost of retransmission: sending N packets at loss p takes N / (1 - p) sends. For 1000 packets at 2% loss: 1020.4 sends, about 2% extra bandwidth, but each loss also costs a timeout or a fast-retransmit round trip."
+calc = ["1000 / (1 - 0.02)", "1000 / 0.98 - 1000"]
+
+[[step]]
+text = "Stop-and-wait efficiency, one packet per round trip: send time / (send time + RTT). Sending 12000 bits at 100 Mbit/s (0.12 ms) with RTT 20 ms uses 0.12 / 20.12 = 0.6% of the link. This is why windows (many packets in flight) exist."
+calc = ["0.12 / (0.12 + 20)", "0.12 / (0.12 + 20) * 100"]
+
+[[exercise]]
+prompt = "Expected sends per packet at a loss rate of 20%? (1 / (1 - p))"
+answer = "1 / (1 - 0.2)"
+hint = "1 / 0.8."
+
+[[exercise]]
+prompt = "Probability that 3 hops each with 2% loss all deliver a packet?"
+answer = "0.98^3"
+hint = "Multiply the three survival chances."

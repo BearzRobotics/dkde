@@ -1,0 +1,36 @@
+id = "NET.4"
+course = "Networking"
+book = 1
+order = 4
+title = "Ports, NAT and the size of the connection space"
+statement = "A connection is identified by addresses and ports; counting those bits tells you how many connections a NAT or a server can hold."
+ 
+[[step]]
+text = "Idea: a port is 16 bits, so there are 2^16 = 65536 of them (0 to 65535). A TCP connection is identified by the four-tuple (source address, source port, destination address, destination port)."
+calc = ["2^16", "2^16 - 1"]
+
+[[step]]
+text = "One client talking to one server address and port can have at most as many connections as it has free source ports. The ephemeral range 32768-60999 on Linux is 60999 - 32768 + 1 ports."
+calc = ["60999 - 32768 + 1"]
+
+[[step]]
+text = "A NAT shares one public address between many hosts by rewriting source ports. For a single destination (address and port), the public address can hold at most one connection per source port: about 28000 to 64000, not millions."
+calc = ["65535 - 1024", "60999 - 32768 + 1"]
+
+[[step]]
+text = "Using more public addresses or more destinations multiplies the room: p public addresses and d distinct destinations allow about p x d x 28232 concurrent flows."
+calc = ["4 * 100 * 28232", "28232 * 10"]
+
+[[step]]
+text = "A server with one address and port can hold far more connections, since each client brings its own address and port: up to 2^32 x 2^16 = 2^48 distinct four-tuples for IPv4 clients. Memory, not tuples, is the limit."
+calc = ["2^(32 + 16)", "2^48 / 10^6"]
+
+[[exercise]]
+prompt = "How many ports are there in 16 bits?"
+answer = "2^16"
+hint = "0 to 65535."
+
+[[exercise]]
+prompt = "How many distinct client address-and-port pairs (IPv4) can reach one server port?"
+answer = "2^48"
+hint = "32 bits of address and 16 of port."

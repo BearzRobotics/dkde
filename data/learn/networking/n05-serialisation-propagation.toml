@@ -1,0 +1,36 @@
+id = "NET.5"
+course = "Networking"
+book = 2
+order = 5
+title = "Serialisation and propagation delay"
+statement = "The time for a packet to cross a link is the time to push its bits out (size / rate) plus the time for the signal to travel (distance / speed)."
+
+[[step]]
+text = "Idea: serialisation delay = packet bits / link rate. A 1500-byte packet is 12000 bits. At 100 Mbit/s that is 0.12 ms; at 1 Gbit/s, 0.012 ms; at 10 Mbit/s, 1.2 ms."
+calc = ["1500 * 8", "12000 / 10^8 * 1000", "12000 / 10^9 * 1000", "12000 / 10^7 * 1000"]
+
+[[step]]
+text = "Propagation delay = distance / signal speed. In fibre the signal moves at about two thirds of the speed of light, 2 x 10^8 m/s. Across 1000 km: 10^6 / (2 x 10^8) = 5 ms."
+calc = ["10^6 / (2 * 10^8) * 1000"]
+
+[[step]]
+text = "New York to London is about 5600 km: 28 ms one way and 56 ms round trip, a floor no faster hardware can beat."
+calc = ["5600 * 10^3 / (2 * 10^8) * 1000", "2 * 5600 * 10^3 / (2 * 10^8) * 1000"]
+
+[[step]]
+text = "Store and forward: each router must receive the whole packet before sending it on. Over k links the serialisation cost is paid k times: 3 hops of 1500 bytes at 100 Mbit/s add 3 x 0.12 = 0.36 ms (plus propagation)."
+calc = ["3 * 0.12"]
+
+[[step]]
+text = "Which dominates? Compare the two. A 1500-byte packet on a gigabit link across a continent: 0.012 ms to send against 20 ms of travel, so only latency matters. On a slow 1 Mbit/s modem link the same packet takes 12 ms to send."
+calc = ["12000 / 10^9 * 1000", "12000 / 10^6 * 1000"]
+
+[[exercise]]
+prompt = "How many milliseconds does it take to send 12000 bits at 10 Mbit/s?"
+answer = "12000 / 10^7 * 1000"
+hint = "bits / (bits per second), then x 1000."
+
+[[exercise]]
+prompt = "One-way fibre delay over 3000 km at 2 x 10^8 m/s, in milliseconds?"
+answer = "3*10^6 / (2*10^8) * 1000"
+hint = "Convert km to metres first."

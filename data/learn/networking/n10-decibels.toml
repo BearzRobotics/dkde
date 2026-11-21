@@ -1,0 +1,36 @@
+id = "NET.10"
+course = "Networking"
+book = 3
+order = 10
+title = "Decibels and the link budget"
+statement = "Decibels turn the multiplications of gain and loss into additions: received power = transmit power + gains - losses."
+
+[[step]]
+text = "Idea: dB = 10 log10(power ratio). A factor of 2 in power is +3 dB, a factor of 10 is +10 dB and a factor of 100 is +20 dB. Halving is -3 dB."
+calc = ["10 * log10(2)", "10 * log10(10)", "10 * log10(100)", "10 * log10(0.5)"]
+
+[[step]]
+text = "dBm is decibels against 1 milliwatt: dBm = 10 log10(P in mW). A 100 mW Wi-Fi radio is 20 dBm, 1 W is 30 dBm, and 1 mW is 0 dBm."
+calc = ["10 * log10(100)", "10 * log10(1000)", "10 * log10(1)"]
+
+[[step]]
+text = "Free-space path loss: FSPL(dB) = 20 log10(d in km) + 20 log10(f in MHz) + 32.44. For 2.4 GHz (2400 MHz) over 0.1 km: 20 x log10(0.1) + 20 x log10(2400) + 32.44 = 80.0 dB."
+calc = ["20 * log10(0.1) + 20 * log10(2400) + 32.44"]
+
+[[step]]
+text = "Link budget: received = transmit + antenna gains - path loss - cable loss. Transmit 20 dBm, two 3 dBi antennas, 80 dB path loss: 20 + 3 + 3 - 80 = -54 dBm."
+calc = ["20 + 3 + 3 - 80"]
+
+[[step]]
+text = "Margin: if the receiver needs -80 dBm to decode, the margin is -54 - (-80) = 26 dB, a factor 10^(26/10) = 398 of spare power. Doubling distance costs 6 dB (20 log10 of 2)."
+calc = ["-54 - (-80)", "10^(26/10)", "20 * log10(2)"]
+
+[[exercise]]
+prompt = "Convert 250 mW to dBm."
+answer = "10 * log10(250)"
+hint = "dBm is relative to 1 mW."
+
+[[exercise]]
+prompt = "Convert a loss of 40 dB to a power ratio (as a fraction of power left)."
+answer = "10^(-40/10)"
+hint = "10^(-4)."

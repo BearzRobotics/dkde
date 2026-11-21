@@ -1,0 +1,36 @@
+id = "NET.8"
+course = "Networking"
+book = 2
+order = 8
+title = "Queueing: why a busy link is slow"
+statement = "For random arrivals at a link, delay grows like 1/(1 - utilisation): the last bit of capacity costs enormous waiting."
+ 
+[[step]]
+text = "Idea: the M/M/1 queue. Packets arrive at rate lambda and the link serves mu per second. Utilisation rho = lambda / mu must stay below 1. At 800 arrivals/s into a 1000 packets/s link, rho = 0.8."
+calc = ["800 / 1000"]
+
+[[step]]
+text = "The mean time in the system (waiting plus service) is 1 / (mu - lambda). Here 1 / (1000 - 800) = 5 ms, five times the 1 ms service time."
+calc = ["1 / (1000 - 800) * 1000", "1 / 1000 * 1000"]
+
+[[step]]
+text = "The mean number in the system is rho / (1 - rho) = 0.8 / 0.2 = 4 packets."
+calc = ["0.8 / (1 - 0.8)"]
+
+[[step]]
+text = "The delay multiplier 1 / (1 - rho) climbs steeply. At 50% busy: 2x. At 80%: 5x. At 90%: 10x. At 99%: 100x. That is why links are run well below full and why bufferbloat hurts."
+calc = ["1 / (1 - 0.5)", "1 / (1 - 0.8)", "1 / (1 - 0.9)", "1 / (1 - 0.99)"]
+
+[[step]]
+text = "Little's law connects them for any queue: mean number in system = arrival rate x mean time in system. Check: 800 x 0.005 = 4, matching the step above."
+calc = ["800 * 0.005"]
+
+[[exercise]]
+prompt = "Mean time in system (seconds) for lambda = 900 and mu = 1000 packets per second? (1 / (mu - lambda))"
+answer = "1 / (1000 - 900)"
+hint = "10 ms."
+
+[[exercise]]
+prompt = "Mean packets in the system at utilisation 0.9? (rho / (1 - rho))"
+answer = "0.9 / (1 - 0.9)"
+hint = "Nine."

@@ -1,0 +1,40 @@
+id = "NET.11"
+course = "Networking"
+book = 3
+order = 11
+title = "Frame overhead and goodput"
+statement = "Headers, preambles and gaps take bytes that carry no payload; goodput is the useful fraction of the line rate."
+
+[[step]]
+text = "Idea: on Ethernet every frame costs 8 bytes of preamble, 14 of header, 4 of check (FCS) and a 12-byte gap before the next: 38 bytes of overhead around the payload."
+calc = ["8 + 14 + 4 + 12"]
+
+[[step]]
+text = "Efficiency = payload / (payload + overhead). With the maximum 1500-byte payload: 1500 / 1538 = 97.5%. The IP and TCP headers (20 + 20) take more: 1460 / 1538 = 94.9% of the line is application data."
+calc = ["1500 / (1500 + 38) * 100", "1460 / 1538 * 100"]
+
+[[step]]
+text = "Goodput on a 1 Gbit/s link with full frames: 949 Mbit/s of data. A 100 Mbit/s link gives 94.9 Mbit/s."
+calc = ["10^9 * 1460 / 1538 / 10^6"]
+
+[[step]]
+text = "Small packets are worse. A 64-byte minimum frame (46 payload + 18) plus 20 bytes of preamble and gap occupies 84 bytes on the wire for 46 payload bytes: 54.8% efficient."
+calc = ["46 / 84 * 100", "84 * 8"]
+
+[[step]]
+text = "Packets per second at line rate: 1 Gbit/s / (84 x 8 bits) = 1488095 packets/s for minimum frames, the figure routers and firewalls are rated by. For full frames it is only 81274."
+calc = ["10^9 / (84 * 8)", "10^9 / (1538 * 8)"]
+
+[[step]]
+text = "Jumbo frames of 9000 bytes cut overhead: 8960 / 9038 = 99.1% for TCP data against 94.9%. Fewer, larger packets also mean fewer interrupts per byte."
+calc = ["8960 / 9038 * 100"]
+
+[[exercise]]
+prompt = "What percentage of the wire is payload for a 512-byte payload with 38 bytes of Ethernet overhead?"
+answer = "512 / (512 + 38) * 100"
+hint = "payload / total."
+
+[[exercise]]
+prompt = "Minimum-size frames per second on a 10 Gbit/s link (84 bytes on the wire each)?"
+answer = "10^10 / (84 * 8)"
+hint = "bits per second / bits per frame."
