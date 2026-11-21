@@ -1,0 +1,36 @@
+id = "DE.4"
+course = "Differential Equations"
+book = 1
+order = 4
+title = "Linear first-order equations"
+statement = "For y' + p y = q the integrating factor makes the left side a single derivative, so the equation can be integrated."
+
+[[step]]
+text = "Idea: solve y' + 2y = x with y(0) = 1. Multiply by the integrating factor e^(2x): then (e^(2x) y)' = x e^(2x), because the product rule gives e^(2x) y' + 2 e^(2x) y."
+calc = ["dsolve(y'+2*y=x, y(0)=1)"]
+
+[[step]]
+text = "Integrate: e^(2x) y = (x/2 - 1/4) e^(2x) + C, using integration by parts. So y = x/2 - 1/4 + C e^(-2x). The part C e^(-2x) is the solution of the homogeneous equation y' + 2y = 0 and dies away."
+calc = ["integral(x * e^(2*x), x)"]
+
+[[step]]
+text = "Initial value: y(0) = -1/4 + C = 1 gives C = 5/4. So y = (5/4) e^(-2x) + x/2 - 1/4. This agrees with the calculator."
+calc = ["1 + 1/4", "5/4"]
+
+[[step]]
+text = "Check it numerically at x = 1. The value is y(1) = 0.41917; the slope from two nearby points is about 0.16166; then y' + 2y = 0.16166 + 0.83834 = 1.0000, which is x."
+calc = ["(5/4)*e^(-2) + 1/2 - 1/4", "((5/4)*e^(-2*1.001) + 1.001/2 - 1/4 - ((5/4)*e^(-2*0.999) + 0.999/2 - 1/4)) / 0.002", "0.1616615663 + 2 * 0.4191691040"]
+
+[[step]]
+text = "General shape: the answer is a particular solution that follows the forcing (here the line x/2 - 1/4) plus a transient (C e^(-2x)) that fades. After a while only the particular part is left."
+calc = ["(5/4) * e^(-2*5)", "5/2 - 1/4"]
+
+[[exercise]]
+prompt = "Solution value of y' + y = 5 with y(0) = 0 at x = 2? (5 - 5 e^-2)"
+answer = "5 - 5 * e^(-2)"
+hint = "A steady state of 5 minus a decaying transient."
+
+[[exercise]]
+prompt = "What is the steady-state value of y' + 3y = 6?"
+answer = "6 / 3"
+hint = "Set y' = 0."

@@ -1,0 +1,40 @@
+id = "DE.11"
+course = "Differential Equations"
+book = 4
+order = 11
+title = "Springs, damping and oscillation"
+statement = "A mass on a spring obeys m y'' + c y' + k y = 0: oscillation at sqrt(k / m), slowed and shrunk by the damping c."
+
+[[step]]
+text = "Idea: the spring pulls back with force k y, friction opposes the motion with c y', and Newton's law m y'' = -k y - c y' rearranges to m y'' + c y' + k y = 0. Take m = 1 and k = 4 with no damping (c = 0)."
+calc = ["dsolve(y''+4*y=0, y(0)=1, y'(0)=0)"]
+
+[[step]]
+text = "The undamped motion is y = cos 2x. The angular frequency is omega = sqrt(k / m) = 2 and the period is 2 pi / omega = pi = 3.14 seconds. A stiffer spring or a lighter mass oscillates faster."
+calc = ["sqrt(4 / 1)", "2 * pi / 2"]
+
+[[step]]
+text = "Add damping: m = 1, c = 6, k = 25. The roots of r^2 + 6r + 25 are -3 +- 4i, so y = e^(-3x) (cos 4x + (3/4) sin 4x) when released from y(0) = 1 at rest. It still oscillates, at the lower damped frequency sqrt(25 - 9) = 4, while the envelope e^(-3x) shrinks."
+calc = ["dsolve(y''+6*y'+25*y=0, y(0)=1, y'(0)=0)", "sqrt(25 - 3^2)", "2 * pi / 4"]
+
+[[step]]
+text = "The envelope e^(-3x) has fallen to 5% after x = ln 20 / 3 = 1.0 second, so the vibration dies in about one second. Each swing is smaller by the factor e^(-3 x period) = e^(-3 x 1.571) = 0.9% of the previous peak."
+calc = ["ln(20) / 3", "e^(-3 * pi / 2)"]
+
+[[step]]
+text = "Critical damping is the borderline with no oscillation, where the discriminant c^2 - 4 m k = 0. For m = 1, k = 4 that is c = 2 sqrt(m k) = 4. The motion is y = (1 + 2x) e^(-2x): back to rest as fast as possible without overshoot."
+calc = ["2 * sqrt(1 * 4)", "dsolve(y''+4*y'+4*y=0, y(0)=1, y'(0)=0)"]
+
+[[step]]
+text = "Uses: car suspension (tuned near critical damping), door closers, and the same equation for a series RLC circuit, with inductance for mass, resistance for damping and 1 / C for the spring. The resonant frequency 1 / (2 pi sqrt(L C)) is the omega / (2 pi) of this lesson."
+calc = ["1 / (2*pi*sqrt(0.01 * 1e-6))"]
+
+[[exercise]]
+prompt = "Angular frequency for k = 100 and m = 4?"
+answer = "sqrt(100 / 4)"
+hint = "sqrt(k / m)."
+
+[[exercise]]
+prompt = "Critical damping coefficient for m = 2 and k = 8?"
+answer = "2 * sqrt(2 * 8)"
+hint = "2 sqrt(m k)."

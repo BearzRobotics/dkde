@@ -1,0 +1,40 @@
+id = "DE.7"
+course = "Differential Equations"
+book = 2
+order = 7
+title = "Logistic growth"
+statement = "Growth that slows as it nears a limit K, y' = r y (1 - y / K), follows an S-shaped curve y = K / (1 + A e^(-r t))."
+
+[[step]]
+text = "Idea: plain exponential growth would continue forever. The logistic model multiplies the rate by (1 - y / K), which is near 1 when y is small and falls to 0 when y reaches the carrying capacity K."
+calc = ["1 - 10/1000", "1 - 500/1000", "1 - 1000/1000"]
+
+[[step]]
+text = "Solution: y = K / (1 + A e^(-r t)) with A = (K - y0) / y0. For r = 0.5, K = 1000 and y0 = 10: A = 99."
+calc = ["(1000 - 10) / 10"]
+
+[[step]]
+text = "Values: at t = 0 it is 1000 / 100 = 10. At t = 10 it is 1000 / (1 + 99 e^-5) = 599.86. At t = 20 it is 995.5, which is 99.55% of K."
+calc = ["1000 / (1 + 99)", "1000 / (1 + 99 * e^(-0.5*10))", "1000 / (1 + 99 * e^(-0.5*20))"]
+
+[[step]]
+text = "Growth is fastest at y = K / 2, which happens at t = ln(A) / r = ln 99 / 0.5 = 9.19. The fastest rate is r K / 4 = 125 per unit time."
+calc = ["ln(99) / 0.5", "0.5 * 1000 / 4", "0.5 * 500 * (1 - 500/1000)"]
+
+[[step]]
+text = "Check the equation at t = 10: y = 599.86 gives y' = r y (1 - y / K) = 0.5 x 599.86 x 0.4001 = 120.0. A numerical slope from the formula agrees."
+calc = ["0.5 * 599.86 * (1 - 599.86/1000)", "(1000/(1 + 99*e^(-0.5*10.001)) - 1000/(1 + 99*e^(-0.5*9.999))) / 0.002"]
+
+[[step]]
+text = "Uses: population limited by food, the spread of a rumour or software through a user base, and adoption curves. The S-shape shows slow start, fast middle, slow finish."
+calc = ["1000 / (1 + 99 * e^(-0.5*5))"]
+
+[[exercise]]
+prompt = "Value at t = 0 of K / (1 + A e^(-r t)) with K = 500, A = 4?"
+answer = "500 / (1 + 4)"
+hint = "e^0 = 1."
+
+[[exercise]]
+prompt = "Fastest growth rate for r = 0.2 and K = 800?"
+answer = "0.2 * 800 / 4"
+hint = "r K / 4."

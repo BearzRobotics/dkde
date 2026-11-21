@@ -1,0 +1,40 @@
+id = "DE.3"
+course = "Differential Equations"
+book = 1
+order = 3
+title = "Newton's law of cooling"
+statement = "An object's temperature moves towards its surroundings at a rate proportional to the difference: T' = -k (T - Ta)."
+
+[[step]]
+text = "Idea: coffee at 80 C in a 20 C room cools fastest at first, when the gap is large. Write T' = -k (T - 20). With k = 0.1 per minute this is T' = -0.1 T + 2."
+calc = ["-0.1 * 20"]
+
+[[step]]
+text = "Solve it with the initial value T(0) = 80. The difference from the room, T - 20, decays exponentially: T = 20 + 60 e^(-0.1 t)."
+calc = ["dsolve(y'=-0.1*y+2, y(0)=80)"]
+
+[[step]]
+text = "After 10 minutes: 20 + 60 e^(-1) = 42.07 C. The temperature approaches 20 but never quite arrives."
+calc = ["20 + 60 * e^(-0.1*10)", "20 + 60 * e^(-0.1*60)"]
+
+[[step]]
+text = "When does it reach 40 C? Set 60 e^(-0.1 t) = 20, giving e^(-0.1 t) = 1/3 and t = ln 3 / 0.1 = 10.99 minutes."
+calc = ["ln(3) / 0.1"]
+
+[[step]]
+text = "Find k from a measurement. If it reads 50 C after 5 minutes, then 60 e^(-5k) = 30, so k = ln 2 / 5 = 0.1386 per minute."
+calc = ["ln(2) / 5", "20 + 60 * e^(-ln(2)/5 * 5)"]
+
+[[step]]
+text = "The same equation describes a hot CPU cooling after load stops, a cold drink warming up and a server room cooling down. The time constant 1 / k (here 10 minutes) is when the gap has shrunk to 37%."
+calc = ["e^(-1)", "1 / 0.1"]
+
+[[exercise]]
+prompt = "Temperature after 5 minutes with T = 20 + 60 e^(-0.1 t)?"
+answer = "20 + 60 * e^(-0.5)"
+hint = "Put t = 5."
+
+[[exercise]]
+prompt = "Minutes for the gap to halve when k = 0.2?"
+answer = "ln(2) / 0.2"
+hint = "ln 2 over k."

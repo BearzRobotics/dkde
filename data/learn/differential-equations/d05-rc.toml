@@ -1,0 +1,40 @@
+id = "DE.5"
+course = "Differential Equations"
+book = 1
+order = 5
+title = "Charging a capacitor: an RC circuit"
+statement = "The charging equation R C v' + v = V is a first-order linear equation; its solution is the exponential curve of the Electronics course."
+
+[[step]]
+text = "Idea: a source V charges a capacitor through a resistor R. The current is (V - v) / R and it charges C at the rate C v', so R C v' = V - v. With R C = 1 second and V = 5 volts: v' + v = 5."
+calc = ["10000 * 100e-6"]
+
+[[step]]
+text = "Solve with v(0) = 0 (empty capacitor): v = 5 - 5 e^(-t). The calculator gives the same."
+calc = ["dsolve(y'+y=5, y(0)=0)"]
+
+[[step]]
+text = "After one time constant (1 s): 5 - 5 e^(-1) = 3.16 V, which is 63.2% of the supply. After three: 4.75 V, 95%."
+calc = ["5 - 5*e^(-1)", "5 - 5*e^(-3)", "1 - e^(-3)"]
+
+[[step]]
+text = "The current is the slope: i = C v' = C (5 e^(-t)). Start full (5 / R) and decay to zero. Initial current: 5 / 10000 = 0.5 mA through a 10 kohm resistor."
+calc = ["5 / 10000 * 1000", "5 / 10000 * 1000 * e^(-1)"]
+
+[[step]]
+text = "Discharging has no source, v' + v = 0 with v(0) = 5, so v = 5 e^(-t). It reaches 1% after t = ln 100 = 4.6 time constants."
+calc = ["dsolve(y'+y=0, y(0)=5)", "ln(100)"]
+
+[[step]]
+text = "The general case with time constant tau = R C: v = V (1 - e^(-t / tau)). The charge time to a fraction f is t = -tau ln(1 - f), the formula from the Electronics lesson, now derived."
+calc = ["-1 * ln(1 - 0.9)"]
+
+[[exercise]]
+prompt = "Voltage after 2 s of charging to 9 V with R C = 2 s?"
+answer = "9 * (1 - e^(-1))"
+hint = "t / tau = 1."
+
+[[exercise]]
+prompt = "Time constant (s) for 22 kohm and 47 microfarad?"
+answer = "22000 * 47e-6"
+hint = "R C."

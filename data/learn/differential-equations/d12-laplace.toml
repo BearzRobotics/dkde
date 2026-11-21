@@ -1,0 +1,40 @@
+id = "DE.12"
+course = "Differential Equations"
+book = 4
+order = 12
+title = "Solving with the Laplace transform"
+statement = "The Laplace transform turns derivatives into multiplication by s, so a differential equation becomes algebra."
+
+[[step]]
+text = "Idea: the transform of f(t) is F(s) = integral of f(t) e^(-s t) from 0 to infinity. Learn a short table: 1 gives 1/s, t gives 1/s^2, e^(a t) gives 1/(s - a), sin(w t) gives w / (s^2 + w^2), cos(w t) gives s / (s^2 + w^2)."
+calc = ["laplace(1)", "laplace(t)", "laplace(e^(2*t))", "laplace(sin(3*t))", "laplace(cos(2*t))"]
+
+[[step]]
+text = "The key rules: the transform of y' is s Y - y(0), and of y'' is s^2 Y - s y(0) - y'(0). Initial conditions enter automatically."
+calc = ["laplace(e^(-t)*t)"]
+
+[[step]]
+text = "Solve y'' + 3 y' + 2 y = 0 with y(0) = 1 and y'(0) = 0. Transform: (s^2 Y - s) + 3 (s Y - 1) + 2 Y = 0, so (s^2 + 3s + 2) Y = s + 3 and Y = (s + 3) / ((s + 1)(s + 2))."
+calc = ["1^2 + 3*1 + 2", "(1)*(2)"]
+
+[[step]]
+text = "Split into partial fractions: Y = A / (s + 1) + B / (s + 2). A = (-1 + 3) / (-1 + 2) = 2 and B = (-2 + 3) / (-2 + 1) = -1. So Y = 2 / (s + 1) - 1 / (s + 2)."
+calc = ["(-1 + 3) / (-1 + 2)", "(-2 + 3) / (-2 + 1)"]
+
+[[step]]
+text = "Invert term by term with the table: y = 2 e^(-t) - e^(-2t). The calculator inverts the whole fraction and matches the solver."
+calc = ["ilaplace((s+3)/(s^2+3*s+2))", "dsolve(y''+3*y'+2*y=0, y(0)=1, y'(0)=0)"]
+
+[[step]]
+text = "Check the conditions: y(0) = 2 - 1 = 1, and y'(0) = -2 e^0 + 2 e^0 = 0. Both hold. The transform is the engineer's tool for circuits and controls since sources that switch on and off are easy to handle."
+calc = ["2*e^0 - e^0", "-2*e^0 + 2*e^0", "ilaplace(1/(s*(s+1)))"]
+
+[[exercise]]
+prompt = "Transform of e^(3t)? (give the value of 1/(s - 3) at s = 5)"
+answer = "1 / (5 - 3)"
+hint = "1 / (s - a)."
+
+[[exercise]]
+prompt = "Value at t = 0 of 2 e^(-t) - e^(-2t)?"
+answer = "2*e^0 - e^0"
+hint = "e^0 = 1."

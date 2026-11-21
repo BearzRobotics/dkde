@@ -1,0 +1,36 @@
+id = "DE.6"
+course = "Differential Equations"
+book = 2
+order = 6
+title = "Separable equations"
+statement = "If y' = f(x) g(y), move all the y to one side and all the x to the other, then integrate both."
+
+[[step]]
+text = "Idea: y' = x y. Divide by y and multiply by dx: dy / y = x dx. Integrate both sides: ln y = x^2 / 2 + C, so y = A e^(x^2 / 2) with A = e^C."
+calc = ["integral(x, x)"]
+
+[[step]]
+text = "Check numerically with A = 1 at x = 1: y = e^0.5 = 1.6487. The slope estimated from nearby points is 1.6487, and x y = 1 x 1.6487. They match."
+calc = ["e^(1/2)", "(e^(1.001^2/2) - e^(0.999^2/2)) / 0.002"]
+
+[[step]]
+text = "A solution can blow up in finite time. For y' = y^2 with y(0) = 1: dy / y^2 = dx gives -1/y = x - 1, so y = 1 / (1 - x). At x = 0.9 it is 10 and at x = 0.99 it is 100; it is infinite at x = 1."
+calc = ["1 / (1 - 0.9)", "1 / (1 - 0.99)"]
+
+[[step]]
+text = "Another: y' = -y / x (x > 0). Separate: dy / y = -dx / x, so ln y = -ln x + C and y = A / x. The product x y is constant, a hyperbola."
+calc = ["3 / 2", "3 / 6"]
+
+[[step]]
+text = "Always check for lost solutions: dividing by y assumed y is not zero, but y = 0 also satisfies y' = x y. The calculator's solver handles only constant-coefficient linear equations, so separable ones such as these are worked by hand."
+calc = ["dsolve(y'=2*y)"]
+
+[[exercise]]
+prompt = "For y = 1 / (1 - x) what is y at x = 0.5?"
+answer = "1 / (1 - 0.5)"
+hint = "Two."
+
+[[exercise]]
+prompt = "For y = e^(x^2 / 2) what is y at x = 2?"
+answer = "e^(2^2 / 2)"
+hint = "e^2."

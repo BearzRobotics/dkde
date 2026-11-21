@@ -1,0 +1,40 @@
+id = "DE.9"
+course = "Differential Equations"
+book = 3
+order = 9
+title = "Better steps: midpoint and Runge-Kutta"
+statement = "Sampling the slope more than once per step cancels the leading errors: the midpoint rule is second order and RK4 is fourth order."
+
+[[step]]
+text = "Idea: Euler uses the slope at the start of the step. The midpoint method first walks half a step, reads the slope there, then uses that slope for the full step. For y' = y with h = 0.1 the half-step value is 1 + 0.05 = 1.05, so the new value is 1 + 0.1 x 1.05 = 1.105."
+calc = ["1 + 0.05 * 1", "1 + 0.1 * 1.05"]
+
+[[step]]
+text = "The true value is e^0.1 = 1.1051709. Euler gave 1.1 (error 0.00517), the midpoint gives 1.105 (error 0.00017). One extra slope reading bought a thirty-fold smaller error."
+calc = ["e^0.1", "e^0.1 - 1.1", "e^0.1 - 1.105"]
+
+[[step]]
+text = "RK4 reads the slope four times: k1 at the start, k2 and k3 at the midpoint, k4 at the end, and combines them as (k1 + 2 k2 + 2 k3 + k4) / 6. For y' = y it reproduces the Taylor series to the fourth power of h: 1 + h + h^2/2 + h^3/6 + h^4/24."
+calc = ["1 + 0.1 + 0.1^2/2 + 0.1^3/6 + 0.1^4/24"]
+
+[[step]]
+text = "Its error after one step is e^0.1 - 1.1051708333 = 0.000000085. Euler's was sixty thousand times larger. A whole run to x = 1 in 10 steps ends at 1.1051708333^10 = 2.718279, off by only 0.0000021."
+calc = ["e^0.1 - 1.1051708333", "1.1051708333^10", "e - 1.1051708333^10"]
+
+[[step]]
+text = "Cost against accuracy: RK4 does four slope readings per step against Euler's one, so a step costs four times as much, but its error shrinks like h^4. Halve the step and the error falls sixteen-fold. That is why RK4 is the standard choice."
+calc = ["2^4", "2^2", "2^1"]
+
+[[step]]
+text = "Where errors hide: all of these take fixed steps, so a solution that changes fast (stiff equations) needs very small steps or special methods. Always run with half the step and see whether the answer changes."
+calc = ["1.05^20", "1.025^40"]
+
+[[exercise]]
+prompt = "Midpoint step for y' = y from y = 2 with h = 0.1? (2 + 0.1 x (2 + 0.05 x 2))"
+answer = "2 + 0.1 * (2 + 0.05 * 2)"
+hint = "Half-step first."
+
+[[exercise]]
+prompt = "How much smaller does an RK4 error become when the step is halved?"
+answer = "2^4"
+hint = "Fourth order."

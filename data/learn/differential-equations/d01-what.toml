@@ -1,0 +1,36 @@
+id = "DE.1"
+course = "Differential Equations"
+book = 1
+order = 1
+title = "What a differential equation says"
+statement = "A differential equation ties a function to its own rate of change; solving it means finding the functions that fit."
+
+[[step]]
+text = "Idea: y' = 2y says that at every point the slope of the curve is twice its height. Which function does that? Try y = e^(2x): its slope is 2 e^(2x), which is 2y. It fits."
+calc = ["2 * e^2"]
+
+[[step]]
+text = "Check it with numbers instead of trusting the rule. The slope at x = 1, estimated from two nearby points, is (e^(2 x 1.001) - e^(2 x 0.999)) / 0.002, and it should equal 2y = 2 e^2."
+calc = ["(e^(2*1.001) - e^(2*0.999)) / 0.002", "2 * e^2"]
+
+[[step]]
+text = "Any multiple also fits: y = C e^(2x). The constant C is free, so the equation has a whole family of solutions. The calculator shows this with an arbitrary constant."
+calc = ["dsolve(y'=2*y)"]
+
+[[step]]
+text = "An initial condition picks one member. If also y(0) = 3 then C e^0 = C = 3, so y = 3 e^(2x)."
+calc = ["dsolve(y'=2*y, y(0)=3)"]
+
+[[step]]
+text = "Order and type: the order is the highest derivative (y' is first order, y'' second). Linear means y and its derivatives appear only to the first power, multiplied by numbers or functions of x. This course covers the cases that can be solved exactly, then numerical methods for the rest."
+calc = ["dsolve(y''+y=0)"]
+
+[[exercise]]
+prompt = "Does y = e^(3x) satisfy y' = 3y? Show the slope at x = 0 equals 3 times the value there. (3 x e^0)"
+answer = "3 * e^0"
+hint = "The value at 0 is 1."
+
+[[exercise]]
+prompt = "In y = C e^(2x) with y(0) = 5, what is C?"
+answer = "5 / e^0"
+hint = "Put x = 0."

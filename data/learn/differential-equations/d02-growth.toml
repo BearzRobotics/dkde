@@ -1,0 +1,40 @@
+id = "DE.2"
+course = "Differential Equations"
+book = 1
+order = 2
+title = "Exponential growth and decay"
+statement = "If a quantity changes at a rate proportional to itself, y' = k y, then y = y0 e^(k t): growth for k > 0, decay for k < 0."
+
+[[step]]
+text = "Idea: a population of 1000 grows 3% per unit time, so y' = 0.03 y with y(0) = 1000. The solution is y = 1000 e^(0.03 t)."
+calc = ["dsolve(y'=0.03*y, y(0)=1000)"]
+
+[[step]]
+text = "After 20 units: 1000 x e^(0.03 x 20) = 1000 e^0.6 = 1822.12."
+calc = ["1000 * e^(0.03*20)"]
+
+[[step]]
+text = "Doubling time: solve e^(k t) = 2, so t = ln 2 / k. Here ln 2 / 0.03 = 23.1 units. It does not depend on the starting size."
+calc = ["ln(2) / 0.03"]
+
+[[step]]
+text = "Decay is the same with k negative. Carbon-14 has a half-life of 5730 years, so k = -ln 2 / 5730 = -0.000121 per year."
+calc = ["-ln(2) / 5730"]
+
+[[step]]
+text = "A sample 2000 years old retains e^(k t) = e^(-0.000121 x 2000) = 78.5% of its carbon-14. Measure the fraction left and solve backwards for the age: t = -ln(fraction) / 0.000121."
+calc = ["e^(-ln(2)/5730 * 2000)", "-ln(0.5) / (ln(2)/5730)"]
+
+[[step]]
+text = "Rule: the half-life and growth rate are two views of one number. Compare compound interest: y' = r y gives y = y0 e^(r t), the continuous compounding formula."
+calc = ["1000 * e^(0.05 * 10)", "1000 * (1 + 0.05)^10"]
+
+[[exercise]]
+prompt = "Doubling time for 5% continuous growth?"
+answer = "ln(2) / 0.05"
+hint = "ln 2 over k."
+
+[[exercise]]
+prompt = "Fraction left after 3 half-lives?"
+answer = "0.5^3"
+hint = "Halve three times."

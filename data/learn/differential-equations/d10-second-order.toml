@@ -1,0 +1,40 @@
+id = "DE.10"
+course = "Differential Equations"
+book = 4
+order = 10
+title = "Second-order equations: the characteristic equation"
+statement = "For a y'' + b y' + c y = 0 try y = e^(r x): the roots of a r^2 + b r + c = 0 decide the form of the answer."
+
+[[step]]
+text = "Idea: substitute y = e^(r x). Then y' = r e^(r x) and y'' = r^2 e^(r x), and the equation becomes (a r^2 + b r + c) e^(r x) = 0. Since e^(r x) is never zero, r must solve the characteristic equation a r^2 + b r + c = 0, an ordinary quadratic."
+calc = ["1^2 - 3*1 + 2", "2^2 - 3*2 + 2"]
+
+[[step]]
+text = "Two different real roots: y'' - 3 y' + 2 y = 0 has r^2 - 3r + 2 = (r - 1)(r - 2) = 0, so r = 1 and 2, and y = C1 e^x + C2 e^(2x). The discriminant b^2 - 4ac = 1 is positive."
+calc = ["(-3)^2 - 4*1*2", "dsolve(y''-3*y'+2*y=0)"]
+
+[[step]]
+text = "One repeated root: y'' + 4 y' + 4 y = 0 has r^2 + 4r + 4 = (r + 2)^2, so r = -2 twice, and the second solution picks up a factor x: y = (C1 + C2 x) e^(-2x). The discriminant is 0."
+calc = ["4^2 - 4*1*4", "dsolve(y''+4*y'+4*y=0)"]
+
+[[step]]
+text = "Complex roots: y'' + 2 y' + 5 y = 0 has r = (-2 +- sqrt(4 - 20)) / 2 = -1 +- 2i. The real part -1 gives a decay e^(-x) and the imaginary part 2 gives an oscillation: y = e^(-x) (C1 cos 2x + C2 sin 2x)."
+calc = ["2^2 - 4*1*5", "-2/2", "sqrt(16)/2", "dsolve(y''+2*y'+5*y=0)"]
+
+[[step]]
+text = "Two constants need two conditions, the starting value and starting slope. y'' - y = 0 with y(0) = 0 and y'(0) = 1 gives y = (e^x - e^(-x)) / 2, the hyperbolic sine."
+calc = ["dsolve(y''-y=0, y(0)=0, y'(0)=1)", "(e^1 - e^(-1)) / 2", "sinh(1)"]
+
+[[step]]
+text = "Summary: the sign of the discriminant says it all. Positive: two exponentials. Zero: exponential with a factor of x. Negative: a decaying or growing wave."
+calc = ["1^2 - 4*1*1", "1^2 - 4*1*(-2)"]
+
+[[exercise]]
+prompt = "Roots of r^2 - 5r + 6 = 0 (the larger one)?"
+answer = "(5 + sqrt(25 - 24)) / 2"
+hint = "Quadratic formula."
+
+[[exercise]]
+prompt = "Discriminant of y'' + 2y' + 5y = 0?"
+answer = "2^2 - 4*1*5"
+hint = "b^2 - 4ac."
