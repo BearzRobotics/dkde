@@ -730,11 +730,11 @@ pub const StartMenu = struct {
     }
 
     fn onShutdown(_: *gtk.Button, self: *StartMenu) callconv(.c) void {
-        self.power("shutdown-command", "poweroff");
+        self.power("shutdown-command", common.power.detectPoweroff);
     }
 
     fn onRestart(_: *gtk.Button, self: *StartMenu) callconv(.c) void {
-        self.power("restart-command", "reboot");
+        self.power("restart-command", common.power.detectReboot);
     }
 
     fn onLock(_: *gtk.Button, self: *StartMenu) callconv(.c) void {
@@ -754,13 +754,23 @@ pub const StartMenu = struct {
     }
 
     fn onLogoff(_: *gtk.Button, self: *StartMenu) callconv(.c) void {
-        self.power("logoff-command", common.session.defaultLogoff(common.session.kind()));
+        self.powerText("logoff-command", common.session.defaultLogoff(common.session.kind()));
     }
 
-    /// Runs the configured power command; there is no logind to ask.
-    fn power(self: *StartMenu, key: [:0]const u8, default: []const u8) void {
+    /// Runs the configured power command, else the one that fits (logind's when it runs).
+    fn power(self: *StartMenu, key: [:0]const u8, detect: common.power.Detect) void {
+        const command = common.power.resolve(self.allocator, self.config, key, detect) orelse return;
+        defer self.allocator.free(command);
+        self.powerCommandLine(key, command);
+    }
+
+    fn powerText(self: *StartMenu, key: [:0]const u8, default: []const u8) void {
         const command = self.config.getString(self.allocator, "menu", key, default) catch return;
         defer self.allocator.free(command);
+        self.powerCommandLine(key, command);
+    }
+
+    fn powerCommandLine(self: *StartMenu, key: [:0]const u8, command: []const u8) void {
         const commandz = self.allocator.dupeSentinel(u8, command, 0) catch return;
         defer self.allocator.free(commandz);
 

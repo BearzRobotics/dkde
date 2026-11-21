@@ -2,6 +2,10 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
+## 0.3.5 (2026-11-21)
+
+- **Fixed**: Shut Down and Restart in the start menu asked for the administrator password on machines running elogind or systemd-logind. They now run `loginctl poweroff` / `loginctl reboot` there, which logind authorizes for the active local session, so no password is asked (the session must be registered with logind, e.g. `pam_elogind`). Without logind (dinit, SysV) nothing changes: `poweroff` / `reboot` still go through the password dialog. The critical-battery power-off uses the same rule, and `shutdown-command` / `restart-command` in panel.toml still override it.
+
 ## 0.3.4 (2026-11-20)
 
 dkde-calc, checked against independent references:

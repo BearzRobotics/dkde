@@ -224,11 +224,7 @@ pub const PowerWatch = struct {
             .none => {},
             .sleep => if (!common.power.run(self.allocator, self.config, "sleep-command", common.power.detectSleep))
                 log.warn("no sleep command found; set [menu] sleep-command", .{}),
-            .poweroff => _ = common.power.run(self.allocator, self.config, "shutdown-command", struct {
-                fn d(_: common.power.Probe) ?[]const u8 {
-                    return "poweroff";
-                }
-            }.d),
+            .poweroff => _ = common.power.run(self.allocator, self.config, "shutdown-command", common.power.detectPoweroff),
         }
     }
 };

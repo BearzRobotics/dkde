@@ -138,6 +138,9 @@ click with `udisksctl` when it is installed, otherwise with `mount` through the 
 password (into `/run/media/$USER/LABEL`; FAT, exFAT and NTFS are mounted owned by the user). NTFS
 needs a kernel driver (`ntfs3`) or ntfs-3g.
 
+**With logind or elogind** running (it creates `/run/systemd/seats`; the session must be registered,
+e.g. `pam_elogind`), Shut Down and Restart run `loginctl poweroff` / `loginctl reboot`: no password.
+
 **Without logind** (dinit, SysV): the panel's Shut down and Restart run `poweroff` / `reboot` through
 the administrator password dialog, since only root may. `/proc` may be mounted `hidepid`; Task Manager
 then recognises dinit by `/run/dinitctl`.

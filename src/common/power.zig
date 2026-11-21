@@ -39,6 +39,19 @@ pub fn detectSleep(p: Probe) ?[]const u8 {
     return null;
 }
 
+/// How to power off: through logind (or elogind) when it runs, which authorizes
+/// an active local session itself (no password); the bare command otherwise.
+pub fn detectPoweroff(p: Probe) ?[]const u8 {
+    if (p.has_logind(p.context) and p.has_program(p.context, "loginctl")) return "loginctl poweroff";
+    return "poweroff";
+}
+
+/// How to restart: see `detectPoweroff`.
+pub fn detectReboot(p: Probe) ?[]const u8 {
+    if (p.has_logind(p.context) and p.has_program(p.context, "loginctl")) return "loginctl reboot";
+    return "reboot";
+}
+
 pub const Detect = *const fn (Probe) ?[]const u8;
 
 /// The command for `key` in `[menu]` of panel.toml, else the detected one.
@@ -134,6 +147,7 @@ fn realHasProgram(_: ?*anyopaque, name: []const u8) bool {
 }
 
 fn realHasLogind(_: ?*anyopaque) bool {
+    // systemd-logind and elogind both create /run/systemd/seats.
     return glib.fileTest("/run/systemd/seats", .{ .exists = true }) != 0;
 }
 
@@ -181,4 +195,22 @@ test "sleep prefers logind, then the helpers" {
     }.f, .has_logind = Fake.logind };
     try std.testing.expectEqualStrings("i3lock", detectLockFor(x_only, false).?);
     try std.testing.expectEqualStrings("swaylock", detectLockFor(x_only, true).?);
+}
+
+test "power off and restart go through logind when it runs" {
+    const Fake = struct {
+        var on = true;
+        fn has(_: ?*anyopaque, name: []const u8) bool {
+            return std.mem.eql(u8, name, "loginctl");
+        }
+        fn logind(_: ?*anyopaque) bool {
+            return on;
+        }
+    };
+    const p: Probe = .{ .has_program = Fake.has, .has_logind = Fake.logind };
+    try std.testing.expectEqualStrings("loginctl poweroff", detectPoweroff(p).?);
+    try std.testing.expectEqualStrings("loginctl reboot", detectReboot(p).?);
+    Fake.on = false;
+    try std.testing.expectEqualStrings("poweroff", detectPoweroff(p).?);
+    try std.testing.expectEqualStrings("reboot", detectReboot(p).?);
 }
