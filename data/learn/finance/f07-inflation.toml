@@ -1,0 +1,40 @@
+id = "FIN.7"
+course = "Finance"
+book = 3
+order = 7
+title = "Inflation and real returns"
+statement = "Inflation shrinks what money buys; the real rate is (1 + nominal) / (1 + inflation) - 1, not the plain difference."
+
+[[step]]
+text = "Idea: at 3% inflation prices rise by 1.03 a year. What 100 buys today costs 100 x 1.03^20 = 180.61 in twenty years."
+calc = ["100 * 1.03^20"]
+
+[[step]]
+text = "The other way: 100 in twenty years buys only what 100 / 1.03^20 = 55.37 buys today. Purchasing power halves in about 24 years at 3% (72 / 3)."
+calc = ["100 / 1.03^20", "72 / 3", "ln(2)/ln(1.03)"]
+
+[[step]]
+text = "The real return of an investment is the growth in purchasing power: real = (1 + nominal) / (1 + inflation) - 1. A savings account paying 8% with 3% inflation is really paying 1.08 / 1.03 - 1 = 4.85%, a little under the simple difference of 5%."
+calc = ["((1 + 0.08)/(1 + 0.03) - 1) * 100", "8 - 3"]
+
+[[step]]
+text = "When the rate is below inflation, saving loses value. A 1% account with 3% inflation has a real return of 1.01 / 1.03 - 1 = -1.94% a year. After 20 years 10000 has become 10000 x (1.01/1.03)^20 = 6,756 in today's money."
+calc = ["((1.01)/(1.03) - 1) * 100", "10000 * (1.01/1.03)^20"]
+
+[[step]]
+text = "The compounding gap over 30 years at 7% nominal and 3% inflation: 10000 grows to 76122 nominally, but only 31361 in real terms: the figures a plan should use."
+calc = ["10000 * 1.07^30", "10000 * (1.07/1.03)^30"]
+
+[[step]]
+text = "Prices measured by an index: if a basket cost 1900 in 2000 and 2520 now, prices rose (2520 - 1900) / 1900 = 32.6%. Convert any old amount to today's by multiplying by the ratio of the indexes."
+calc = ["(2520 - 1900) / 1900 * 100", "2520 / 1900", "50 * 2520 / 1900"]
+
+[[exercise]]
+prompt = "Real rate (%) for 6% nominal and 2.5% inflation?"
+answer = "(1.06/1.025 - 1) * 100"
+hint = "(1 + n)/(1 + i) - 1."
+
+[[exercise]]
+prompt = "What does 1000 buy in 10 years at 4% inflation, in today's money?"
+answer = "1000 / 1.04^10"
+hint = "Divide by 1.04^10."

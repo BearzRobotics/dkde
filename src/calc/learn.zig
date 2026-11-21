@@ -383,6 +383,19 @@ pub const Learn = struct {
             .{ "Networking", 2, "delay, throughput and loss" },
             .{ "Networking", 3, "signals and frames" },
             .{ "Networking", 4, "reliability" },
+            .{ "Statistics", 1, "describing data" },
+            .{ "Statistics", 2, "distributions" },
+            .{ "Statistics", 3, "estimating and testing" },
+            .{ "Statistics", 4, "relationships" },
+            .{ "Electronics", 1, "resistors and LEDs" },
+            .{ "Electronics", 2, "capacitors and filters" },
+            .{ "Electronics", 3, "AC, resonance and amplifiers" },
+            .{ "Electronics", 4, "power" },
+            .{ "Finance", 1, "interest and time value" },
+            .{ "Finance", 2, "saving and borrowing" },
+            .{ "Finance", 3, "inflation and growth" },
+            .{ "Finance", 4, "valuing and risk" },
+            .{ "Finance", 5, "retirement and currencies" },
         };
         for (units) |u| if (u[1] == book and std.mem.eql(u8, u[0], course)) return u[2];
         return null;

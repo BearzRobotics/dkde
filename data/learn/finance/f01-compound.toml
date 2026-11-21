@@ -1,0 +1,40 @@
+id = "FIN.1"
+course = "Finance"
+book = 1
+order = 1
+title = "Simple and compound interest"
+statement = "Simple interest grows by the same amount each year; compound interest earns interest on interest, A = P (1 + r)^t."
+
+[[step]]
+text = "Idea: 1000 at 5% a year. Simple interest pays 5% of the original every year: 1000 x 0.05 x 10 = 500 over ten years, a total of 1500."
+calc = ["1000 * 0.05 * 10", "1000 + 1000*0.05*10"]
+
+[[step]]
+text = "Compound interest adds each year's interest to the balance, so the next year earns on more: A = P x (1 + r)^t. After ten years 1000 x 1.05^10 = 1628.89."
+calc = ["1000 * (1 + 0.05)^10", "1000 * 1.05^10 - 1000"]
+
+[[step]]
+text = "The gap grows with time. After 30 years simple interest gives 2500 but compounding gives 4321.94, nearly twice as much. Time is the biggest lever."
+calc = ["1000 + 1000*0.05*30", "1000 * 1.05^30"]
+
+[[step]]
+text = "Compounding more often than yearly: A = P x (1 + r / n)^(n t). At 12% a year compounded monthly for one year: 1000 x (1 + 0.01)^12 = 1126.83, more than 1120 from simple 12%."
+calc = ["1000 * (1 + 0.12/12)^12", "1000 * 1.12"]
+
+[[step]]
+text = "The limit of ever-faster compounding is continuous compounding, A = P e^(r t). 12% for a year gives 1127.50. More frequent compounding adds little after monthly."
+calc = ["1000 * e^(0.12)", "1000 * (1 + 0.12/365)^365"]
+
+[[step]]
+text = "The Rule of 72: money doubles in about 72 / r years at r%. At 7% that is 10.3 years (exactly ln 2 / ln 1.07 = 10.24). It lets you estimate growth in your head."
+calc = ["72 / 7", "ln(2) / ln(1.07)"]
+
+[[exercise]]
+prompt = "What is 2000 worth after 8 years at 6% compounded yearly?"
+answer = "2000 * 1.06^8"
+hint = "P x (1 + r)^t."
+
+[[exercise]]
+prompt = "About how many years to double at 9% (Rule of 72)?"
+answer = "72 / 9"
+hint = "72 over the rate."

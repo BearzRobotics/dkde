@@ -1,0 +1,40 @@
+id = "EL.10"
+course = "Electronics"
+book = 3
+order = 10
+title = "Op-amp gain"
+statement = "With negative feedback an op-amp's gain is set by two resistors: non-inverting 1 + Rf / Rg, inverting -Rf / Rin."
+
+[[step]]
+text = "Idea: an op-amp has huge gain on its own, so feedback tames it. In the non-inverting amplifier the gain is 1 + Rf / Rg. With Rf = 9 kohm and Rg = 1 kohm that is 10."
+calc = ["1 + 9000/1000"]
+
+[[step]]
+text = "A 0.2 V input becomes 2 V. The gain in decibels is 20 log10(10) = 20 dB."
+calc = ["0.2 * 10", "20 * log10(10)"]
+
+[[step]]
+text = "The inverting amplifier has gain -Rf / Rin and flips the sign. Rf = 10 kohm, Rin = 1 kohm gives -10: a 0.2 V input gives -2 V (so it needs a negative supply)."
+calc = ["-10000 / 1000", "0.2 * (-10)"]
+
+[[step]]
+text = "The output cannot exceed the supply. On a 9 V rail with a 1 V input and a gain of 10 the ideal 10 V is impossible: the output clips at a little under the supply. The resistors set the gain, but the supply sets the limit."
+calc = ["1 * 10", "10 - 9"]
+
+[[step]]
+text = "Real op-amps have a gain-bandwidth product. A 1 MHz GBW part at a gain of 10 is flat only to 1 MHz / 10 = 100 kHz, and at a gain of 100 only to 10 kHz. Higher gain costs bandwidth."
+calc = ["1e6 / 10", "1e6 / 100"]
+
+[[step]]
+text = "A voltage follower is gain 1 (Rf = 0, Rg open): it copies the voltage but supplies current, so it can buffer a divider without loading it. A summing amplifier adds inputs: each input resistor Rin contributes -Rf / Rin of its voltage."
+calc = ["-10000/10000 * 1 + -10000/10000 * 2"]
+
+[[exercise]]
+prompt = "Gain of a non-inverting amplifier with Rf = 47 kohm and Rg = 4.7 kohm?"
+answer = "1 + 47000/4700"
+hint = "1 + Rf / Rg."
+
+[[exercise]]
+prompt = "Bandwidth (Hz) of an op-amp with 2 MHz GBW at a gain of 40?"
+answer = "2e6 / 40"
+hint = "GBW divided by gain."

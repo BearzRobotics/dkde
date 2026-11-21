@@ -1,0 +1,40 @@
+id = "EL.7"
+course = "Electronics"
+book = 2
+order = 7
+title = "RC filters and the cutoff frequency"
+statement = "An RC pair passes low frequencies and blocks high ones; the cutoff is fc = 1 / (2 pi R C), where the output has fallen 3 dB."
+
+[[step]]
+text = "Idea: a capacitor passes fast signals and blocks slow ones. In a low-pass filter (series R, capacitor to ground) high frequencies leak to ground and only low ones reach the output."
+calc = ["1/sqrt(2)"]
+
+[[step]]
+text = "The cutoff frequency is fc = 1 / (2 pi R C). With R = 1.6 kohm and C = 100 nF: 1 / (2 pi x 1600 x 0.0000001) = 995 Hz."
+calc = ["1/(2*pi*1600*100e-9)"]
+
+[[step]]
+text = "At fc the output amplitude is 1 / sqrt(2) = 0.707 of the input, which is -3 dB (half the power). Design the other way: for fc = 1 kHz with 100 nF, R = 1 / (2 pi x 1000 x 100 nF) = 1.59 kohm."
+calc = ["1/sqrt(2)", "20*log10(1/sqrt(2))", "1/(2*pi*1000*100e-9)"]
+
+[[step]]
+text = "Above the cutoff the gain falls 20 dB per decade (a factor of 10 in frequency): at 10 fc the gain is 1 / sqrt(1 + 100) = 0.0995, which is -20 dB. At 100 fc it is -40 dB."
+calc = ["1/sqrt(1 + 10^2)", "20*log10(1/sqrt(1 + 10^2))", "20*log10(1/sqrt(1 + 100^2))"]
+
+[[step]]
+text = "General gain at frequency f: 1 / sqrt(1 + (f / fc)^2). At f = 2 fc that is 0.447, at f = fc / 10 it is 0.995 (almost no loss)."
+calc = ["1/sqrt(1 + 2^2)", "1/sqrt(1 + 0.1^2)"]
+
+[[step]]
+text = "Swap the parts for a high-pass filter (capacitor in series, resistor to ground): the same fc, but low frequencies are the ones blocked. A 10 uF capacitor with a 10 kohm load blocks DC and passes audio above 1.6 Hz."
+calc = ["1/(2*pi*10000*10e-6)"]
+
+[[exercise]]
+prompt = "Cutoff frequency (Hz) of 10 kohm and 10 nF?"
+answer = "1/(2*pi*10000*10e-9)"
+hint = "1 / (2 pi R C)."
+
+[[exercise]]
+prompt = "Gain in dB at 10 times the cutoff of a first-order filter?"
+answer = "20*log10(1/sqrt(1 + 10^2))"
+hint = "About -20."

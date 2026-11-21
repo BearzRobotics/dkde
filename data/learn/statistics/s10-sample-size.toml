@@ -1,0 +1,36 @@
+id = "ST.10"
+course = "Statistics"
+book = 3
+order = 10
+title = "How big a sample do you need?"
+statement = "The margin of error E = z sigma / sqrt(n) can be turned round to give the sample size for a wanted precision."
+
+[[step]]
+text = "Idea: margin of error E = z x sigma / sqrt(n). Solving for n: n = (z x sigma / E)^2. To estimate a mean within +/-3 when sigma is about 15 at 95% confidence (z = 1.96):"
+calc = ["1.96 * 15 / 3", "(1.96*15/3)^2"]
+
+[[step]]
+text = "That is 96.04, and you always round up: 97 observations."
+calc = ["ceil((1.96*15/3)^2)"]
+
+[[step]]
+text = "Halving the margin to +/-1.5 quadruples the sample: (1.96 x 15 / 1.5)^2 = 384.2, so 385."
+calc = ["ceil((1.96*15/1.5)^2)", "385 / 97"]
+
+[[step]]
+text = "For a proportion (a poll), the standard deviation is sqrt(p (1 - p)), at most 0.5. The famous +/-3% poll: n = (1.96 x 0.5 / 0.03)^2 = 1067.1, so 1068 people, no matter how large the country."
+calc = ["(1.96*0.5/0.03)^2", "ceil((1.96*0.5/0.03)^2)"]
+
+[[step]]
+text = "Margin of error for 1000 people: 1.96 x 0.5 / sqrt(1000) = 3.1%. Going to 10000 people only gets 0.98%."
+calc = ["1.96*0.5/sqrt(1000)*100", "1.96*0.5/sqrt(10000)*100"]
+
+[[exercise]]
+prompt = "Sample size for margin 2, sigma 10, z = 1.96? (round up)"
+answer = "ceil((1.96*10/2)^2)"
+hint = "(9.8)^2 = 96.04."
+
+[[exercise]]
+prompt = "Poll margin of error (%) for 400 people, worst case p = 0.5?"
+answer = "1.96*0.5/sqrt(400)*100"
+hint = "About 4.9."

@@ -1,0 +1,40 @@
+id = "ST.12"
+course = "Statistics"
+book = 4
+order = 12
+title = "Linear regression"
+statement = "The least-squares line y = a + b x minimises the squared vertical errors; its slope is r sy / sx."
+
+[[step]]
+text = "Idea: fit a line through (1,2) (2,4) (3,5) (4,4) (5,5). The slope is b = covariance / variance of x = 1.2 / 2 = 0.6."
+calc = ["1.2 / 2", "pearson([1,2,3,4,5],[2,4,5,4,5]) * stdevp([2,4,5,4,5]) / stdevp([1,2,3,4,5])"]
+
+[[step]]
+text = "The line passes through the point of means (3, 4), so the intercept is a = mean(y) - b x mean(x) = 4 - 0.6 x 3 = 2.2."
+calc = ["4 - 0.6*3"]
+
+[[step]]
+text = "The calculator's linreg returns slope, intercept and r squared together: 0.6, 2.2 and 0.6."
+calc = ["linreg([1,2,3,4,5],[2,4,5,4,5])"]
+
+[[step]]
+text = "Predict: at x = 6 the line says y = 2.2 + 0.6 x 6 = 5.8. Each extra unit of x adds 0.6 to y."
+calc = ["2.2 + 0.6*6"]
+
+[[step]]
+text = "Residuals are the misses, actual minus predicted. At x = 1 the line gives 2.8 against an actual 2, a residual of -0.8. The residuals always sum to zero."
+calc = ["2 - (2.2 + 0.6*1)", "4 - (2.2+0.6*2)", "5 - (2.2+0.6*3)", "4 - (2.2+0.6*4)", "5 - (2.2+0.6*5)"]
+
+[[step]]
+text = "Do not predict far outside the data: a line fitted to x from 1 to 5 says nothing reliable about x = 500. Also check the residuals for a pattern; a curve in them means a line is the wrong model."
+calc = ["2.2 + 0.6*500"]
+
+[[exercise]]
+prompt = "For the line y = 1 + 2x what is y at x = 7?"
+answer = "1 + 2*7"
+hint = "Substitute."
+
+[[exercise]]
+prompt = "Intercept if the mean of x is 4, the mean of y is 10 and the slope is 2?"
+answer = "10 - 2*4"
+hint = "mean(y) - slope x mean(x)."

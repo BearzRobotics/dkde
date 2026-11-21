@@ -1,0 +1,40 @@
+id = "EL.8"
+course = "Electronics"
+book = 3
+order = 8
+title = "Reactance and impedance"
+statement = "Capacitors and inductors resist AC by an amount that depends on frequency; impedance combines that with resistance at right angles."
+
+[[step]]
+text = "Idea: capacitive reactance Xc = 1 / (2 pi f C) falls as frequency rises. A 1 microfarad capacitor at 50 Hz is 3183 ohms; at 1 kHz only 159 ohms."
+calc = ["1/(2*pi*50*1e-6)", "1/(2*pi*1000*1e-6)"]
+
+[[step]]
+text = "Inductive reactance XL = 2 pi f L rises with frequency. A 10 mH coil is 62.8 ohms at 1 kHz and 628 ohms at 10 kHz. It is the capacitor's mirror."
+calc = ["2*pi*1000*0.01", "2*pi*10000*0.01"]
+
+[[step]]
+text = "Reactance is at 90 degrees to resistance (the current leads or lags the voltage), so they combine like the sides of a right triangle: Z = sqrt(R^2 + X^2)."
+calc = ["sqrt(100^2 + 100^2)"]
+
+[[step]]
+text = "Series R = 100 ohms and X = 100 ohms: Z = 141.4 ohms, and the phase angle is atan(X / R) = 45 degrees. With 10 V applied the current is 10 / 141.4 = 70.7 mA."
+calc = ["atan(100/100)", "10 / 141.42"]
+
+[[step]]
+text = "Power only goes to the resistor. Real power is I^2 R = 0.0707^2 x 100 = 0.5 W, while the apparent power V x I is 0.707 VA. The power factor is cos of the phase angle, R / Z = 0.707."
+calc = ["0.0707^2 * 100", "10 * 0.0707", "100 / 141.42"]
+
+[[step]]
+text = "Mains example: a motor with a poor power factor of 0.7 drawing 10 A at 230 V uses 2300 VA but only 1610 W; the supply wires carry the full 10 A for 30% less useful work."
+calc = ["230 * 10", "230 * 10 * 0.7"]
+
+[[exercise]]
+prompt = "Reactance (ohms) of 100 nF at 10 kHz?"
+answer = "1/(2*pi*10000*100e-9)"
+hint = "1 / (2 pi f C)."
+
+[[exercise]]
+prompt = "Impedance for R = 30 ohms and X = 40 ohms?"
+answer = "sqrt(30^2 + 40^2)"
+hint = "A 3-4-5 triangle."

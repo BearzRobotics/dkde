@@ -1,0 +1,40 @@
+id = "FIN.10"
+course = "Finance"
+book = 4
+order = 10
+title = "Risk and return"
+statement = "Expected return is the probability-weighted average; the standard deviation of returns measures risk; the Sharpe ratio is excess return per unit of risk."
+
+[[step]]
+text = "Idea: an investment returns +20% or -10% with equal chance. The expected return is 0.5 x 20% + 0.5 x (-10%) = 5%."
+calc = ["0.5*0.20 + 0.5*(-0.10)"]
+
+[[step]]
+text = "Risk is how far returns stray from that. The deviations are +15% and -15%, so the standard deviation is sqrt(0.5 x 0.15^2 + 0.5 x 0.15^2) = 15%. The same tools as in statistics."
+calc = ["0.20 - 0.05", "-0.10 - 0.05", "sqrt(0.5*(0.20-0.05)^2 + 0.5*(-0.10-0.05)^2)"]
+
+[[step]]
+text = "Sharpe ratio = (return - risk-free rate) / standard deviation. If safe bonds pay 3%: (8% - 3%) / 15% = 0.33. Higher means more reward for each unit of risk taken."
+calc = ["(0.08 - 0.03) / 0.15"]
+
+[[step]]
+text = "Diversification lowers risk. Two assets each with a standard deviation of 15% and a correlation of 0 (independent) have a 50/50 portfolio of sqrt(2 x (0.5 x 0.15)^2) = 10.6%, with the same expected return."
+calc = ["sqrt(2 * (0.5*0.15)^2)", "0.15 / sqrt(2)"]
+
+[[step]]
+text = "With correlation r the formula is sqrt(w1^2 s1^2 + w2^2 s2^2 + 2 w1 w2 r s1 s2). At r = 1 there is no gain (15%); at r = -1 the risk cancels fully (0%)."
+calc = ["sqrt(0.5^2*0.15^2 + 0.5^2*0.15^2 + 2*0.5*0.5*1*0.15*0.15)", "sqrt(0.5^2*0.15^2 + 0.5^2*0.15^2 + 2*0.5*0.5*(-1)*0.15*0.15)"]
+
+[[step]]
+text = "Expected value also shows why some bets are bad. A game paying 36 for a 1-in-38 win on a 1 stake (roulette, single number) has an expected return of 36/38 - 1 = -5.26% per spin: the house edge."
+calc = ["36/38 - 1", "(36/38 - 1) * 100"]
+
+[[exercise]]
+prompt = "Sharpe ratio for 10% return, 2% risk-free, 16% standard deviation?"
+answer = "(0.10 - 0.02) / 0.16"
+hint = "Excess return over risk."
+
+[[exercise]]
+prompt = "Expected return of a 60% chance of +10% and a 40% chance of -5%?"
+answer = "0.6*0.10 + 0.4*(-0.05)"
+hint = "Weight each outcome."

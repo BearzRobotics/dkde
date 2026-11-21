@@ -1,0 +1,40 @@
+id = "EL.2"
+course = "Electronics"
+book = 1
+order = 2
+title = "Resistors in series and parallel"
+statement = "Resistances in series add; in parallel their reciprocals add, so the total is smaller than the smallest branch."
+
+[[step]]
+text = "Idea: in series the same current flows through all, so the resistances add: 100 + 220 + 330 = 650 ohms."
+calc = ["100 + 220 + 330"]
+
+[[step]]
+text = "In parallel the same voltage is across each, so the conductances (1/R) add: 1/R = 1/100 + 1/220, giving R = 68.75 ohms, smaller than either."
+calc = ["1/(1/100 + 1/220)", "1/100 + 1/220"]
+
+[[step]]
+text = "For just two resistors a shortcut: product over sum. 100 x 220 / (100 + 220) = 68.75, the same."
+calc = ["100*220/(100+220)"]
+
+[[step]]
+text = "Equal resistors in parallel divide: n of them of value R give R / n. Four 1 kohm resistors in parallel are 250 ohms; they also share power, so they handle four times the heat of one."
+calc = ["1000 / 4", "4 * 0.25"]
+
+[[step]]
+text = "Three in parallel: 100, 200 and 300 ohms give 1 / (0.01 + 0.005 + 0.00333) = 54.5 ohms. A mixed network is solved a piece at a time: here 54.5 in series with 100 is 154.5 ohms."
+calc = ["1/(1/100 + 1/200 + 1/300)", "1/(1/100 + 1/200 + 1/300) + 100"]
+
+[[step]]
+text = "Making an unusual value: 10 kohm and 2.2 kohm in parallel give 1.80 kohm; two 1 kohm in series with one 470 ohm give 2470 ohms. Combinations fill the gaps in the standard E12 series."
+calc = ["10000*2200/(10000+2200)", "1000 + 1000 + 470"]
+
+[[exercise]]
+prompt = "Total of 330 and 470 ohms in parallel?"
+answer = "330*470/(330+470)"
+hint = "Product over sum."
+
+[[exercise]]
+prompt = "Total of 1k, 2.2k and 4.7k in series (ohms)?"
+answer = "1000 + 2200 + 4700"
+hint = "Add them."

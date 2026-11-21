@@ -1,0 +1,40 @@
+id = "EL.11"
+course = "Electronics"
+book = 4
+order = 11
+title = "Battery life and power budgets"
+statement = "Battery energy is volts times amp-hours; divide by the average power draw, with efficiency and sleep time included, to get run time."
+
+[[step]]
+text = "Idea: a 2000 mAh cell drawing 50 mA lasts 2000 / 50 = 40 hours. Capacity in mAh divided by current in mA gives hours."
+calc = ["2000 / 50"]
+
+[[step]]
+text = "Energy: Wh = V x Ah. A 3.7 V, 2000 mAh cell holds 3.7 x 2 = 7.4 Wh. Compare packs by Wh, not mAh, since the voltage differs."
+calc = ["3.7 * 2", "3.7 * 2.0 * 1000"]
+
+[[step]]
+text = "Run time at a power: a 2.5 W load (5 V at 0.5 A) from 7.4 Wh lasts 7.4 / 2.5 = 2.96 hours."
+calc = ["5 * 0.5", "7.4 / 2.5"]
+
+[[step]]
+text = "Conversion losses: a boost converter at 85% efficiency delivers only 0.85 x 7.4 = 6.29 Wh, so run time falls to 6.29 / 2.5 = 2.52 hours."
+calc = ["0.85 * 7.4", "0.85 * 7.4 / 2.5"]
+
+[[step]]
+text = "Duty cycling: a sensor sleeps at 10 microamps for 99% of the time and wakes at 20 mA for 1%. The average current is 0.99 x 0.01 + 0.01 x 20 = 0.21 mA, so a 2000 mAh cell lasts 2000 / 0.2099 = 9528 hours, 397 days."
+calc = ["0.99 * 0.01 + 0.01 * 20", "2000 / 0.2099", "2000 / 0.2099 / 24"]
+
+[[step]]
+text = "Note how the active 1% dominates: it is 0.2 of the 0.21 mA. Halving the awake time (or its current) matters far more than a lower sleep current. Real cells also deliver less at high drain and in the cold, so allow a margin of about 20%."
+calc = ["0.01 * 20", "0.01*20 / 0.2099", "9528 * 0.8"]
+
+[[exercise]]
+prompt = "Hours from a 3000 mAh pack at 150 mA?"
+answer = "3000 / 150"
+hint = "mAh over mA."
+
+[[exercise]]
+prompt = "Watt-hours in a 12 V, 7 Ah battery?"
+answer = "12 * 7"
+hint = "V x Ah."

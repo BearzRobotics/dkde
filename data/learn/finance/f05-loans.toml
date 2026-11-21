@@ -1,0 +1,40 @@
+id = "FIN.5"
+course = "Finance"
+book = 2
+order = 5
+title = "Loan payments and amortisation"
+statement = "A fixed loan payment is M = P i / (1 - (1 + i)^-n); early payments are mostly interest, later ones mostly principal."
+
+[[step]]
+text = "Idea: borrow 250000 for 30 years at 5% (0.05 / 12 a month, 360 payments). The payment that repays it exactly is M = P i / (1 - (1 + i)^-n) = 1342.05."
+calc = ["pmt(0.05/12, 360, -250000)", "250000 * (0.05/12) / (1 - (1 + 0.05/12)^(-360))"]
+
+[[step]]
+text = "Total paid: 1342.05 x 360 = 483139. So the interest is 483139 - 250000 = 233139, nearly as much as the loan itself."
+calc = ["1342.05 * 360", "1342.05 * 360 - 250000"]
+
+[[step]]
+text = "Payment one: interest is the balance x monthly rate = 250000 x 0.05 / 12 = 1041.67. Only 1342.05 - 1041.67 = 300.38 reduces the debt."
+calc = ["250000 * 0.05/12", "1342.05 - 1041.67"]
+
+[[step]]
+text = "The new balance is 249699.62, so next month's interest is slightly lower and the principal slightly higher. This is amortisation: the principal share grows steadily and the payment stays fixed."
+calc = ["250000 - 300.38", "249699.62 * 0.05/12"]
+
+[[step]]
+text = "The term matters. The same loan over 15 years at 5% costs 1976.98 a month, but the total interest is only 105,857 instead of 233,139."
+calc = ["pmt(0.05/12, 180, -250000)", "pmt(0.05/12,180,-250000)*180 - 250000"]
+
+[[step]]
+text = "A rate rise of 1% costs: at 6% the 30-year payment is 1498.88, 157 a month more, 56,000 over the life. Each point of interest is worth shopping hard for."
+calc = ["pmt(0.06/12, 360, -250000)", "pmt(0.06/12,360,-250000) - 1342.05", "(pmt(0.06/12,360,-250000) - 1342.05)*360"]
+
+[[exercise]]
+prompt = "Monthly payment on 10000 over 3 years at 6% a year? (positive)"
+answer = "pmt(0.06/12, 36, -10000)"
+hint = "i = 0.005, n = 36."
+
+[[exercise]]
+prompt = "Interest in the first month on a 120000 loan at 4.5%?"
+answer = "120000 * 0.045 / 12"
+hint = "Balance x monthly rate."

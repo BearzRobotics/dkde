@@ -1,0 +1,36 @@
+id = "ST.3"
+course = "Statistics"
+book = 1
+order = 3
+title = "Quartiles, IQR and outliers"
+statement = "Quartiles cut sorted data into four equal parts; the interquartile range and the 1.5 x IQR fences flag unusual values."
+
+[[step]]
+text = "Idea: the quartiles Q1, Q2 (median) and Q3 split sorted data into quarters. For 1 to 9 and 100: Q1 = 3.25 and Q3 = 7.75 by the usual interpolation."
+calc = ["quartile([1,2,3,4,5,6,7,8,9,100],1)", "quartile([1,2,3,4,5,6,7,8,9,100],3)"]
+
+[[step]]
+text = "The interquartile range is IQR = Q3 - Q1 = 4.5. It ignores the extreme tails, so it is a spread measure the 100 cannot distort."
+calc = ["7.75 - 3.25"]
+
+[[step]]
+text = "Tukey's fences: anything below Q1 - 1.5 x IQR or above Q3 + 1.5 x IQR is a suspected outlier. Here 3.25 - 6.75 = -3.5 and 7.75 + 6.75 = 14.5."
+calc = ["3.25 - 1.5*4.5", "7.75 + 1.5*4.5"]
+
+[[step]]
+text = "The value 100 is above 14.5, so it is flagged. Compare the damage: the mean is 14.5 with it and 5 without, the median is 5.5 and 5, so the median barely notices."
+calc = ["mean([1,2,3,4,5,6,7,8,9,100])", "mean([1,2,3,4,5,6,7,8,9])", "median([1,2,3,4,5,6,7,8,9,100])"]
+
+[[step]]
+text = "Percentiles generalise this: the 90th percentile is the value that 90% of the data lies below. Response-time reports use the 95th or 99th percentile since the average hides slow requests."
+calc = ["percentile([1,2,3,4,5,6,7,8,9,10],90)", "percentile([1,2,3,4,5,6,7,8,9,10],50)"]
+
+[[exercise]]
+prompt = "If Q1 = 20 and Q3 = 50 what is the upper outlier fence? (Q3 + 1.5 x IQR)"
+answer = "50 + 1.5*(50-20)"
+hint = "IQR is 30."
+
+[[exercise]]
+prompt = "What is the IQR when Q1 = 12 and Q3 = 31?"
+answer = "31 - 12"
+hint = "Q3 minus Q1."

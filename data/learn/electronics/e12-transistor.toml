@@ -1,0 +1,40 @@
+id = "EL.12"
+course = "Electronics"
+book = 4
+order = 12
+title = "Transistor switches and PWM"
+statement = "A transistor can switch a load if its base gets enough current (collector current / gain, with margin), and PWM varies power by switching fast."
+
+[[step]]
+text = "Idea: a transistor with gain beta passes a collector current up to beta times the base current. To switch a 100 mA relay with beta = 100 you need at least 100 / 100 = 1 mA of base current."
+calc = ["100 / 100"]
+
+[[step]]
+text = "To make sure it saturates (fully on) overdrive it about five times: 5 mA of base current. With a 5 V logic signal and the 0.7 V base-emitter drop, the base resistor is (5 - 0.7) / 0.005 = 860 ohms; use the nearest lower standard value, 820 ohms."
+calc = ["(5 - 0.7) / 0.005", "(5 - 0.7) / 820 * 1000"]
+
+[[step]]
+text = "Heat in the transistor: saturated it drops about 0.2 V, so it burns 0.2 x 0.1 = 20 mW, nothing. Used as a linear amplifier instead, with half the supply across it, it would burn far more. Switching wastes little."
+calc = ["0.2 * 0.1 * 1000", "6 * 0.1 * 1000"]
+
+[[step]]
+text = "A relay coil kicks back a voltage spike when switched off, so add a diode across the coil. A 12 V coil drawing 100 mA is 120 ohms and 1.2 W; the transistor only has to carry the 100 mA."
+calc = ["12 / 0.1", "12 * 0.1"]
+
+[[step]]
+text = "PWM (pulse-width modulation): switch fully on and off at a fixed fast rate and vary the on-time fraction (duty cycle). The average voltage is duty x supply: 25% of 12 V averages 3 V."
+calc = ["0.25 * 12", "0.75 * 12"]
+
+[[step]]
+text = "A 1 kHz PWM has a 1 ms period, so a 25% duty is on for 0.25 ms. The efficiency is the point: a dimmer that is on or off wastes almost no power, unlike a resistor that burns the unwanted volts."
+calc = ["1 / 1000 * 1000", "0.25 * 1", "(12 - 3) * 0.1"]
+
+[[exercise]]
+prompt = "Minimum base current (mA) to switch 200 mA with beta = 50?"
+answer = "200 / 50"
+hint = "Ic / beta."
+
+[[exercise]]
+prompt = "Average voltage of 60% duty PWM on 5 V?"
+answer = "0.6 * 5"
+hint = "Duty x supply."

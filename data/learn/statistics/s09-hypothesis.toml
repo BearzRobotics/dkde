@@ -1,0 +1,40 @@
+id = "ST.9"
+course = "Statistics"
+book = 3
+order = 9
+title = "Hypothesis tests and the t statistic"
+statement = "A t-test asks whether a sample mean differs from a claimed value by more than chance would explain."
+
+[[step]]
+text = "Idea: a vendor claims a mean latency of 50 ms. You measure 25 requests: mean 52 ms, standard deviation 8. Is 52 evidence against the claim, or just noise?"
+calc = ["52 - 50"]
+
+[[step]]
+text = "Standard error: 8 / sqrt(25) = 1.6 ms. The t statistic is the difference in standard errors: t = (52 - 50) / 1.6 = 1.25."
+calc = ["8 / sqrt(25)", "(52 - 50) / (8 / sqrt(25))"]
+
+[[step]]
+text = "With 24 degrees of freedom the 95% two-sided cutoff is 2.064. Since 1.25 is below it, the difference is not significant: you cannot reject the claim."
+calc = ["tdistinv(0.975,24)", "1.25 < 2.064"]
+
+[[step]]
+text = "The p-value is the chance of a result at least this extreme if the claim were true: 2 x (1 - tdist(1.25, 24, 1)), about 0.22. A common rule rejects the claim when p < 0.05."
+calc = ["2 * (1 - tdist(1.25,24,1))"]
+
+[[step]]
+text = "A bigger difference would matter: a mean of 55 gives t = 5 / 1.6 = 3.125 and p about 0.005, strong evidence against the claim."
+calc = ["(55 - 50) / 1.6", "2 * (1 - tdist(3.125,24,1))"]
+
+[[step]]
+text = "Caution: not significant does not mean no difference (the sample may be too small), and with enough data a trivial difference becomes significant. Always look at the size too."
+calc = ["(52 - 50) / 8"]
+
+[[exercise]]
+prompt = "t statistic for mean 105, claimed 100, s = 10, n = 16?"
+answer = "(105 - 100)/(10/sqrt(16))"
+hint = "Standard error is 2.5."
+
+[[exercise]]
+prompt = "Degrees of freedom for a one-sample test with n = 30?"
+answer = "30 - 1"
+hint = "n minus one."

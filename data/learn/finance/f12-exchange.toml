@@ -1,0 +1,40 @@
+id = "FIN.12"
+course = "Finance"
+book = 5
+order = 12
+title = "Exchange rates, spreads and premiums"
+statement = "Converting money costs a spread; a physical or gold-backed item sells for its metal value plus a premium over the spot price."
+
+[[step]]
+text = "Idea: a rate quotes how many units of one currency buy one of another. If 1 euro = 1.08 dollars then 500 euros = 540 dollars, and 1 dollar = 1 / 1.08 = 0.926 euros."
+calc = ["500 * 1.08", "1 / 1.08"]
+
+[[step]]
+text = "Dealers quote two prices, a bid and an ask. Buying at 1.0850 and selling back at 1.0750 loses the spread of 0.01 per euro, 0.92% of the price, even if the market has not moved."
+calc = ["1.0850 - 1.0750", "(1.0850 - 1.0750) / 1.0850 * 100"]
+
+[[step]]
+text = "A round trip costs the spread: swap 1000 dollars to euros at 0.9217 and back at 0.9300 gives 1000 x 0.9217 / 0.9300 = 991.0, a loss of 9."
+calc = ["1000 * 0.9217", "1000 * 0.9217 / 0.9300"]
+
+[[step]]
+text = "Metals: the spot price is for large bars. A 1 ounce item has a melt value equal to its fine content times the spot price. At 2000 dollars an ounce, a 1/1000 ounce gold note holds 2000 / 1000 = 2.00 of gold."
+calc = ["2000 / 1000"]
+
+[[step]]
+text = "Items sell for a premium over that: if the note sells for 2.40 the premium is (2.40 - 2.00) / 2.00 = 20%. Buyers pay it for the convenient size, and on selling back it often shrinks, so a premium is a real cost, like a spread."
+calc = ["(2.40 - 2.00) / 2.00 * 100", "10 * 2.40", "10 * 2.00"]
+
+[[step]]
+text = "Cryptocurrencies are the same arithmetic with larger swings. A coin worth 60000 that moves 5% in a day moves 3000. Always check the exchange fee and spread as a percentage of the trade, and compare with the volatility: a 1% fee is a small part of a 20% month but large for a 0.5% move."
+calc = ["60000 * 0.05", "0.01 / 0.005"]
+
+[[exercise]]
+prompt = "How many dollars for 800 euros at 1.08?"
+answer = "800 * 1.08"
+hint = "Multiply by the rate."
+
+[[exercise]]
+prompt = "Premium (%) of paying 55 for gold worth 50?"
+answer = "(55 - 50) / 50 * 100"
+hint = "Extra over the melt value."

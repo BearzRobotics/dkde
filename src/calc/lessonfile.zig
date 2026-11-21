@@ -162,7 +162,7 @@ const Entry = struct { lesson: figure.Lesson, order: i64, path: []const u8 = "" 
 
 /// The order subjects are taught in; others follow alphabetically.
 pub fn courseRank(name: []const u8) usize {
-    const order = [_][]const u8{ "Arithmetic", "Euclid", "Algebra", "Trigonometry", "Calculus", "Linear Algebra", "Computing", "Computer Science", "Networking" };
+    const order = [_][]const u8{ "Arithmetic", "Euclid", "Algebra", "Trigonometry", "Calculus", "Linear Algebra", "Computing", "Computer Science", "Networking", "Statistics", "Electronics", "Finance" };
     for (order, 0..) |n, i| if (std.mem.eql(u8, n, name)) return i;
     return order.len;
 }
@@ -171,7 +171,7 @@ fn lessThan(_: void, a: Entry, b: Entry) bool {
     const ra = courseRank(a.lesson.course);
     const rb = courseRank(b.lesson.course);
     if (ra != rb) return ra < rb;
-    if (ra == 9 and !std.mem.eql(u8, a.lesson.course, b.lesson.course)) return std.mem.lessThan(u8, a.lesson.course, b.lesson.course);
+    if (ra == 12 and !std.mem.eql(u8, a.lesson.course, b.lesson.course)) return std.mem.lessThan(u8, a.lesson.course, b.lesson.course);
     if (a.lesson.book != b.lesson.book) return a.lesson.book < b.lesson.book;
     if (a.order != b.order) return a.order < b.order;
     return std.mem.lessThan(u8, a.lesson.id, b.lesson.id);

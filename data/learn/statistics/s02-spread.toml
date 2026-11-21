@@ -1,0 +1,36 @@
+id = "ST.2"
+course = "Statistics"
+book = 1
+order = 2
+title = "Variance and standard deviation"
+statement = "Standard deviation measures the typical distance of the data from its mean; use n for a whole population and n - 1 for a sample."
+
+[[step]]
+text = "Idea: the data 2, 4, 4, 4, 5, 5, 7, 9 has mean 5. The deviations from the mean are -3, -1, -1, -1, 0, 0, 2, 4. They always add to 0, so square them first."
+calc = ["2-5", "4-5", "9-5", "(-3)+(-1)+(-1)+(-1)+0+0+2+4"]
+
+[[step]]
+text = "Squares: 9, 1, 1, 1, 0, 0, 4, 16, which add to 32. For a whole population the variance is 32 / 8 = 4 and the standard deviation is its square root, 2."
+calc = ["9+1+1+1+0+0+4+16", "32/8", "sqrt(4)", "stdevp([2,4,4,4,5,5,7,9])"]
+
+[[step]]
+text = "For a sample drawn from a larger population divide by n - 1 instead (Bessel's correction), because the sample's own mean sits closer to the data than the true mean would: 32 / 7 = 4.571 and the standard deviation is 2.138."
+calc = ["32/7", "sqrt(32/7)", "stdev([2,4,4,4,5,5,7,9])"]
+
+[[step]]
+text = "Rule of thumb: about 68% of bell-shaped data lies within one standard deviation of the mean, 95% within two. Here that is 5 +/- 2.14, about 2.9 to 7.1."
+calc = ["5 - 2.138", "5 + 2.138", "5 - 2*2.138", "5 + 2*2.138"]
+
+[[step]]
+text = "The coefficient of variation compares spread across different scales: standard deviation / mean. Two machines: mean 50, sd 5 gives 0.10; mean 500, sd 25 gives 0.05, so the second is more consistent."
+calc = ["5/50", "25/500"]
+
+[[exercise]]
+prompt = "Population variance of 1, 2, 3, 4, 5? (mean 3, squares 4+1+0+1+4)"
+answer = "(4+1+0+1+4)/5"
+hint = "Sum of squared deviations over n."
+
+[[exercise]]
+prompt = "Sample standard deviation of 1, 2, 3, 4, 5?"
+answer = "stdev([1,2,3,4,5])"
+hint = "sqrt(10 / 4)."

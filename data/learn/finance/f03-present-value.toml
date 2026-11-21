@@ -1,0 +1,40 @@
+id = "FIN.3"
+course = "Finance"
+book = 1
+order = 3
+title = "Present value and discounting"
+statement = "A future amount is worth less today; discounting by (1 + r)^t gives its present value."
+
+[[step]]
+text = "Idea: money today can earn interest, so 10000 in ten years is worth less than 10000 now. At 5% its present value is 10000 / 1.05^10 = 6139.13."
+calc = ["10000 / 1.05^10"]
+
+[[step]]
+text = "Check by compounding forward: 6139.13 x 1.05^10 = 10000. Present value and future value are two views of one fact."
+calc = ["6139.13 * 1.05^10"]
+
+[[step]]
+text = "A higher discount rate shrinks the value: at 10% the same 10000 is worth 3855.43 today; at 0% it is worth the full 10000. The rate expresses how much you value now over later, and how risky the payment is."
+calc = ["10000 / 1.10^10", "10000 / 1.0^10"]
+
+[[step]]
+text = "Comparing choices: take 9000 now or 10000 in two years? At 5% the 10000 is worth 10000 / 1.1025 = 9070.29 now, so waiting is slightly better; at 8% it is 8573.39, so take the 9000."
+calc = ["10000 / 1.05^2", "10000 / 1.08^2"]
+
+[[step]]
+text = "Several payments: add the present value of each. 100 now, 100 in a year and 100 in two years at 5% is 100 + 95.24 + 90.70 = 285.94. Each payment is discounted by its own delay."
+calc = ["100 + 100/1.05 + 100/1.05^2"]
+
+[[step]]
+text = "A perpetuity (a payment forever) is worth payment / rate: 50 a year at 5% is worth 1000. Because far payments are discounted almost to nothing, the infinite sum is finite."
+calc = ["50 / 0.05", "50/1.05 + 50/1.05^2 + 50/1.05^3"]
+
+[[exercise]]
+prompt = "Present value of 5000 due in 4 years at 6%?"
+answer = "5000 / 1.06^4"
+hint = "Divide by (1 + r)^t."
+
+[[exercise]]
+prompt = "Value of a perpetuity of 200 a year at 4%?"
+answer = "200 / 0.04"
+hint = "Payment over rate."

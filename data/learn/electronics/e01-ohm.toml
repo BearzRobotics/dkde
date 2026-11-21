@@ -1,0 +1,36 @@
+id = "EL.1"
+course = "Electronics"
+book = 1
+order = 1
+title = "Ohm's law and power"
+statement = "Voltage, current and resistance are tied by V = I R, and the power burnt is P = V I, which also equals I squared R and V squared over R."
+
+[[step]]
+text = "Idea: V = I x R. Put 12 V across a 240 ohm resistor and the current is I = V / R = 12 / 240 = 0.05 A, which is 50 mA."
+calc = ["12 / 240", "12 / 240 * 1000"]
+
+[[step]]
+text = "Power is P = V x I = 12 x 0.05 = 0.6 W. The same answer comes from I^2 R = 0.0025 x 240 and from V^2 / R = 144 / 240."
+calc = ["12 * 0.05", "0.05^2 * 240", "12^2 / 240"]
+
+[[step]]
+text = "That power becomes heat, so the resistor must be rated for it. A common 1/4 W (0.25 W) resistor would burn out at 0.6 W; you need a 1 W part, and a safety margin of 2x is wise."
+calc = ["0.6 / 0.25", "0.6 * 2"]
+
+[[step]]
+text = "Rearranged: R = V / I and V = I x R. A 5 V rail drawing 20 mA sees an equivalent resistance of 250 ohms; 20 mA through 330 ohms drops 6.6 V."
+calc = ["5 / 0.02", "0.02 * 330"]
+
+[[step]]
+text = "Energy is power x time. A 0.6 W load for 10 hours uses 6 Wh, which is 0.006 kWh; at 0.30 per kWh that costs 0.0018."
+calc = ["0.6 * 10", "0.6 * 10 / 1000", "0.006 * 0.30"]
+
+[[exercise]]
+prompt = "Current (amps) through 470 ohms at 9 V?"
+answer = "9 / 470"
+hint = "I = V / R."
+
+[[exercise]]
+prompt = "Power (watts) burnt by 5 V across 100 ohms?"
+answer = "5^2 / 100"
+hint = "V^2 / R."

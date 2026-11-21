@@ -1,0 +1,40 @@
+id = "FIN.9"
+course = "Finance"
+book = 4
+order = 9
+title = "Net present value and IRR"
+statement = "A project is worth doing if the present value of its cash flows exceeds its cost; the IRR is the discount rate where that value is exactly zero."
+
+[[step]]
+text = "Idea: spend 1000 now and receive 400, 500 and 600 over the next three years. Is it worth it if you could otherwise earn 10%? Discount each inflow and subtract the cost."
+calc = ["400/1.1", "500/1.1^2", "600/1.1^3"]
+
+[[step]]
+text = "NPV = -1000 + 400/1.1 + 500/1.1^2 + 600/1.1^3 = 227.65. The positive value means the project beats a 10% alternative, in today's money."
+calc = ["-1000 + 400/1.1 + 500/1.1^2 + 600/1.1^3"]
+
+[[step]]
+text = "Raise the discount rate and the NPV falls. At 20% it is 27.78, still positive; at 22% it is -5.78. So the break-even rate lies a little above 21%."
+calc = ["-1000 + 400/1.2 + 500/1.2^2 + 600/1.2^3", "-1000 + 400/1.22 + 500/1.22^2 + 600/1.22^3"]
+
+[[step]]
+text = "That break-even is the internal rate of return (IRR): the rate where NPV = 0. At 21% the NPV is +10.77 and at 22% it is -5.78, so by interpolation the IRR is about 21.65%."
+calc = ["-1000 + 400/1.21 + 500/1.21^2 + 600/1.21^3", "21 + 10.77 / (10.77 + 5.78)"]
+
+[[step]]
+text = "Payback period: cumulative inflows 400, 900, 1500 pass the 1000 cost in year 3, at 2 + 100/600 = 2.17 years. It is simple but ignores the time value and anything after the payback."
+calc = ["400 + 500", "2 + (1000 - 900)/600"]
+
+[[step]]
+text = "Decide with NPV: a project with the higher IRR is not always the better one, since a small quick project can have a high IRR but a low NPV. Use NPV (at a sensible rate) to rank projects; use IRR to see how much cushion there is."
+calc = ["-100 + 150/1.1", "-1000 + 1300/1.1"]
+
+[[exercise]]
+prompt = "NPV at 8% of paying 500 now and receiving 600 in one year?"
+answer = "-500 + 600/1.08"
+hint = "Discount the 600 by 1.08."
+
+[[exercise]]
+prompt = "Payback time in years: cost 900, yearly inflow 300?"
+answer = "900/300"
+hint = "Cost over yearly inflow."

@@ -1,0 +1,36 @@
+id = "ST.1"
+course = "Statistics"
+book = 1
+order = 1
+title = "Mean, median and mode"
+statement = "The mean balances the data, the median splits it in half, and the mode is the most common value; each answers a different question."
+
+[[step]]
+text = "Idea: take the data 2, 4, 4, 4, 5, 5, 7, 9. The mean is the sum divided by the count: 40 / 8 = 5."
+calc = ["2+4+4+4+5+5+7+9", "(2+4+4+4+5+5+7+9)/8", "mean([2,4,4,4,5,5,7,9])"]
+
+[[step]]
+text = "The median is the middle value of the sorted list. With an even count it is the average of the two middle values: (4 + 5) / 2 = 4.5. The mode is the value that appears most often: 4 (three times)."
+calc = ["(4+5)/2", "median([2,4,4,4,5,5,7,9])"]
+
+[[step]]
+text = "The mean is pulled by extreme values; the median is not. Add one huge value: 2, 4, 4, 4, 5, 5, 7, 100. The mean jumps to 16.4 while the median stays at 4.5."
+calc = ["mean([2,4,4,4,5,5,7,100])", "median([2,4,4,4,5,5,7,100])"]
+
+[[step]]
+text = "So for incomes, house prices and response times (long tails) report the median; for symmetric data such as measurement errors the mean is fine and uses every value."
+calc = ["mean([30,32,35,38,40,400])", "median([30,32,35,38,40,400])"]
+
+[[step]]
+text = "A weighted mean counts some values more. Grades 80 (weight 3) and 90 (weight 1): (80 x 3 + 90 x 1) / (3 + 1) = 82.5, not the plain 85."
+calc = ["(80*3 + 90*1)/(3+1)", "(80+90)/2"]
+
+[[exercise]]
+prompt = "What is the mean of 3, 5, 7, 9, 11?"
+answer = "(3+5+7+9+11)/5"
+hint = "Sum them and divide by 5."
+
+[[exercise]]
+prompt = "What is the median of 1, 3, 5, 7?"
+answer = "(3+5)/2"
+hint = "Average the two middle values."

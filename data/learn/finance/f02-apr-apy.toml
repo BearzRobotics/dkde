@@ -1,0 +1,40 @@
+id = "FIN.2"
+course = "Finance"
+book = 1
+order = 2
+title = "APR versus APY"
+statement = "The nominal rate (APR) ignores compounding; the effective annual rate (APY) includes it, and is the one to compare."
+
+[[step]]
+text = "Idea: a 12% APR compounded monthly really grows 1% a month. After a year the balance is 1.01^12 = 1.12683 times larger: an effective rate (APY) of 12.68%."
+calc = ["(1 + 0.12/12)^12", "((1 + 0.12/12)^12 - 1) * 100"]
+
+[[step]]
+text = "Formula: APY = (1 + APR / n)^n - 1. Daily compounding of 12%: (1 + 0.12/365)^365 - 1 = 12.75%, barely more than monthly."
+calc = ["((1 + 0.12/365)^365 - 1) * 100"]
+
+[[step]]
+text = "Comparing offers: 5.00% compounded monthly (APY 5.116%) beats 5.05% compounded once a year (APY 5.05%). Always compare APY."
+calc = ["((1 + 0.05/12)^12 - 1) * 100", "5.05"]
+
+[[step]]
+text = "For borrowing it works against you: a credit card at 24% APR compounded monthly costs an effective 26.82% a year."
+calc = ["((1 + 0.24/12)^12 - 1) * 100"]
+
+[[step]]
+text = "Going backwards: to earn an effective 8% with monthly compounding you need a nominal rate of 12 x (1.08^(1/12) - 1) = 7.72%."
+calc = ["12 * (1.08^(1/12) - 1) * 100"]
+
+[[step]]
+text = "Fees and rounding matter too: a 3% fee on a 100 loan that you repay after one month is a 36% effective annual cost. A short loan makes a small fee huge as an annual rate."
+calc = ["3 / 100 * 12 * 100", "((1 + 0.03)^12 - 1) * 100"]
+
+[[exercise]]
+prompt = "APY (%) for 6% APR compounded monthly?"
+answer = "((1 + 0.06/12)^12 - 1) * 100"
+hint = "(1 + r/n)^n - 1."
+
+[[exercise]]
+prompt = "Effective rate (%) of 10% compounded twice a year?"
+answer = "((1 + 0.10/2)^2 - 1) * 100"
+hint = "10.25%."

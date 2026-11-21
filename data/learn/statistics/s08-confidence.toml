@@ -1,0 +1,36 @@
+id = "ST.8"
+course = "Statistics"
+book = 3
+order = 8
+title = "Standard error and confidence intervals"
+statement = "The mean of a sample is itself uncertain by about s / sqrt(n); a confidence interval turns that into a range."
+
+[[step]]
+text = "Idea: measure 36 page loads: mean 50 ms, standard deviation 12 ms. The standard error of the mean is s / sqrt(n) = 12 / 6 = 2 ms. It shrinks with the square root of the sample size."
+calc = ["12 / sqrt(36)", "12 / sqrt(144)"]
+
+[[step]]
+text = "A 95% confidence interval is the mean +/- 1.96 standard errors (large samples): 50 +/- 1.96 x 2 = 46.08 to 53.92 ms."
+calc = ["normdistinv(0.975,0,1)", "50 - 1.96*2", "50 + 1.96*2"]
+
+[[step]]
+text = "Meaning: if you repeated the experiment many times, 95% of such intervals would contain the true mean. It is not a 95% chance for this one interval."
+calc = ["1 - 0.95"]
+
+[[step]]
+text = "For small samples use Student's t instead of 1.96. With n = 20 the degrees of freedom are 19 and the 95% multiplier is 2.093, a wider interval."
+calc = ["tdistinv(0.975,19)", "tdistinv(0.975,5)", "tdistinv(0.975,100)"]
+
+[[step]]
+text = "Four times the data halves the interval: standard error 12 / sqrt(144) = 1, so the 95% range is 50 +/- 1.96, half as wide. Precision costs quadratically."
+calc = ["1.96 * 12 / sqrt(144)", "1.96 * 12 / sqrt(36)"]
+
+[[exercise]]
+prompt = "Standard error for s = 20 and n = 100?"
+answer = "20/sqrt(100)"
+hint = "s over the square root of n."
+
+[[exercise]]
+prompt = "Upper end of the 95% interval for mean 80, standard error 3? (use 1.96)"
+answer = "80 + 1.96*3"
+hint = "Mean plus 1.96 standard errors."

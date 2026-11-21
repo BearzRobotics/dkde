@@ -1,0 +1,40 @@
+id = "FIN.4"
+course = "Finance"
+book = 2
+order = 4
+title = "Saving regularly: annuities"
+statement = "Regular deposits grow as an annuity; fv() finds the final balance and pmt() the deposit needed for a goal."
+
+[[step]]
+text = "Idea: saving 500 a month at 7% a year (0.07 / 12 a month) for 30 years. Each deposit grows for a different time, so add them up: the future value of an annuity."
+calc = ["fv(0.07/12, 360, -500, 0)"]
+
+[[step]]
+text = "The result is 609985. You deposited only 500 x 360 = 180000; the other 429985 is growth. The early deposits do most of the work."
+calc = ["500 * 360", "609985.5 - 180000"]
+
+[[step]]
+text = "Formula: FV = M x ((1 + i)^n - 1) / i, where i = 0.07/12 and n = 360. It matches the built-in."
+calc = ["500 * ((1 + 0.07/12)^360 - 1) / (0.07/12)"]
+
+[[step]]
+text = "Waiting is costly: starting 10 years later (20 years) gives only 500 x ((1 + 0.07/12)^240 - 1) / (0.07/12) = 260463, less than half."
+calc = ["fv(0.07/12, 240, -500, 0)"]
+
+[[step]]
+text = "Goal setting: to have 1000000 in 30 years at 7% you must save pmt(0.07/12, 360, 0, 1000000), which is 819.69 a month."
+calc = ["pmt(0.07/12, 360, 0, 1000000)", "1000000 * (0.07/12) / ((1 + 0.07/12)^360 - 1)"]
+
+[[step]]
+text = "Annual deposits are the same idea with a yearly rate: 6000 a year for 30 years at 7% builds 566765."
+calc = ["fv(0.07, 30, -6000, 0)"]
+
+[[exercise]]
+prompt = "Balance after saving 200 a month for 10 years at 6% a year?"
+answer = "fv(0.06/12, 120, -200, 0)"
+hint = "Monthly rate 0.06 / 12, 120 payments."
+
+[[exercise]]
+prompt = "Monthly deposit to reach 50000 in 5 years at 4%? (positive answer)"
+answer = "-pmt(0.04/12, 60, 0, 50000)"
+hint = "pmt returns a negative payment."

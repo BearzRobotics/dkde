@@ -1,0 +1,40 @@
+id = "ST.6"
+course = "Statistics"
+book = 2
+order = 6
+title = "The Poisson distribution"
+statement = "For events that arrive independently at an average rate lambda, P(k) = e^-lambda lambda^k / k!."
+
+[[step]]
+text = "Idea: a server gets on average 2 errors a minute. The chance of exactly 3 in a minute is e^-2 x 2^3 / 3! = 0.1353 x 8 / 6 = 0.180."
+calc = ["e^(-2)", "e^(-2) * 2^3 / 3!", "poisson(3,2,0)"]
+
+[[step]]
+text = "Chance of none: e^-2 = 13.5%. Chance of at least one: 1 - 13.5% = 86.5%."
+calc = ["poisson(0,2,0)", "1 - poisson(0,2,0)"]
+
+[[step]]
+text = "At least two errors: 1 minus the chance of 0 or 1. P(<=1) = poisson(1,2,1) = 0.406, so the answer is 0.594."
+calc = ["poisson(1,2,1)", "1 - poisson(1,2,1)"]
+
+[[step]]
+text = "The rate scales with the window. 2 per minute is 10 per 5 minutes, so the chance of no errors in 5 minutes is e^-10 = 0.0000454."
+calc = ["2*5", "poisson(0,10,0)"]
+
+[[step]]
+text = "A Poisson has mean = variance = lambda, so its standard deviation is sqrt(lambda). If counts from a log are far more spread out than that, events are bursty, not independent."
+calc = ["sqrt(2)", "sqrt(100)"]
+
+[[step]]
+text = "It also approximates the binomial for rare events: 1000 packets with a 0.2% loss rate gives lambda = 2, and the Poisson value for 3 losses (0.180) is close to the binomial one."
+calc = ["1000*0.002", "binomdist(3,1000,0.002,0)", "poisson(3,2,0)"]
+
+[[exercise]]
+prompt = "Chance of exactly 1 event if lambda = 3? (e^-3 x 3)"
+answer = "e^(-3)*3"
+hint = "Use the formula with k = 1."
+
+[[exercise]]
+prompt = "Chance of no events if lambda = 0.5?"
+answer = "poisson(0,0.5,0)"
+hint = "e^-0.5."

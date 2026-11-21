@@ -1,0 +1,40 @@
+id = "EL.9"
+course = "Electronics"
+book = 3
+order = 9
+title = "Resonance and the LC tuner"
+statement = "An inductor and capacitor trade energy at f0 = 1 / (2 pi sqrt(L C)); the quality factor Q says how sharp the peak is."
+
+[[step]]
+text = "Idea: XL grows and XC shrinks with frequency, so at one frequency they are equal and cancel. That is f0 = 1 / (2 pi sqrt(L C)). For 10 mH and 1 microfarad: 1 / (2 pi x 0.0001) = 1592 Hz."
+calc = ["1/(2*pi*sqrt(0.01*1e-6))"]
+
+[[step]]
+text = "Check: at 1592 Hz the inductor's reactance 2 pi f L = 100 ohms and the capacitor's 1 / (2 pi f C) = 100 ohms. They cancel, leaving only the circuit's resistance."
+calc = ["2*pi*1591.55*0.01", "1/(2*pi*1591.55*1e-6)"]
+
+[[step]]
+text = "Quality factor Q = X / R at resonance. With R = 5 ohms, Q = 100 / 5 = 20. The voltage across the capacitor at resonance is Q times the input: 20x gain."
+calc = ["100 / 5"]
+
+[[step]]
+text = "Bandwidth, the width of the peak, is f0 / Q = 1592 / 20 = 79.6 Hz. A high Q means a narrow, selective tuner; a low Q means a broad, forgiving one."
+calc = ["1591.55 / 20"]
+
+[[step]]
+text = "Radio: an AM set tunes 530 to 1700 kHz, a ratio of 3.2, with a variable capacitor. Since f goes as 1 / sqrt(C), C must change by 3.2^2 = 10.3 times. Four times the capacitance halves the frequency."
+calc = ["1700/530", "(1700/530)^2", "1/sqrt(4)"]
+
+[[step]]
+text = "Design a 100 MHz FM tank with C = 10 pF: L = 1 / ((2 pi f)^2 C) = 253 nH. Small parts for high frequencies, which is why radio coils are a few turns of wire."
+calc = ["1/((2*pi*100e6)^2 * 10e-12)", "1/((2*pi*100e6)^2 * 10e-12) * 1e9"]
+
+[[exercise]]
+prompt = "Resonant frequency (Hz) of 1 mH and 100 nF?"
+answer = "1/(2*pi*sqrt(1e-3*100e-9))"
+hint = "1 / (2 pi sqrt(LC))."
+
+[[exercise]]
+prompt = "Bandwidth (Hz) of a 1000 Hz circuit with Q = 50?"
+answer = "1000 / 50"
+hint = "f0 / Q."

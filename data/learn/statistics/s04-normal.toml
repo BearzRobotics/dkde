@@ -1,0 +1,40 @@
+id = "ST.4"
+course = "Statistics"
+book = 2
+order = 4
+title = "The normal distribution and z-scores"
+statement = "A z-score says how many standard deviations a value is from the mean; the normal curve turns that into a probability."
+
+[[step]]
+text = "Idea: z = (x - mu) / sigma. An exam has mean 70 and standard deviation 10; a score of 85 has z = (85 - 70) / 10 = 1.5."
+calc = ["(85-70)/10"]
+
+[[step]]
+text = "The cumulative normal distribution gives the fraction of the population below z: normdist(x, mean, sd, 1). Below z = 1.5 is 93.3%, so 85 beats about 93% of students."
+calc = ["normdist(85,70,10,1)", "normdist(1.5,0,1,1)"]
+
+[[step]]
+text = "The 68-95-99.7 rule is just this function: the chance of landing within 1, 2 or 3 standard deviations of the mean."
+calc = ["normdist(1,0,1,1) - normdist(-1,0,1,1)", "normdist(2,0,1,1) - normdist(-2,0,1,1)", "normdist(3,0,1,1) - normdist(-3,0,1,1)"]
+
+[[step]]
+text = "A score between 60 and 80 is within one standard deviation either side of 70, so it is 68.3% of students."
+calc = ["normdist(80,70,10,1) - normdist(60,70,10,1)"]
+
+[[step]]
+text = "Going backwards, normdistinv finds the value for a given percentile. The top 5% start at the 95th percentile: 70 + 1.645 x 10 = 86.4."
+calc = ["normdistinv(0.95,0,1)", "normdistinv(0.95,70,10)", "70 + 1.645*10"]
+
+[[step]]
+text = "Six sigma quality: a process 6 standard deviations from its limit fails with probability about 2 in a billion (two-sided), which is the arithmetic behind the name."
+calc = ["1 - (normdist(6,0,1,1) - normdist(-6,0,1,1))"]
+
+[[exercise]]
+prompt = "What is the z-score of 130 for mean 100 and standard deviation 15?"
+answer = "(130-100)/15"
+hint = "Distance from the mean over sigma."
+
+[[exercise]]
+prompt = "What fraction is below the mean plus 1 standard deviation? (normdist(1,0,1,1))"
+answer = "normdist(1,0,1,1)"
+hint = "About 84%."

@@ -1,0 +1,40 @@
+id = "EL.5"
+course = "Electronics"
+book = 1
+order = 5
+title = "Kirchhoff's laws and the current divider"
+statement = "Voltages around any loop sum to zero and currents into any node sum to zero; together they solve any circuit."
+
+[[step]]
+text = "Kirchhoff's voltage law (KVL): around any closed loop the voltage rises equal the drops. A 12 V source with 100, 200 and 300 ohms in series has I = 12 / 600 = 0.02 A."
+calc = ["12 / (100 + 200 + 300)"]
+
+[[step]]
+text = "The drops are 2 V, 4 V and 6 V, which add up to the 12 V supplied. This is the same idea as the voltage divider."
+calc = ["0.02*100", "0.02*200", "0.02*300", "2 + 4 + 6"]
+
+[[step]]
+text = "Kirchhoff's current law (KCL): the current into a junction equals the current out. 12 V across 100 ohms and 300 ohms in parallel: 0.12 A and 0.04 A flow, so the supply provides 0.16 A."
+calc = ["12 / 100", "12 / 300", "12/100 + 12/300"]
+
+[[step]]
+text = "Current divider: a total current splits inversely to the resistances. I1 = I x R2 / (R1 + R2). Of 0.16 A, the 100 ohm branch gets 0.16 x 300 / 400 = 0.12 A, the smaller resistor taking more."
+calc = ["0.16 * 300 / (100 + 300)", "0.16 * 100 / (100 + 300)"]
+
+[[step]]
+text = "Check: total resistance is 100 x 300 / 400 = 75 ohms, and 12 / 75 = 0.16 A. All three views agree."
+calc = ["100*300/400", "12 / 75"]
+
+[[step]]
+text = "Use of the current divider: an ammeter shunt. A meter that reads 50 mA full scale with 2 ohms inside, shunted by 0.1 ohm, passes only 2 / 2.1 of the current round the shunt side, extending its range about 21 times."
+calc = ["(2 + 0.1) / 0.1", "50 * (2+0.1)/0.1"]
+
+[[exercise]]
+prompt = "Current (amps) through three series resistors 10, 20 and 30 ohms on 6 V?"
+answer = "6 / (10 + 20 + 30)"
+hint = "Series total."
+
+[[exercise]]
+prompt = "Of 1 A split between 10 ohms and 40 ohms in parallel, how much goes through the 10 ohm branch?"
+answer = "1 * 40 / (10 + 40)"
+hint = "The smaller resistor gets more."

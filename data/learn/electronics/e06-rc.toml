@@ -1,0 +1,40 @@
+id = "EL.6"
+course = "Electronics"
+book = 2
+order = 6
+title = "Capacitors and the RC time constant"
+statement = "A capacitor charges through a resistor along an exponential curve with time constant tau = R C; after 5 tau it is practically full."
+
+[[step]]
+text = "Idea: the time constant is tau = R x C. 10 kohm and 100 microfarad: 10000 x 0.0001 = 1 second."
+calc = ["10000 * 100e-6"]
+
+[[step]]
+text = "A charging capacitor follows V(t) = Vs x (1 - e^(-t / tau)). After one tau it has reached 63.2% of the supply; after 5 tau, 99.3%."
+calc = ["1 - e^(-1)", "1 - e^(-2)", "1 - e^(-3)", "1 - e^(-5)"]
+
+[[step]]
+text = "Time to reach a fraction f of the supply: t = -tau x ln(1 - f). For 90%: 2.303 tau, so 2.3 s here. For 50%: 0.693 tau, the capacitor's half-life."
+calc = ["-1 * ln(1 - 0.9)", "-1 * ln(1 - 0.5)"]
+
+[[step]]
+text = "Discharging works the same way backward: V(t) = V0 x e^(-t / tau). From 5 V, after 2 s (two tau) the voltage is 5 x e^-2 = 0.68 V."
+calc = ["5 * e^(-2)"]
+
+[[step]]
+text = "Stored energy E = C V^2 / 2. The 100 microfarad at 5 V holds 0.00125 J, 1.25 mJ. It is why large capacitors in a power supply can give a shock after switch-off."
+calc = ["100e-6 * 5^2 / 2", "100e-6 * 5^2 / 2 * 1000"]
+
+[[step]]
+text = "Application, debouncing a switch: a 10 kohm resistor with 100 nF has tau = 1 ms, so contact chatter shorter than a millisecond is smoothed away. Reset delays and timers work the same way."
+calc = ["10000 * 100e-9 * 1000"]
+
+[[exercise]]
+prompt = "Time constant (seconds) of 47 kohm and 22 microfarad?"
+answer = "47000 * 22e-6"
+hint = "R x C."
+
+[[exercise]]
+prompt = "Fraction of the supply reached after 3 time constants?"
+answer = "1 - e^(-3)"
+hint = "About 95%."

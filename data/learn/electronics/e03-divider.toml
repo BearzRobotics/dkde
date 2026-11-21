@@ -1,0 +1,36 @@
+id = "EL.3"
+course = "Electronics"
+book = 1
+order = 3
+title = "Voltage dividers"
+statement = "Two resistors in series share a voltage in proportion to their sizes: Vout = Vin R2 / (R1 + R2), but a load changes the answer."
+
+[[step]]
+text = "Idea: the same current flows through R1 and R2, so voltages split in the ratio of the resistances. 9 V across R1 = 10 k and R2 = 5 k gives Vout = 9 x 5 / 15 = 3 V across R2."
+calc = ["9 * 5000 / (10000 + 5000)", "9 / (10000 + 5000)"]
+
+[[step]]
+text = "Design: to turn 5 V into 3.3 V choose R2 / (R1 + R2) = 0.66. R1 = 1 k and R2 = 2 k give 5 x 2 / 3 = 3.33 V."
+calc = ["3.3/5", "5 * 2000 / (1000 + 2000)"]
+
+[[step]]
+text = "The catch is loading. Whatever you connect to Vout is in parallel with R2. A 5 k load on the 5 k R2 leaves 2.5 k, so Vout falls from 3 V to 9 x 2.5 / 12.5 = 1.8 V."
+calc = ["5000*5000/(5000+5000)", "9 * 2500 / (10000 + 2500)"]
+
+[[step]]
+text = "Rule: keep the load at least ten times R2, or accept the error. A 50 k load on R2 = 5 k gives 4.545 k and Vout = 2.9 V, within 3% of ideal."
+calc = ["5000*50000/(5000+50000)", "9 * 4545.5 / (10000 + 4545.5)"]
+
+[[step]]
+text = "Dividers are fine for measuring and sensing (a thermistor, a battery sense line, an ADC input) but wasteful for power: current flows through them constantly. For a load that draws real current use a regulator."
+calc = ["9 / 15000 * 1000", "9 * 9 / 15000 * 1000"]
+
+[[exercise]]
+prompt = "Vout for Vin = 12 V, R1 = 8 k, R2 = 4 k?"
+answer = "12 * 4000 / (8000 + 4000)"
+hint = "R2 over the total."
+
+[[exercise]]
+prompt = "Current (mA) drawn by 5 V across a 1 k + 4 k divider?"
+answer = "5 / 5000 * 1000"
+hint = "V over the total resistance."

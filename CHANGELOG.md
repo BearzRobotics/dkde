@@ -5,6 +5,8 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 ## Unreleased
 
 - **Learn**: a new Networking course (12 lessons): VLSM subnet planning, route aggregation, IPv6 address space, ports and NAT, serialisation and propagation delay, TCP throughput and the Mathis formula, loss and retransmission, queueing, Nyquist and Shannon capacity, decibels and link budgets, Ethernet frame overhead, and availability.
+- **Learn**: three more courses of 12 lessons each. Statistics (mean, median and spread, quartiles and outliers, the normal, binomial and Poisson distributions, Bayes' theorem, confidence intervals, t-tests, sample size, correlation, regression). Electronics (Ohm's law, series and parallel, dividers, LED resistors, Kirchhoff, RC timing and filters, reactance, resonance, op-amps, battery life, transistor switches and PWM). Finance (compound interest, APR and APY, present value, annuities, loans and extra payments, inflation, CAGR, NPV and IRR, risk and return, retirement, exchange rates and premiums).
+- **Formulas**: 13 statistics, 20 electricity and electronics, and 14 finance formulas added for the new lessons.
 
 ## 0.3.3 (2026-11-17)
 

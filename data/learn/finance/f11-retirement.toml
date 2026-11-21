@@ -1,0 +1,40 @@
+id = "FIN.11"
+course = "Finance"
+book = 5
+order = 11
+title = "Retirement and safe withdrawal"
+statement = "A nest egg lasts if the withdrawal rate is low enough; the 4% rule says you need about 25 times your yearly spending."
+
+[[step]]
+text = "Idea: if you withdraw a fixed share of a portfolio each year and the investments earn enough to replace it, the money lasts. A common rule of thumb is 4% in the first year, then rising with inflation."
+calc = ["1000000 * 0.04"]
+
+[[step]]
+text = "Turn it round: the target nest egg is the yearly spending divided by 0.04, which is 25 times the spending. To live on 40000 a year you need 40000 / 0.04 = 1,000,000."
+calc = ["40000 / 0.04", "40000 * 25"]
+
+[[step]]
+text = "A lower withdrawal rate is safer: at 3.5% the same spending needs 40000 / 0.035 = 1,142,857. A higher rate of 5% needs only 800,000 but the money may run out."
+calc = ["40000 / 0.035", "40000 / 0.05"]
+
+[[step]]
+text = "How long does a fixed withdrawal last? Spend 4% of the starting amount plus a return of 5%: the number of years follows nper(rate, payment, present value). With 1,000,000 earning 5% and 60,000 taken out each year, the money lasts about 36.7 years."
+calc = ["nper(0.05, 60000, -1000000)"]
+
+[[step]]
+text = "Fighting inflation: spending grows each year. 40000 today is 40000 x 1.03^25 = 83,751 in 25 years, so a plan must use real (after-inflation) returns, like the 4.85% from the earlier lesson."
+calc = ["40000 * 1.03^25", "40000 * 1.03^30"]
+
+[[step]]
+text = "Working backwards for savings: to reach 1,000,000 in 30 years at 7% needs 819.69 a month, from the annuity lesson. Start early; time is worth more than amount."
+calc = ["pmt(0.07/12, 360, 0, 1000000)"]
+
+[[exercise]]
+prompt = "Nest egg needed for 50000 a year at a 4% withdrawal rate?"
+answer = "50000 / 0.04"
+hint = "25 times the spending."
+
+[[exercise]]
+prompt = "What will 30000 of today's spending be in 20 years at 3% inflation?"
+answer = "30000 * 1.03^20"
+hint = "Grow by 1.03 each year."
