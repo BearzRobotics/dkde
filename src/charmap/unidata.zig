@@ -6,7 +6,8 @@ const Allocator = std.mem.Allocator;
 
 const raw = @embedFile("unidata.txt");
 
-pub const Block = struct { name: []const u8, first: u21, last: u21 };
+/// `private` blocks hold no assigned characters: fonts define them.
+pub const Block = struct { name: []const u8, first: u21, last: u21, private: bool = false };
 const Char = struct { cp: u21, mark: bool, name: []const u8 };
 const Run = struct { first: u21, last: u21, prefix: []const u8 };
 
@@ -32,13 +33,13 @@ pub const Db = struct {
                     const cp = std.fmt.parseInt(u21, rest[0..sp], 16) catch continue;
                     try chars.append(allocator, .{ .cp = cp, .mark = line[0] == 'M', .name = rest[sp + 1 ..] });
                 },
-                'B', 'R' => {
+                'B', 'P', 'R' => {
                     var it = std.mem.splitScalar(u8, rest, ' ');
                     const a = std.fmt.parseInt(u21, it.next() orelse continue, 16) catch continue;
                     const b = std.fmt.parseInt(u21, it.next() orelse continue, 16) catch continue;
                     const label = it.rest();
-                    if (line[0] == 'B') {
-                        try blocks.append(allocator, .{ .name = label, .first = a, .last = b });
+                    if (line[0] != 'R') {
+                        try blocks.append(allocator, .{ .name = label, .first = a, .last = b, .private = line[0] == 'P' });
                     } else {
                         try runs.append(allocator, .{ .first = a, .last = b, .prefix = label });
                     }
@@ -209,6 +210,19 @@ test "search by name, code point and character" {
     r.clearRetainingCapacity();
     try db.search(a, "face", 5, &r);
     try std.testing.expect(r.items.len == 5);
+}
+
+test "private use blocks are listed but empty" {
+    const a = std.testing.allocator;
+    var db = try Db.load(a);
+    defer db.deinit(a);
+    var n: usize = 0;
+    for (db.blocks) |b| {
+        if (!b.private) continue;
+        n += 1;
+        try std.testing.expect(!db.isAssigned(b.first));
+    }
+    try std.testing.expectEqual(@as(usize, 3), n);
 }
 
 test "labels" {

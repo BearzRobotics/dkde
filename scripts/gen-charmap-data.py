@@ -4,6 +4,7 @@
     scripts/gen-charmap-data.py [/usr/share/unicode] > src/charmap/unidata.txt
 
 Lines:  "B first last Block Name"   a block that has assigned characters
+        "P first last Block Name"   a private-use block (no assigned characters)
         "N code NAME"              one named character
         "R first last PREFIX"      a run named PREFIX + hex code (CJK, Tangut...)
 Codes are hex. Controls, surrogates and private use are left out.
@@ -44,8 +45,10 @@ for line in open(f"{d}/Blocks.txt", encoding="utf-8"):
     lo, hi = (int(x, 16) for x in rng.split(".."))
     if assigned(lo, hi):
         blocks.append(("B", lo, hi, name))
+    elif "Private Use" in name and "Surrogates" not in name:  # filled from a font's own coverage, see charmap
+        blocks.append(("P", lo, hi, name))
 
 for k, a, b, n in blocks:
-    print(f"B {a:X} {b:X} {n}")
+    print(f"{k} {a:X} {b:X} {n}")
 for k, a, b, n in out:
     print(f"R {a:X} {b:X} {n}" if k == "R" else f"{k} {a:X} {n}")

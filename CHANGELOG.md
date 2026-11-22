@@ -5,6 +5,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 ## Unreleased
 
 - **Changed**: dkde-charmap now covers every assigned Unicode block (332, from Unicode 16) instead of 26, and skips unassigned code points. Every character has its Unicode name (tooltip and a detail line with the code point and UTF-8 bytes) and a large preview. A search box finds characters by name words, by the character itself, or by code point (`U+00E9`, `0xe9`). Large blocks and search results are paged. The last 16 characters picked are kept in a Recent row, combining marks are drawn on a dotted circle, and Enter in the text field copies it. The name data is generated from the `unicode-data` package by `scripts/gen-charmap-data.py`.
+- **Added**: dkde-charmap works with fonts that use the Private Use Area (Rosquin Glyphs, RE_iO Script). A font drop-down draws everything in the chosen font, and the three Private Use blocks list exactly the characters that font defines, with the font's own glyph names. Rosquin Glyphs is built in. The + button adds a TTF/OTF file without installing it, and it is remembered. The font, block and recent characters are kept between runs.
 
 ## 0.3.5 (2026-11-21)
 

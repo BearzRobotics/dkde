@@ -147,6 +147,7 @@ B AB70 ABBF Cherokee Supplement
 B ABC0 ABFF Meetei Mayek
 B AC00 D7AF Hangul Syllables
 B D7B0 D7FF Hangul Jamo Extended-B
+P E000 F8FF Private Use Area
 B F900 FAFF CJK Compatibility Ideographs
 B FB00 FB4F Alphabetic Presentation Forms
 B FB50 FDFF Arabic Presentation Forms-A
@@ -330,6 +331,8 @@ B 30000 3134F CJK Unified Ideographs Extension G
 B 31350 323AF CJK Unified Ideographs Extension H
 B E0000 E007F Tags
 B E0100 E01EF Variation Selectors Supplement
+P F0000 FFFFF Supplementary Private Use Area-A
+P 100000 10FFFF Supplementary Private Use Area-B
 N 20 SPACE
 N 21 EXCLAMATION MARK
 N 22 QUOTATION MARK
