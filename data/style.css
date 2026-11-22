@@ -657,6 +657,9 @@ button.dkde-charmap-cell {
   min-height: 38px;
   padding: 0;
 }
+.dkde-charmap-preview {
+  font-size: 36pt;
+}
 button.dkde-charmap-cell:hover {
   background: alpha(@dkde_accent, 0.25);
 }

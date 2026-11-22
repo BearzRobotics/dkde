@@ -7,7 +7,7 @@ dkde-charmap [-h | --help] [-V | --version]
 dkde-charmap
 
 # DESCRIPTION
-dkde-charmap shows Unicode characters block by block. Click characters to collect them in the text field and copy the text to the clipboard. It takes no operands.
+dkde-charmap shows every assigned Unicode character, block by block. Hover a character for its code point, name and UTF-8 bytes. Click characters to collect them in the text field (they also go to the Recent row) and copy the text to the clipboard with Copy or Enter. The search box finds characters by words of their name ("greek alpha"), by the character itself, or by code point (U+00E9, 0xE9). Large blocks and long result lists are shown a page at a time. It takes no operands.
 
 # CONVENTIONS
 Bold represents literal commands, options, and keywords.

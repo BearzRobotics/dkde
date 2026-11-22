@@ -2,6 +2,10 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
+## Unreleased
+
+- **Changed**: dkde-charmap now covers every assigned Unicode block (332, from Unicode 16) instead of 26, and skips unassigned code points. Every character has its Unicode name (tooltip and a detail line with the code point and UTF-8 bytes) and a large preview. A search box finds characters by name words, by the character itself, or by code point (`U+00E9`, `0xe9`). Large blocks and search results are paged. The last 16 characters picked are kept in a Recent row, combining marks are drawn on a dotted circle, and Enter in the text field copies it. The name data is generated from the `unicode-data` package by `scripts/gen-charmap-data.py`.
+
 ## 0.3.5 (2026-11-21)
 
 - **Fixed**: Shut Down and Restart in the start menu asked for the administrator password on machines running elogind or systemd-logind. They now run `loginctl poweroff` / `loginctl reboot` there, which logind authorizes for the active local session, so no password is asked (the session must be registered with logind, e.g. `pam_elogind`). Without logind (dinit, SysV) nothing changes: `poweroff` / `reboot` still go through the password dialog. The critical-battery power-off uses the same rule, and `shutdown-command` / `restart-command` in panel.toml still override it.
