@@ -54,11 +54,11 @@ fn deviceBox(f: *const Frame, x: f32, y: f32, w: f32, h: f32, xf: ?Xf) c.wlr_box
 }
 
 fn drawNode(f: *const Frame, node: *c.wlr_scene_node, px: f32, py: f32, inherited: ?Xf) void {
-    if (!node.enabled) return;
-    const x = px + @as(f32, @floatFromInt(node.x));
-    const y = py + @as(f32, @floatFromInt(node.y));
     var xf = inherited;
     if (xf == null and node.type == c.WLR_SCENE_NODE_TREE) xf = f.lookup(node);
+    if (!node.enabled and !(xf != null and xf.?.force)) return;
+    const x = px + @as(f32, @floatFromInt(node.x));
+    const y = py + @as(f32, @floatFromInt(node.y));
     switch (node.type) {
         c.WLR_SCENE_NODE_TREE => {
             const tree: *c.wlr_scene_tree = @fieldParentPtr("node", node);

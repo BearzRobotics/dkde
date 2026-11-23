@@ -63,6 +63,10 @@ pub const Action = union(enum) {
     below,
     /// Minimize every window of the workspace, or bring them back.
     show_desktop,
+    /// Every window of the workspace at once, to pick one.
+    scale,
+    /// Every workspace as a tile, to pick one or drag windows between them.
+    expo,
     opacity_up,
     opacity_down,
     exec: []const u8,
@@ -126,6 +130,8 @@ pub fn parseAction(text: []const u8) ?Action {
     if (eql(u8, t, "above")) return .above;
     if (eql(u8, t, "below")) return .below;
     if (eql(u8, t, "show-desktop")) return .show_desktop;
+    if (eql(u8, t, "scale")) return .scale;
+    if (eql(u8, t, "expo")) return .expo;
     if (eql(u8, t, "opacity-up")) return .opacity_up;
     if (eql(u8, t, "opacity-down")) return .opacity_down;
     if (std.mem.startsWith(u8, t, "put ")) {
@@ -197,6 +203,8 @@ pub const defaults = [_]Entry{
     // The compositor's own.
     .{ .key = "W-t", .action = "toggle-layout" },
     .{ .key = "W-d", .action = "show-desktop" },
+    .{ .key = "W-w", .action = "scale" },
+    .{ .key = "W-e", .action = "expo" },
     .{ .key = "W-C-Up", .action = "opacity-up" },
     .{ .key = "W-C-Down", .action = "opacity-down" },
     .{ .key = "W-S-space", .action = "float" },

@@ -13,6 +13,8 @@ pub const Xf = struct {
     tx: f32 = 0,
     ty: f32 = 0,
     alpha: f32 = 1,
+    /// Draw the window even though it is hidden (Expo shows windows of the other workspaces).
+    force: bool = false,
 };
 
 pub const Kind = enum { open, restore, minimize };

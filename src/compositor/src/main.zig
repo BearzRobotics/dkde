@@ -20,6 +20,7 @@ const place_mod = @import("place.zig");
 const rules = @import("rules.zig");
 const anim = @import("anim.zig");
 const render = @import("render.zig");
+const overview = @import("overview.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -72,6 +73,8 @@ const Server = struct {
     animating: usize = 0,
     /// Whether the last frame was composed by `render` (the scene's damage then has to start over).
     custom_drawn: bool = false,
+    /// Scale or Expo, while it is up.
+    overview: ?*Overview = null,
     layout_options: layout.Options = .{},
     /// Edge snapping while a window is dragged: on or off (compositor.toml), the zone under the pointer and its preview.
     edge_snap: bool = true,
@@ -149,13 +152,13 @@ const Output = struct {
         var now: std.c.timespec = undefined;
         _ = std.c.clock_gettime(.MONOTONIC, &now);
         tickAnimations(nowMs(&now));
-        if (server.animating > 0) {
+        if (server.animating > 0 or server.overview != null) {
             if (render.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf)) {
                 server.custom_drawn = true;
             } else {
                 _ = c.wlr_scene_output_commit(scene_output, null);
             }
-            c.wlr_output_schedule_frame(self.output);
+            if (server.animating > 0 or overviewMoving()) c.wlr_output_schedule_frame(self.output);
         } else {
             if (server.custom_drawn) {
                 // The scene output does not know what was drawn behind its back.
@@ -438,6 +441,7 @@ const Toplevel = struct {
         const self: *Toplevel = @fieldParentPtr("unmap", listener.?);
         if (self.unmanaged()) return;
         if (server.grabbed == self) resetCursorMode();
+        overviewForget(self);
         if (self.anim != null) {
             self.anim = null;
             if (server.animating > 0) server.animating -= 1;
@@ -1001,6 +1005,297 @@ fn addPopup(xdg: *c.wlr_xdg_popup, parent_tree: *c.wlr_scene_tree) void {
 }
 
 /// Gives the keyboard focus to `t` and raises it.
+// ---- Scale and Expo --------------------------------------------------------------------------------------------
+
+const Entry = struct {
+    t: *Toplevel,
+    /// Where the window is, and how big (its content), when the overview opens.
+    x: i32,
+    y: i32,
+    size: overview.Size,
+    /// Where the overview puts it.
+    target: overview.Place,
+    /// Expo: the workspace tile it sits on.
+    tile: usize = 0,
+};
+
+const Overview = struct {
+    expo: bool,
+    start_ms: u32,
+    closing: bool = false,
+    entries: std.ArrayList(Entry) = .empty,
+    screen: layout.Rect,
+    tiles: overview.Tiles = undefined,
+    bg: *c.wlr_scene_tree,
+    tile_rects: std.ArrayList(*c.wlr_scene_rect) = .empty,
+    highlight: ?*c.wlr_scene_rect = null,
+    /// The entry and the workspace tile under the pointer.
+    hover: ?usize = null,
+    hover_tile: ?usize = null,
+    /// A press on an entry: it is dragged to another tile (Expo) or picked on release.
+    press: ?usize = null,
+    /// The workspace that closing switches to (Expo).
+    pick_ws: ?usize = null,
+
+    fn duration() u32 {
+        return if (server.effects.animations) server.effects.animation_ms else 0;
+    }
+
+    /// 0 = windows where they are, 1 = laid out in the overview.
+    fn progress(self: *const Overview) f32 {
+        const f = anim.fraction(.{ .kind = .open, .start_ms = self.start_ms, .duration_ms = duration() }, currentMs());
+        const e = anim.easeOut(f);
+        return if (self.closing) 1 - e else e;
+    }
+
+    fn finished(self: *const Overview) bool {
+        return anim.done(.{ .kind = .open, .start_ms = self.start_ms, .duration_ms = duration() }, currentMs());
+    }
+
+    fn entryFor(self: *const Overview, t: *const Toplevel) ?usize {
+        for (self.entries.items, 0..) |e, i| {
+            if (e.t == t) return i;
+        }
+        return null;
+    }
+
+    fn xfFor(self: *Overview, t: *Toplevel) ?anim.Xf {
+        const i = self.entryFor(t) orelse return null;
+        const e = self.entries.items[i];
+        var p = self.progress();
+        var alpha: f32 = 1;
+        if (self.closing and self.expo) {
+            // Windows of the other workspaces stay on their tile and fade; the picked workspace's grow back.
+            if (self.pick_ws != null and e.tile != self.pick_ws.?) {
+                alpha = p;
+                p = 1;
+            }
+        }
+        var tx = e.target.x;
+        var ty = e.target.y;
+        var scale = e.target.scale;
+        if (self.press) |pi| {
+            if (pi == i and self.expo and !self.closing) {
+                // Dragged: the thumbnail follows the pointer.
+                scale = self.tiles.scale(self.screen);
+                tx = @as(i32, @intFromFloat(server.cursor.*.x)) - @as(i32, @intFromFloat(@as(f32, @floatFromInt(e.size.w)) * scale / 2));
+                ty = @as(i32, @intFromFloat(server.cursor.*.y)) - @as(i32, @intFromFloat(@as(f32, @floatFromInt(e.size.h)) * scale / 2));
+                p = 1;
+            }
+        }
+        return .{
+            .scale = 1 + (scale - 1) * p,
+            .ax = @floatFromInt(e.x),
+            .ay = @floatFromInt(e.y),
+            .tx = @as(f32, @floatFromInt(tx - e.x)) * p,
+            .ty = @as(f32, @floatFromInt(ty - e.y)) * p,
+            .alpha = alpha,
+            .force = true,
+        };
+    }
+
+    /// The thumbnail rectangles in layout coordinates, for hit tests.
+    fn thumb(e: Entry) layout.Rect {
+        return .{ .x = e.target.x, .y = e.target.y, .w = @intFromFloat(@as(f32, @floatFromInt(e.size.w)) * e.target.scale), .h = @intFromFloat(@as(f32, @floatFromInt(e.size.h)) * e.target.scale) };
+    }
+
+    fn entryAt(self: *const Overview, px: i32, py: i32) ?usize {
+        // Front to back: the entries are in stacking order.
+        var i = self.entries.items.len;
+        while (i > 0) : (i -= 1) {
+            const r = thumb(self.entries.items[i - 1]);
+            if (px >= r.x and px < r.x + r.w and py >= r.y and py < r.y + r.h) return i - 1;
+        }
+        return null;
+    }
+};
+
+const overlay_dim = [4]f32{ 0, 0, 0, 0.55 };
+const tile_fill = [4]f32{ 0.10, 0.11, 0.14, 1 };
+const tile_hover = [4]f32{ 0.21, 0.52, 0.89, 1 };
+
+fn overviewMoving() bool {
+    const ov = server.overview orelse return false;
+    return !ov.finished();
+}
+
+fn openOverview(expo: bool) void {
+    if (server.locked) return;
+    if (server.overview) |ov| {
+        // The same key again closes it.
+        _ = ov;
+        closeOverview(null);
+        return;
+    }
+    if (expo and !server.effects.expo) return;
+    if (!expo and !server.effects.scale) return;
+    if (server.cursor_mode != .passthrough) return;
+    const ov = gpa.create(Overview) catch return;
+    const bg = c.wlr_scene_tree_create(server.trees[1]) orelse {
+        gpa.destroy(ov);
+        return;
+    };
+    ov.* = .{ .expo = expo, .start_ms = currentMs(), .screen = screenArea(), .bg = bg };
+    server.overview = ov;
+    c.wlr_seat_pointer_clear_focus(server.seat);
+
+    var visible: std.ArrayList(*Toplevel) = .empty;
+    defer visible.deinit(gpa);
+    for (server.toplevels.items) |t| {
+        if (t.minimized or t.unmanaged()) continue;
+        if (!expo and !onActiveWorkspace(t)) continue;
+        visible.append(gpa, t) catch {};
+    }
+    const screen = ov.screen;
+    _ = sceneRect(bg, screen, overlay_dim);
+    if (expo) {
+        ov.highlight = sceneRect(bg, .{ .x = 0, .y = 0, .w = 10, .h = 10 }, tile_hover);
+        ov.tiles = overview.expoTiles(screen, server.ws.count, @max(12, @divTrunc(screen.w, 60)));
+        var i: usize = 0;
+        while (i < server.ws.count) : (i += 1) {
+            if (sceneRect(bg, ov.tiles.rect(i), tile_fill)) |r| ov.tile_rects.append(gpa, r) catch {};
+        }
+        for (visible.items) |t| {
+            const g = geometryOf(t);
+            const tile = if (t.sticky) server.ws.active else t.workspace;
+            ov.entries.append(gpa, .{ .t = t, .x = g.x, .y = g.y, .size = .{ .w = g.w, .h = g.h }, .target = ov.tiles.place(screen, tile, g.x, g.y), .tile = tile }) catch {};
+        }
+        ov.hover_tile = server.ws.active;
+    } else {
+        const area = workArea();
+        const sizes = gpa.alloc(overview.Size, visible.items.len) catch return;
+        defer gpa.free(sizes);
+        const places = gpa.alloc(overview.Place, visible.items.len) catch return;
+        defer gpa.free(places);
+        for (visible.items, 0..) |t, k| {
+            const g = geometryOf(t);
+            sizes[k] = .{ .w = g.w, .h = g.h };
+        }
+        overview.scaleCells(area, sizes, @max(16, @divTrunc(area.w, 50)), places);
+        for (visible.items, 0..) |t, k| {
+            const g = geometryOf(t);
+            ov.entries.append(gpa, .{ .t = t, .x = g.x, .y = g.y, .size = sizes[k], .target = places[k] }) catch {};
+        }
+    }
+    updateOverviewHover();
+    wakeOutputs();
+}
+
+/// Closes the overview; `pick` is the window to focus, `ws` the workspace to go to (Expo).
+fn closeOverview(pick: ?*Toplevel) void {
+    const ov = server.overview orelse return;
+    if (ov.closing) return;
+    ov.closing = true;
+    ov.start_ms = currentMs();
+    ov.press = null;
+    if (ov.expo) {
+        const ws = if (pick) |t| (if (t.sticky) server.ws.active else t.workspace) else (ov.hover_tile orelse server.ws.active);
+        ov.pick_ws = ws;
+        if (ws != server.ws.active) switchWorkspace(ws);
+    }
+    if (pick) |t| focus(t);
+    wakeOutputs();
+}
+
+fn destroyOverview() void {
+    const ov = server.overview orelse return;
+    c.wlr_scene_node_destroy(&ov.bg.*.node);
+    ov.entries.deinit(gpa);
+    ov.tile_rects.deinit(gpa);
+    server.overview = null;
+    gpa.destroy(ov);
+    // The scene output redraws everything when the normal path takes over again.
+    wakeOutputs();
+}
+
+/// A window went away while the overview was up.
+fn overviewForget(t: *Toplevel) void {
+    const ov = server.overview orelse return;
+    const i = ov.entryFor(t) orelse return;
+    _ = ov.entries.orderedRemove(i);
+    ov.hover = null;
+    ov.press = null;
+}
+
+fn updateOverviewHover() void {
+    const ov = server.overview orelse return;
+    const px: i32 = @intFromFloat(server.cursor.*.x);
+    const py: i32 = @intFromFloat(server.cursor.*.y);
+    ov.hover = ov.entryAt(px, py);
+    if (ov.expo) {
+        ov.hover_tile = ov.tiles.at(server.ws.count, px, py);
+        // A frame shows behind the tile under the pointer.
+        if (ov.highlight) |h| {
+            if (ov.hover_tile) |ti| {
+                const r = ov.tiles.rect(ti);
+                const b: i32 = 3;
+                c.wlr_scene_node_set_position(&h.*.node, r.x - b, r.y - b);
+                c.wlr_scene_rect_set_size(h, r.w + 2 * b, r.h + 2 * b);
+                c.wlr_scene_node_set_enabled(&h.*.node, true);
+            } else c.wlr_scene_node_set_enabled(&h.*.node, false);
+        }
+    }
+    wakeOutputs();
+}
+
+fn overviewMotion() void {
+    c.wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "default");
+    updateOverviewHover();
+}
+
+/// A button press or release while the overview is up. Returns true: the client never sees it.
+fn overviewButton(pressed: bool) bool {
+    const ov = server.overview orelse return false;
+    if (ov.closing) return true;
+    const px: i32 = @intFromFloat(server.cursor.*.x);
+    const py: i32 = @intFromFloat(server.cursor.*.y);
+    if (pressed) {
+        ov.press = ov.entryAt(px, py);
+        if (ov.press == null and !ov.expo) closeOverview(null);
+        if (ov.press == null and ov.expo and ov.tiles.at(server.ws.count, px, py) == null) closeOverview(null);
+        wakeOutputs();
+        return true;
+    }
+    const pressed_entry = ov.press;
+    ov.press = null;
+    if (ov.expo) {
+        const tile = ov.tiles.at(server.ws.count, px, py);
+        if (pressed_entry) |pi| {
+            const e = &ov.entries.items[pi];
+            if (tile != null and tile.? != e.tile) {
+                // Dropped on another workspace: the window moves there and the overview stays up.
+                const t = e.t;
+                t.workspace = tile.?;
+                t.sticky = false;
+                e.tile = tile.?;
+                e.target = ov.tiles.place(ov.screen, tile.?, e.x, e.y);
+                showIfVisible(t);
+                updateOverviewHover();
+                return true;
+            }
+            closeOverview(e.t);
+            return true;
+        }
+        if (tile) |ti| {
+            ov.hover_tile = ti;
+            closeOverview(null);
+        }
+        return true;
+    }
+    if (pressed_entry) |pi| closeOverview(ov.entries.items[pi].t);
+    return true;
+}
+
+/// A key while the overview is up (Escape closes it, Return picks the window under the pointer).
+fn overviewKey(sym: c.xkb_keysym_t) void {
+    const ov = server.overview orelse return;
+    if (sym == c.XKB_KEY_Escape) {
+        closeOverview(null);
+    } else if (sym == c.XKB_KEY_Return or sym == c.XKB_KEY_KP_Enter) {
+        if (ov.hover) |i| closeOverview(ov.entries.items[i].t) else closeOverview(null);
+    }
+}
+
 // ---- animations ------------------------------------------------------------------------------------------------
 
 fn nowMs(ts: *const std.c.timespec) u32 {
@@ -1018,6 +1313,9 @@ fn currentMs() u32 {
 fn xfOf(node: *c.wlr_scene_node) ?anim.Xf {
     if (node.parent != server.trees[2]) return null;
     const t: *Toplevel = @ptrCast(@alignCast(node.data orelse return null));
+    if (server.overview) |ov| {
+        if (ov.xfFor(t)) |xf| return xf;
+    }
     const a = t.anim orelse return null;
     const size = t.contentSize();
     const cx: f32 = @floatFromInt(node.x + @divTrunc(size.w, 2));
@@ -1053,6 +1351,9 @@ fn finishAnimation(t: *Toplevel) void {
 
 /// Called before each frame: ends the animations that have run their course.
 fn tickAnimations(now: u32) void {
+    if (server.overview) |ov| {
+        if (ov.closing and ov.finished()) destroyOverview();
+    }
     if (server.animating == 0) return;
     for (server.toplevels.items) |t| {
         if (t.anim) |a| {
@@ -1548,6 +1849,10 @@ fn beginGrab(t: *Toplevel, mode: CursorMode, edges: u32) void {
 
 fn processCursorMotion(time: u32) void {
     const cursor = server.cursor;
+    if (server.overview != null) {
+        overviewMotion();
+        return;
+    }
     switch (server.cursor_mode) {
         .move => {
             if (server.grabbed) |t| {
@@ -1631,6 +1936,10 @@ fn altHeld() bool {
 fn onCursorButton(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     const event: *c.wlr_pointer_button_event = @ptrCast(@alignCast(data));
     noteActivity();
+    if (server.overview != null) {
+        _ = overviewButton(event.state == c.WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
     c._wlr_log(c.WLR_DEBUG, "button %u state %d alt=%d keyboards=%d", event.button, @as(c_int, @intCast(event.state)), @as(c_int, @intFromBool(altHeld())), @as(c_int, @intCast(server.keyboards.items.len)));
     // Alt + left button drags the window under the pointer, Alt + right button resizes it from the nearest corner;
     // the client never sees these clicks.
@@ -1673,6 +1982,7 @@ fn onCursorButton(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
 }
 
 fn onCursorAxis(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
+    if (server.overview != null) return;
     const event: *c.wlr_pointer_axis_event = @ptrCast(@alignCast(data));
     c.wlr_seat_pointer_notify_axis(server.seat, event.time_msec, event.orientation, event.delta, event.delta_discrete, event.source, event.relative_direction);
 }
@@ -1715,6 +2025,15 @@ const Keyboard = struct {
         if (server.locked) {
             c.wlr_seat_set_keyboard(server.seat, self.keyboard);
             c.wlr_seat_keyboard_notify_key(server.seat, event.time_msec, event.keycode, event.state);
+            return;
+        }
+        if (server.overview != null) {
+            // Nothing reaches the programs while Scale or Expo is up; the shortcuts and Escape/Return still work.
+            var k: usize = 0;
+            while (k < @as(usize, @intCast(@max(count, 0)))) : (k += 1) {
+                if (!pressed or isSuper(syms[k])) continue;
+                if (!runBinding(mods, syms[k])) overviewKey(syms[k]);
+            }
             return;
         }
         var i: usize = 0;
@@ -1889,6 +2208,8 @@ fn perform(action: keys.Action) void {
         .above => if (topWindow()) |t| toggleAbove(t),
         .below => if (topWindow()) |t| toggleBelow(t),
         .show_desktop => showDesktop(),
+        .scale => openOverview(false),
+        .expo => openOverview(true),
         .opacity_up => if (topWindow()) |t| changeOpacity(t, 0.1),
         .opacity_down => if (topWindow()) |t| changeOpacity(t, -0.1),
         .exec => |cmd| runCommand(cmd),
@@ -2149,6 +2470,7 @@ fn loadConfig() void {
     const dimming_changed = server.inactive_opacity != cfg.inactive_opacity;
     server.inactive_opacity = cfg.inactive_opacity;
     server.effects = cfg.effects;
+    if (server.overview != null and !(cfg.effects.scale or cfg.effects.expo)) closeOverview(null);
     config.free(gpa, cfg);
     cfg.keys = &.{};
     if (dimming_changed) refreshOpacity();

@@ -26,6 +26,9 @@
 //!   snap-windows = true (dragged windows meet the edges of other windows), inactive-opacity = 0.85
 //!   (dim windows that are not focused; 1 turns it off)
 //!
+//!   [effects]                # optional extras, all off by default: animations = true, animation-ms = 200,
+//!                            # scale = true (Super+W), expo = true (Super+E)
+//!
 //!   [[rules]]                # per-window rules: see rules.zig
 //!   app_id = "mpv"
 //!   floating = true
@@ -58,6 +61,9 @@ pub const Effects = struct {
     /// Windows fade and grow when they open and shrink away when minimized.
     animations: bool = false,
     animation_ms: u32 = 200,
+    /// Scale (Super+W): all windows of the workspace at once. Expo (Super+E): all workspaces, drag windows between them.
+    scale: bool = false,
+    expo: bool = false,
 };
 
 /// Where a new window is put.
@@ -174,6 +180,14 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
         if (t.get("animations")) |v| switch (v) {
             .boolean => |b| config.effects.animations = b,
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] animations: expected true or false; using false")),
+        };
+        if (t.get("scale")) |v| switch (v) {
+            .boolean => |b| config.effects.scale = b,
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] scale: expected true or false; using false")),
+        };
+        if (t.get("expo")) |v| switch (v) {
+            .boolean => |b| config.effects.expo = b,
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] expo: expected true or false; using false")),
         };
         if (t.get("animation-ms")) |v| switch (v) {
             .integer => |i| {
