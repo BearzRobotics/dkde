@@ -49,6 +49,8 @@ pub const Xf = struct {
     warp: ?*const Warp = null,
     /// Blur what is behind the window (it is translucent).
     blur: bool = false,
+    /// Do not draw (the cube draws one workspace's windows at a time).
+    hidden: bool = false,
 };
 
 pub const Kind = enum { open, restore, minimize };

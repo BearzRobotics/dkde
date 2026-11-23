@@ -24,6 +24,7 @@ fn nodeOf(link: *c.wl_list) *c.wlr_scene_node {
 pub fn walk(painter: anytype, lookup: Lookup, node: *c.wlr_scene_node, px: f32, py: f32, inherited: ?Xf) void {
     var xf = inherited;
     if (xf == null and node.type == c.WLR_SCENE_NODE_TREE) xf = lookup(node);
+    if (xf != null and xf.?.hidden) return;
     if (!node.enabled and !(xf != null and xf.?.force)) return;
     const x = px + @as(f32, @floatFromInt(node.x));
     const y = py + @as(f32, @floatFromInt(node.y));

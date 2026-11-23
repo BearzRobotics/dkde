@@ -10,6 +10,7 @@ const std = @import("std");
 const c = @import("c");
 const render = @import("render.zig");
 const anim = @import("anim.zig");
+const cube_mod = @import("cube.zig");
 
 pub const Xf = anim.Xf;
 
@@ -28,6 +29,15 @@ pub const Post = struct {
     pub fn active(self: Post) bool {
         return self.zoom != 1 or !std.mem.eql(f32, &self.m, &identity) or self.off[0] != 0 or self.off[1] != 0 or self.off[2] != 0;
     }
+};
+
+/// The desktop cube for this frame.
+pub const Cube = struct {
+    /// Where it is turned to, in workspaces (fractional while it turns), and how many faces it has.
+    pos: f32,
+    count: usize,
+    /// Called with the workspace whose windows the scene should show next (null: back to normal).
+    filter: *const fn (?usize) void,
 };
 
 /// A colour matrix given by rows (as they are usually written); the result is column-major for GL.
@@ -70,6 +80,16 @@ const frag_ext =
     \\    vec4 t = texture2D(u_tex, v_uv);
     \\    if (u_has_alpha < 0.5) t.a = 1.0;
     \\    gl_FragColor = t * u_alpha;
+    \\}
+;
+
+const vertex_persp =
+    \\attribute vec4 a_pos;
+    \\attribute vec2 a_uv;
+    \\varying vec2 v_uv;
+    \\void main() {
+    \\    v_uv = a_uv;
+    \\    gl_Position = a_pos;
     \\}
 ;
 
@@ -198,6 +218,12 @@ pub const Gfx = struct {
     solid: Program,
     post: Program,
     blur: Program,
+    persp: Program,
+    /// One texture and framebuffer per workspace, for the faces of the cube.
+    face_tex: [9]c.GLuint = std.mem.zeroes([9]c.GLuint),
+    face_fbo: [9]c.GLuint = std.mem.zeroes([9]c.GLuint),
+    face_w: i32 = 0,
+    face_h: i32 = 0,
     /// Blur of what is behind translucent windows: a copy of the frame, and two half-size targets to blur between.
     blur_src: c.GLuint = 0,
     blur_tex: [2]c.GLuint = .{ 0, 0 },
@@ -226,10 +252,11 @@ pub const Gfx = struct {
         const solid = link(vertex_src, frag_solid) orelse return null;
         const post = link(vertex_src, frag_post) orelse return null;
         const blur = link(vertex_src, frag_blur) orelse return null;
+        const persp = link(vertex_persp, frag_tex) orelse return null;
         // The external-image variant exists only where the driver has the extension.
         const ext = if (c.wlr_gles2_renderer_check_ext(renderer, "GL_OES_EGL_image_external")) link(vertex_src, frag_ext) else null;
         const self = allocator.create(Gfx) catch return null;
-        self.* = .{ .renderer = renderer, .display = display, .context = context, .tex = tex, .ext = ext, .solid = solid, .post = post, .blur = blur };
+        self.* = .{ .renderer = renderer, .display = display, .context = context, .tex = tex, .ext = ext, .solid = solid, .post = post, .blur = blur, .persp = persp };
         return self;
     }
 
@@ -288,8 +315,31 @@ pub const Gfx = struct {
         return true;
     }
 
+    fn ensureFace(self: *Gfx, index: usize, w: i32, h: i32) bool {
+        if (self.face_w != w or self.face_h != h) {
+            for (0..9) |i| {
+                if (self.face_tex[i] != 0) c.glDeleteTextures(1, &self.face_tex[i]);
+                if (self.face_fbo[i] != 0) c.glDeleteFramebuffers(1, &self.face_fbo[i]);
+                self.face_tex[i] = 0;
+                self.face_fbo[i] = 0;
+            }
+            self.face_w = w;
+            self.face_h = h;
+        }
+        if (self.face_fbo[index] != 0) return true;
+        self.face_tex[index] = makeTexture(w, h);
+        c.glGenFramebuffers(1, &self.face_fbo[index]);
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.face_fbo[index]);
+        c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, self.face_tex[index], 0);
+        return c.glCheckFramebufferStatus(c.GL_FRAMEBUFFER) == c.GL_FRAMEBUFFER_COMPLETE;
+    }
+
+    fn drawCube(self: *Gfx, painter: *Painter, lookup: render.Lookup, root: *c.wlr_scene_tree, cb: Cube, target: c.GLuint, w: i32, h: i32) void {
+        drawCubeImpl(self, painter, lookup, root, cb, target, w, h);
+    }
+
     /// Draws the whole scene onto the output and commits it. False when anything failed.
-    pub fn compose(self: *Gfx, output: *c.wlr_output, layout: *c.wlr_output_layout, root: *c.wlr_scene_tree, lookup: render.Lookup, post: Post) bool {
+    pub fn compose(self: *Gfx, output: *c.wlr_output, layout: *c.wlr_output_layout, root: *c.wlr_scene_tree, lookup: render.Lookup, post: Post, cube: ?Cube) bool {
         if (c.eglMakeCurrent(self.display, c.EGL_NO_SURFACE, c.EGL_NO_SURFACE, self.context) == 0) return false;
         defer _ = c.eglMakeCurrent(self.display, c.EGL_NO_SURFACE, c.EGL_NO_SURFACE, c.EGL_NO_CONTEXT);
 
@@ -334,7 +384,11 @@ pub const Gfx = struct {
         c.glEnableVertexAttribArray(0);
         c.glEnableVertexAttribArray(1);
         painter.fbo = painter_fbo;
-        render.walk(&painter, lookup, &root.node, 0, 0, null);
+        if (cube) |cb| {
+            self.drawCube(&painter, lookup, root, cb, painter_fbo, w, h);
+        } else {
+            render.walk(&painter, lookup, &root.node, 0, 0, null);
+        }
 
         if (use_scene) {
             c.glBindFramebuffer(c.GL_FRAMEBUFFER, out_fbo);
@@ -378,6 +432,50 @@ pub const Gfx = struct {
         return c.wlr_output_commit_state(output, &state);
     }
 };
+
+/// The cube: each visible face is the scene drawn with only that workspace's windows, put on a turning prism.
+fn drawCubeImpl(self: *Gfx, painter: *Painter, lookup: render.Lookup, root: *c.wlr_scene_tree, cb: Cube, target: c.GLuint, w: i32, h: i32) void {
+    var faces: [9]cube_mod.Face = undefined;
+    const count = @min(cb.count, 9);
+    const shown = cube_mod.faces(count, cb.pos, @floatFromInt(w), @floatFromInt(h), &faces);
+    for (faces[0..shown]) |f| {
+        if (!self.ensureFace(f.index, w, h)) continue;
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.face_fbo[f.index]);
+        c.glViewport(0, 0, w, h);
+        c.glClearColor(0, 0, 0, 1);
+        c.glClear(c.GL_COLOR_BUFFER_BIT);
+        c.glEnable(c.GL_BLEND);
+        painter.fbo = self.face_fbo[f.index];
+        cb.filter(f.index);
+        render.walk(painter, lookup, &root.node, 0, 0, null);
+        cb.filter(null);
+    }
+    painter.fbo = target;
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, target);
+    c.glViewport(0, 0, w, h);
+    c.glClearColor(0, 0, 0, 1);
+    c.glClear(c.GL_COLOR_BUFFER_BIT);
+    c.glDisable(c.GL_BLEND);
+    c.glUseProgram(self.persp.id);
+    c.glActiveTexture(c.GL_TEXTURE0);
+    c.glUniform1i(self.persp.tex, 0);
+    c.glUniform1f(self.persp.has_alpha, 0);
+    for (faces[0..shown]) |f| {
+        c.glBindTexture(c.GL_TEXTURE_2D, self.face_tex[f.index]);
+        c.glUniform1f(self.persp.alpha, f.light);
+        const Pv = extern struct { x: f32, y: f32, z: f32, w: f32, u: f32, v: f32 };
+        var quad: [6]Pv = undefined;
+        const order = [6]usize{ 0, 1, 2, 1, 3, 2 };
+        for (order, 0..) |q, i| {
+            const cv = f.corners[q];
+            quad[i] = .{ .x = cv.x, .y = cv.y, .z = 0, .w = cv.w, .u = cv.u, .v = cv.v };
+        }
+        c.glVertexAttribPointer(0, 4, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Pv), &quad[0].x);
+        c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Pv), &quad[0].u);
+        c.glDrawArrays(c.GL_TRIANGLES, 0, 6);
+    }
+    c.glEnable(c.GL_BLEND);
+}
 
 /// The scene walker's painter for GL: a quad (or, for a warped window, a grid) per rectangle and texture.
 const Painter = struct {

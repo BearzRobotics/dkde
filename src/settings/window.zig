@@ -1741,6 +1741,12 @@ pub const SettingsWindow = struct {
         blur.as(gtk.Widget).setName("blur");
         addRowDesc(page, common.tr("Blur behind see-through windows"), common.tr("A window that is made translucent (the opacity below, or a rule) shows a frosted copy of what is behind it. Needs the GLES renderer."), blur.as(gtk.Widget));
 
+        const cube = gtk.Switch.new();
+        cube.setActive(@intFromBool(cfg.effects.cube));
+        _ = gtk.Switch.signals.state_set.connect(cube, *SettingsWindow, &onEffectSwitch, self, .{});
+        cube.as(gtk.Widget).setName("cube");
+        addRowDesc(page, common.tr("Desktop cube"), common.tr("Switching to another desktop turns a cube, with each desktop on a face. Needs the GLES renderer and at least three desktops."), cube.as(gtk.Widget));
+
         const dim = gtk.SpinButton.newWithRange(10, 100, 5);
         dim.setValue(@round(@as(f64, cfg.inactive_opacity) * 100));
         _ = gtk.SpinButton.signals.value_changed.connect(dim, *SettingsWindow, &onInactiveOpacity, self, .{});

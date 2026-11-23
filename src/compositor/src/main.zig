@@ -24,6 +24,7 @@ const overview = @import("overview.zig");
 const gfx = @import("gfx.zig");
 const filters = @import("filters.zig");
 const wobble_mod = @import("wobble.zig");
+const cube_mod = @import("cube.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -85,6 +86,8 @@ const Server = struct {
     zoom_now: f32 = 1,
     zoom_ms: u32 = 0,
     wobble_ms: u32 = 0,
+    /// The cube turning from one workspace to another, while it does.
+    cube: ?CubeTurn = null,
     filter: filters.Filter = .none,
     layout_options: layout.Options = .{},
     /// Edge snapping while a window is dragged: on or off (compositor.toml), the zone under the pointer and its preview.
@@ -150,6 +153,15 @@ fn unlisten(listener: *c.wl_listener) void {
 
 // ---- outputs -------------------------------------------------------------------------------------------------
 
+const CubeTurn = struct { from: usize, to: usize, start_ms: u32 };
+
+/// While the cube draws one workspace's face: that workspace (the scene then shows only its windows).
+var face_filter: ?usize = null;
+
+fn setFaceFilter(ws: ?usize) void {
+    face_filter = ws;
+}
+
 const Output = struct {
     output: *c.wlr_output,
     frame: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -167,9 +179,10 @@ const Output = struct {
         tickWobbles(nowMs(&now));
         const post = currentPost(self.output);
         const wobbling = anyWobble();
-        if (server.animating > 0 or server.overview != null or post.active() or wobbling or blurNeeded()) {
+        const cube = currentCube(nowMs(&now));
+        if (server.animating > 0 or server.overview != null or post.active() or wobbling or blurNeeded() or cube != null) {
             const drawn = if (server.gfx) |g|
-                g.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf, post)
+                g.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf, post, cube)
             else
                 render.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf);
             if (drawn) {
@@ -177,7 +190,7 @@ const Output = struct {
             } else {
                 _ = c.wlr_scene_output_commit(scene_output, null);
             }
-            if (server.animating > 0 or overviewMoving() or zoomMoving() or wobbling) c.wlr_output_schedule_frame(self.output);
+            if (server.animating > 0 or overviewMoving() or zoomMoving() or wobbling or cube != null) c.wlr_output_schedule_frame(self.output);
         } else {
             if (server.custom_drawn) {
                 // The scene output does not know what was drawn behind its back.
@@ -795,6 +808,10 @@ fn topWindow() ?*Toplevel {
 
 fn switchWorkspace(index: usize) void {
     if (index >= server.ws.count or index == server.ws.active) return;
+    if (server.effects.cube and server.gfx != null and server.ws.count >= 3 and server.overview == null) {
+        server.cube = .{ .from = server.ws.active, .to = index, .start_ms = currentMs() };
+        wakeOutputs();
+    }
     server.ws.active = index;
     for (server.toplevels.items) |t| showIfVisible(t);
     if (topWindow()) |t| {
@@ -1508,6 +1525,11 @@ fn currentMs() u32 {
 fn xfOf(node: *c.wlr_scene_node) ?anim.Xf {
     if (node.parent != server.trees[2]) return null;
     const t: *Toplevel = @ptrCast(@alignCast(node.data orelse return null));
+    if (face_filter) |f| {
+        // One face of the cube: this workspace's windows (and sticky ones), drawn plainly, and nothing else.
+        if (t.minimized or !(t.sticky or t.workspace == f)) return .{ .hidden = true };
+        return .{ .force = true };
+    }
     var result: ?anim.Xf = null;
     if (server.overview) |ov| result = ov.xfFor(t);
     if (result == null) {
@@ -1530,6 +1552,22 @@ fn xfOf(node: *c.wlr_scene_node) ?anim.Xf {
         result = xf;
     }
     return result;
+}
+
+/// The cube for this frame while it turns; null when it is done or not in use.
+fn currentCube(now: u32) ?gfx.Cube {
+    const turn = server.cube orelse return null;
+    const ms = @max(400, server.effects.animation_ms * 2);
+    const f = anim.fraction(.{ .kind = .open, .start_ms = turn.start_ms, .duration_ms = ms }, now);
+    if (f >= 1 or server.gfx == null or server.overview != null) {
+        server.cube = null;
+        return null;
+    }
+    return .{
+        .pos = cube_mod.position(turn.from, turn.to, server.ws.count, anim.easeOut(f)),
+        .count = server.ws.count,
+        .filter = setFaceFilter,
+    };
 }
 
 /// With blur on, a frame that has a translucent window on it is composed by the GLES composer.
