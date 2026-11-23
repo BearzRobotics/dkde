@@ -47,6 +47,8 @@ pub const Xf = struct {
     force: bool = false,
     /// Wobbly windows: draw the window through this mesh (only the GLES composer does).
     warp: ?*const Warp = null,
+    /// Blur what is behind the window (it is translucent).
+    blur: bool = false,
 };
 
 pub const Kind = enum { open, restore, minimize };

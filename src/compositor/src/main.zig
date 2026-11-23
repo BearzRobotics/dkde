@@ -167,7 +167,7 @@ const Output = struct {
         tickWobbles(nowMs(&now));
         const post = currentPost(self.output);
         const wobbling = anyWobble();
-        if (server.animating > 0 or server.overview != null or post.active() or wobbling) {
+        if (server.animating > 0 or server.overview != null or post.active() or wobbling or blurNeeded()) {
             const drawn = if (server.gfx) |g|
                 g.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf, post)
             else
@@ -1523,7 +1523,24 @@ fn xfOf(node: *c.wlr_scene_node) ?anim.Xf {
         xf.warp = &w.warp;
         result = xf;
     }
+    // Translucent windows (their own opacity, or dimmed for not having the focus) lie on a blurred background.
+    if (server.effects.blur and server.gfx != null and (t.opacity < 1.0 or (server.inactive_opacity < 1.0 and !isFocused(t)))) {
+        var xf = result orelse anim.Xf{};
+        xf.blur = true;
+        result = xf;
+    }
     return result;
+}
+
+/// With blur on, a frame that has a translucent window on it is composed by the GLES composer.
+fn blurNeeded() bool {
+    if (!server.effects.blur or server.gfx == null) return false;
+    if (server.opened == 0) return false;
+    for (server.toplevels.items) |t| {
+        if (t.minimized or !onActiveWorkspace(t)) continue;
+        if (t.opacity < 1.0 or (server.inactive_opacity < 1.0 and !isFocused(t))) return true;
+    }
+    return false;
 }
 
 fn anyWobble() bool {

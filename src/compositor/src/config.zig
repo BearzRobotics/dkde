@@ -78,6 +78,8 @@ pub const Effects = struct {
     zoom: bool = false,
     /// Windows stretch and swing like jelly when dragged, snapped or maximized (needs the GLES renderer).
     wobbly: bool = false,
+    /// Blur what is behind translucent windows (needs the GLES renderer).
+    blur: bool = false,
 };
 
 /// A filter by its name in compositor.toml ("high-contrast" has a dash).
@@ -233,6 +235,10 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
             .boolean => |b| config.effects.wobbly = b,
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] wobbly: expected true or false; using false")),
         };
+        if (t.get("blur")) |v| switch (v) {
+            .boolean => |b| config.effects.blur = b,
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] blur: expected true or false; using false")),
+        };
         if (t.get("zoom")) |v| switch (v) {
             .boolean => |b| config.effects.zoom = b,
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] zoom: expected true or false; using false")),
@@ -372,6 +378,9 @@ test "effects are off until asked for" {
     const wb = try parse(std.testing.allocator, "[effects]\nwobbly = true\n", &warnings);
     defer free(std.testing.allocator, wb);
     try std.testing.expect(wb.effects.wobbly);
+    const bl = try parse(std.testing.allocator, "[effects]\nblur = true\n", &warnings);
+    defer free(std.testing.allocator, bl);
+    try std.testing.expect(bl.effects.blur);
     const bad = try parse(std.testing.allocator, "[effects]\nanimation-ms = 5\n", &warnings);
     defer free(std.testing.allocator, bad);
     try std.testing.expectEqual(@as(u32, 200), bad.effects.animation_ms);

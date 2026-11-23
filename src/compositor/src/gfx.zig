@@ -97,6 +97,24 @@ const frag_post =
     \\}
 ;
 
+const frag_blur =
+    \\precision mediump float;
+    \\varying vec2 v_uv;
+    \\uniform sampler2D u_tex;
+    \\uniform vec2 u_step;
+    \\uniform vec4 u_clamp;
+    \\void main() {
+    \\    vec2 lo = u_clamp.xy;
+    \\    vec2 hi = u_clamp.zw;
+    \\    vec4 c = texture2D(u_tex, clamp(v_uv, lo, hi)) * 0.2270270270;
+    \\    c += texture2D(u_tex, clamp(v_uv + u_step * 1.3846153846, lo, hi)) * 0.3162162162;
+    \\    c += texture2D(u_tex, clamp(v_uv - u_step * 1.3846153846, lo, hi)) * 0.3162162162;
+    \\    c += texture2D(u_tex, clamp(v_uv + u_step * 3.2307692308, lo, hi)) * 0.0702702703;
+    \\    c += texture2D(u_tex, clamp(v_uv - u_step * 3.2307692308, lo, hi)) * 0.0702702703;
+    \\    gl_FragColor = c;
+    \\}
+;
+
 const Program = struct {
     id: c.GLuint = 0,
     size: c.GLint = -1,
@@ -108,6 +126,8 @@ const Program = struct {
     focus: c.GLint = -1,
     matrix: c.GLint = -1,
     offset: c.GLint = -1,
+    step: c.GLint = -1,
+    clamp: c.GLint = -1,
 };
 
 fn compile(kind: c.GLenum, source: [*:0]const u8) c.GLuint {
@@ -162,6 +182,8 @@ fn link(vertex: [*:0]const u8, fragment: [*:0]const u8) ?Program {
         .focus = c.glGetUniformLocation(id, "u_focus"),
         .matrix = c.glGetUniformLocation(id, "u_matrix"),
         .offset = c.glGetUniformLocation(id, "u_offset"),
+        .step = c.glGetUniformLocation(id, "u_step"),
+        .clamp = c.glGetUniformLocation(id, "u_clamp"),
     };
 }
 
@@ -175,6 +197,15 @@ pub const Gfx = struct {
     ext: ?Program,
     solid: Program,
     post: Program,
+    blur: Program,
+    /// Blur of what is behind translucent windows: a copy of the frame, and two half-size targets to blur between.
+    blur_src: c.GLuint = 0,
+    blur_tex: [2]c.GLuint = .{ 0, 0 },
+    blur_fbo: [2]c.GLuint = .{ 0, 0 },
+    blur_w: i32 = 0,
+    blur_h: i32 = 0,
+    /// How many blur passes pairs (each widens the blur).
+    blur_passes: u32 = 2,
     scene_tex: c.GLuint = 0,
     scene_fbo: c.GLuint = 0,
     scene_w: i32 = 0,
@@ -194,10 +225,11 @@ pub const Gfx = struct {
         const tex = link(vertex_src, frag_tex) orelse return null;
         const solid = link(vertex_src, frag_solid) orelse return null;
         const post = link(vertex_src, frag_post) orelse return null;
+        const blur = link(vertex_src, frag_blur) orelse return null;
         // The external-image variant exists only where the driver has the extension.
         const ext = if (c.wlr_gles2_renderer_check_ext(renderer, "GL_OES_EGL_image_external")) link(vertex_src, frag_ext) else null;
         const self = allocator.create(Gfx) catch return null;
-        self.* = .{ .renderer = renderer, .display = display, .context = context, .tex = tex, .ext = ext, .solid = solid, .post = post };
+        self.* = .{ .renderer = renderer, .display = display, .context = context, .tex = tex, .ext = ext, .solid = solid, .post = post, .blur = blur };
         return self;
     }
 
@@ -225,6 +257,37 @@ pub const Gfx = struct {
         return ok;
     }
 
+    fn makeTexture(w: i32, h: i32) c.GLuint {
+        var t: c.GLuint = 0;
+        c.glGenTextures(1, &t);
+        c.glBindTexture(c.GL_TEXTURE_2D, t);
+        c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_RGBA, w, h, 0, c.GL_RGBA, c.GL_UNSIGNED_BYTE, null);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_LINEAR);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_LINEAR);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_S, c.GL_CLAMP_TO_EDGE);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_T, c.GL_CLAMP_TO_EDGE);
+        return t;
+    }
+
+    fn ensureBlur(self: *Gfx, w: i32, h: i32) bool {
+        if (self.blur_w == w and self.blur_h == h and self.blur_src != 0) return true;
+        if (self.blur_src != 0) c.glDeleteTextures(1, &self.blur_src);
+        for (0..2) |i| {
+            if (self.blur_tex[i] != 0) c.glDeleteTextures(1, &self.blur_tex[i]);
+            if (self.blur_fbo[i] != 0) c.glDeleteFramebuffers(1, &self.blur_fbo[i]);
+        }
+        self.blur_src = makeTexture(w, h);
+        for (0..2) |i| {
+            self.blur_tex[i] = makeTexture(@divTrunc(w, 2) + 1, @divTrunc(h, 2) + 1);
+            c.glGenFramebuffers(1, &self.blur_fbo[i]);
+            c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.blur_fbo[i]);
+            c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, self.blur_tex[i], 0);
+        }
+        self.blur_w = w;
+        self.blur_h = h;
+        return true;
+    }
+
     /// Draws the whole scene onto the output and commits it. False when anything failed.
     pub fn compose(self: *Gfx, output: *c.wlr_output, layout: *c.wlr_output_layout, root: *c.wlr_scene_tree, lookup: render.Lookup, post: Post) bool {
         if (c.eglMakeCurrent(self.display, c.EGL_NO_SURFACE, c.EGL_NO_SURFACE, self.context) == 0) return false;
@@ -244,7 +307,7 @@ pub const Gfx = struct {
 
         var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
         c.wlr_output_layout_get_box(layout, output, &box);
-        const painter: Painter = .{
+        var painter: Painter = .{
             .gfx = self,
             .w = @floatFromInt(w),
             .h = @floatFromInt(h),
@@ -253,10 +316,12 @@ pub const Gfx = struct {
             .scale = output.*.scale,
         };
 
+        var painter_fbo = out_fbo;
         const use_scene = post.active();
         if (use_scene) {
             if (!self.ensureScene(w, h)) return false;
             c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.scene_fbo);
+            painter_fbo = self.scene_fbo;
         } else {
             c.glBindFramebuffer(c.GL_FRAMEBUFFER, out_fbo);
         }
@@ -268,6 +333,7 @@ pub const Gfx = struct {
         c.glBlendFunc(c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
         c.glEnableVertexAttribArray(0);
         c.glEnableVertexAttribArray(1);
+        painter.fbo = painter_fbo;
         render.walk(&painter, lookup, &root.node, 0, 0, null);
 
         if (use_scene) {
@@ -322,6 +388,96 @@ const Painter = struct {
     ox: f32,
     oy: f32,
     scale: f32,
+    /// The framebuffer being drawn to (blurring switches away from it and back).
+    fbo: c.GLuint = 0,
+
+    /// Blurs what has been drawn so far inside the box (output pixels) and puts the result back, so a
+    /// translucent window drawn next lies on a frosted background.
+    fn blurBehind(self: *const Painter, bx0: f32, by0: f32, bx1: f32, by1: f32) void {
+        const g = self.gfx;
+        const iw: i32 = @intFromFloat(self.w);
+        const ih: i32 = @intFromFloat(self.h);
+        const x0: i32 = std.math.clamp(@as(i32, @intFromFloat(@floor(bx0))), 0, iw - 1);
+        const y0: i32 = std.math.clamp(@as(i32, @intFromFloat(@floor(by0))), 0, ih - 1);
+        const x1: i32 = std.math.clamp(@as(i32, @intFromFloat(@ceil(bx1))), 1, iw);
+        const y1: i32 = std.math.clamp(@as(i32, @intFromFloat(@ceil(by1))), 1, ih);
+        const rw = x1 - x0;
+        const rh = y1 - y0;
+        if (rw < 8 or rh < 8 or !g.ensureBlur(iw, ih)) return;
+        c.glDisable(c.GL_BLEND);
+        // The frame so far, into the copy.
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.fbo);
+        c.glBindTexture(c.GL_TEXTURE_2D, g.blur_src);
+        c.glCopyTexSubImage2D(c.GL_TEXTURE_2D, 0, x0, y0, x0, y0, rw, rh);
+
+        const fw: f32 = self.w;
+        const fh: f32 = self.h;
+        const hw: i32 = @divTrunc(rw, 2);
+        const hh: i32 = @divTrunc(rh, 2);
+        // Where the region sits in the full-size copy and in the half-size targets (which start at their corner).
+        const src_u0 = @as(f32, @floatFromInt(x0)) / fw;
+        const src_v0 = @as(f32, @floatFromInt(y0)) / fh;
+        const src_u1 = @as(f32, @floatFromInt(x1)) / fw;
+        const src_v1 = @as(f32, @floatFromInt(y1)) / fh;
+        const half_w: f32 = @floatFromInt(@divTrunc(iw, 2) + 1);
+        const half_h: f32 = @floatFromInt(@divTrunc(ih, 2) + 1);
+        const hu1 = @as(f32, @floatFromInt(hw)) / half_w;
+        const hv1 = @as(f32, @floatFromInt(hh)) / half_h;
+
+        c.glUseProgram(g.blur.id);
+        c.glUniform2f(g.blur.size, 1, 1);
+        c.glUniform1i(g.blur.tex, 0);
+        c.glActiveTexture(c.GL_TEXTURE0);
+        var from: c.GLuint = g.blur_src;
+        var which: usize = 0;
+        var pass: u32 = 0;
+        while (pass < g.blur_passes * 2) : (pass += 1) {
+            const horizontal = pass % 2 == 0;
+            const first = pass == 0;
+            c.glBindFramebuffer(c.GL_FRAMEBUFFER, g.blur_fbo[which]);
+            c.glViewport(0, 0, hw, hh);
+            c.glBindTexture(c.GL_TEXTURE_2D, from);
+            // The first pass reads the full-size copy (so it also halves the size); the rest read half-size targets.
+            const u0r: f32 = if (first) src_u0 else 0;
+            const v0r: f32 = if (first) src_v0 else 0;
+            const u1r: f32 = if (first) src_u1 else hu1;
+            const v1r: f32 = if (first) src_v1 else hv1;
+            const texel_w: f32 = if (first) 1.0 / fw else 1.0 / half_w;
+            const texel_h: f32 = if (first) 1.0 / fh else 1.0 / half_h;
+            c.glUniform2f(g.blur.step, if (horizontal) texel_w * 1.5 else 0, if (horizontal) 0 else texel_h * 1.5);
+            c.glUniform4f(g.blur.clamp, u0r + texel_w * 0.5, v0r + texel_h * 0.5, u1r - texel_w * 0.5, v1r - texel_h * 0.5);
+            const quad = [_]Vertex{
+                .{ .x = 0, .y = 0, .u = u0r, .v = v0r }, .{ .x = 1, .y = 0, .u = u1r, .v = v0r }, .{ .x = 0, .y = 1, .u = u0r, .v = v1r },
+                .{ .x = 1, .y = 0, .u = u1r, .v = v0r }, .{ .x = 1, .y = 1, .u = u1r, .v = v1r }, .{ .x = 0, .y = 1, .u = u0r, .v = v1r },
+            };
+            c.glVertexAttribPointer(0, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &quad[0].x);
+            c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &quad[0].u);
+            c.glDrawArrays(c.GL_TRIANGLES, 0, 6);
+            from = g.blur_tex[which];
+            which = 1 - which;
+        }
+        // Back to the frame: the blurred region over the original.
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.fbo);
+        c.glViewport(0, 0, iw, ih);
+        c.glUseProgram(g.tex.id);
+        c.glUniform2f(g.tex.size, self.w, self.h);
+        c.glUniform1f(g.tex.alpha, 1);
+        c.glUniform1f(g.tex.has_alpha, 0);
+        c.glUniform1i(g.tex.tex, 0);
+        c.glBindTexture(c.GL_TEXTURE_2D, from);
+        const fx0: f32 = @floatFromInt(x0);
+        const fy0: f32 = @floatFromInt(y0);
+        const fx1: f32 = @floatFromInt(x1);
+        const fy1: f32 = @floatFromInt(y1);
+        const quad = [_]Vertex{
+            .{ .x = fx0, .y = fy0, .u = 0, .v = 0 }, .{ .x = fx1, .y = fy0, .u = hu1, .v = 0 }, .{ .x = fx0, .y = fy1, .u = 0, .v = hv1 },
+            .{ .x = fx1, .y = fy0, .u = hu1, .v = 0 }, .{ .x = fx1, .y = fy1, .u = hu1, .v = hv1 }, .{ .x = fx0, .y = fy1, .u = 0, .v = hv1 },
+        };
+        c.glVertexAttribPointer(0, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &quad[0].x);
+        c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &quad[0].u);
+        c.glDrawArrays(c.GL_TRIANGLES, 0, 6);
+        c.glEnable(c.GL_BLEND);
+    }
 
     /// Layout coordinates (after the window transform) to output pixels.
     fn dev(self: *const Painter, x: f32, y: f32, xf: ?Xf) [2]f32 {
@@ -385,6 +541,11 @@ const Painter = struct {
 
     pub fn texture(self: *const Painter, sb: *c.wlr_scene_buffer, tex: *c.wlr_texture, x: f32, y: f32, w: f32, h: f32, xf: ?Xf) void {
         if (!c.wlr_texture_is_gles2(tex)) return;
+        if (xf != null and xf.?.blur) {
+            const b0 = self.dev(x, y, xf);
+            const b1 = self.dev(x + w, y + h, xf);
+            self.blurBehind(b0[0], b0[1], b1[0], b1[1]);
+        }
         var attribs: c.wlr_gles2_texture_attribs = std.mem.zeroes(c.wlr_gles2_texture_attribs);
         c.wlr_gles2_texture_get_attribs(tex, &attribs);
         const g = self.gfx;

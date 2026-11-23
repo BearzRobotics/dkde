@@ -1735,6 +1735,12 @@ pub const SettingsWindow = struct {
         wobbly.as(gtk.Widget).setName("wobbly");
         addRowDesc(page, common.tr("Wobbly windows"), common.tr("Windows stretch and swing like jelly when you drag them, snap them or maximize them. Needs the GLES renderer."), wobbly.as(gtk.Widget));
 
+        const blur = gtk.Switch.new();
+        blur.setActive(@intFromBool(cfg.effects.blur));
+        _ = gtk.Switch.signals.state_set.connect(blur, *SettingsWindow, &onEffectSwitch, self, .{});
+        blur.as(gtk.Widget).setName("blur");
+        addRowDesc(page, common.tr("Blur behind see-through windows"), common.tr("A window that is made translucent (the opacity below, or a rule) shows a frosted copy of what is behind it. Needs the GLES renderer."), blur.as(gtk.Widget));
+
         const dim = gtk.SpinButton.newWithRange(10, 100, 5);
         dim.setValue(@round(@as(f64, cfg.inactive_opacity) * 100));
         _ = gtk.SpinButton.signals.value_changed.connect(dim, *SettingsWindow, &onInactiveOpacity, self, .{});

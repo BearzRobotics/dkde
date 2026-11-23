@@ -87,6 +87,7 @@ scale = true              # Super+W: every window of the workspace at once; clic
 filter = "negative"       # a colour filter over the whole screen: negative, grayscale, sepia, high-contrast,
                           #   or a colour-blindness simulation (protanopia, deuteranopia, tritanopia); Super+Ctrl+F steps through
 zoom = true               # Super+= / Super+- magnify the screen around the pointer (up to 8x), Super+0 resets
+blur = true               # translucent windows (opacity < 1, or dimmed when unfocused) lie on a blurred background
 wobbly = true             # windows swing like jelly when dragged, snapped or maximized (GLES renderer)
 switcher = "ring"         # Alt+Tab shows previews: "strip" or "ring" (off = the window just comes to the front)
 expo = true               # Super+E: every workspace as a tile; click a tile, or drag a window onto another tile
