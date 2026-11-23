@@ -45,6 +45,7 @@ const pages = [_]Page{
     .{ .id = "appearance", .title = "Appearance", .icon = "applications-graphics-symbolic", .category = 0, .desc = "Dark mode, accent colour, icons, wallpaper" },
     .{ .id = "taskbar", .title = "Taskbar", .icon = "view-list-symbolic", .category = 0, .desc = "The panel: position, size, clock and tray" },
     .{ .id = "windows", .title = "Windows", .icon = "view-restore-symbolic", .category = 0, .desc = "Floating or tiling windows, gaps, focus, and which window system starts" },
+    .{ .id = "effects", .title = "Effects", .icon = "applications-graphics-symbolic", .category = 0, .desc = "Optional window animations, Scale and Expo overviews, dimming" },
     .{ .id = "startmenu", .title = "Start menu", .icon = "start-here-symbolic", .category = 0, .desc = "Pinned apps and how the menu looks" },
     .{ .id = "display", .title = "Display", .icon = "video-display-symbolic", .category = 1, .desc = "Resolution, scale, arrangement and night light" },
     .{ .id = "audio", .title = "Sound", .icon = "audio-volume-high-symbolic", .category = 1, .desc = "Volume and the input and output devices" },
@@ -252,6 +253,7 @@ pub const SettingsWindow = struct {
         _ = self.stack.addNamed(self.appearancePage().as(gtk.Widget), "appearance");
         _ = self.stack.addNamed(self.taskbarPage().as(gtk.Widget), "taskbar");
         _ = self.stack.addNamed(self.windowsPage().as(gtk.Widget), "windows");
+        _ = self.stack.addNamed(self.effectsPage().as(gtk.Widget), "effects");
         _ = self.stack.addNamed(self.startMenuPage().as(gtk.Widget), "startmenu");
         _ = self.stack.addNamed(self.terminalPage().as(gtk.Widget), "terminal");
         _ = self.stack.addNamed(self.keyboardPage().as(gtk.Widget), "keyboard");
@@ -1600,6 +1602,17 @@ pub const SettingsWindow = struct {
         _ = gtk.Switch.signals.state_set.connect(edge, *SettingsWindow, &onEdgeSnap, self, .{});
         addRowDesc(page, common.tr("Snap windows dragged to a screen edge"), common.tr("Drop a window on the left or right edge for that half, on a corner for that quarter, on the very top edge to maximize; a tinted outline shows where it will go. Drag to the top of the screen for a card of more layouts (thirds, mixed); Super+Z offers the same ones from the keyboard."), edge.as(gtk.Widget));
 
+        const places = [_]?[*:0]const u8{ "Cascade", "Centre", "Smart (cover the least)", "At the pointer", null };
+        const place_drop = gtk.DropDown.newFromStrings(@ptrCast(&places));
+        place_drop.setSelected(@intFromEnum(cfg.placement));
+        _ = gobject.Object.signals.notify.connect(place_drop, *SettingsWindow, &onPlacementPicked, self, .{ .detail = "selected" });
+        addRowDesc(page, common.tr("Where new windows open"), common.tr("Rules for single programs can be written in compositor.toml ([[rules]])."), place_drop.as(gtk.Widget));
+
+        const magnet = gtk.Switch.new();
+        magnet.setActive(@intFromBool(cfg.snap_windows));
+        _ = gtk.Switch.signals.state_set.connect(magnet, *SettingsWindow, &onSnapWindows, self, .{});
+        addRowDesc(page, common.tr("Windows stick to edges"), common.tr("A window you drag meets the edges of the screen and of other windows."), magnet.as(gtk.Widget));
+
         // Focus following the mouse is the X11 window manager's; the compositor focuses on click.
         if (common.session.kind() == .dkde_wm) {
             const focus = [_]?[*:0]const u8{ "Click to focus", "Focus follows the mouse", null };
@@ -1645,6 +1658,82 @@ pub const SettingsWindow = struct {
     fn onRatioChanged(button: *gtk.SpinButton, self: *SettingsWindow) callconv(.c) void {
         var buf: [48]u8 = undefined;
         self.setCompositorValue("windows", "master_ratio", std.fmt.bufPrint(&buf, "master_ratio = {d:.2}", .{button.getValue() / 100.0}) catch return);
+    }
+
+    fn onPlacementPicked(drop: *gtk.DropDown, _: *gobject.ParamSpec, self: *SettingsWindow) callconv(.c) void {
+        const names = [_][]const u8{ "cascade", "center", "smart", "pointer" };
+        const i = drop.getSelected();
+        if (i >= names.len) return;
+        var buf: [48]u8 = undefined;
+        self.setCompositorValue("windows", "placement", std.fmt.bufPrint(&buf, "placement = \"{s}\"", .{names[i]}) catch return);
+    }
+
+    fn onSnapWindows(_: *gtk.Switch, state: c_int, self: *SettingsWindow) callconv(.c) c_int {
+        self.setCompositorValue("windows", "snap-windows", if (state != 0) "snap-windows = true" else "snap-windows = false");
+        return 0;
+    }
+
+    // ---- Effects: the compositor's optional extras ([effects] in compositor.toml) -------------------
+
+    fn effectsPage(self: *SettingsWindow) *gtk.Box {
+        const page = newPage(common.tr("Effects"));
+        if (common.session.kind() != .dkde_compositor) {
+            const note = gtk.Label.new(common.tr("Effects are part of DKDE's own Wayland compositor. They are not available under labwc or on X11, where nothing draws the windows but the program itself. Choose the DKDE compositor under Windows to use them."));
+            note.setWrap(1);
+            note.setXalign(0);
+            note.as(gtk.Widget).addCssClass("dim-label");
+            page.append(note.as(gtk.Widget));
+            return page;
+        }
+        const cfg = self.compositorConfig();
+        defer shared.config.free(self.allocator, cfg);
+
+        const anim = gtk.Switch.new();
+        anim.setActive(@intFromBool(cfg.effects.animations));
+        _ = gtk.Switch.signals.state_set.connect(anim, *SettingsWindow, &onEffectSwitch, self, .{});
+        anim.as(gtk.Widget).setName("animations");
+        addRowDesc(page, common.tr("Window animations"), common.tr("Windows fade and grow when they open, and shrink away when minimized."), anim.as(gtk.Widget));
+
+        const ms = gtk.SpinButton.newWithRange(50, 2000, 50);
+        ms.setValue(@floatFromInt(cfg.effects.animation_ms));
+        _ = gtk.SpinButton.signals.value_changed.connect(ms, *SettingsWindow, &onAnimationMs, self, .{});
+        addRowDesc(page, common.tr("Animation length"), common.tr("In milliseconds."), ms.as(gtk.Widget));
+
+        const scale = gtk.Switch.new();
+        scale.setActive(@intFromBool(cfg.effects.scale));
+        _ = gtk.Switch.signals.state_set.connect(scale, *SettingsWindow, &onEffectSwitch, self, .{});
+        scale.as(gtk.Widget).setName("scale");
+        addRowDesc(page, common.tr("Scale (Super+W)"), common.tr("Shows every window of the desktop at once. Click one, or press Return, to go to it; Escape leaves."), scale.as(gtk.Widget));
+
+        const expo = gtk.Switch.new();
+        expo.setActive(@intFromBool(cfg.effects.expo));
+        _ = gtk.Switch.signals.state_set.connect(expo, *SettingsWindow, &onEffectSwitch, self, .{});
+        expo.as(gtk.Widget).setName("expo");
+        addRowDesc(page, common.tr("Expo (Super+E)"), common.tr("Shows every desktop as a tile with its windows. Click a tile to go there, or drag a window onto another tile to move it."), expo.as(gtk.Widget));
+
+        const dim = gtk.SpinButton.newWithRange(10, 100, 5);
+        dim.setValue(@round(@as(f64, cfg.inactive_opacity) * 100));
+        _ = gtk.SpinButton.signals.value_changed.connect(dim, *SettingsWindow, &onInactiveOpacity, self, .{});
+        addRowDesc(page, common.tr("Opacity of windows without focus"), common.tr("Percent; 100 turns dimming off. Super+Ctrl+Up and Down change the opacity of one window."), dim.as(gtk.Widget));
+        return page;
+    }
+
+    /// The switches of the Effects page; the widget's name is the key in [effects].
+    fn onEffectSwitch(sw: *gtk.Switch, state: c_int, self: *SettingsWindow) callconv(.c) c_int {
+        const key = std.mem.span(sw.as(gtk.Widget).getName());
+        var buf: [48]u8 = undefined;
+        self.setCompositorValue("effects", key, std.fmt.bufPrint(&buf, "{s} = {s}", .{ key, if (state != 0) "true" else "false" }) catch return 0);
+        return 0;
+    }
+
+    fn onAnimationMs(button: *gtk.SpinButton, self: *SettingsWindow) callconv(.c) void {
+        var buf: [48]u8 = undefined;
+        self.setCompositorValue("effects", "animation-ms", std.fmt.bufPrint(&buf, "animation-ms = {d}", .{button.getValueAsInt()}) catch return);
+    }
+
+    fn onInactiveOpacity(button: *gtk.SpinButton, self: *SettingsWindow) callconv(.c) void {
+        var buf: [48]u8 = undefined;
+        self.setCompositorValue("windows", "inactive-opacity", std.fmt.bufPrint(&buf, "inactive-opacity = {d:.2}", .{button.getValue() / 100.0}) catch return);
     }
 
     fn onFocusPicked(drop: *gtk.DropDown, _: *gobject.ParamSpec, self: *SettingsWindow) callconv(.c) void {
