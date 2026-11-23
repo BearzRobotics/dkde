@@ -72,6 +72,8 @@ pub const Action = union(enum) {
     zoom_reset,
     /// The next colour filter (none, negative, ...).
     next_filter,
+    /// A ring around the pointer for a moment, to find it.
+    show_pointer,
     opacity_up,
     opacity_down,
     exec: []const u8,
@@ -141,6 +143,7 @@ pub fn parseAction(text: []const u8) ?Action {
     if (eql(u8, t, "zoom-out")) return .zoom_out;
     if (eql(u8, t, "zoom-reset")) return .zoom_reset;
     if (eql(u8, t, "next-filter")) return .next_filter;
+    if (eql(u8, t, "show-pointer")) return .show_pointer;
     if (eql(u8, t, "opacity-up")) return .opacity_up;
     if (eql(u8, t, "opacity-down")) return .opacity_down;
     if (std.mem.startsWith(u8, t, "put ")) {
@@ -218,6 +221,7 @@ pub const defaults = [_]Entry{
     .{ .key = "W-minus", .action = "zoom-out" },
     .{ .key = "W-0", .action = "zoom-reset" },
     .{ .key = "W-C-f", .action = "next-filter" },
+    .{ .key = "W-p", .action = "show-pointer" },
     .{ .key = "W-C-Up", .action = "opacity-up" },
     .{ .key = "W-C-Down", .action = "opacity-down" },
     .{ .key = "W-S-space", .action = "float" },

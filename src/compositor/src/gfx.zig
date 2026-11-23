@@ -31,6 +31,16 @@ pub const Post = struct {
     }
 };
 
+/// A small round picture drawn over the scene: a soft dot (snow) or a ring (the pointer finder). The
+/// position is the centre in layout coordinates.
+pub const Sprite = struct {
+    x: f32,
+    y: f32,
+    radius: f32,
+    alpha: f32,
+    ring: bool = false,
+};
+
 /// The desktop cube for this frame.
 pub const Cube = struct {
     /// Where it is turned to, in workspaces (fractional while it turns), and how many faces it has.
@@ -224,6 +234,9 @@ pub const Gfx = struct {
     face_fbo: [9]c.GLuint = std.mem.zeroes([9]c.GLuint),
     face_w: i32 = 0,
     face_h: i32 = 0,
+    /// Textures for the sprites (made when first needed).
+    dot_tex: c.GLuint = 0,
+    ring_tex: c.GLuint = 0,
     /// Blur of what is behind translucent windows: a copy of the frame, and two half-size targets to blur between.
     blur_src: c.GLuint = 0,
     blur_tex: [2]c.GLuint = .{ 0, 0 },
@@ -315,6 +328,70 @@ pub const Gfx = struct {
         return true;
     }
 
+    /// A white picture whose opacity follows `alpha_at(distance from the centre, 0..1)`.
+    fn makeSprite(comptime alpha_at: fn (f32) f32) c.GLuint {
+        const size = 64;
+        var pixels: [size * size * 4]u8 = undefined;
+        for (0..size) |j| {
+            for (0..size) |i| {
+                const dx = (@as(f32, @floatFromInt(i)) + 0.5) / size * 2 - 1;
+                const dy = (@as(f32, @floatFromInt(j)) + 0.5) / size * 2 - 1;
+                const a = std.math.clamp(alpha_at(@sqrt(dx * dx + dy * dy)), 0, 1);
+                const v: u8 = @intFromFloat(a * 255); // premultiplied white
+                const o = (j * size + i) * 4;
+                pixels[o] = v;
+                pixels[o + 1] = v;
+                pixels[o + 2] = v;
+                pixels[o + 3] = v;
+            }
+        }
+        var t: c.GLuint = 0;
+        c.glGenTextures(1, &t);
+        c.glBindTexture(c.GL_TEXTURE_2D, t);
+        c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_RGBA, size, size, 0, c.GL_RGBA, c.GL_UNSIGNED_BYTE, &pixels);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_LINEAR);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_LINEAR);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_S, c.GL_CLAMP_TO_EDGE);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_T, c.GL_CLAMP_TO_EDGE);
+        return t;
+    }
+
+    fn dotAlpha(d: f32) f32 {
+        return if (d >= 1) 0 else (1 - d) * (1 - d) * 1.3;
+    }
+
+    fn ringAlpha(d: f32) f32 {
+        // A soft ring at 0.8 of the radius.
+        const k = (d - 0.8) / 0.12;
+        return std.math.exp(-k * k);
+    }
+
+    fn drawSprites(self: *Gfx, painter: *const Painter, sprites: []const Sprite) void {
+        if (sprites.len == 0) return;
+        if (self.dot_tex == 0) self.dot_tex = makeSprite(dotAlpha);
+        if (self.ring_tex == 0) self.ring_tex = makeSprite(ringAlpha);
+        c.glEnable(c.GL_BLEND);
+        c.glBlendFunc(c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+        c.glUseProgram(self.tex.id);
+        c.glUniform2f(self.tex.size, painter.w, painter.h);
+        c.glUniform1f(self.tex.has_alpha, 1);
+        c.glUniform1i(self.tex.tex, 0);
+        c.glActiveTexture(c.GL_TEXTURE0);
+        for (sprites) |sp| {
+            c.glBindTexture(c.GL_TEXTURE_2D, if (sp.ring) self.ring_tex else self.dot_tex);
+            c.glUniform1f(self.tex.alpha, sp.alpha);
+            const p0 = painter.dev(sp.x - sp.radius, sp.y - sp.radius, null);
+            const p1 = painter.dev(sp.x + sp.radius, sp.y + sp.radius, null);
+            const quad = [_]Vertex{
+                .{ .x = p0[0], .y = p0[1], .u = 0, .v = 0 }, .{ .x = p1[0], .y = p0[1], .u = 1, .v = 0 }, .{ .x = p0[0], .y = p1[1], .u = 0, .v = 1 },
+                .{ .x = p1[0], .y = p0[1], .u = 1, .v = 0 }, .{ .x = p1[0], .y = p1[1], .u = 1, .v = 1 }, .{ .x = p0[0], .y = p1[1], .u = 0, .v = 1 },
+            };
+            c.glVertexAttribPointer(0, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &quad[0].x);
+            c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &quad[0].u);
+            c.glDrawArrays(c.GL_TRIANGLES, 0, 6);
+        }
+    }
+
     fn ensureFace(self: *Gfx, index: usize, w: i32, h: i32) bool {
         if (self.face_w != w or self.face_h != h) {
             for (0..9) |i| {
@@ -339,7 +416,7 @@ pub const Gfx = struct {
     }
 
     /// Draws the whole scene onto the output and commits it. False when anything failed.
-    pub fn compose(self: *Gfx, output: *c.wlr_output, layout: *c.wlr_output_layout, root: *c.wlr_scene_tree, lookup: render.Lookup, post: Post, cube: ?Cube) bool {
+    pub fn compose(self: *Gfx, output: *c.wlr_output, layout: *c.wlr_output_layout, root: *c.wlr_scene_tree, lookup: render.Lookup, post: Post, cube: ?Cube, sprites: []const Sprite) bool {
         if (c.eglMakeCurrent(self.display, c.EGL_NO_SURFACE, c.EGL_NO_SURFACE, self.context) == 0) return false;
         defer _ = c.eglMakeCurrent(self.display, c.EGL_NO_SURFACE, c.EGL_NO_SURFACE, c.EGL_NO_CONTEXT);
 
@@ -389,6 +466,7 @@ pub const Gfx = struct {
         } else {
             render.walk(&painter, lookup, &root.node, 0, 0, null);
         }
+        self.drawSprites(&painter, sprites);
 
         if (use_scene) {
             c.glBindFramebuffer(c.GL_FRAMEBUFFER, out_fbo);

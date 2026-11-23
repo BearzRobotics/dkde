@@ -1747,6 +1747,12 @@ pub const SettingsWindow = struct {
         cube.as(gtk.Widget).setName("cube");
         addRowDesc(page, common.tr("Desktop cube"), common.tr("Switching to another desktop turns a cube, with each desktop on a face. Needs the GLES renderer and at least three desktops."), cube.as(gtk.Widget));
 
+        const snow = gtk.Switch.new();
+        snow.setActive(@intFromBool(cfg.effects.snow));
+        _ = gtk.Switch.signals.state_set.connect(snow, *SettingsWindow, &onEffectSwitch, self, .{});
+        snow.as(gtk.Widget).setName("snow");
+        addRowDesc(page, common.tr("Snow"), common.tr("Snow falls over the desktop. Super+P also shows a ring around the pointer for a moment, to find it. Needs the GLES renderer."), snow.as(gtk.Widget));
+
         const dim = gtk.SpinButton.newWithRange(10, 100, 5);
         dim.setValue(@round(@as(f64, cfg.inactive_opacity) * 100));
         _ = gtk.SpinButton.signals.value_changed.connect(dim, *SettingsWindow, &onInactiveOpacity, self, .{});

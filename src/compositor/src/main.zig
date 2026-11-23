@@ -25,6 +25,7 @@ const gfx = @import("gfx.zig");
 const filters = @import("filters.zig");
 const wobble_mod = @import("wobble.zig");
 const cube_mod = @import("cube.zig");
+const snow_mod = @import("snow.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -88,6 +89,11 @@ const Server = struct {
     wobble_ms: u32 = 0,
     /// The cube turning from one workspace to another, while it does.
     cube: ?CubeTurn = null,
+    snow: ?snow_mod.Snow = null,
+    snow_ms: u32 = 0,
+    /// The pointer finder: when it started (0 = not showing).
+    finder_ms: u32 = 0,
+    sprites: [snow_mod.max_flakes + 2]gfx.Sprite = undefined,
     filter: filters.Filter = .none,
     layout_options: layout.Options = .{},
     /// Edge snapping while a window is dragged: on or off (compositor.toml), the zone under the pointer and its preview.
@@ -180,9 +186,10 @@ const Output = struct {
         const post = currentPost(self.output);
         const wobbling = anyWobble();
         const cube = currentCube(nowMs(&now));
-        if (server.animating > 0 or server.overview != null or post.active() or wobbling or blurNeeded() or cube != null) {
+        const sprites = currentSprites(nowMs(&now), self.output);
+        if (server.animating > 0 or server.overview != null or post.active() or wobbling or blurNeeded() or cube != null or sprites.len > 0) {
             const drawn = if (server.gfx) |g|
-                g.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf, post, cube)
+                g.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf, post, cube, sprites)
             else
                 render.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf);
             if (drawn) {
@@ -190,7 +197,7 @@ const Output = struct {
             } else {
                 _ = c.wlr_scene_output_commit(scene_output, null);
             }
-            if (server.animating > 0 or overviewMoving() or zoomMoving() or wobbling or cube != null) c.wlr_output_schedule_frame(self.output);
+            if (server.animating > 0 or overviewMoving() or zoomMoving() or wobbling or cube != null or sprites.len > 0) c.wlr_output_schedule_frame(self.output);
         } else {
             if (server.custom_drawn) {
                 // The scene output does not know what was drawn behind its back.
@@ -1570,6 +1577,42 @@ fn currentCube(now: u32) ?gfx.Cube {
     };
 }
 
+/// Snow and the pointer finder, as the sprites to draw this frame.
+fn currentSprites(now: u32, output: *c.wlr_output) []const gfx.Sprite {
+    var n: usize = 0;
+    var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
+    c.wlr_output_layout_get_box(server.output_layout, output, &box);
+    const w: f32 = @floatFromInt(@max(box.width, 1));
+    const h: f32 = @floatFromInt(@max(box.height, 1));
+    if (server.effects.snow and server.gfx != null) {
+        if (server.snow == null) server.snow = snow_mod.Snow.init(w, h, 160, @as(u64, now) | 1);
+        const dt: f32 = @as(f32, @floatFromInt(@min(now -% server.snow_ms, 100))) / 1000.0;
+        server.snow_ms = now;
+        server.snow.?.step(dt, w, h);
+        for (server.snow.?.flakes[0..server.snow.?.count]) |f| {
+            server.sprites[n] = .{ .x = f.x + @as(f32, @floatFromInt(box.x)), .y = f.y + @as(f32, @floatFromInt(box.y)), .radius = f.r * 1.8, .alpha = 0.5 + f.r * 0.1 };
+            n += 1;
+        }
+    } else server.snow = null;
+    if (server.finder_ms != 0 and server.gfx != null) {
+        const f = anim.fraction(.{ .kind = .open, .start_ms = server.finder_ms, .duration_ms = 900 }, now);
+        if (f >= 1) {
+            server.finder_ms = 0;
+        } else {
+            const e = anim.easeOut(f);
+            server.sprites[n] = .{ .x = @floatCast(server.cursor.*.x), .y = @floatCast(server.cursor.*.y), .radius = 30 + 160 * e, .alpha = 1 - f, .ring = true };
+            n += 1;
+        }
+    }
+    return server.sprites[0..n];
+}
+
+fn showPointer() void {
+    if (server.gfx == null) return;
+    server.finder_ms = currentMs();
+    wakeOutputs();
+}
+
 /// With blur on, a frame that has a translucent window on it is composed by the GLES composer.
 fn blurNeeded() bool {
     if (!server.effects.blur or server.gfx == null) return false;
@@ -2554,6 +2597,7 @@ fn perform(action: keys.Action) void {
         .zoom_out => zoomBy(0.8),
         .zoom_reset => zoomBy(0.01),
         .next_filter => nextFilter(),
+        .show_pointer => showPointer(),
         .scale => openOverview(false),
         .expo => openOverview(true),
         .opacity_up => if (topWindow()) |t| changeOpacity(t, 0.1),

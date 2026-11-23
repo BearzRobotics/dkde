@@ -82,6 +82,8 @@ pub const Effects = struct {
     blur: bool = false,
     /// Switching workspaces turns a cube (needs the GLES renderer and at least three workspaces).
     cube: bool = false,
+    /// Snow falls over the desktop (needs the GLES renderer).
+    snow: bool = false,
 };
 
 /// A filter by its name in compositor.toml ("high-contrast" has a dash).
@@ -237,6 +239,10 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
             .boolean => |b| config.effects.wobbly = b,
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] wobbly: expected true or false; using false")),
         };
+        if (t.get("snow")) |v| switch (v) {
+            .boolean => |b| config.effects.snow = b,
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] snow: expected true or false; using false")),
+        };
         if (t.get("cube")) |v| switch (v) {
             .boolean => |b| config.effects.cube = b,
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] cube: expected true or false; using false")),
@@ -390,6 +396,9 @@ test "effects are off until asked for" {
     const cb = try parse(std.testing.allocator, "[effects]\ncube = true\n", &warnings);
     defer free(std.testing.allocator, cb);
     try std.testing.expect(cb.effects.cube);
+    const sn = try parse(std.testing.allocator, "[effects]\nsnow = true\n", &warnings);
+    defer free(std.testing.allocator, sn);
+    try std.testing.expect(sn.effects.snow);
     const bad = try parse(std.testing.allocator, "[effects]\nanimation-ms = 5\n", &warnings);
     defer free(std.testing.allocator, bad);
     try std.testing.expectEqual(@as(u32, 200), bad.effects.animation_ms);
