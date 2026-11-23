@@ -1729,6 +1729,12 @@ pub const SettingsWindow = struct {
         zoom.as(gtk.Widget).setName("zoom");
         addRowDesc(page, common.tr("Screen magnifier (Super+= and Super+-)"), common.tr("Magnifies the screen around the pointer, up to eight times; Super+0 puts it back. Needs the GLES renderer."), zoom.as(gtk.Widget));
 
+        const wobbly = gtk.Switch.new();
+        wobbly.setActive(@intFromBool(cfg.effects.wobbly));
+        _ = gtk.Switch.signals.state_set.connect(wobbly, *SettingsWindow, &onEffectSwitch, self, .{});
+        wobbly.as(gtk.Widget).setName("wobbly");
+        addRowDesc(page, common.tr("Wobbly windows"), common.tr("Windows stretch and swing like jelly when you drag them, snap them or maximize them. Needs the GLES renderer."), wobbly.as(gtk.Widget));
+
         const dim = gtk.SpinButton.newWithRange(10, 100, 5);
         dim.setValue(@round(@as(f64, cfg.inactive_opacity) * 100));
         _ = gtk.SpinButton.signals.value_changed.connect(dim, *SettingsWindow, &onInactiveOpacity, self, .{});

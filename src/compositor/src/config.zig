@@ -76,6 +76,8 @@ pub const Effects = struct {
     filter: filters.Filter = .none,
     /// Super+= and Super+- magnify the screen around the pointer (needs the GLES renderer).
     zoom: bool = false,
+    /// Windows stretch and swing like jelly when dragged, snapped or maximized (needs the GLES renderer).
+    wobbly: bool = false,
 };
 
 /// A filter by its name in compositor.toml ("high-contrast" has a dash).
@@ -227,6 +229,10 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
             },
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] filter: expected a string; using none")),
         };
+        if (t.get("wobbly")) |v| switch (v) {
+            .boolean => |b| config.effects.wobbly = b,
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] wobbly: expected true or false; using false")),
+        };
         if (t.get("zoom")) |v| switch (v) {
             .boolean => |b| config.effects.zoom = b,
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] zoom: expected true or false; using false")),
@@ -363,6 +369,9 @@ test "effects are off until asked for" {
     defer free(std.testing.allocator, fl);
     try std.testing.expectEqual(filters.Filter.high_contrast, fl.effects.filter);
     try std.testing.expect(fl.effects.zoom);
+    const wb = try parse(std.testing.allocator, "[effects]\nwobbly = true\n", &warnings);
+    defer free(std.testing.allocator, wb);
+    try std.testing.expect(wb.effects.wobbly);
     const bad = try parse(std.testing.allocator, "[effects]\nanimation-ms = 5\n", &warnings);
     defer free(std.testing.allocator, bad);
     try std.testing.expectEqual(@as(u32, 200), bad.effects.animation_ms);

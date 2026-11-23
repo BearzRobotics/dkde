@@ -3,6 +3,36 @@
 
 const std = @import("std");
 
+/// A window drawn through a small mesh: where each node is off its place (wobbly windows). The mesh covers
+/// the window's rectangle (x, y, w, h, in layout coordinates); the displacement is interpolated between nodes.
+pub const Warp = struct {
+    /// Nodes along each side.
+    pub const n = 4;
+    x: f32 = 0,
+    y: f32 = 0,
+    w: f32 = 1,
+    h: f32 = 1,
+    dx: [n * n]f32 = std.mem.zeroes([n * n]f32),
+    dy: [n * n]f32 = std.mem.zeroes([n * n]f32),
+
+    /// How far the point (px, py) moves; points outside the rectangle use the nearest edge's displacement.
+    pub fn at(self: Warp, px: f32, py: f32) [2]f32 {
+        const u = std.math.clamp((px - self.x) / @max(self.w, 1), 0, 1) * @as(f32, @floatFromInt(n - 1));
+        const v = std.math.clamp((py - self.y) / @max(self.h, 1), 0, 1) * @as(f32, @floatFromInt(n - 1));
+        const iu: usize = @min(@as(usize, @intFromFloat(u)), n - 2);
+        const iv: usize = @min(@as(usize, @intFromFloat(v)), n - 2);
+        const fu = u - @as(f32, @floatFromInt(iu));
+        const fv = v - @as(f32, @floatFromInt(iv));
+        const q00 = iv * n + iu;
+        const q10 = q00 + 1;
+        const q01 = q00 + n;
+        const q11 = q01 + 1;
+        const bx = (self.dx[q00] * (1 - fu) + self.dx[q10] * fu) * (1 - fv) + (self.dx[q01] * (1 - fu) + self.dx[q11] * fu) * fv;
+        const by = (self.dy[q00] * (1 - fu) + self.dy[q10] * fu) * (1 - fv) + (self.dy[q01] * (1 - fu) + self.dy[q11] * fu) * fv;
+        return .{ bx, by };
+    }
+};
+
 /// What is drawn of a window: scaled about an anchor point (in layout coordinates), shifted, and
 /// made translucent. The identity leaves the window as it is.
 pub const Xf = struct {
@@ -15,6 +45,8 @@ pub const Xf = struct {
     alpha: f32 = 1,
     /// Draw the window even though it is hidden (Expo shows windows of the other workspaces).
     force: bool = false,
+    /// Wobbly windows: draw the window through this mesh (only the GLES composer does).
+    warp: ?*const Warp = null,
 };
 
 pub const Kind = enum { open, restore, minimize };
@@ -95,4 +127,13 @@ test "a minimize animation shrinks toward its target" {
 test "the clock may wrap" {
     const a = Anim{ .kind = .open, .start_ms = std.math.maxInt(u32) - 10, .duration_ms = 100 };
     try std.testing.expect(fraction(a, 40) > 0.4 and fraction(a, 40) < 0.6);
+}
+
+test "a warp interpolates between its nodes" {
+    var w = Warp{ .x = 0, .y = 0, .w = 300, .h = 300 };
+    for (0..Warp.n * Warp.n) |i| w.dx[i] = @floatFromInt(i % Warp.n); // 0, 1, 2, 3 across
+    try std.testing.expectApproxEqAbs(@as(f32, 0), w.at(0, 100)[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 3), w.at(300, 100)[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 1.5), w.at(150, 40)[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 3), w.at(900, 40)[0], 0.001); // outside: the edge's value
 }

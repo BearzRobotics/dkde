@@ -351,6 +351,38 @@ const Painter = struct {
         c.glDrawArrays(c.GL_TRIANGLES, 0, 6);
     }
 
+    /// A texture through a wobbly window's mesh: the quad becomes a grid, each corner displaced.
+    fn drawWarped(self: *const Painter, xf: Xf, x: f32, y: f32, w: f32, h: f32, uv: [4]f32) void {
+        const cells = 8;
+        var verts: [cells * cells * 6]Vertex = undefined;
+        var n: usize = 0;
+        const warp = xf.warp.?;
+        for (0..cells) |j| {
+            for (0..cells) |i| {
+                const fi: f32 = @floatFromInt(i);
+                const fj: f32 = @floatFromInt(j);
+                const k: f32 = @floatFromInt(cells);
+                const corners = [4][2]f32{ .{ fi / k, fj / k }, .{ (fi + 1) / k, fj / k }, .{ fi / k, (fj + 1) / k }, .{ (fi + 1) / k, (fj + 1) / k } };
+                var v: [4]Vertex = undefined;
+                for (corners, 0..) |cn, q| {
+                    const lx = x + cn[0] * w;
+                    const ly = y + cn[1] * h;
+                    const d = warp.at(lx, ly);
+                    const p = self.dev(lx + d[0], ly + d[1], xf);
+                    v[q] = .{ .x = p[0], .y = p[1], .u = uv[0] + (uv[2] - uv[0]) * cn[0], .v = uv[1] + (uv[3] - uv[1]) * cn[1] };
+                }
+                const tri = [6]usize{ 0, 1, 2, 1, 3, 2 };
+                for (tri) |t| {
+                    verts[n] = v[t];
+                    n += 1;
+                }
+            }
+        }
+        c.glVertexAttribPointer(0, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &verts[0].x);
+        c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &verts[0].u);
+        c.glDrawArrays(c.GL_TRIANGLES, 0, @intCast(n));
+    }
+
     pub fn texture(self: *const Painter, sb: *c.wlr_scene_buffer, tex: *c.wlr_texture, x: f32, y: f32, w: f32, h: f32, xf: ?Xf) void {
         if (!c.wlr_texture_is_gles2(tex)) return;
         var attribs: c.wlr_gles2_texture_attribs = std.mem.zeroes(c.wlr_gles2_texture_attribs);
@@ -379,6 +411,10 @@ const Painter = struct {
             tv0 = @floatCast(sb.src_box.y / th);
             tu1 = @floatCast((sb.src_box.x + sb.src_box.width) / tw);
             tv1 = @floatCast((sb.src_box.y + sb.src_box.height) / th);
+        }
+        if (xf != null and xf.?.warp != null) {
+            self.drawWarped(xf.?, x, y, w, h, .{ tu0, tv0, tu1, tv1 });
+            return;
         }
         const p0 = self.dev(x, y, xf);
         const p1 = self.dev(x + w, y + h, xf);

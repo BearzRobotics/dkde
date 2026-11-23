@@ -4,6 +4,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 ## Unreleased
 
+- **Added** (dkde-compositor, Settings): optional wobbly windows (`[effects] wobbly = true`): a spring mesh stretches and swings the window behind a drag, and when it is snapped or maximized. It is drawn through a warped grid by the GLES composer. Off by default.
 - **Added** (dkde-compositor, Settings): our own GLES composer (`src/gfx.zig`, shaders over the scene graph, pure Zig) and the first effects on it: whole-screen colour filters (negative, grayscale, sepia, high contrast, and simulations of protanopia, deuteranopia and tritanopia) and a screen magnifier around the pointer (Super+=, Super+-, Super+0). Both are off by default, are set on the Effects page, and need the GLES renderer.
 - **Added** (dkde-compositor, Settings): an optional Alt+Tab switcher with window previews, as a strip or a ring (`[effects] switcher = "strip"` or `"ring"`, also on the Effects page). Hold Alt and press Tab to step (Shift reverses), let go of Alt to go to the window in front, Escape to cancel. Minimized windows are listed and restored when picked.
 - **Added** (Settings): an Effects page (Personalization) for the compositor's optional extras: window animations and their length, Scale, Expo, and dimming of windows without focus. The Windows page gains where new windows open and whether dragged windows stick to edges. They are written to compositor.toml and apply at once; under labwc or X11 the page says effects need DKDE's own Wayland compositor.

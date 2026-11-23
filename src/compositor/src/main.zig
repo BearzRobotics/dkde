@@ -23,6 +23,7 @@ const render = @import("render.zig");
 const overview = @import("overview.zig");
 const gfx = @import("gfx.zig");
 const filters = @import("filters.zig");
+const wobble_mod = @import("wobble.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -83,6 +84,7 @@ const Server = struct {
     zoom_target: f32 = 1,
     zoom_now: f32 = 1,
     zoom_ms: u32 = 0,
+    wobble_ms: u32 = 0,
     filter: filters.Filter = .none,
     layout_options: layout.Options = .{},
     /// Edge snapping while a window is dragged: on or off (compositor.toml), the zone under the pointer and its preview.
@@ -162,8 +164,10 @@ const Output = struct {
         _ = std.c.clock_gettime(.MONOTONIC, &now);
         tickAnimations(nowMs(&now));
         tickZoom(nowMs(&now));
+        tickWobbles(nowMs(&now));
         const post = currentPost(self.output);
-        if (server.animating > 0 or server.overview != null or post.active()) {
+        const wobbling = anyWobble();
+        if (server.animating > 0 or server.overview != null or post.active() or wobbling) {
             const drawn = if (server.gfx) |g|
                 g.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf, post)
             else
@@ -173,7 +177,7 @@ const Output = struct {
             } else {
                 _ = c.wlr_scene_output_commit(scene_output, null);
             }
-            if (server.animating > 0 or overviewMoving() or zoomMoving()) c.wlr_output_schedule_frame(self.output);
+            if (server.animating > 0 or overviewMoving() or zoomMoving() or wobbling) c.wlr_output_schedule_frame(self.output);
         } else {
             if (server.custom_drawn) {
                 // The scene output does not know what was drawn behind its back.
@@ -311,6 +315,9 @@ const Toplevel = struct {
     /// The window's own opacity (1 = opaque); dimming for focus comes on top of it.
     opacity: f32 = 1.0,
     anim: ?anim.Anim = null,
+    /// Wobbly windows: the spring mesh while the window swings, and where the window was last frame.
+    wobble: ?*wobble_mod.Wobble = null,
+    last_geom: ?layout.Rect = null,
     /// Minimized by Show Desktop, so that it can bring it back.
     hidden_by_desktop: bool = false,
     maximized: bool = false,
@@ -457,6 +464,7 @@ const Toplevel = struct {
         if (self.unmanaged()) return;
         if (server.grabbed == self) resetCursorMode();
         overviewForget(self);
+        freeWobble(self);
         if (self.anim != null) {
             self.anim = null;
             if (server.animating > 0) server.animating -= 1;
@@ -1500,14 +1508,71 @@ fn currentMs() u32 {
 fn xfOf(node: *c.wlr_scene_node) ?anim.Xf {
     if (node.parent != server.trees[2]) return null;
     const t: *Toplevel = @ptrCast(@alignCast(node.data orelse return null));
-    if (server.overview) |ov| {
-        if (ov.xfFor(t)) |xf| return xf;
+    var result: ?anim.Xf = null;
+    if (server.overview) |ov| result = ov.xfFor(t);
+    if (result == null) {
+        if (t.anim) |a| {
+            const size = t.contentSize();
+            const cx: f32 = @floatFromInt(node.x + @divTrunc(size.w, 2));
+            const cy: f32 = @floatFromInt(node.y + @divTrunc(size.h, 2));
+            result = anim.at(a, currentMs(), cx, cy);
+        }
     }
-    const a = t.anim orelse return null;
-    const size = t.contentSize();
-    const cx: f32 = @floatFromInt(node.x + @divTrunc(size.w, 2));
-    const cy: f32 = @floatFromInt(node.y + @divTrunc(size.h, 2));
-    return anim.at(a, currentMs(), cx, cy);
+    if (t.wobble) |w| {
+        var xf = result orelse anim.Xf{};
+        xf.warp = &w.warp;
+        result = xf;
+    }
+    return result;
+}
+
+fn anyWobble() bool {
+    for (server.toplevels.items) |t| {
+        if (t.wobble != null) return true;
+    }
+    return false;
+}
+
+fn freeWobble(t: *Toplevel) void {
+    if (t.wobble) |w| gpa.destroy(w);
+    t.wobble = null;
+}
+
+fn rectF(r: layout.Rect) [4]f32 {
+    return .{ @floatFromInt(r.x), @floatFromInt(r.y), @floatFromInt(r.w), @floatFromInt(r.h) };
+}
+
+/// Wobbly windows: follows each window's real rectangle with its spring mesh. A window that jumps (a snap,
+/// maximize, a tiling change) starts a wobble from where it was; a drag holds the mesh at the pointer.
+fn tickWobbles(now: u32) void {
+    const dt: f32 = @as(f32, @floatFromInt(@min(now -% server.wobble_ms, 100))) / 1000.0;
+    server.wobble_ms = now;
+    const on = server.effects.wobbly and server.gfx != null;
+    for (server.toplevels.items) |t| {
+        if (!on) {
+            freeWobble(t);
+            continue;
+        }
+        const g = geometryOf(t);
+        if (t.wobble) |w| {
+            const r = rectF(g);
+            w.setRest(r[0], r[1], r[2], r[3]);
+            w.step(dt);
+            if (w.settled()) freeWobble(t);
+        } else if (t.last_geom) |old| {
+            const moved = @abs(old.x - g.x) > 8 or @abs(old.y - g.y) > 8 or @abs(old.w - g.w) > 8 or @abs(old.h - g.h) > 8;
+            if (moved and !t.minimized and server.overview == null and t.anim == null and g.w > 0 and g.h > 0) {
+                const w = gpa.create(wobble_mod.Wobble) catch continue;
+                const o = rectF(old);
+                w.* = wobble_mod.Wobble.init(o[0], o[1], o[2], o[3]);
+                const r = rectF(g);
+                w.setRest(r[0], r[1], r[2], r[3]);
+                w.step(dt);
+                t.wobble = w;
+            }
+        }
+        t.last_geom = g;
+    }
 }
 
 fn wakeOutputs() void {
@@ -1892,6 +1957,9 @@ fn arrangeLayers() void {
 // ---- pointer -------------------------------------------------------------------------------------------------
 
 fn resetCursorMode() void {
+    if (server.grabbed) |t| {
+        if (t.wobble) |w| w.held = null;
+    }
     server.cursor_mode = .passthrough;
     server.grabbed = null;
     hideSnapPreview();
@@ -2021,6 +2089,20 @@ fn beginGrab(t: *Toplevel, mode: CursorMode, edges: u32) void {
     if (mode == .move) {
         server.grab_x = cursor.*.x - @as(f64, @floatFromInt(t.tree.*.node.x));
         server.grab_y = cursor.*.y - @as(f64, @floatFromInt(t.tree.*.node.y));
+        if (server.effects.wobbly and server.gfx != null) {
+            const g = geometryOf(t);
+            if (t.wobble == null) {
+                if (gpa.create(wobble_mod.Wobble)) |w| {
+                    const r = rectF(g);
+                    w.* = wobble_mod.Wobble.init(r[0], r[1], r[2], r[3]);
+                    t.wobble = w;
+                } else |_| {}
+            }
+            if (t.wobble) |w| w.held = .{
+                @floatCast(std.math.clamp(server.grab_x / @as(f64, @floatFromInt(@max(g.w, 1))), 0, 1)),
+                @floatCast(std.math.clamp(server.grab_y / @as(f64, @floatFromInt(@max(g.h, 1))), 0, 1)),
+            };
+        }
     } else {
         const geo = t.contentSize();
         const border_x = @as(f64, @floatFromInt(t.tree.*.node.x)) + (if (edges & c.WLR_EDGE_RIGHT != 0) @as(f64, @floatFromInt(geo.w)) else 0);
