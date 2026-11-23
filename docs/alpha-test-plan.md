@@ -61,3 +61,22 @@ Checked: all five pack formats round trip with folders and symbolic links; `../`
 - Click paths not exercised by hand: network connection Edit/Save/Forget, the
   fixed-address Apply, the graph Save… dialog (PNG, SVG, CSV), tasks sort in
   both directions, right-click menu scroll bars.
+
+## Compositor effects (2026-11-23)
+
+Checked in a headless compositor (keys through `wtype`, pictures through `grim`) and in the QEMU VM with the
+virgl GPU and real pointer input (`src/compositor/qemu/README.md`): window rules, placement, animations, Scale,
+Expo, the Alt+Tab ring, wobbly windows, blur, painting, the negative filter, shelf and tab groups (headless).
+dkde-wm: rules, placement, sticky, opacity property, gestures and tab groups under Xvfb with xdotool.
+
+On real hardware (a GPU with the GLES2 renderer, wlroots 0.19 or 0.20) check, with each effect switched on in
+Settings > Effects and the compositor's log open:
+
+1. The compositor starts with `WLR_RENDERER=gles2` and logs no shader errors; memory stays flat while you drag,
+   switch workspaces and open Scale and Expo for a few minutes (a leaked swapchain once killed it in two).
+2. Mouse paths that could not be driven in the tests: clicking a thumbnail in Scale or the switcher, clicking a
+   tile or dragging a window to another tile in Expo, the shelf thumbnail, Super+right-button gestures, Opacify,
+   the water ripples.
+3. The cube (including the tilt and reflection), motion blur and the lens, which were seen only headless.
+4. Several monitors and fractional scale: the effects assume one output per frame and a non-rotated output.
+5. dkde-wm: the same rules, tab groups and gestures on a real Xorg or XLibre session (and with picom for opacity).

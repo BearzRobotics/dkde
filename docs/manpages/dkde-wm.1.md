@@ -13,6 +13,8 @@ A window manager for X11 (Xorg or XLibre), written against plain XCB, with no co
 
 Windows are not reparented and get no frame: DKDE's programs draw their own title bars. Windows float by default; **Super+T** switches the workspace to tiling and back. **Alt+left-drag** moves a window and **Alt+right-drag** resizes it from the nearest corner. **Super+1** to **Super+9** switch workspace, **Super+Shift+1** to **9** carry the focused window, **Alt+F4** closes, and **Super+Left/Right/Up/Down** snap.
 
+It follows **dkde-compositor** for everything that needs no compositing: **[[rules]]** (matched on WM_CLASS and the title), **placement** (cascade, center, smart, pointer), **snap-windows** (dragged windows meet the edges of the screen and of other windows), the key actions **put**, **sticky**, **above**, **below**, **show-desktop**, **group**, **next-tab**, **prev-tab**, tab groups (a coloured strip above the group's window), mouse gestures (Super and the right button; **[effects] gestures** and **[gestures]**), and window opacity (**inactive-opacity**, **trailfocus**, **opacify**, **opacity-up**, **opacity-down** and a rule's **opacity**), which is set as _NET_WM_WINDOW_OPACITY for a compositing manager such as picom to apply. The visual effects (Scale, Expo, the switcher's previews, animations, colour filters, zoom, lens, wobbly windows, blur, the cube, snow, water, fire, painting and the shelf) need a compositing manager, which dkde-wm is not: their actions do nothing here and it says so once in its log. See **dkde-compositor**(1).
+
 It speaks ICCCM (delete and take-focus protocols, WM_STATE) and EWMH (supporting-WM check, client lists, active window, desktops, work area, window state and type, struts), so taskbars written for EWMH work.
 
 # OPTIONS

@@ -18,7 +18,7 @@ Operands are file names or URIs and are never interpreted as shell text.
 
 # OPTIONS
 --page PAGE
-: Open this page first. PAGE is one of: appearance, taskbar, startmenu, display, audio, power, network, bluetooth, printers, mouse, keyboard, shortcuts, defaults, terminal, datetime, region, about, developer, online, users.
+: Open this page first. PAGE is one of: appearance, taskbar, windows, effects, startmenu, display, audio, power, network, bluetooth, printers, mouse, keyboard, shortcuts, defaults, terminal, datetime, region, about, developer, online, users.
 
 -h, --help
 : Print help to standard output and exit.

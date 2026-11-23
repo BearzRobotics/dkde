@@ -60,7 +60,7 @@ script; `~/.config/dkde/autostart` (a shell script) replaces it. `scripts/dkde-s
 Pointer: Alt+left-drag moves a window, Alt+right-drag resizes it from the nearest corner (a tiled window
 becomes floating); title bars drag as usual.
 
-## Window management extras
+## Window management
 
 ```toml
 [windows]
@@ -74,49 +74,80 @@ floating = true           # also: workspace = 2, sticky, above, below, maximized
 position = "bottom-right" #   opacity = 0.9, position, x, y, width, height
 ```
 
-Built-in keys: Super+D shows the desktop, Super+Ctrl+Up/Down change the focused window's opacity.
-Not done: shading a window to its title bar (windows draw their own title bars, so there is nothing to shade to).
+Actions (for `[keys]` and `[gestures]`): everything listed above plus `put POSITION`, `sticky`, `above`, `below`,
+`show-desktop`, `opacity-up`, `opacity-down`, `group`, `next-tab`, `prev-tab`, `shelf`, `scale`, `expo`, `zoom-in`,
+`zoom-out`, `zoom-reset`, `next-filter`, `show-pointer`, `lens`, `fire`, `paint` and `paint-clear`.
 
-## Effects
+Built-in keys beyond the ones above: Super+D show desktop; Super+Ctrl+Up/Down opacity; Super+G group into tabs and
+Super+] / Super+[ next / previous tab; Super+Shift+S shelf; Super+W Scale; Super+E Expo; Super+= / Super+- / Super+0
+zoom in / out / reset; Super+Ctrl+F next colour filter; Super+M lens; Super+Shift+F fire; Super+Shift+P paint and
+Super+Shift+C wipe it; Super+P find the pointer. Alt+Tab steps through the windows (with previews when `switcher` is on).
+
+## Effects (optional, all off by default)
+
+Each is one key in `[effects]` of compositor.toml, or a switch on the Effects page of Settings, and applies at once.
+"GLES" means it needs wlroots' GLES2 renderer (the default on real hardware; with `WLR_RENDERER=pixman` those are off
+and the log says so). X11: dkde-wm cannot do the ones that need a compositing manager (see below).
+
+| Key | What it does | Needs |
+|---|---|---|
+| `animations`, `animation-ms` | Windows fade and grow when opened or restored, shrink when minimized, fade when closed (last picture kept at every commit) | closing: GLES |
+| `scale` | Super+W: every window of the workspace at once; click one or press Return; Escape leaves | |
+| `expo` | Super+E: every workspace as a tile; click a tile, or drag a window onto another tile | |
+| `switcher = "strip"` or `"ring"` | Alt+Tab with window previews; Tab steps, Shift+Tab back, release Alt to go, Escape cancels | |
+| `trailfocus` | Windows are the more see-through the further back they are in the focus order | |
+| `opacify` | Windows on top of the one the pointer is over turn see-through | |
+| `shelf` | Super+Shift+S shrinks the window to a thumbnail at the bottom right; click it to bring it back | |
+| `groups` | Super+G groups the window with the one below into tabs (coloured strip above; Super+] / Super+[ switch) | |
+| `gestures` | Hold Super, drag with the right button: L R U D (and longer, e.g. `DR`) run actions; `[gestures]` maps them (defaults: L workspace-prev, R workspace-next, U maximize, D show-desktop) | |
+| `filter` | Colour filter on the whole screen: negative, grayscale, sepia, high-contrast, protanopia, deuteranopia, tritanopia (the last three simulate the condition) | GLES |
+| `zoom` | Super+= / Super+- / Super+0 magnify around the pointer, up to 8x | GLES |
+| `lens` | Super+M: a round magnifying lens that follows the pointer | GLES |
+| `wobbly` | Windows swing like jelly when dragged, snapped or maximized | GLES |
+| `blur` | Translucent windows (opacity < 1) lie on a blurred background (not behind their shadows) | GLES |
+| `motion-blur` | A faint trail behind things that move | GLES |
+| `cube` | Switching workspaces turns a cube (3 to 9 workspaces), tilted so its top shows, with a floor reflection | GLES |
+| `snow`, `water`, `fire`, `paint` | Snow over the desktop; ripples from the pointer; flames at the pointer (Super+Shift+F); drawing on the screen (Super+Shift+P, Escape stops, Super+Shift+C wipes) | GLES |
 
 ```toml
 [effects]
-animations = true         # windows fade and grow when they open, and shrink toward the bottom when minimized
+animations = true
 animation-ms = 200        # 50 to 2000
-scale = true              # Super+W: every window of the workspace at once; click one, or Return, to pick it
-filter = "negative"       # a colour filter over the whole screen: negative, grayscale, sepia, high-contrast,
-                          #   or a colour-blindness simulation (protanopia, deuteranopia, tritanopia); Super+Ctrl+F steps through
-zoom = true               # Super+= / Super+- magnify the screen around the pointer (up to 8x), Super+0 resets
-trailfocus = true         # windows further back in the focus order are more see-through
-lens = true               # Super+M: a magnifying lens around the pointer (GLES renderer)
-water = true              # ripples spread from the pointer as it moves (GLES renderer)
-fire = true               # Super+Shift+F: flames follow the pointer (GLES renderer)
-paint = true              # Super+Shift+P: draw on the screen (Escape stops, Super+Shift+C wipes) (GLES renderer)
-snow = true               # snow falls over the desktop (GLES renderer); Super+P rings the pointer to find it
-cube = true               # switching workspaces turns a cube (3 or more workspaces; GLES renderer)
-blur = true               # translucent windows (opacity < 1, or dimmed when unfocused) lie on a blurred background
-wobbly = true             # windows swing like jelly when dragged, snapped or maximized (GLES renderer)
-switcher = "ring"         # Alt+Tab shows previews: "strip" or "ring" (off = the window just comes to the front)
-expo = true               # Super+E: every workspace as a tile; click a tile, or drag a window onto another tile
+switcher = "ring"
+wobbly = true
+
+[gestures]                # optional: a stroke of one to six of L R U D, and an action
+"DR" = "close"
+"UD" = "exec dkde-term"
 ```
 
-In Scale and Expo, Escape (or the same key again) leaves without changing anything, and no key or click reaches
-the programs. The actions are `scale` and `expo`.
+While something moves, frames are drawn by our own composer: with the GLES renderer `src/gfx.zig` (our shaders over
+the scene graph, sharing wlroots' EGL context, rendering into the output's own swapchain and waiting for the GPU
+with glFinish), otherwise `src/render.zig` (a wlroots render pass: scale, shift and fade, no shaders). The rest of
+the time the normal scene output runs, with damage tracking and direct scanout. Not done: shading a window to its
+title bar (windows draw their own title bars), the cube's gears and Atlantis, fire/water as Compiz drew them (ours
+are a pointer flame and pointer ripples).
 
-Zoom and the colour filters (and the effects after them) are drawn by our GLES composer (`src/gfx.zig`: our own
-shaders over the same scene graph, sharing wlroots' EGL context). They need `WLR_RENDERER=gles2` (the default
-on real hardware); with the pixman renderer they are off and the compositor says so in its log.
+## Source map
 
-While an effect is moving something, frames are drawn by our own composer (`src/render.zig`, a wlroots render
-pass over the same scene graph); the rest of the time the normal scene output runs, with damage tracking and
-direct scanout. A closing window fades out from its last picture (kept at every commit, GLES renderer only).
+`src/main.zig` (the compositor), `layout.zig`, `config.zig`, `keys.zig`, `place.zig` (put, smart placement,
+magnetism), `rules.zig`, `anim.zig`, `overview.zig` (Scale and Expo layouts, switcher thumbnails), `wobble.zig`,
+`cube.zig`, `filters.zig`, `snow.zig`, `fire.zig`, `gesture.zig` (all pure and unit-tested), `render.zig` and `gfx.zig`
+(the composers). `shared.zig` exports the pure ones to dkde-wm and Settings.
 
-Optional extras in the style of Compiz, each switched in Settings (Effects) or in `[effects]` of
-`compositor.toml`, all off by default. They are Wayland only: on X11 `dkde-wm` does not composite, so the
-visual effects there need a custom X11 compositing manager (not written; see `ai/COMPOSITOR-SPEC.md`). Window
-rules, placement and the other no-rendering features are meant for both.
+## X11 (dkde-wm)
+
+The effects above are Wayland only: on X11 nothing composes the screen, so they need a compositing manager of our
+own (XComposite redirection, damage tracking, a GL pass), which does not exist yet (`ai/COMPOSITOR-SPEC.md`). dkde-wm
+has parity for everything that needs no compositing: `[[rules]]`, `placement`, `snap-windows`, `put`, `sticky`,
+`above`, `below`, `show-desktop`, `group` / tabs, `gestures`, and window opacity (`inactive-opacity`, `trailfocus`,
+`opacify`, `opacity-up/down` and rule opacity are set as `_NET_WM_WINDOW_OPACITY`, which a compositing manager such
+as picom applies). The visual effects (Scale, Expo, switcher previews, animations, filters, zoom, lens, wobbly, blur,
+cube, snow, water, fire, paint, shelf) do nothing there and dkde-wm says so once in its log.
 
 ## Tests
 
-`zig build test` runs the tests of the parts with no wlroots in them (layout, settings, shortcuts).
-Everything else is checked by running it: see `qemu/README.md` and `qemu/vm.sh`.
+`zig build test` runs the tests of the parts with no wlroots in them (layout, settings, shortcuts, placement, rules,
+animation timing, overview and cube geometry, wobble physics, filters, snow, fire, gestures).
+Everything else is checked by running it: headless (`WLR_BACKENDS=headless WLR_RENDERER=gles2`, `wtype` for keys,
+`grim` for pictures) or in the VM with real pointer input (`qemu/README.md`, `qemu/vm.sh`).

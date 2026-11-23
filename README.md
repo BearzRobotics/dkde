@@ -6,6 +6,12 @@ GTK4 (no libadwaita). It runs on labwc by default, or on DKDE's own experimental
 Wayland compositor (`dkde-compositor`) or X11 window manager (`dkde-wm`); pick one
 at the login screen. See `ai/DKDE-SPEC.md` for the design.
 
+The compositor also offers optional, Compiz-style desktop effects (window rules and tab groups, Scale and Expo
+overviews, an Alt+Tab switcher with previews, animations, and with the GLES renderer colour filters, a magnifier,
+wobbly windows, blur, a desktop cube and more), all off until switched on in Settings > Effects; see
+`src/compositor/README.md`. On X11, `dkde-wm` has everything that needs no compositing; the visual effects need a
+compositing manager of their own.
+
 | Binary | What it is |
 |---|---|
 | `dkde-panel` | Taskbar, start menu, clock, wallpaper |
@@ -15,7 +21,7 @@ at the login screen. See `ai/DKDE-SPEC.md` for the design.
 | `dkde-edit` | Text editor |
 | `dkde-help` | Help viewer: DKDE's documents and the system's man pages, in tabs |
 | `dkde-pdf` | PDF viewer: tabs, search, text selection, bookmarks, highlights, notes and form filling |
-| `dkde-charmap` | Character map |
+| `dkde-charmap` | Character map: every assigned Unicode block with names, search, and private-use fonts such as Rosquin Glyphs and RE_iO Script |
 | `dkde-clock` | Stopwatch, timer, alarm |
 | `dkde-calendar` | Calendar with events, notes and liturgical calendars |
 | `dkde-color` | Colour mixer |

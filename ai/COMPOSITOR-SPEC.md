@@ -16,15 +16,14 @@ The project will contain:
 - A shared desktop integration interface used by DKDE applications.
 - Backend-specific implementations using the appropriate protocols, standards, and extensions.
 
-Desktop effects (Compiz-style: overview, switchers, animations, wobbly windows, blur, cube, accessibility zoom
-and colour filters) are optional, off by default, and switched one by one in Settings. They are written in pure
-Zig, with no dependency on scenefx or another compositor library. They are **Wayland only**: the compositor owns
-the final picture there. On X11, `dkde-wm` is only a window manager and nothing composites, so the visual
-effects need a custom X11 compositing manager (XComposite redirection, damage tracking and our own GL pass,
-which is the optional X11 compositor above). That is a separate piece of work. The effects code is written
-independent of the backend so that it can sit under that compositor later. The behaviour that needs no
-rendering (window rules, placement, put, sticky, always-on-top, shade, snapping) belongs to the window manager
-core and is meant to work on both.
+Desktop effects (Compiz-style) are optional, off by default, and switched one by one in Settings (Effects page) or `[effects]` in compositor.toml. They are written in pure Zig, with no dependency on scenefx or another compositor library. Status (2026-11-23), Wayland compositor:
+
+- Window management with no rendering: rules, placement, edge magnetism, put / sticky / above / below, show desktop, per-window opacity, trail focus, opacify, tab groups, mouse gestures.
+- With wlroots' render pass (any renderer): open / minimize / restore animations, Scale, Expo, the Alt+Tab strip and ring, the shelf.
+- With our GLES composer (`src/gfx.zig`, needs the GLES2 renderer): close animations, colour filters, zoom and lens, wobbly windows, blur, motion blur, the desktop cube, snow, water, fire, painting on the screen.
+- Not done: shading a window to its title bar (windows draw their own title bars), the cube's gears and Atlantis.
+
+They are **Wayland only**: the compositor owns the final picture there. On X11, `dkde-wm` is only a window manager and nothing composites, so the visual effects need a custom X11 compositing manager (XComposite redirection, damage tracking and our own GL pass, which is the optional X11 compositor above). That is a separate piece of work, not started. `dkde-wm` has parity for everything that needs no compositing (rules, placement, magnetism, put / sticky / above / below, show desktop, tab groups, gestures, and window opacity as `_NET_WM_WINDOW_OPACITY` for any compositing manager to apply). The pure logic (placement, rules, key and gesture parsing, animation, overview and cube geometry, wobble physics, filters) has no display code and is shared through `src/compositor/src/shared.zig`, so an X11 compositing manager can reuse it.
 
 The existing GTK4 desktop shell and applications will remain independent of the compositor implementation.
 
