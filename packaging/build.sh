@@ -69,7 +69,7 @@ check() {
         [ -n "$WLROOTS" ] || die "dkde-compositor needs wlroots 0.19 or 0.20 development files (or COMPOSITOR=no)."
         command -v wayland-scanner >/dev/null 2>&1 || die "dkde-compositor needs wayland-scanner (or COMPOSITOR=no)."
         missing=""
-        for m in "wlroots-$WLROOTS" wayland-server xkbcommon pixman-1 libinput; do
+        for m in "wlroots-$WLROOTS" wayland-server xkbcommon pixman-1 libinput glesv2 egl; do
             pkg-config --exists "$m" 2>/dev/null || missing="$missing $m"
         done
         [ -z "$missing" ] || die "dkde-compositor: missing development files for:$missing (or COMPOSITOR=no)"

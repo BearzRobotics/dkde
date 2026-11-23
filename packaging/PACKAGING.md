@@ -32,9 +32,11 @@ Make one yourself from a clean checkout with `scripts/make-source-tarball.sh`.
 | Wayland client library | any | `wayland-client` | `libwayland-dev` |
 | wayland-protocols | any | | `wayland-protocols` |
 | pkg-config | any | | `pkg-config` |
-| wlroots, wayland-server, xkbcommon, pixman, libinput, `wayland-scanner` (for **dkde-compositor**; skip with `COMPOSITOR=no`) | wlroots 0.19 or 0.20 | `wlroots-0.19` or `wlroots-0.20` | `libwlroots-0.19-dev` (or the distro's), `libxkbcommon-dev`, `libpixman-1-dev`, `libinput-dev`, `libwayland-bin` |
+| wlroots, wayland-server, xkbcommon, pixman, libinput, GLESv2 and EGL, `wayland-scanner` (for **dkde-compositor**; skip with `COMPOSITOR=no`) | wlroots 0.19 or 0.20 | `wlroots-0.19` or `wlroots-0.20`, `glesv2`, `egl` | `libwlroots-0.19-dev` (or the distro's), `libxkbcommon-dev`, `libpixman-1-dev`, `libinput-dev`, `libgles-dev`, `libegl-dev`, `libwayland-bin` |
 | libxcb, libxcb-randr, libxkbcommon, cairo, pango (for **dkde-wm**; skip with `WM=no`) | any | `xcb`, `xcb-randr`, `xkbcommon`, `pangocairo` | `libxcb1-dev`, `libxcb-randr0-dev`, `libxkbcommon-dev`, `libpango1.0-dev` |
 | C compiler / libc headers | for linking only | | `build-essential` (dkrescue: LLVM/Clang) |
+
+The compositor's optional desktop effects (colour filters, zoom, wobbly windows, blur, cube, snow) draw with GLES shaders, so it links GLESv2 and EGL; at run time they need wlroots' GLES2 renderer (Mesa; the default on real hardware) and switch themselves off with the pixman renderer.
 
 `dkde-compositor` (`src/compositor`) and `dkde-wm` (`src/xwm`) are separate Zig
 packages so the main build needs neither wlroots nor X11 headers.
