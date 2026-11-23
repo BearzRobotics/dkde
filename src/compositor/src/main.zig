@@ -16,6 +16,8 @@ const config = @import("config.zig");
 const workspaces = @import("workspaces.zig");
 const keys = @import("keys.zig");
 const developer = @import("developer.zig");
+const place_mod = @import("place.zig");
+const rules = @import("rules.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -58,6 +60,11 @@ const Server = struct {
     /// A Super key went down and nothing else has been pressed since (a tap opens the Start menu).
     super_pending: bool = false,
     policy: layout.Policy = .floating,
+    /// [windows] placement, snap-windows, inactive-opacity and the [[rules]].
+    placement: config.Placement = .cascade,
+    snap_windows: bool = true,
+    inactive_opacity: f32 = 1.0,
+    rules: []const rules.Rule = &.{},
     layout_options: layout.Options = .{},
     /// Edge snapping while a window is dragged: on or off (compositor.toml), the zone under the pointer and its preview.
     edge_snap: bool = true,
@@ -256,6 +263,15 @@ const Toplevel = struct {
     /// Where it was before tiling took it, to put it back.
     saved: ?layout.Rect = null,
     minimized: bool = false,
+    /// Visible on every workspace.
+    sticky: bool = false,
+    /// Kept above or below the other windows.
+    above: bool = false,
+    below: bool = false,
+    /// The window's own opacity (1 = opaque); dimming for focus comes on top of it.
+    opacity: f32 = 1.0,
+    /// Minimized by Show Desktop, so that it can bring it back.
+    hidden_by_desktop: bool = false,
     maximized: bool = false,
     fullscreen: bool = false,
     /// Where it was before it was maximized or made fullscreen.
@@ -378,12 +394,19 @@ const Toplevel = struct {
         // A window with a parent (a dialog) or a fixed size is not tiled.
         if (self.hasParent() or (self.xs != null and self.xs.?.override_redirect)) self.floating = true;
         self.workspace = server.ws.active;
-        // Every window starts at a cascade spot, so the place it goes back to when tiling is switched off is a good one.
-        const spot = layout.cascade(workArea(), server.opened);
-        c.wlr_scene_node_set_position(&self.tree.*.node, spot.x, spot.y);
+        // The [[rules]] that match this window, then where it goes (a cascade spot unless asked otherwise, so
+        // the place it goes back to when tiling is switched off is a good one).
+        const rule = rules.resolve(server.rules, spanOrEmpty(self.appId()), spanOrEmpty(self.title()));
+        applyRule(self, rule);
+        placeNew(self, rule);
         server.opened += 1;
         addHandle(self);
-        focus(self);
+        showIfVisible(self);
+        if (onActiveWorkspace(self)) focus(self);
+        updateStacking();
+        applyOpacity(self);
+        if (rule.maximized == true) setMaximized(self, true);
+        if (rule.fullscreen == true) setFullscreen(self, true);
         arrange();
     }
 
@@ -407,6 +430,8 @@ const Toplevel = struct {
                 _ = c.wlr_xdg_toplevel_set_size(x, 0, 0);
             }
         }
+        // New surfaces of the window (menus, subsurfaces) start opaque.
+        if (self.opacity != 1.0 or server.inactive_opacity != 1.0) applyOpacity(self);
     }
 
     fn onDestroy(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
@@ -499,7 +524,7 @@ fn onSetAppId(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
 fn onHandleActivate(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
     const t: *Toplevel = @fieldParentPtr("handle_activate", listener.?);
     // Asking for a window on another workspace goes there first.
-    if (t.workspace != server.ws.active) switchWorkspace(t.workspace);
+    if (!onActiveWorkspace(t)) switchWorkspace(t.workspace);
     setMinimized(t, false);
     focus(t);
 }
@@ -686,8 +711,12 @@ fn Lock_onDestroy(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
 // ---- workspaces ----------------------------------------------------------------------------------------------
 
 /// A window is drawn when it is on the current workspace and not minimized.
+fn onActiveWorkspace(t: *const Toplevel) bool {
+    return t.sticky or t.workspace == server.ws.active;
+}
+
 fn showIfVisible(t: *Toplevel) void {
-    c.wlr_scene_node_set_enabled(&t.tree.*.node, !t.minimized and t.workspace == server.ws.active);
+    c.wlr_scene_node_set_enabled(&t.tree.*.node, !t.minimized and onActiveWorkspace(t));
 }
 
 /// The window on top among those on the current workspace, if any.
@@ -695,7 +724,7 @@ fn topWindow() ?*Toplevel {
     var i = server.toplevels.items.len;
     while (i > 0) : (i -= 1) {
         const t = server.toplevels.items[i - 1];
-        if (!t.minimized and t.workspace == server.ws.active) return t;
+        if (!t.minimized and onActiveWorkspace(t)) return t;
     }
     return null;
 }
@@ -775,7 +804,7 @@ fn arrange() void {
     var tiled: std.ArrayList(*Toplevel) = .empty;
     defer tiled.deinit(gpa);
     for (server.managed.items) |t| {
-        if (!t.floating and !t.minimized and !t.maximized and !t.fullscreen and t.workspace == server.ws.active) tiled.append(gpa, t) catch return;
+        if (!t.floating and !t.minimized and !t.maximized and !t.fullscreen and !t.sticky and t.workspace == server.ws.active) tiled.append(gpa, t) catch return;
     }
     const cells = gpa.alloc(layout.Rect, tiled.items.len) catch return;
     defer gpa.free(cells);
@@ -935,6 +964,174 @@ fn addPopup(xdg: *c.wlr_xdg_popup, parent_tree: *c.wlr_scene_tree) void {
 }
 
 /// Gives the keyboard focus to `t` and raises it.
+// ---- rules, placement, stacking and opacity ---------------------------------------------------------------------
+
+fn spanOrEmpty(p: [*c]const u8) []const u8 {
+    return if (p == null) "" else std.mem.span(p);
+}
+
+/// What the window's `[[rules]]` say about it, apart from where it goes (see `placeNew`).
+fn applyRule(t: *Toplevel, r: rules.Rule) void {
+    if (r.floating) |f| t.floating = f;
+    if (r.workspace) |w| {
+        if (w < server.ws.count) t.workspace = w;
+    }
+    if (r.sticky) |v| t.sticky = v;
+    if (r.above) |v| {
+        t.above = v;
+        if (v) t.below = false;
+    }
+    if (r.below) |v| {
+        t.below = v;
+        if (v) t.above = false;
+    }
+    if (r.opacity) |v| t.opacity = v;
+}
+
+/// The rectangles of the other windows on the screen (for smart placement and edge magnetism).
+fn otherWindows(except: *const Toplevel, out: []layout.Rect) usize {
+    var n: usize = 0;
+    for (server.managed.items) |o| {
+        if (o == except or o.minimized or !onActiveWorkspace(o) or n >= out.len) continue;
+        out[n] = geometryOf(o);
+        n += 1;
+    }
+    return n;
+}
+
+/// Puts a window that has just appeared where its rule or the `placement` setting says.
+fn placeNew(t: *Toplevel, r: rules.Rule) void {
+    const area = workArea();
+    const size = t.contentSize();
+    const w = r.width orelse (if (size.w > 0) size.w else 640);
+    const h = r.height orelse (if (size.h > 0) size.h else 420);
+    var rect = layout.Rect{ .x = area.x, .y = area.y, .w = w, .h = h };
+    if (r.x != null or r.y != null) {
+        rect.x = r.x orelse area.x;
+        rect.y = r.y orelse area.y;
+    } else if (r.position) |p| {
+        rect = place_mod.put(area, w, h, p);
+    } else switch (server.placement) {
+        .cascade => {
+            const spot = layout.cascade(area, server.opened);
+            rect.x = spot.x;
+            rect.y = spot.y;
+        },
+        .center => rect = place_mod.put(area, w, h, .center),
+        .smart => {
+            var others: [64]layout.Rect = undefined;
+            const n = otherWindows(t, &others);
+            const spot = place_mod.smart(area, w, h, others[0..n]);
+            rect.x = spot.x;
+            rect.y = spot.y;
+        },
+        .pointer => {
+            rect.x = std.math.clamp(@as(i32, @intFromFloat(server.cursor.*.x)) - @divTrunc(w, 2), area.x, @max(area.x, area.x + area.w - w));
+            rect.y = std.math.clamp(@as(i32, @intFromFloat(server.cursor.*.y)) - @divTrunc(h, 2), area.y, @max(area.y, area.y + area.h - h));
+        },
+    }
+    c.wlr_scene_node_set_position(&t.tree.*.node, rect.x, rect.y);
+    if (r.width != null or r.height != null) place(t, rect);
+}
+
+/// Windows kept above or below the rest go back to their layer after anything else was raised.
+fn updateStacking() void {
+    for (server.toplevels.items) |t| {
+        if (t.below) c.wlr_scene_node_lower_to_bottom(&t.tree.*.node);
+    }
+    for (server.toplevels.items) |t| {
+        if (t.above) c.wlr_scene_node_raise_to_top(&t.tree.*.node);
+    }
+}
+
+fn setBufferOpacity(buffer: ?*c.wlr_scene_buffer, _: c_int, _: c_int, data: ?*anyopaque) callconv(.c) void {
+    const v: *f32 = @ptrCast(@alignCast(data.?));
+    c.wlr_scene_buffer_set_opacity(buffer, v.*);
+}
+
+fn isFocused(t: *const Toplevel) bool {
+    const surface = t.surf() orelse return false;
+    return server.seat.*.keyboard_state.focused_surface == surface;
+}
+
+/// The window's own opacity, times the dimming for windows that do not have the focus.
+fn applyOpacity(t: *Toplevel) void {
+    var v: f32 = t.opacity;
+    if (server.inactive_opacity < 1.0 and !isFocused(t)) v *= server.inactive_opacity;
+    c.wlr_scene_node_for_each_buffer(&t.tree.*.node, setBufferOpacity, &v);
+}
+
+fn refreshOpacity() void {
+    for (server.toplevels.items) |t| applyOpacity(t);
+}
+
+/// Put the window at a corner, an edge or the centre; it keeps its size and leaves the tiling.
+fn putWindow(t: *Toplevel, pos: place_mod.Position) void {
+    if (t.maximized) {
+        t.maximized = false;
+        t.setMaxFlag(false);
+    }
+    t.floating = true;
+    t.cell = null;
+    t.saved = null;
+    t.setTiledEdges(0);
+    const size = t.contentSize();
+    const rect = place_mod.put(workArea(), size.w, size.h, pos);
+    c.wlr_scene_node_set_position(&t.tree.*.node, rect.x, rect.y);
+    arrange();
+}
+
+fn toggleSticky(t: *Toplevel) void {
+    t.sticky = !t.sticky;
+    if (!t.sticky) t.workspace = server.ws.active;
+    showIfVisible(t);
+    arrange();
+}
+
+fn toggleAbove(t: *Toplevel) void {
+    t.above = !t.above;
+    if (t.above) t.below = false;
+    updateStacking();
+}
+
+fn toggleBelow(t: *Toplevel) void {
+    t.below = !t.below;
+    if (t.below) t.above = false;
+    updateStacking();
+}
+
+fn changeOpacity(t: *Toplevel, delta: f32) void {
+    t.opacity = std.math.clamp(t.opacity + delta, 0.2, 1.0);
+    applyOpacity(t);
+}
+
+/// Minimizes every window of the workspace, or brings back the ones it hid.
+fn showDesktop() void {
+    var batch: [64]*Toplevel = undefined;
+    var n: usize = 0;
+    for (server.toplevels.items) |t| {
+        if (!t.minimized and onActiveWorkspace(t) and n < batch.len) {
+            batch[n] = t;
+            n += 1;
+        }
+    }
+    if (n > 0) {
+        for (batch[0..n]) |t| t.hidden_by_desktop = true;
+        for (batch[0..n]) |t| setMinimized(t, true);
+        return;
+    }
+    for (server.toplevels.items) |t| {
+        if (t.hidden_by_desktop and n < batch.len) {
+            batch[n] = t;
+            n += 1;
+        }
+    }
+    for (batch[0..n]) |t| {
+        t.hidden_by_desktop = false;
+        setMinimized(t, false);
+    }
+}
+
 fn focus(t: *Toplevel) void {
     if (server.locked or t.unmanaged()) return;
     const seat = server.seat;
@@ -956,6 +1153,8 @@ fn focus(t: *Toplevel) void {
     if (c.wlr_seat_get_keyboard(seat)) |keyboard| {
         c.wlr_seat_keyboard_notify_enter(seat, surface, keyboard.*.keycodes[0..].ptr, keyboard.*.num_keycodes, &keyboard.*.modifiers);
     }
+    updateStacking();
+    if (server.inactive_opacity < 1.0) refreshOpacity();
 }
 
 const Hit = struct { toplevel: ?*Toplevel, layer: ?*LayerSurface, surface: *c.wlr_surface, sx: f64, sy: f64 };
@@ -1255,7 +1454,17 @@ fn processCursorMotion(time: u32) void {
     switch (server.cursor_mode) {
         .move => {
             if (server.grabbed) |t| {
-                c.wlr_scene_node_set_position(&t.tree.*.node, @intFromFloat(cursor.*.x - server.grab_x), @intFromFloat(cursor.*.y - server.grab_y));
+                var nx: i32 = @intFromFloat(cursor.*.x - server.grab_x);
+                var ny: i32 = @intFromFloat(cursor.*.y - server.grab_y);
+                if (server.snap_windows) {
+                    var others: [64]layout.Rect = undefined;
+                    const n = otherWindows(t, &others);
+                    const size = t.contentSize();
+                    const meet = place_mod.magnet(.{ .x = nx, .y = ny, .w = size.w, .h = size.h }, workArea(), others[0..n], 14);
+                    nx = meet.x;
+                    ny = meet.y;
+                }
+                c.wlr_scene_node_set_position(&t.tree.*.node, nx, ny);
                 updateSnapPreview();
             }
             return;
@@ -1548,7 +1757,7 @@ fn perform(action: keys.Action) void {
         .next_window => {
             // The window at the bottom of this workspace comes to the top.
             for (server.toplevels.items) |t| {
-                if (!t.minimized and t.workspace == server.ws.active) {
+                if (!t.minimized and onActiveWorkspace(t)) {
                     focus(t);
                     break;
                 }
@@ -1559,7 +1768,7 @@ fn perform(action: keys.Action) void {
             var i = server.toplevels.items.len;
             while (i > 0) : (i -= 1) {
                 const t = server.toplevels.items[i - 1];
-                if (t.minimized or t.workspace != server.ws.active) continue;
+                if (t.minimized or !onActiveWorkspace(t)) continue;
                 seen += 1;
                 if (seen == 2) {
                     focus(t);
@@ -1578,6 +1787,13 @@ fn perform(action: keys.Action) void {
         .move_to_prev => moveWindowToWorkspace((server.ws.active + server.ws.count - 1) % server.ws.count),
         .move_to_next => moveWindowToWorkspace((server.ws.active + 1) % server.ws.count),
         .snap => |region| if (topWindow()) |t| snapTo(t, region),
+        .put => |pos| if (topWindow()) |t| putWindow(t, pos),
+        .sticky => if (topWindow()) |t| toggleSticky(t),
+        .above => if (topWindow()) |t| toggleAbove(t),
+        .below => if (topWindow()) |t| toggleBelow(t),
+        .show_desktop => showDesktop(),
+        .opacity_up => if (topWindow()) |t| changeOpacity(t, 0.1),
+        .opacity_down => if (topWindow()) |t| changeOpacity(t, -0.1),
         .exec => |cmd| runCommand(cmd),
     }
 }
@@ -1828,8 +2044,16 @@ fn loadConfig() void {
     input_settings.layout = null;
     input_settings.variant = null;
     input_settings.options = null;
+    rules.freeAll(gpa, server.rules);
+    server.rules = cfg.rules;
+    cfg.rules = &.{};
+    server.placement = cfg.placement;
+    server.snap_windows = cfg.snap_windows;
+    const dimming_changed = server.inactive_opacity != cfg.inactive_opacity;
+    server.inactive_opacity = cfg.inactive_opacity;
     config.free(gpa, cfg);
     cfg.keys = &.{};
+    if (dimming_changed) refreshOpacity();
     const was = server.policy;
     applyInput();
     server.ws.count = cfg.workspaces;

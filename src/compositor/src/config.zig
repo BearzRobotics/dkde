@@ -22,6 +22,14 @@
 //!   [keys]                   # shortcuts, added to the built-in set (see keys.zig)
 //!   "W-Return" = "exec dkde-term"
 //!
+//!   [windows] also takes: placement = "cascade" | "center" | "smart" | "pointer" (where new windows go),
+//!   snap-windows = true (dragged windows meet the edges of other windows), inactive-opacity = 0.85
+//!   (dim windows that are not focused; 1 turns it off)
+//!
+//!   [[rules]]                # per-window rules: see rules.zig
+//!   app_id = "mpv"
+//!   floating = true
+//!
 //!   [workspaces]
 //!   count = 4                # virtual desktops, 1 to 9 (Super+1…9 switches, Super+Shift+1…9 moves a window)
 
@@ -29,6 +37,8 @@ const std = @import("std");
 const toml = @import("toml");
 const layout = @import("layout.zig");
 const keys = @import("keys.zig");
+const rules = @import("rules.zig");
+const place = @import("place.zig");
 
 pub const Input = struct {
     /// xkb layout, variant and options (e.g. "us", "intl", "ctrl:nocaps"); null leaves them to XKB_DEFAULT_*.
@@ -43,6 +53,9 @@ pub const Input = struct {
     pointer_speed: ?f64 = null,
 };
 
+/// Where a new window is put.
+pub const Placement = enum { cascade, center, smart, pointer };
+
 pub const Config = struct {
     policy: layout.Policy = .floating,
     options: layout.Options = .{},
@@ -50,6 +63,13 @@ pub const Config = struct {
     focus_follows_mouse: bool = false,
     /// Dragging a window to a screen edge snaps it (left or right half, a corner quarter, the top edge maximizes).
     edge_snap: bool = true,
+    placement: Placement = .cascade,
+    /// Dragged windows meet the edges of other windows (and the screen).
+    snap_windows: bool = true,
+    /// Opacity of windows that are not focused (1 = no dimming).
+    inactive_opacity: f32 = 1.0,
+    /// The `[[rules]]` (owned: see `free`).
+    rules: []const rules.Rule = &.{},
     /// How many virtual desktops (1 to 9).
     workspaces: usize = 4,
     input: Input = .{},
@@ -66,6 +86,7 @@ pub fn free(gpa: std.mem.Allocator, config: Config) void {
         gpa.free(e.action);
     }
     gpa.free(config.keys);
+    rules.freeAll(gpa, config.rules);
 }
 
 /// Reads settings from TOML text. Problems are described in `warnings`.
@@ -140,7 +161,30 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
             else => try warnings.append(gpa, try gpa.dupe(u8, "[workspaces] count: expected an integer; using the default")),
         };
     }
+    config.rules = try rules.parse(gpa, doc.root, warnings);
     const windows = doc.root.getTable("windows") orelse return config;
+    if (windows.get("placement")) |v| switch (v) {
+        .string => |s| {
+            if (std.meta.stringToEnum(Placement, s)) |pl| {
+                config.placement = pl;
+            } else try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[windows] placement = \"{s}\": expected cascade, center, smart or pointer; using cascade", .{s}));
+        },
+        else => try warnings.append(gpa, try gpa.dupe(u8, "[windows] placement: expected a string; using cascade")),
+    };
+    if (windows.get("snap-windows")) |v| switch (v) {
+        .boolean => |b| config.snap_windows = b,
+        else => try warnings.append(gpa, try gpa.dupe(u8, "[windows] snap-windows: expected true or false; using true")),
+    };
+    if (windows.get("inactive-opacity")) |v| {
+        const f: ?f64 = switch (v) {
+            .float => |x| x,
+            .integer => |i| @floatFromInt(i),
+            else => null,
+        };
+        if (f != null and f.? >= 0.1 and f.? <= 1.0) {
+            config.inactive_opacity = @floatCast(f.?);
+        } else try warnings.append(gpa, try gpa.dupe(u8, "[windows] inactive-opacity: expected 0.1 to 1; using 1"));
+    }
     if (windows.get("layout")) |v| switch (v) {
         .string => |s| {
             if (std.mem.eql(u8, s, "floating")) {
@@ -197,6 +241,25 @@ test "focus follows the mouse when asked, and bad values are reported" {
     defer free(std.testing.allocator, bad);
     try std.testing.expect(!bad.focus_follows_mouse);
     try std.testing.expectEqual(@as(usize, 1), warnings.items.len);
+}
+
+test "placement, window snapping, dimming and rules" {
+    var warnings: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (warnings.items) |w| std.testing.allocator.free(w);
+        warnings.deinit(std.testing.allocator);
+    }
+    const config = try parse(std.testing.allocator, "[windows]\nplacement = \"smart\"\nsnap-windows = false\ninactive-opacity = 0.8\n[[rules]]\napp_id = \"mpv\"\nfloating = true\n", &warnings);
+    defer free(std.testing.allocator, config);
+    try std.testing.expectEqual(Placement.smart, config.placement);
+    try std.testing.expect(!config.snap_windows);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.8), config.inactive_opacity, 0.001);
+    try std.testing.expectEqual(@as(usize, 1), config.rules.len);
+    try std.testing.expectEqual(@as(usize, 0), warnings.items.len);
+    const bad = try parse(std.testing.allocator, "[windows]\nplacement = \"random\"\ninactive-opacity = 4\n", &warnings);
+    defer free(std.testing.allocator, bad);
+    try std.testing.expectEqual(Placement.cascade, bad.placement);
+    try std.testing.expectEqual(@as(usize, 2), warnings.items.len);
 }
 
 test "an empty document gives the defaults" {

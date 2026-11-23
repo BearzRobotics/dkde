@@ -5,3 +5,5 @@ pub const layout = @import("layout.zig");
 pub const keys = @import("keys.zig");
 pub const config = @import("config.zig");
 pub const developer = @import("developer.zig");
+pub const place = @import("place.zig");
+pub const rules = @import("rules.zig");

@@ -47,7 +47,7 @@ Keys are written like labwc's: modifiers `S` `C` `A` `W` (Super) joined with `-`
 (`C-A-t`, `W-Left`, `Print`). A bare `Super_L` fires when tapped. Actions: `exec COMMAND`, `quit`, `close`,
 `next-window`, `prev-window`, `maximize`, `fullscreen`, `float`, `toggle-layout`, `workspace N`,
 `workspace-prev`, `workspace-next`, `move-to-workspace N`, `move-to-prev`, `move-to-next`,
-`snap REGION` (left-half, right-half, top-half, bottom-half, left-third, middle-third, right-third,
+`put POSITION` (top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right: moves the window there, keeping its size), `sticky` (on every workspace), `above`, `below` (keep the window over or under the others), `show-desktop` (minimize everything, or bring it back), `opacity-up`, `opacity-down`, `snap REGION` (left-half, right-half, top-half, bottom-half, left-third, middle-third, right-third,
 left-two-thirds, right-two-thirds, top-left, top-right, bottom-left, bottom-right), `none`.
 The built-in set is `src/keys.zig` (`defaults`): dkde's shortcuts (Start menu, terminal, lock, screenshots,
 volume, snapping, dkde-snap's regions) plus Super+digit workspaces, Super+T (floating/tiling), Super+Shift+Space
@@ -59,6 +59,23 @@ script; `~/.config/dkde/autostart` (a shell script) replaces it. `scripts/dkde-s
 
 Pointer: Alt+left-drag moves a window, Alt+right-drag resizes it from the nearest corner (a tiled window
 becomes floating); title bars drag as usual.
+
+## Window management extras
+
+```toml
+[windows]
+placement = "smart"       # where new windows go: cascade (default), center, smart (covers the least), pointer
+snap-windows = true       # a dragged window meets the edges of the screen and of other windows
+inactive-opacity = 0.85   # dim windows that do not have the focus (1 = off)
+
+[[rules]]                 # per-window rules; later rules override earlier ones
+app_id = "mpv"            # globs (* and ?), ignoring case; app_id and/or title
+floating = true           # also: workspace = 2, sticky, above, below, maximized, fullscreen,
+position = "bottom-right" #   opacity = 0.9, position, x, y, width, height
+```
+
+Built-in keys: Super+D shows the desktop, Super+Ctrl+Up/Down change the focused window's opacity.
+Not done: shading a window to its title bar (windows draw their own title bars, so there is nothing to shade to).
 
 ## Effects
 

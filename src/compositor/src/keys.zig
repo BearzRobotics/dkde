@@ -14,6 +14,7 @@
 //!   "A-Tab" = "none"            # removes a built-in shortcut
 
 const std = @import("std");
+const place = @import("place.zig");
 
 pub const Mod = struct {
     pub const shift: u8 = 1;
@@ -55,6 +56,15 @@ pub const Action = union(enum) {
     move_to_prev,
     move_to_next,
     snap: Region,
+    /// Put the window at a corner, an edge or the centre, keeping its size.
+    put: place.Position,
+    sticky,
+    above,
+    below,
+    /// Minimize every window of the workspace, or bring them back.
+    show_desktop,
+    opacity_up,
+    opacity_down,
     exec: []const u8,
 };
 
@@ -112,6 +122,16 @@ pub fn parseAction(text: []const u8) ?Action {
     if (eql(u8, t, "workspace-next")) return .workspace_next;
     if (eql(u8, t, "move-to-prev")) return .move_to_prev;
     if (eql(u8, t, "move-to-next")) return .move_to_next;
+    if (eql(u8, t, "sticky")) return .sticky;
+    if (eql(u8, t, "above")) return .above;
+    if (eql(u8, t, "below")) return .below;
+    if (eql(u8, t, "show-desktop")) return .show_desktop;
+    if (eql(u8, t, "opacity-up")) return .opacity_up;
+    if (eql(u8, t, "opacity-down")) return .opacity_down;
+    if (std.mem.startsWith(u8, t, "put ")) {
+        const p = place.parsePosition(std.mem.trim(u8, t[4..], " ")) orelse return null;
+        return .{ .put = p };
+    }
     if (std.mem.startsWith(u8, t, "workspace ")) {
         const n = std.fmt.parseInt(u8, std.mem.trim(u8, t[10..], " "), 10) catch return null;
         return if (n >= 1 and n <= 9) .{ .workspace = n - 1 } else null;
@@ -176,6 +196,9 @@ pub const defaults = [_]Entry{
     .{ .key = "W-C-A-S-m", .action = "snap bottom-right" },
     // The compositor's own.
     .{ .key = "W-t", .action = "toggle-layout" },
+    .{ .key = "W-d", .action = "show-desktop" },
+    .{ .key = "W-C-Up", .action = "opacity-up" },
+    .{ .key = "W-C-Down", .action = "opacity-down" },
     .{ .key = "W-S-space", .action = "float" },
     .{ .key = "W-S-Escape", .action = "quit" },
     .{ .key = "W-1", .action = "workspace 1" },
@@ -222,6 +245,13 @@ test "actions parse" {
     try std.testing.expect(parseAction("snap nowhere") == null);
     try std.testing.expect(parseAction("exec ") == null);
     try std.testing.expect(parseAction("dance") == null);
+}
+
+test "window actions parse" {
+    try std.testing.expectEqual(place.Position.top_right, parseAction("put top-right").?.put);
+    try std.testing.expectEqual(Action.sticky, parseAction("sticky").?);
+    try std.testing.expectEqual(Action.show_desktop, parseAction("show-desktop").?);
+    try std.testing.expect(parseAction("put nowhere") == null);
 }
 
 test "every built-in shortcut is valid" {
