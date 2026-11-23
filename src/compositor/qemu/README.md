@@ -59,3 +59,20 @@ Run apps from the serial shell with `XDG_RUNTIME_DIR=/tmp/dkde-runtime-1000 WAYL
 `drag X1 Y1 X2 Y2 [alt] [left|right]`, `run 'COMMAND'`, `push` (copy a new build over the 9p share and restart
 the session, about 20 s) and `down`. The program folder is shared with the guest over 9p, so no reboot is needed
 between builds. The VM has a virtio tablet, so clicks and drags are absolute (1280x800).
+
+## Testing the GLES effects (virgl)
+
+The effects need wlroots' GLES2 renderer. `vm.sh` takes a few variables for that:
+
+```sh
+RENDERER=gles2 GPU="-device virtio-vga-gl" DISPLAY_OPT=egl-headless QEMU_EXTRA="-vnc 127.0.0.1:7" \
+  TOML=/path/compositor.toml VM=/stuff/tmp/vmw BIN=.../musl-out/bin/dkde-compositor qemu/vm.sh up
+```
+
+(`TOML` is the guest's compositor.toml; the guest then renders on the host GPU through virgl.) QMP `screendump`
+does not work with a GL scanout ("no surface"); take screenshots over VNC instead with `python3 qemu/vnc-shot.py
+127.0.0.1 5907 out.png`. Keys with a hold time (`qmp.py send-key '{"keys":[...],"hold-time":2500}'`) keep Alt down
+for the switcher. The image's greetd starts the first session by itself, so `vm.sh up` does not replace its
+compositor: write `compositor=/home/live/bin/labwc` (the wrapper) to `~/.config/dkde/session.conf` in the guest and
+sign in at the greeter (press Return). Checked this way, with real pointer events: the Alt+Tab ring, Expo, wobbly
+windows (a drag), blur behind dimmed windows, painting on the screen and the negative filter.

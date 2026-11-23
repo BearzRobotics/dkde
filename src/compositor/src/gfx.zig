@@ -560,9 +560,10 @@ pub const Gfx = struct {
         var state: c.wlr_output_state = undefined;
         c.wlr_output_state_init(&state);
         defer c.wlr_output_state_finish(&state);
-        var swapchain: ?*c.wlr_swapchain = null;
-        if (!c.wlr_output_configure_primary_swapchain(output, &state, &swapchain)) return false;
-        const buffer = c.wlr_swapchain_acquire(swapchain.?) orelse return false;
+        // The output's own swapchain (wlroots keeps it there and re-creates it when the mode changes);
+        // a fresh one every frame would leak all its buffers.
+        if (!c.wlr_output_configure_primary_swapchain(output, &state, &output.*.swapchain)) return false;
+        const buffer = c.wlr_swapchain_acquire(output.*.swapchain) orelse return false;
         defer c.wlr_buffer_unlock(buffer);
         const out_fbo = c.wlr_gles2_renderer_get_buffer_fbo(self.renderer, buffer);
         if (out_fbo == 0) return false;

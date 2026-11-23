@@ -36,12 +36,15 @@ case "${1:-}" in
 up)
     rm -f "$VM/q.sock" "$VM/ser.sock"
     mkdir -p "$VM/share"; cp "$BIN" "$VM/share/dkde-compositor"
-    printf '[windows]\nlayout = "floating"\ngap = 8\n\n[workspaces]\ncount = 4\n' > "$VM/share/compositor.toml"
+    if [ -n "${TOML:-}" ]; then cp "$TOML" "$VM/share/compositor.toml"; else
+        printf '[windows]\nlayout = "floating"\ngap = 8\n\n[workspaces]\ncount = 4\n' > "$VM/share/compositor.toml"; fi
+    # RENDERER=gles2 needs the VM to have a GL-capable virtual GPU: GPU="-device virtio-vga-gl" DISPLAY_OPT="egl-headless".
+    echo "${RENDERER:-pixman}" > "$VM/share/renderer"
     setsid nohup qemu-system-x86_64 -enable-kvm -cpu host -m 4096 -smp 4 -cdrom "$ISO" -boot d \
-        -virtfs local,path="$VM/share",mount_tag=hostshare,security_model=none,readonly=on -vga virtio -display none \
+        -virtfs local,path="$VM/share",mount_tag=hostshare,security_model=none,readonly=on ${GPU:--vga virtio} -display ${DISPLAY_OPT:-none} \
         -device virtio-tablet-pci -device virtio-keyboard-pci \
         -qmp unix:"$VM/q.sock",server=on,wait=off -serial unix:"$VM/ser.sock",server=on,wait=off \
-        -netdev user,id=n0 -device virtio-net-pci,netdev=n0 > "$VM/qemu.log" 2>&1 &
+        -netdev user,id=n0 -device virtio-net-pci,netdev=n0 ${QEMU_EXTRA:-} > "$VM/qemu.log" 2>&1 &
     echo $! > "$VM/qemu.pid"
     for i in $(seq 1 60); do sleep 3; case "$(ser "" 1)" in *"login:"*) break ;; esac; done
     ser "" 2 >/dev/null; ser "live" 3 >/dev/null
