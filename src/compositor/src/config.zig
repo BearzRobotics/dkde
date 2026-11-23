@@ -28,6 +28,8 @@
 //!
 //!   [effects]                # optional extras, all off by default: animations = true, animation-ms = 200,
 //!                            # scale = true (Super+W), expo = true (Super+E),
+//!                            # filter = "negative" | "grayscale" | "sepia" | "high-contrast" | "protanopia" |
+//!                            # "deuteranopia" | "tritanopia", zoom = true (Super+= and Super+-), GLES renderer only
 //!                            # switcher = "strip" or "ring" (Alt+Tab shows window previews)
 //!
 //!   [[rules]]                # per-window rules: see rules.zig
@@ -43,6 +45,7 @@ const layout = @import("layout.zig");
 const keys = @import("keys.zig");
 const rules = @import("rules.zig");
 const place = @import("place.zig");
+const filters = @import("filters.zig");
 
 pub const Input = struct {
     /// xkb layout, variant and options (e.g. "us", "intl", "ctrl:nocaps"); null leaves them to XKB_DEFAULT_*.
@@ -69,7 +72,25 @@ pub const Effects = struct {
     scale: bool = false,
     expo: bool = false,
     switcher: Switcher = .off,
+    /// A colour filter over the whole screen (needs the GLES renderer).
+    filter: filters.Filter = .none,
+    /// Super+= and Super+- magnify the screen around the pointer (needs the GLES renderer).
+    zoom: bool = false,
 };
+
+/// A filter by its name in compositor.toml ("high-contrast" has a dash).
+pub fn parseFilter(name: []const u8) ?filters.Filter {
+    for (std.enums.values(filters.Filter)) |f| {
+        const tag = @tagName(f);
+        if (tag.len != name.len) continue;
+        var same = true;
+        for (tag, name) |x, y| {
+            if ((if (x == '_') '-' else x) != y) same = false;
+        }
+        if (same) return f;
+    }
+    return null;
+}
 
 /// Where a new window is put.
 pub const Placement = enum { cascade, center, smart, pointer };
@@ -197,6 +218,18 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
                 } else try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[effects] switcher = \"{s}\": expected off, strip or ring; using off", .{sw}));
             },
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] switcher: expected a string; using off")),
+        };
+        if (t.get("filter")) |v| switch (v) {
+            .string => |f| {
+                if (parseFilter(f)) |e| {
+                    config.effects.filter = e;
+                } else try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[effects] filter = \"{s}\": not a filter; using none", .{f}));
+            },
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] filter: expected a string; using none")),
+        };
+        if (t.get("zoom")) |v| switch (v) {
+            .boolean => |b| config.effects.zoom = b,
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] zoom: expected true or false; using false")),
         };
         if (t.get("expo")) |v| switch (v) {
             .boolean => |b| config.effects.expo = b,
@@ -326,6 +359,10 @@ test "effects are off until asked for" {
     const sw = try parse(std.testing.allocator, "[effects]\nswitcher = \"ring\"\n", &warnings);
     defer free(std.testing.allocator, sw);
     try std.testing.expectEqual(Switcher.ring, sw.effects.switcher);
+    const fl = try parse(std.testing.allocator, "[effects]\nfilter = \"high-contrast\"\nzoom = true\n", &warnings);
+    defer free(std.testing.allocator, fl);
+    try std.testing.expectEqual(filters.Filter.high_contrast, fl.effects.filter);
+    try std.testing.expect(fl.effects.zoom);
     const bad = try parse(std.testing.allocator, "[effects]\nanimation-ms = 5\n", &warnings);
     defer free(std.testing.allocator, bad);
     try std.testing.expectEqual(@as(u32, 200), bad.effects.animation_ms);

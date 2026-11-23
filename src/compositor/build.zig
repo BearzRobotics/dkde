@@ -84,6 +84,8 @@ pub fn build(b: *std.Build) void {
     translate_c.linkSystemLibrary("wayland-server", .{});
     translate_c.linkSystemLibrary("xkbcommon", .{});
     translate_c.linkSystemLibrary("pixman-1", .{});
+    translate_c.linkSystemLibrary("glesv2", .{});
+    translate_c.linkSystemLibrary("egl", .{});
 
     const root = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -100,13 +102,15 @@ pub fn build(b: *std.Build) void {
     root.linkSystemLibrary("xkbcommon", .{});
     root.linkSystemLibrary("libinput", .{});
     root.linkSystemLibrary("pixman-1", .{});
+    root.linkSystemLibrary("glesv2", .{});
+    root.linkSystemLibrary("egl", .{});
 
     const exe = b.addExecutable(.{ .name = "dkde-compositor", .root_module = root });
     b.installArtifact(exe);
 
     // The pieces with no wlroots in them (layout, settings) are tested on their own.
     const test_step = b.step("test", "Run the tests");
-    inline for (.{ "src/layout.zig", "src/config.zig", "src/keys.zig", "src/place.zig", "src/rules.zig", "src/anim.zig", "src/overview.zig" }) |file| {
+    inline for (.{ "src/layout.zig", "src/config.zig", "src/keys.zig", "src/place.zig", "src/rules.zig", "src/anim.zig", "src/overview.zig", "src/filters.zig" }) |file| {
         const test_mod = b.createModule(.{ .root_source_file = b.path(file), .target = target, .optimize = optimize });
         test_mod.addImport("toml", toml);
         const t = b.addTest(.{ .root_module = test_mod });

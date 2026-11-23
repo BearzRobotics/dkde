@@ -84,12 +84,19 @@ Not done: shading a window to its title bar (windows draw their own title bars, 
 animations = true         # windows fade and grow when they open, and shrink toward the bottom when minimized
 animation-ms = 200        # 50 to 2000
 scale = true              # Super+W: every window of the workspace at once; click one, or Return, to pick it
+filter = "negative"       # a colour filter over the whole screen: negative, grayscale, sepia, high-contrast,
+                          #   or a colour-blindness simulation (protanopia, deuteranopia, tritanopia); Super+Ctrl+F steps through
+zoom = true               # Super+= / Super+- magnify the screen around the pointer (up to 8x), Super+0 resets
 switcher = "ring"         # Alt+Tab shows previews: "strip" or "ring" (off = the window just comes to the front)
 expo = true               # Super+E: every workspace as a tile; click a tile, or drag a window onto another tile
 ```
 
 In Scale and Expo, Escape (or the same key again) leaves without changing anything, and no key or click reaches
 the programs. The actions are `scale` and `expo`.
+
+Zoom and the colour filters (and the effects after them) are drawn by our GLES composer (`src/gfx.zig`: our own
+shaders over the same scene graph, sharing wlroots' EGL context). They need `WLR_RENDERER=gles2` (the default
+on real hardware); with the pixman renderer they are off and the compositor says so in its log.
 
 While an effect is moving something, frames are drawn by our own composer (`src/render.zig`, a wlroots render
 pass over the same scene graph); the rest of the time the normal scene output runs, with damage tracking and

@@ -1717,6 +1717,18 @@ pub const SettingsWindow = struct {
         _ = gobject.Object.signals.notify.connect(switch_drop, *SettingsWindow, &onSwitcherPicked, self, .{ .detail = "selected" });
         addRowDesc(page, common.tr("Window switcher (Alt+Tab)"), common.tr("Hold Alt and press Tab to step through the windows with previews; let go of Alt to go to the one shown in front. Escape cancels."), switch_drop.as(gtk.Widget));
 
+        const filter_names = [_]?[*:0]const u8{ "None", "Negative (invert colours)", "Grayscale", "Sepia", "High contrast", "Simulate protanopia", "Simulate deuteranopia", "Simulate tritanopia", null };
+        const filter_drop = gtk.DropDown.newFromStrings(@ptrCast(&filter_names));
+        filter_drop.setSelected(@intFromEnum(cfg.effects.filter));
+        _ = gobject.Object.signals.notify.connect(filter_drop, *SettingsWindow, &onFilterPicked, self, .{ .detail = "selected" });
+        addRowDesc(page, common.tr("Screen colour filter"), common.tr("Changes the colours of everything on the screen (Super+Ctrl+F steps through them). The colour-blindness entries show how the screen looks to someone with that condition. Needs the GLES renderer."), filter_drop.as(gtk.Widget));
+
+        const zoom = gtk.Switch.new();
+        zoom.setActive(@intFromBool(cfg.effects.zoom));
+        _ = gtk.Switch.signals.state_set.connect(zoom, *SettingsWindow, &onEffectSwitch, self, .{});
+        zoom.as(gtk.Widget).setName("zoom");
+        addRowDesc(page, common.tr("Screen magnifier (Super+= and Super+-)"), common.tr("Magnifies the screen around the pointer, up to eight times; Super+0 puts it back. Needs the GLES renderer."), zoom.as(gtk.Widget));
+
         const dim = gtk.SpinButton.newWithRange(10, 100, 5);
         dim.setValue(@round(@as(f64, cfg.inactive_opacity) * 100));
         _ = gtk.SpinButton.signals.value_changed.connect(dim, *SettingsWindow, &onInactiveOpacity, self, .{});
@@ -1738,6 +1750,14 @@ pub const SettingsWindow = struct {
         if (i >= names.len) return;
         var buf: [48]u8 = undefined;
         self.setCompositorValue("effects", "switcher", std.fmt.bufPrint(&buf, "switcher = \"{s}\"", .{names[i]}) catch return);
+    }
+
+    fn onFilterPicked(drop: *gtk.DropDown, _: *gobject.ParamSpec, self: *SettingsWindow) callconv(.c) void {
+        const names = [_][]const u8{ "none", "negative", "grayscale", "sepia", "high-contrast", "protanopia", "deuteranopia", "tritanopia" };
+        const i = drop.getSelected();
+        if (i >= names.len) return;
+        var buf: [48]u8 = undefined;
+        self.setCompositorValue("effects", "filter", std.fmt.bufPrint(&buf, "filter = \"{s}\"", .{names[i]}) catch return);
     }
 
     fn onAnimationMs(button: *gtk.SpinButton, self: *SettingsWindow) callconv(.c) void {

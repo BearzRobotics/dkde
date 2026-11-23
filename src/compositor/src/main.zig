@@ -21,6 +21,8 @@ const rules = @import("rules.zig");
 const anim = @import("anim.zig");
 const render = @import("render.zig");
 const overview = @import("overview.zig");
+const gfx = @import("gfx.zig");
+const filters = @import("filters.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -75,6 +77,13 @@ const Server = struct {
     custom_drawn: bool = false,
     /// Scale or Expo, while it is up.
     overview: ?*Overview = null,
+    /// The GLES composer (null with another renderer: the effects that need shaders are then off).
+    gfx: ?*gfx.Gfx = null,
+    /// Screen magnification (1 = off): where it is going, and where it is now (it eases).
+    zoom_target: f32 = 1,
+    zoom_now: f32 = 1,
+    zoom_ms: u32 = 0,
+    filter: filters.Filter = .none,
     layout_options: layout.Options = .{},
     /// Edge snapping while a window is dragged: on or off (compositor.toml), the zone under the pointer and its preview.
     edge_snap: bool = true,
@@ -152,13 +161,19 @@ const Output = struct {
         var now: std.c.timespec = undefined;
         _ = std.c.clock_gettime(.MONOTONIC, &now);
         tickAnimations(nowMs(&now));
-        if (server.animating > 0 or server.overview != null) {
-            if (render.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf)) {
+        tickZoom(nowMs(&now));
+        const post = currentPost(self.output);
+        if (server.animating > 0 or server.overview != null or post.active()) {
+            const drawn = if (server.gfx) |g|
+                g.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf, post)
+            else
+                render.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf);
+            if (drawn) {
                 server.custom_drawn = true;
             } else {
                 _ = c.wlr_scene_output_commit(scene_output, null);
             }
-            if (server.animating > 0 or overviewMoving()) c.wlr_output_schedule_frame(self.output);
+            if (server.animating > 0 or overviewMoving() or zoomMoving()) c.wlr_output_schedule_frame(self.output);
         } else {
             if (server.custom_drawn) {
                 // The scene output does not know what was drawn behind its back.
@@ -1414,6 +1429,60 @@ fn overviewKey(sym: c.xkb_keysym_t) void {
     }
 }
 
+// ---- zoom and colour filters (GLES only) --------------------------------------------------------------------
+
+fn zoomMoving() bool {
+    return @abs(server.zoom_now - server.zoom_target) > 0.002;
+}
+
+/// Eases the zoom toward its target.
+fn tickZoom(now: u32) void {
+    if (!zoomMoving()) {
+        server.zoom_now = server.zoom_target;
+        return;
+    }
+    const dt: f32 = @floatFromInt(@min(now -% server.zoom_ms, 100));
+    server.zoom_ms = now;
+    // About a fifth of the way each frame at 60 Hz.
+    const k = 1 - std.math.pow(f32, 0.8, dt / 16.0);
+    server.zoom_now += (server.zoom_target - server.zoom_now) * k;
+}
+
+/// What is done to the finished frame: the zoom about the pointer and the colour filter.
+fn currentPost(output: *c.wlr_output) gfx.Post {
+    var p: gfx.Post = .{};
+    if (server.gfx == null) return p;
+    if (server.zoom_now > 1.001) {
+        var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
+        c.wlr_output_layout_get_box(server.output_layout, output, &box);
+        p.zoom = server.zoom_now;
+        const fx = (server.cursor.*.x - @as(f64, @floatFromInt(box.x))) / @as(f64, @floatFromInt(@max(box.width, 1)));
+        const fy = (server.cursor.*.y - @as(f64, @floatFromInt(box.y))) / @as(f64, @floatFromInt(@max(box.height, 1)));
+        p.fx = @floatCast(std.math.clamp(fx, 0, 1));
+        p.fy = @floatCast(std.math.clamp(fy, 0, 1));
+    }
+    if (server.filter != .none) {
+        const m = filters.matrixFor(server.filter);
+        p.m = gfx.fromRows(m.rows);
+        p.off = m.off;
+    }
+    return p;
+}
+
+fn zoomBy(factor: f32) void {
+    if (server.gfx == null or !server.effects.zoom) return;
+    server.zoom_target = std.math.clamp(server.zoom_target * factor, 1.0, 8.0);
+    if (server.zoom_target < 1.05) server.zoom_target = 1.0;
+    server.zoom_ms = currentMs();
+    wakeOutputs();
+}
+
+fn nextFilter() void {
+    if (server.gfx == null) return;
+    server.filter = server.filter.next();
+    wakeOutputs();
+}
+
 // ---- animations ------------------------------------------------------------------------------------------------
 
 fn nowMs(ts: *const std.c.timespec) u32 {
@@ -1967,6 +2036,7 @@ fn beginGrab(t: *Toplevel, mode: CursorMode, edges: u32) void {
 
 fn processCursorMotion(time: u32) void {
     const cursor = server.cursor;
+    if (server.zoom_now > 1.001) wakeOutputs();
     if (server.overview != null) {
         overviewMotion();
         return;
@@ -2343,6 +2413,10 @@ fn perform(action: keys.Action) void {
         .above => if (topWindow()) |t| toggleAbove(t),
         .below => if (topWindow()) |t| toggleBelow(t),
         .show_desktop => showDesktop(),
+        .zoom_in => zoomBy(1.25),
+        .zoom_out => zoomBy(0.8),
+        .zoom_reset => zoomBy(0.01),
+        .next_filter => nextFilter(),
         .scale => openOverview(false),
         .expo => openOverview(true),
         .opacity_up => if (topWindow()) |t| changeOpacity(t, 0.1),
@@ -2605,6 +2679,8 @@ fn loadConfig() void {
     const dimming_changed = server.inactive_opacity != cfg.inactive_opacity;
     server.inactive_opacity = cfg.inactive_opacity;
     server.effects = cfg.effects;
+    server.filter = cfg.effects.filter;
+    if (!cfg.effects.zoom) server.zoom_target = 1;
     if (server.overview != null and !(cfg.effects.scale or cfg.effects.expo or cfg.effects.switcher != .off)) closeOverview(null);
     config.free(gpa, cfg);
     cfg.keys = &.{};
@@ -2831,6 +2907,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
     };
 
     workspaces.init(display, &server.ws);
+    server.gfx = gfx.Gfx.create(gpa, renderer);
+    if (server.gfx == null) c._wlr_log(c.WLR_INFO, "effects: not using the GLES renderer; zoom and colour filters are off");
     loadConfig();
     _ = c.wl_event_loop_add_signal(c.wl_display_get_event_loop(display), c.SIGHUP, onReload, null);
     _ = c.wl_event_loop_add_signal(c.wl_display_get_event_loop(display), c.SIGTERM, onTerminate, display);

@@ -67,6 +67,11 @@ pub const Action = union(enum) {
     scale,
     /// Every workspace as a tile, to pick one or drag windows between them.
     expo,
+    zoom_in,
+    zoom_out,
+    zoom_reset,
+    /// The next colour filter (none, negative, ...).
+    next_filter,
     opacity_up,
     opacity_down,
     exec: []const u8,
@@ -132,6 +137,10 @@ pub fn parseAction(text: []const u8) ?Action {
     if (eql(u8, t, "show-desktop")) return .show_desktop;
     if (eql(u8, t, "scale")) return .scale;
     if (eql(u8, t, "expo")) return .expo;
+    if (eql(u8, t, "zoom-in")) return .zoom_in;
+    if (eql(u8, t, "zoom-out")) return .zoom_out;
+    if (eql(u8, t, "zoom-reset")) return .zoom_reset;
+    if (eql(u8, t, "next-filter")) return .next_filter;
     if (eql(u8, t, "opacity-up")) return .opacity_up;
     if (eql(u8, t, "opacity-down")) return .opacity_down;
     if (std.mem.startsWith(u8, t, "put ")) {
@@ -205,6 +214,10 @@ pub const defaults = [_]Entry{
     .{ .key = "W-d", .action = "show-desktop" },
     .{ .key = "W-w", .action = "scale" },
     .{ .key = "W-e", .action = "expo" },
+    .{ .key = "W-equal", .action = "zoom-in" },
+    .{ .key = "W-minus", .action = "zoom-out" },
+    .{ .key = "W-0", .action = "zoom-reset" },
+    .{ .key = "W-C-f", .action = "next-filter" },
     .{ .key = "W-C-Up", .action = "opacity-up" },
     .{ .key = "W-C-Down", .action = "opacity-down" },
     .{ .key = "W-S-space", .action = "float" },
