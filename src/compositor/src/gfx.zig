@@ -30,12 +30,14 @@ pub const Post = struct {
     lens_zoom: f32 = 2.5,
     ripples: [max_ripples][4]f32 = std.mem.zeroes([max_ripples][4]f32),
     ripple_count: usize = 0,
+    /// Motion blur: how much of the previous frame is mixed in (0 = none).
+    motion: f32 = 0,
 
     pub const max_ripples = 8;
     pub const identity = [9]f32{ 1, 0, 0, 0, 1, 0, 0, 0, 1 };
 
     pub fn active(self: Post) bool {
-        return self.zoom != 1 or self.lens_r > 0 or self.ripple_count > 0 or !std.mem.eql(f32, &self.m, &identity) or self.off[0] != 0 or self.off[1] != 0 or self.off[2] != 0;
+        return self.zoom != 1 or self.lens_r > 0 or self.ripple_count > 0 or self.motion > 0 or !std.mem.eql(f32, &self.m, &identity) or self.off[0] != 0 or self.off[1] != 0 or self.off[2] != 0;
     }
 };
 
@@ -72,6 +74,8 @@ pub const Cube = struct {
     /// Where it is turned to, in workspaces (fractional while it turns), and how many faces it has.
     pos: f32,
     count: usize,
+    /// How far the cube is tipped toward the camera (radians), which shows its top.
+    tilt: f32 = 0,
     /// Called with the workspace whose windows the scene should show next (null: back to normal).
     filter: *const fn (?usize) void,
 };
@@ -153,6 +157,8 @@ const frag_post =
     \\uniform float u_aspect;
     \\uniform vec4 u_lens;
     \\uniform vec4 u_ripple[8];
+    \\uniform sampler2D u_prev;
+    \\uniform float u_motion;
     \\void main() {
     \\    vec2 uv = u_focus + (v_uv - u_focus) / u_zoom;
     \\    float edge = 0.0;
@@ -176,6 +182,7 @@ const frag_post =
     \\    }
     \\    vec3 rgb = texture2D(u_tex, uv).rgb;
     \\    rgb = clamp(u_matrix * rgb + u_offset, 0.0, 1.0);
+    \\    if (u_motion > 0.0) rgb = mix(rgb, texture2D(u_prev, v_uv).rgb, u_motion);
     \\    gl_FragColor = vec4(mix(rgb, vec3(0.1), edge * 0.8), 1.0);
     \\}
 ;
@@ -215,6 +222,8 @@ const Program = struct {
     aspect: c.GLint = -1,
     lens: c.GLint = -1,
     ripple: c.GLint = -1,
+    prev: c.GLint = -1,
+    motion: c.GLint = -1,
 };
 
 fn compile(kind: c.GLenum, source: [*:0]const u8) c.GLuint {
@@ -275,6 +284,8 @@ fn link(vertex: [*:0]const u8, fragment: [*:0]const u8) ?Program {
         .aspect = c.glGetUniformLocation(id, "u_aspect"),
         .lens = c.glGetUniformLocation(id, "u_lens"),
         .ripple = c.glGetUniformLocation(id, "u_ripple"),
+        .prev = c.glGetUniformLocation(id, "u_prev"),
+        .motion = c.glGetUniformLocation(id, "u_motion"),
     };
 }
 
@@ -299,6 +310,12 @@ pub const Gfx = struct {
     dot_tex: c.GLuint = 0,
     ring_tex: c.GLuint = 0,
     flame_tex: c.GLuint = 0,
+    cap_tex: c.GLuint = 0,
+    /// The last finished frame, for motion blur, and whether it can be used.
+    prev_tex: c.GLuint = 0,
+    prev_w: i32 = 0,
+    prev_h: i32 = 0,
+    prev_valid: bool = false,
     /// Blur of what is behind translucent windows: a copy of the frame, and two half-size targets to blur between.
     blur_src: c.GLuint = 0,
     blur_tex: [2]c.GLuint = .{ 0, 0 },
@@ -417,6 +434,18 @@ pub const Gfx = struct {
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_LINEAR);
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_S, c.GL_CLAMP_TO_EDGE);
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_T, c.GL_CLAMP_TO_EDGE);
+        return t;
+    }
+
+    /// A small texture of one opaque colour.
+    fn makeSolid(r: u8, g: u8, b: u8) c.GLuint {
+        const px = [16]u8{ r, g, b, 255, r, g, b, 255, r, g, b, 255, r, g, b, 255 };
+        var t: c.GLuint = 0;
+        c.glGenTextures(1, &t);
+        c.glBindTexture(c.GL_TEXTURE_2D, t);
+        c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_RGBA, 2, 2, 0, c.GL_RGBA, c.GL_UNSIGNED_BYTE, &px);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_LINEAR);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_LINEAR);
         return t;
     }
 
@@ -625,6 +654,19 @@ pub const Gfx = struct {
             var rip = std.mem.zeroes([Post.max_ripples][4]f32);
             for (0..post.ripple_count) |i| rip[i] = post.ripples[i];
             c.glUniform4fv(self.post.ripple, Post.max_ripples, &rip[0][0]);
+            if (self.prev_w != w or self.prev_h != h) {
+                if (self.prev_tex != 0) c.glDeleteTextures(1, &self.prev_tex);
+                self.prev_tex = makeTexture(w, h);
+                self.prev_w = w;
+                self.prev_h = h;
+                self.prev_valid = false;
+            }
+            const blend: f32 = if (self.prev_valid) post.motion else 0;
+            c.glUniform1f(self.post.motion, blend);
+            c.glUniform1i(self.post.prev, 1);
+            c.glActiveTexture(c.GL_TEXTURE1);
+            c.glBindTexture(c.GL_TEXTURE_2D, self.prev_tex);
+            c.glActiveTexture(c.GL_TEXTURE0);
             // One quad over the whole output; positions are in 0..1 here (u_size is 1x1).
             const quad = [_]Vertex{
                 .{ .x = 0, .y = 0, .u = 0, .v = 0 }, .{ .x = 1, .y = 0, .u = 1, .v = 0 }, .{ .x = 0, .y = 1, .u = 0, .v = 1 },
@@ -633,6 +675,12 @@ pub const Gfx = struct {
             c.glVertexAttribPointer(0, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &quad[0].x);
             c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &quad[0].u);
             c.glDrawArrays(c.GL_TRIANGLES, 0, 6);
+            // Keep this frame for the next one's motion blur.
+            c.glBindTexture(c.GL_TEXTURE_2D, self.prev_tex);
+            c.glCopyTexSubImage2D(c.GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
+            self.prev_valid = true;
+        } else {
+            self.prev_valid = false;
         }
         c.glDisableVertexAttribArray(0);
         c.glDisableVertexAttribArray(1);
@@ -659,9 +707,9 @@ pub const Gfx = struct {
 fn drawCubeImpl(self: *Gfx, painter: *Painter, lookup: render.Lookup, root: *c.wlr_scene_tree, cb: Cube, target: c.GLuint, w: i32, h: i32) void {
     var faces: [9]cube_mod.Face = undefined;
     const count = @min(cb.count, 9);
-    const shown = cube_mod.faces(count, cb.pos, @floatFromInt(w), @floatFromInt(h), false, &faces);
+    const shown = cube_mod.faces(count, cb.pos, @floatFromInt(w), @floatFromInt(h), cb.tilt, false, &faces);
     var mirrors: [9]cube_mod.Face = undefined;
-    const mirrored = cube_mod.faces(count, cb.pos, @floatFromInt(w), @floatFromInt(h), true, &mirrors);
+    const mirrored = cube_mod.faces(count, cb.pos, @floatFromInt(w), @floatFromInt(h), cb.tilt, true, &mirrors);
     for (faces[0..shown]) |f| {
         if (!self.ensureFace(f.index, w, h)) continue;
         c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.face_fbo[f.index]);
@@ -698,6 +746,21 @@ fn drawCubeImpl(self: *Gfx, painter: *Painter, lookup: render.Lookup, root: *c.w
         c.glVertexAttribPointer(0, 4, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Pv), &quad[0].x);
         c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Pv), &quad[0].u);
         c.glDrawArrays(c.GL_TRIANGLES, 0, 6);
+    }
+    // The top of the prism, when it is tipped far enough to be seen.
+    var cap: [27]cube_mod.Vertex = undefined;
+    const cap_n = cube_mod.topCap(count, cb.pos, @floatFromInt(w), @floatFromInt(h), cb.tilt, &cap);
+    if (cap_n > 0) {
+        if (self.cap_tex == 0) self.cap_tex = Gfx.makeSolid(34, 42, 62);
+        c.glBindTexture(c.GL_TEXTURE_2D, self.cap_tex);
+        c.glUniform1f(self.persp.alpha, 1);
+        c.glUniform1f(self.persp.has_alpha, 0);
+        const Pv = extern struct { x: f32, y: f32, z: f32, w: f32, u: f32, v: f32 };
+        var quad: [27]Pv = undefined;
+        for (0..cap_n) |i| quad[i] = .{ .x = cap[i].x, .y = cap[i].y, .z = 0, .w = cap[i].w, .u = cap[i].u, .v = cap[i].v };
+        c.glVertexAttribPointer(0, 4, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Pv), &quad[0].x);
+        c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Pv), &quad[0].u);
+        c.glDrawArrays(c.GL_TRIANGLES, 0, @intCast(cap_n));
     }
     // The floor reflection: the same faces mirrored below, faint.
     c.glEnable(c.GL_BLEND);

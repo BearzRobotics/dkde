@@ -78,6 +78,12 @@ pub const Action = union(enum) {
     fire,
     paint,
     paint_clear,
+    /// Group the window with the one below it into tabs (or leave the group).
+    group,
+    next_tab,
+    prev_tab,
+    /// Shrink the window to a small thumbnail at the edge, or bring it back.
+    shelf,
     opacity_up,
     opacity_down,
     exec: []const u8,
@@ -152,6 +158,10 @@ pub fn parseAction(text: []const u8) ?Action {
     if (eql(u8, t, "fire")) return .fire;
     if (eql(u8, t, "paint")) return .paint;
     if (eql(u8, t, "paint-clear")) return .paint_clear;
+    if (eql(u8, t, "group")) return .group;
+    if (eql(u8, t, "next-tab")) return .next_tab;
+    if (eql(u8, t, "prev-tab")) return .prev_tab;
+    if (eql(u8, t, "shelf")) return .shelf;
     if (eql(u8, t, "opacity-up")) return .opacity_up;
     if (eql(u8, t, "opacity-down")) return .opacity_down;
     if (std.mem.startsWith(u8, t, "put ")) {
@@ -234,6 +244,10 @@ pub const defaults = [_]Entry{
     .{ .key = "W-S-f", .action = "fire" },
     .{ .key = "W-S-p", .action = "paint" },
     .{ .key = "W-S-c", .action = "paint-clear" },
+    .{ .key = "W-g", .action = "group" },
+    .{ .key = "W-bracketright", .action = "next-tab" },
+    .{ .key = "W-bracketleft", .action = "prev-tab" },
+    .{ .key = "W-S-s", .action = "shelf" },
     .{ .key = "W-C-Up", .action = "opacity-up" },
     .{ .key = "W-C-Down", .action = "opacity-down" },
     .{ .key = "W-S-space", .action = "float" },

@@ -46,6 +46,7 @@ const keys = @import("keys.zig");
 const rules = @import("rules.zig");
 const place = @import("place.zig");
 const filters = @import("filters.zig");
+const gesture = @import("gesture.zig");
 
 pub const Input = struct {
     /// xkb layout, variant and options (e.g. "us", "intl", "ctrl:nocaps"); null leaves them to XKB_DEFAULT_*.
@@ -94,6 +95,16 @@ pub const Effects = struct {
     fire: bool = false,
     /// Super+Shift+P: draw on the screen with the pointer (needs the GLES renderer).
     paint: bool = false,
+    /// Windows you point at are shown through the windows on top of them.
+    opacify: bool = false,
+    /// A faint trail behind things that move (needs the GLES renderer).
+    motion_blur: bool = false,
+    /// Super + right button, drag: a stroke that runs an action (see `[gestures]`).
+    gestures: bool = false,
+    /// Super+Shift+S shrinks a window to a thumbnail at the edge of the screen.
+    shelf: bool = false,
+    /// Super+G groups windows into tabs.
+    groups: bool = false,
 };
 
 /// A filter by its name in compositor.toml ("high-contrast" has a dash).
@@ -131,6 +142,8 @@ pub const Config = struct {
     /// How many virtual desktops (1 to 9).
     workspaces: usize = 4,
     input: Input = .{},
+    /// The `[gestures]` entries: a gesture such as "L" or "DR" and its action (owned: see `free`).
+    gestures: []const keys.Entry = &.{},
     /// The user's `[keys]` entries, on top of the built-in shortcuts (owned: see `free`).
     keys: []const keys.Entry = &.{},
 };
@@ -144,6 +157,11 @@ pub fn free(gpa: std.mem.Allocator, config: Config) void {
         gpa.free(e.action);
     }
     gpa.free(config.keys);
+    for (config.gestures) |e| {
+        gpa.free(e.key);
+        gpa.free(e.action);
+    }
+    gpa.free(config.gestures);
     rules.freeAll(gpa, config.rules);
 }
 
@@ -209,6 +227,30 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
         }
         config.keys = try list.toOwnedSlice(gpa);
     }
+    if (doc.root.getTable("gestures")) |table| {
+        var list: std.ArrayList(keys.Entry) = .empty;
+        errdefer list.deinit(gpa);
+        var it = table.entries.iterator();
+        while (it.next()) |entry| {
+            const action = switch (entry.value_ptr.*) {
+                .string => |a| a,
+                else => {
+                    try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[gestures] \"{s}\": expected a string; ignored", .{entry.key_ptr.*}));
+                    continue;
+                },
+            };
+            if (!gesture.valid(entry.key_ptr.*)) {
+                try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[gestures] \"{s}\" is not a gesture (one to six of L R U D); ignored", .{entry.key_ptr.*}));
+                continue;
+            }
+            if (keys.parseAction(action) == null) {
+                try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[gestures] \"{s}\" = \"{s}\": not an action; ignored", .{ entry.key_ptr.*, action }));
+                continue;
+            }
+            try list.append(gpa, .{ .key = try gpa.dupe(u8, entry.key_ptr.*), .action = try gpa.dupe(u8, action) });
+        }
+        config.gestures = try list.toOwnedSlice(gpa);
+    }
     if (doc.root.getTable("workspaces")) |w| {
         if (w.get("count")) |v| switch (v) {
             .integer => |i| {
@@ -249,7 +291,7 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
             .boolean => |b| config.effects.wobbly = b,
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] wobbly: expected true or false; using false")),
         };
-        inline for (.{ .{ "trailfocus", "trailfocus" }, .{ "lens", "lens" }, .{ "water", "water" }, .{ "fire", "fire" }, .{ "paint", "paint" } }) |pair| {
+        inline for (.{ .{ "trailfocus", "trailfocus" }, .{ "lens", "lens" }, .{ "water", "water" }, .{ "fire", "fire" }, .{ "paint", "paint" }, .{ "opacify", "opacify" }, .{ "motion-blur", "motion_blur" }, .{ "gestures", "gestures" }, .{ "shelf", "shelf" }, .{ "groups", "groups" } }) |pair| {
             if (t.get(pair[0])) |v| switch (v) {
                 .boolean => |b| @field(config.effects, pair[1]) = b,
                 else => try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[effects] {s}: expected true or false; using false", .{pair[0]})),
@@ -417,6 +459,19 @@ test "effects are off until asked for" {
     try std.testing.expect(sn.effects.snow);
     const more = try parse(std.testing.allocator, "[effects]\ntrailfocus = true\nlens = true\nwater = true\nfire = true\npaint = true\n", &warnings);
     defer free(std.testing.allocator, more);
+    var gw: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (gw.items) |w| std.testing.allocator.free(w);
+        gw.deinit(std.testing.allocator);
+    }
+    const gs = try parse(std.testing.allocator, "[effects]\ngestures = true\nshelf = true\ngroups = true\n[gestures]\n\"L\" = \"workspace-prev\"\n\"LX\" = \"close\"\n\"U\" = \"dance\"\n", &gw);
+    defer free(std.testing.allocator, gs);
+    try std.testing.expect(gs.effects.gestures and gs.effects.shelf and gs.effects.groups);
+    try std.testing.expectEqual(@as(usize, 1), gs.gestures.len);
+    try std.testing.expectEqual(@as(usize, 2), gw.items.len);
+    const ob = try parse(std.testing.allocator, "[effects]\nopacify = true\nmotion-blur = true\n", &warnings);
+    defer free(std.testing.allocator, ob);
+    try std.testing.expect(ob.effects.opacify and ob.effects.motion_blur);
     try std.testing.expect(more.effects.trailfocus and more.effects.lens and more.effects.water and more.effects.fire and more.effects.paint);
     const bad = try parse(std.testing.allocator, "[effects]\nanimation-ms = 5\n", &warnings);
     defer free(std.testing.allocator, bad);

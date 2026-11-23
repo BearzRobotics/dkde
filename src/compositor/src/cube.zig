@@ -33,42 +33,62 @@ pub fn position(from: usize, to: usize, count: usize, p: f32) f32 {
     return @as(f32, @floatFromInt(from)) + @as(f32, @floatFromInt(delta)) * p;
 }
 
-/// The faces to draw for a cube of `count` workspaces turned to `pos`, on a screen of w by h pixels, back to front.
-/// `out` needs room for `count` faces; returns how many are visible.
-pub fn faces(count: usize, pos: f32, w: f32, h: f32, mirror: bool, out: []Face) usize {
+/// Tilts the cube toward the camera by `t` radians: the top comes forward.
+fn tiltPoint(y: f32, z: f32, t: f32) [2]f32 {
+    return .{ y * @cos(t) - z * @sin(t), y * @sin(t) + z * @cos(t) };
+}
+
+/// The camera: its distance from the centre, the prism's radius to the middle of a face, and the focal length
+/// that makes the front face exactly screen-sized.
+fn camera(count: usize, w: f32) struct { r: f32, d: f32, focal: f32 } {
+    const n: f32 = @floatFromInt(count);
+    const r = (w / 2) / @tan(std.math.pi / n);
+    const d = r + w * 0.9;
+    return .{ .r = r, .d = d, .focal = d - r };
+}
+
+fn project(cam: anytype, w: f32, h: f32, x: f32, y: f32, z: f32, u: f32, v: f32) Vertex {
+    const wc = (cam.d - z) / cam.focal;
+    return .{ .x = (x / wc) * 2 / w * wc, .y = -(y / wc) * 2 / h * wc, .w = wc, .u = u, .v = v };
+}
+
+/// The faces to draw for a cube of `count` workspaces turned to `pos` and tipped by `tilt`, on a screen of w by h
+/// pixels, back to front. `out` needs room for `count` faces; returns how many are visible.
+pub fn faces(count: usize, pos: f32, w: f32, h: f32, tilt: f32, mirror: bool, out: []Face) usize {
     std.debug.assert(out.len >= count and count >= 3);
     const n: f32 = @floatFromInt(count);
     const tau: f32 = 2 * std.math.pi;
-    // The prism's radius to the middle of a face, the camera's distance from the centre, and the focal
-    // length that makes the front face exactly screen-sized.
-    const r = (w / 2) / @tan(std.math.pi / n);
-    const d = r + w * 0.9;
-    const focal = d - r;
+    const cam = camera(count, w);
     var shown: usize = 0;
     for (0..count) |i| {
         const phi = tau * (@as(f32, @floatFromInt(i)) - pos) / n;
         const cosp = @cos(phi);
-        // Faces turned away from the camera are not drawn.
-        if (cosp <= r / d + 0.001) continue;
         const sinp = @sin(phi);
-        const cx = r * sinp;
-        const cz = r * cosp;
+        // Faces turned away from the camera are not drawn: the normal against the way to the eye, after the tilt.
+        const c = tiltPoint(0, cam.r * cosp, tilt);
+        const nrm = tiltPoint(0, cosp, tilt);
+        const dot = sinp * (0 - cam.r * sinp) + nrm[0] * (0 - c[0]) + nrm[1] * (cam.d - c[1]);
+        _ = dot;
+        const cy = c[0];
+        const cz = c[1];
+        const to_eye_z = cam.d - cz;
+        const visible = (-cam.r * sinp * sinp) + nrm[0] * (-cy) + nrm[1] * to_eye_z > 0.001;
+        if (!visible) continue;
+        const cx = cam.r * sinp;
         const tx = cosp;
         const tz = -sinp;
         const half_w = w / 2;
         const half_h = h / 2;
         var f: Face = .{ .index = i, .corners = undefined, .light = 0.55 + 0.45 * cosp };
-        const spec = [4][3]f32{ .{ -1, 1, 0 }, .{ 1, 1, 0 }, .{ -1, -1, 0 }, .{ 1, -1, 0 } };
+        const spec = [4][2]f32{ .{ -1, 1 }, .{ 1, 1 }, .{ -1, -1 }, .{ 1, -1 } };
         const uvs = [4][2]f32{ .{ 0, 0 }, .{ 1, 0 }, .{ 0, 1 }, .{ 1, 1 } };
         for (spec, 0..) |sp, q| {
             const px = cx + tx * half_w * sp[0];
-            const pz = cz + tz * half_w * sp[0];
+            const pz = cam.r * cosp + tz * half_w * sp[0];
             // The reflection is the same face mirrored in the plane of its bottom edge.
             const py = if (mirror) -h - half_h * sp[1] else half_h * sp[1];
-            const wc = (d - pz) / focal;
-            const sx = px / wc;
-            const sy = py / wc;
-            f.corners[q] = .{ .x = sx * 2 / w * wc, .y = -sy * 2 / h * wc, .w = wc, .u = uvs[q][0], .v = uvs[q][1] };
+            const t = tiltPoint(py, pz, tilt);
+            f.corners[q] = project(cam, w, h, px, t[0], t[1], uvs[q][0], uvs[q][1]);
         }
         out[shown] = f;
         shown += 1;
@@ -82,9 +102,36 @@ pub fn faces(count: usize, pos: f32, w: f32, h: f32, mirror: bool, out: []Face) 
     return shown;
 }
 
+/// The triangles of the top cap (a fan over the prism's top polygon), if the tilt shows it. `out` needs
+/// room for `3 * count` vertices; returns how many were written.
+pub fn topCap(count: usize, pos: f32, w: f32, h: f32, tilt: f32, out: []Vertex) usize {
+    std.debug.assert(out.len >= 3 * count);
+    const cam = camera(count, w);
+    // Visible when the camera is above the plane of the top (after the tilt).
+    if (cam.d * @sin(tilt) <= h / 2 + 0.001) return 0;
+    const n: f32 = @floatFromInt(count);
+    const rc = cam.r / @cos(std.math.pi / n);
+    var verts: [9]Vertex = undefined;
+    for (0..count) |k| {
+        const a = 2 * std.math.pi * (@as(f32, @floatFromInt(k)) - pos) / n + std.math.pi / n;
+        const t = tiltPoint(h / 2, rc * @cos(a), tilt);
+        verts[k] = project(cam, w, h, rc * @sin(a), t[0], t[1], 0.5, 0.5);
+    }
+    const centre_t = tiltPoint(h / 2, 0, tilt);
+    const centre = project(cam, w, h, 0, centre_t[0], centre_t[1], 0.5, 0.5);
+    var m: usize = 0;
+    for (0..count) |k| {
+        out[m] = centre;
+        out[m + 1] = verts[k];
+        out[m + 2] = verts[(k + 1) % count];
+        m += 3;
+    }
+    return m;
+}
+
 test "at rest the front face fills the screen" {
     var out: [8]Face = undefined;
-    const n = faces(4, 0, 1600, 900, false, &out);
+    const n = faces(4, 0, 1600, 900, 0, false, &out);
     try std.testing.expectEqual(@as(usize, 1), n);
     try std.testing.expectEqual(@as(usize, 0), out[0].index);
     const tl = out[0].corners[0];
@@ -97,7 +144,7 @@ test "at rest the front face fills the screen" {
 
 test "halfway between two workspaces both are visible and symmetric" {
     var out: [8]Face = undefined;
-    const n = faces(4, 0.5, 1600, 900, false, &out);
+    const n = faces(4, 0.5, 1600, 900, 0, false, &out);
     try std.testing.expectEqual(@as(usize, 2), n);
     // Face 0 is to the left, face 1 to the right.
     var left: ?Face = null;
@@ -112,8 +159,8 @@ test "halfway between two workspaces both are visible and symmetric" {
 test "the reflection lies below the face" {
     var a: [8]Face = undefined;
     var b: [8]Face = undefined;
-    _ = faces(4, 0.5, 1600, 900, false, &a);
-    _ = faces(4, 0.5, 1600, 900, true, &b);
+    _ = faces(4, 0.5, 1600, 900, 0, false, &a);
+    _ = faces(4, 0.5, 1600, 900, 0, true, &b);
     // Screen y grows downward: the mirrored face's top is lower than the real face's bottom.
     const real_bottom = a[0].corners[2].y / a[0].corners[2].w;
     const mirror_top = b[0].corners[0].y / b[0].corners[0].w;
@@ -123,7 +170,7 @@ test "the reflection lies below the face" {
 test "other cube sizes work" {
     var out: [9]Face = undefined;
     for ([_]usize{ 3, 5, 6, 9 }) |count| {
-        const n = faces(count, 0, 1280, 720, false, &out);
+        const n = faces(count, 0, 1280, 720, 0, false, &out);
         try std.testing.expect(n >= 1);
         try std.testing.expectEqual(@as(usize, 0), out[n - 1].index);
     }
@@ -134,4 +181,13 @@ test "the short way round" {
     try std.testing.expectApproxEqAbs(@as(f32, 3.5), position(3, 0, 4, 0.5), 1e-6); // forward over the seam
     try std.testing.expectApproxEqAbs(@as(f32, 0.5), position(1, 0, 4, 0.5), 1e-6); // back
     try std.testing.expectApproxEqAbs(@as(f32, 1), position(0, 2, 4, 0.5), 1e-6); // halfway round goes forward
+}
+
+test "tipping the cube shows the top, and not at rest" {
+    var verts: [27]Vertex = undefined;
+    try std.testing.expectEqual(@as(usize, 0), topCap(4, 0, 1600, 900, 0, &verts));
+    try std.testing.expectEqual(@as(usize, 12), topCap(4, 0, 1600, 900, 0.4, &verts));
+    var out: [9]Face = undefined;
+    const n = faces(4, 0.5, 1600, 900, 0.3, false, &out);
+    try std.testing.expect(n >= 2);
 }

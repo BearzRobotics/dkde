@@ -27,6 +27,7 @@ const wobble_mod = @import("wobble.zig");
 const cube_mod = @import("cube.zig");
 const snow_mod = @import("snow.zig");
 const fire_mod = @import("fire.zig");
+const gesture_mod = @import("gesture.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -88,6 +89,19 @@ const Server = struct {
     zoom_now: f32 = 1,
     zoom_ms: u32 = 0,
     wobble_ms: u32 = 0,
+    /// Opacify: the window the pointer is over (windows above it that cover it turn see-through).
+    opacify_for: ?*Toplevel = null,
+    /// Tab groups, and the coloured strips drawn above them (rebuilt when `tab_sig` changes).
+    groups: std.ArrayList(GroupRec) = .empty,
+    next_group: u32 = 1,
+    tab_rects: std.ArrayList(*c.wlr_scene_rect) = .empty,
+    tab_sig: u64 = 0,
+    /// Gestures: the `[gestures]` of the settings, and a stroke being drawn.
+    gestures: []const keys.Entry = &.{},
+    gesture_on: bool = false,
+    gesture_pts: std.ArrayList([2]f32) = .empty,
+    /// Motion blur: when something last moved.
+    motion_ms: u32 = 0,
     /// The cube turning from one workspace to another, while it does.
     cube: ?CubeTurn = null,
     snow: ?snow_mod.Snow = null,
@@ -177,6 +191,8 @@ const CubeTurn = struct { from: usize, to: usize, start_ms: u32 };
 /// A closed window's last picture, held (locked) until it has faded.
 const GhostRec = struct { buf: *c.wlr_client_buffer, x: f32, y: f32, w: f32, h: f32, start_ms: u32 };
 
+const GroupRec = struct { id: u32, active: *Toplevel };
+
 const RippleRec = struct { x: f32 = 0, y: f32 = 0, start_ms: u32 = 0, live: bool = false };
 
 /// While the cube draws one workspace's face: that workspace (the scene then shows only its windows).
@@ -206,7 +222,8 @@ const Output = struct {
         const cube = currentCube(nowMs(&now));
         const sprites = currentSprites(nowMs(&now), self.output);
         const ghosts = currentGhosts(nowMs(&now));
-        if (server.animating > 0 or server.overview != null or post.active() or wobbling or blurNeeded() or cube != null or sprites.len > 0 or ghosts.len > 0) {
+        updateTabUi();
+        if (server.animating > 0 or server.overview != null or post.active() or wobbling or blurNeeded() or cube != null or sprites.len > 0 or ghosts.len > 0 or anyShelved()) {
             const drawn = if (server.gfx) |g|
                 g.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf, post, cube, sprites, ghosts)
             else
@@ -216,7 +233,7 @@ const Output = struct {
             } else {
                 _ = c.wlr_scene_output_commit(scene_output, null);
             }
-            if (server.animating > 0 or overviewMoving() or zoomMoving() or wobbling or cube != null or sprites.len > 0 or ghosts.len > 0 or post.ripple_count > 0) c.wlr_output_schedule_frame(self.output);
+            if (server.animating > 0 or overviewMoving() or zoomMoving() or wobbling or cube != null or sprites.len > 0 or ghosts.len > 0 or post.ripple_count > 0 or post.motion > 0) c.wlr_output_schedule_frame(self.output);
         } else {
             if (server.custom_drawn) {
                 // The scene output does not know what was drawn behind its back.
@@ -357,6 +374,10 @@ const Toplevel = struct {
     /// Wobbly windows: the spring mesh while the window swings, and where the window was last frame.
     wobble: ?*wobble_mod.Wobble = null,
     /// The window's latest picture (locked), kept so a close animation has something to draw, and where it was.
+    /// Shelved: drawn as a small thumbnail at the edge of the screen (the real window is hidden).
+    shelved: bool = false,
+    /// The tab group it belongs to (0 = none): only the group's active window is shown.
+    group: u32 = 0,
     snap: ?*c.wlr_client_buffer = null,
     snap_rect: [4]f32 = .{ 0, 0, 0, 0 },
     last_geom: ?layout.Rect = null,
@@ -507,6 +528,9 @@ const Toplevel = struct {
         if (server.grabbed == self) resetCursorMode();
         overviewForget(self);
         freeWobble(self);
+        if (server.opacify_for == self) server.opacify_for = null;
+        leaveGroup(self);
+        self.shelved = false;
         startGhost(self);
         if (self.anim != null) {
             self.anim = null;
@@ -853,7 +877,9 @@ fn onActiveWorkspace(t: *const Toplevel) bool {
 }
 
 fn showIfVisible(t: *Toplevel) void {
-    c.wlr_scene_node_set_enabled(&t.tree.*.node, !t.minimized and onActiveWorkspace(t));
+    // A shelved window is drawn by the composer as a thumbnail; a window behind another tab is hidden.
+    const shown = !t.minimized and onActiveWorkspace(t) and !t.shelved and groupShows(t);
+    c.wlr_scene_node_set_enabled(&t.tree.*.node, shown);
 }
 
 /// The window on top among those on the current workspace, if any.
@@ -861,7 +887,7 @@ fn topWindow() ?*Toplevel {
     var i = server.toplevels.items.len;
     while (i > 0) : (i -= 1) {
         const t = server.toplevels.items[i - 1];
-        if (!t.minimized and onActiveWorkspace(t)) return t;
+        if (!t.minimized and onActiveWorkspace(t) and !t.shelved and groupShows(t)) return t;
     }
     return null;
 }
@@ -945,7 +971,7 @@ fn arrange() void {
     var tiled: std.ArrayList(*Toplevel) = .empty;
     defer tiled.deinit(gpa);
     for (server.managed.items) |t| {
-        if (!t.floating and !t.minimized and !t.maximized and !t.fullscreen and !t.sticky and t.workspace == server.ws.active) tiled.append(gpa, t) catch return;
+        if (!t.floating and !t.minimized and !t.maximized and !t.fullscreen and !t.sticky and !t.shelved and groupShows(t) and t.workspace == server.ws.active) tiled.append(gpa, t) catch return;
     }
     const cells = gpa.alloc(layout.Rect, tiled.items.len) catch return;
     defer gpa.free(cells);
@@ -1105,6 +1131,247 @@ fn addPopup(xdg: *c.wlr_xdg_popup, parent_tree: *c.wlr_scene_tree) void {
 }
 
 /// Gives the keyboard focus to `t` and raises it.
+// ---- shelf: windows shrunk to thumbnails at the edge ------------------------------------------------------------
+
+const shelf_scale: f32 = 0.28;
+
+fn anyShelved() bool {
+    for (server.toplevels.items) |t| {
+        if (t.shelved and onActiveWorkspace(t) and !t.minimized) return true;
+    }
+    return false;
+}
+
+/// Where a shelved window's thumbnail is (layout coordinates): along the bottom right, newest toward the middle.
+fn shelfSlot(t: *const Toplevel) layout.Rect {
+    const area = workArea();
+    var right: i32 = area.x + area.w - 14;
+    for (server.toplevels.items) |o| {
+        if (!o.shelved or !onActiveWorkspace(o) or o.minimized) continue;
+        const g = geometryOf(o);
+        const w: i32 = @intFromFloat(@as(f32, @floatFromInt(g.w)) * shelf_scale);
+        const h: i32 = @intFromFloat(@as(f32, @floatFromInt(g.h)) * shelf_scale);
+        const r = layout.Rect{ .x = right - w, .y = area.y + area.h - 14 - h, .w = w, .h = h };
+        if (o == t) return r;
+        right -= w + 12;
+    }
+    return .{ .x = 0, .y = 0, .w = 0, .h = 0 };
+}
+
+fn shelfXf(t: *Toplevel) ?anim.Xf {
+    if (!onActiveWorkspace(t) or t.minimized) return null;
+    const slot = shelfSlot(t);
+    const node = t.tree.*.node;
+    return .{
+        .scale = shelf_scale,
+        .ax = @floatFromInt(node.x),
+        .ay = @floatFromInt(node.y),
+        .tx = @as(f32, @floatFromInt(slot.x - node.x)),
+        .ty = @as(f32, @floatFromInt(slot.y - node.y)),
+        .alpha = 0.95,
+        .force = true,
+    };
+}
+
+fn shelfAt(px: f64, py: f64) ?*Toplevel {
+    var i = server.toplevels.items.len;
+    while (i > 0) : (i -= 1) {
+        const t = server.toplevels.items[i - 1];
+        if (!t.shelved or !onActiveWorkspace(t) or t.minimized) continue;
+        const r = shelfSlot(t);
+        if (px >= @as(f64, @floatFromInt(r.x)) and px < @as(f64, @floatFromInt(r.x + r.w)) and py >= @as(f64, @floatFromInt(r.y)) and py < @as(f64, @floatFromInt(r.y + r.h))) return t;
+    }
+    return null;
+}
+
+fn toggleShelf(t: *Toplevel) void {
+    if (!server.effects.shelf) return;
+    t.shelved = !t.shelved;
+    showIfVisible(t);
+    if (t.shelved) {
+        if (topWindow()) |next| focus(next);
+    } else focus(t);
+    arrange();
+    wakeOutputs();
+}
+
+// ---- tab groups ---------------------------------------------------------------------------------------------------------
+
+fn groupRec(id: u32) ?*GroupRec {
+    for (server.groups.items) |*g| {
+        if (g.id == id) return g;
+    }
+    return null;
+}
+
+/// Whether the window is shown as far as its group goes (not in one, or the active tab).
+fn groupShows(t: *const Toplevel) bool {
+    if (t.group == 0) return true;
+    const g = groupRec(t.group) orelse return true;
+    return g.active == t;
+}
+
+fn groupMembers(id: u32, out: []*Toplevel) usize {
+    var n: usize = 0;
+    for (server.managed.items) |t| {
+        if (t.group == id and n < out.len) {
+            out[n] = t;
+            n += 1;
+        }
+    }
+    return n;
+}
+
+/// Makes `t` the shown tab of its group; it takes the place of the one it replaces.
+fn activateTab(t: *Toplevel) void {
+    const g = groupRec(t.group) orelse return;
+    const old = g.active;
+    if (old == t) return;
+    t.floating = true;
+    t.cell = null;
+    place(t, geometryOf(old));
+    g.active = t;
+    showIfVisible(old);
+    showIfVisible(t);
+}
+
+/// Takes `t` out of its group; a group of one is dissolved.
+fn leaveGroup(t: *Toplevel) void {
+    if (t.group == 0) return;
+    const id = t.group;
+    t.group = 0;
+    var rest: [32]*Toplevel = undefined;
+    const n = groupMembers(id, &rest);
+    const rec = groupRec(id) orelse return;
+    if (n <= 1) {
+        for (rest[0..n]) |o| o.group = 0;
+        for (server.groups.items, 0..) |g, i| {
+            if (g.id == id) {
+                _ = server.groups.orderedRemove(i);
+                break;
+            }
+        }
+        for (rest[0..n]) |o| showIfVisible(o);
+    } else if (rec.active == t) {
+        rec.active = rest[0];
+        showIfVisible(rest[0]);
+    }
+    showIfVisible(t);
+}
+
+/// Super+G: group the window with the one below it into tabs, or take it out of its group.
+fn toggleGroup() void {
+    if (!server.effects.groups) return;
+    const t = topWindow() orelse return;
+    if (t.group != 0) {
+        leaveGroup(t);
+        return;
+    }
+    // The partner: the window below this one on the workspace.
+    var partner: ?*Toplevel = null;
+    var i = server.toplevels.items.len;
+    while (i > 0) : (i -= 1) {
+        const o = server.toplevels.items[i - 1];
+        if (o != t and !o.minimized and !o.shelved and onActiveWorkspace(o) and !o.unmanaged()) {
+            partner = o;
+            break;
+        }
+    }
+    const p = partner orelse return;
+    if (p.group == 0) {
+        const id = server.next_group;
+        server.next_group += 1;
+        server.groups.append(gpa, .{ .id = id, .active = p }) catch return;
+        p.group = id;
+    }
+    t.group = p.group;
+    activateTab(t);
+    focus(t);
+}
+
+fn tabStep(dir: i32) void {
+    const t = topWindow() orelse return;
+    if (t.group == 0) return;
+    var members: [32]*Toplevel = undefined;
+    const n = groupMembers(t.group, &members);
+    if (n < 2) return;
+    var idx: usize = 0;
+    for (members[0..n], 0..) |m, k| {
+        if (m == t) idx = k;
+    }
+    const next = members[@intCast(@mod(@as(i64, @intCast(idx)) + dir, @as(i64, @intCast(n))))];
+    activateTab(next);
+    focus(next);
+}
+
+/// The coloured strips above the groups' windows: one segment per tab, the shown one bright.
+fn updateTabUi() void {
+    var sig: u64 = 1469598103934665603;
+    for (server.groups.items) |g| {
+        const t = g.active;
+        if (t.minimized or !onActiveWorkspace(t) or t.shelved) continue;
+        const r = geometryOf(t);
+        var members: [32]*Toplevel = undefined;
+        const n = groupMembers(g.id, &members);
+        for ([_]u64{ @bitCast(@as(i64, r.x)), @bitCast(@as(i64, r.y)), @bitCast(@as(i64, r.w)), n, @intFromPtr(t) }) |v| sig = (sig ^ v) *% 1099511628211;
+    }
+    if (sig == server.tab_sig) return;
+    server.tab_sig = sig;
+    for (server.tab_rects.items) |r| c.wlr_scene_node_destroy(&r.*.node);
+    server.tab_rects.clearRetainingCapacity();
+    for (server.groups.items) |g| {
+        const t = g.active;
+        if (t.minimized or !onActiveWorkspace(t) or t.shelved) continue;
+        const r = geometryOf(t);
+        var members: [32]*Toplevel = undefined;
+        const n = groupMembers(g.id, &members);
+        if (n == 0) continue;
+        const seg = @min(@as(i32, 96), @divTrunc(r.w, @as(i32, @intCast(n))));
+        for (members[0..n], 0..) |m, k| {
+            const color = if (m == t) [4]f32{ 0.21, 0.52, 0.89, 1 } else [4]f32{ 0.45, 0.47, 0.52, 1 };
+            const box = layout.Rect{ .x = r.x + @as(i32, @intCast(k)) * (seg + 2), .y = r.y - 7, .w = seg, .h = 5 };
+            if (sceneRect(server.trees[4], box, color)) |rect| server.tab_rects.append(gpa, rect) catch {};
+        }
+    }
+}
+
+// ---- mouse gestures -----------------------------------------------------------------------------------------------------
+
+const default_gestures = [_]keys.Entry{
+    .{ .key = "L", .action = "workspace-prev" },
+    .{ .key = "R", .action = "workspace-next" },
+    .{ .key = "U", .action = "maximize" },
+    .{ .key = "D", .action = "show-desktop" },
+};
+
+fn superHeld() bool {
+    for (server.keyboards.items) |k| {
+        if (c.wlr_keyboard_get_modifiers(k.keyboard) & c.WLR_MODIFIER_LOGO != 0) return true;
+    }
+    return false;
+}
+
+fn gestureAction(name: []const u8) ?keys.Action {
+    // The settings first, then the built-in ones.
+    for (server.gestures) |e| {
+        if (std.mem.eql(u8, e.key, name)) return keys.parseAction(e.action);
+    }
+    for (default_gestures) |e| {
+        if (std.mem.eql(u8, e.key, name)) return keys.parseAction(e.action);
+    }
+    return null;
+}
+
+fn finishGesture() void {
+    server.gesture_on = false;
+    var buf: [8]u8 = undefined;
+    const name = gesture_mod.classify(server.gesture_pts.items, &buf);
+    server.gesture_pts.clearRetainingCapacity();
+    wakeOutputs();
+    if (name.len == 0) return;
+    if (gestureAction(name)) |action| perform(action);
+}
+
 // ---- Scale and Expo --------------------------------------------------------------------------------------------
 
 const Entry = struct {
@@ -1573,6 +1840,12 @@ fn currentPost(output: *c.wlr_output) gfx.Post {
             p.ripple_count += 1;
         }
     }
+    if (server.effects.motion_blur) {
+        const now_m = currentMs();
+        if (server.cursor_mode == .move or anyWobble() or server.animating > 0 or server.cube != null or overviewMoving()) server.motion_ms = now_m;
+        const since = now_m -% server.motion_ms;
+        if (server.motion_ms != 0 and since < 180) p.motion = 0.5 * (1 - @as(f32, @floatFromInt(since)) / 180.0);
+    }
     if (server.filter != .none) {
         const m = filters.matrixFor(server.filter);
         p.m = gfx.fromRows(m.rows);
@@ -1614,11 +1887,12 @@ fn xfOf(node: *c.wlr_scene_node) ?anim.Xf {
     const t: *Toplevel = @ptrCast(@alignCast(node.data orelse return null));
     if (face_filter) |f| {
         // One face of the cube: this workspace's windows (and sticky ones), drawn plainly, and nothing else.
-        if (t.minimized or !(t.sticky or t.workspace == f)) return .{ .hidden = true };
+        if (t.minimized or t.shelved or !groupShows(t) or !(t.sticky or t.workspace == f)) return .{ .hidden = true };
         return .{ .force = true };
     }
     var result: ?anim.Xf = null;
     if (server.overview) |ov| result = ov.xfFor(t);
+    if (result == null and t.shelved) result = shelfXf(t);
     if (result == null) {
         if (t.anim) |a| {
             const size = t.contentSize();
@@ -1654,6 +1928,7 @@ fn currentCube(now: u32) ?gfx.Cube {
     }
     return .{
         .pos = cube_mod.position(turn.from, turn.to, server.ws.count, anim.easeOut(f)),
+        .tilt = 0.28 * @sin(std.math.pi * f),
         .count = server.ws.count,
         .filter = setFaceFilter,
     };
@@ -1698,6 +1973,11 @@ fn currentSprites(now: u32, output: *c.wlr_output) []const gfx.Sprite {
     } else if (!server.effects.fire) {
         server.fire = null;
         server.fire_on = false;
+    }
+    if (server.gesture_on) {
+        for (server.gesture_pts.items) |pt| {
+            list.append(gpa, .{ .x = pt[0], .y = pt[1], .radius = 4, .alpha = 0.9, .tint = .{ 0.3, 0.65, 1.0 } }) catch break;
+        }
     }
     if (server.effects.paint) {
         for (server.paint_pts.items) |pt| {
@@ -2028,14 +2308,44 @@ fn focusRank(t: *const Toplevel) usize {
 }
 
 /// The window's own opacity, with dimming for not having the focus: one step, or (trailfocus) more the further back.
-fn effectiveOpacity(t: *const Toplevel) f32 {
+fn effectiveOpacity(t: *Toplevel) f32 {
     var v: f32 = t.opacity;
     if (server.effects.trailfocus) {
         v *= @max(0.35, 1.0 - 0.17 * @as(f32, @floatFromInt(focusRank(t))));
     } else if (server.inactive_opacity < 1.0 and !isFocused(t)) {
         v *= server.inactive_opacity;
     }
+    if (opacified(t)) v *= 0.28;
     return v;
+}
+
+fn rectsOverlap(a: layout.Rect, b: layout.Rect) bool {
+    return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h;
+}
+
+/// With Opacify on: whether `t` lies over the window the pointer is on.
+fn opacified(t: *Toplevel) bool {
+    if (!server.effects.opacify) return false;
+    const h = server.opacify_for orelse return false;
+    if (h == t or h.minimized) return false;
+    var seen_h = false;
+    for (server.toplevels.items) |o| {
+        if (o == h) {
+            seen_h = true;
+            continue;
+        }
+        if (o == t) return seen_h and !t.minimized and onActiveWorkspace(t) and rectsOverlap(geometryOf(t), geometryOf(h));
+    }
+    return false;
+}
+
+/// The pointer moved onto a (different) window, or off all of them.
+fn updateOpacify(over: ?*Toplevel) void {
+    if (!server.effects.opacify) return;
+    if (server.opacify_for == over) return;
+    server.opacify_for = over;
+    refreshOpacity();
+    wakeOutputs();
 }
 
 fn refreshOpacity() void {
@@ -2111,6 +2421,11 @@ fn showDesktop() void {
 
 fn focus(t: *Toplevel) void {
     if (server.locked or t.unmanaged()) return;
+    if (t.shelved) {
+        t.shelved = false;
+        showIfVisible(t);
+    }
+    if (t.group != 0) activateTab(t);
     const seat = server.seat;
     const surface = t.surf() orelse return;
     const previous = seat.*.keyboard_state.focused_surface;
@@ -2131,7 +2446,7 @@ fn focus(t: *Toplevel) void {
         c.wlr_seat_keyboard_notify_enter(seat, surface, keyboard.*.keycodes[0..].ptr, keyboard.*.num_keycodes, &keyboard.*.modifiers);
     }
     updateStacking();
-    if (server.inactive_opacity < 1.0 or server.effects.trailfocus) refreshOpacity();
+    if (server.inactive_opacity < 1.0 or server.effects.trailfocus or server.effects.opacify) refreshOpacity();
 }
 
 const Hit = struct { toplevel: ?*Toplevel, layer: ?*LayerSurface, surface: *c.wlr_surface, sx: f64, sy: f64 };
@@ -2450,6 +2765,11 @@ fn processCursorMotion(time: u32) void {
         overviewMotion();
         return;
     }
+    if (server.gesture_on) {
+        server.gesture_pts.append(gpa, .{ @floatCast(cursor.*.x), @floatCast(cursor.*.y) }) catch {};
+        wakeOutputs();
+        return;
+    }
     if (server.paint_on) {
         c.wlr_cursor_set_xcursor(cursor, server.cursor_mgr, "crosshair");
         if (server.paint_down) paintPoint();
@@ -2514,6 +2834,7 @@ fn processCursorMotion(time: u32) void {
         .passthrough => {},
     }
 
+    if (server.effects.opacify) updateOpacify(if (windowAt(cursor.*.x, cursor.*.y)) |h| h.toplevel else null);
     if (windowAt(cursor.*.x, cursor.*.y)) |hit| {
         c.wlr_seat_pointer_notify_enter(server.seat, hit.surface, hit.sx, hit.sy);
         c.wlr_seat_pointer_notify_motion(server.seat, time, hit.sx, hit.sy);
@@ -2551,6 +2872,24 @@ fn onCursorButton(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     if (server.overview != null) {
         _ = overviewButton(event.state == c.WL_POINTER_BUTTON_STATE_PRESSED);
         return;
+    }
+    if (server.effects.gestures and event.button == 0x111) {
+        if (event.state == c.WL_POINTER_BUTTON_STATE_PRESSED and superHeld() and server.gesture_pts.items.len == 0) {
+            server.gesture_on = true;
+            server.gesture_pts.append(gpa, .{ @floatCast(server.cursor.*.x), @floatCast(server.cursor.*.y) }) catch {};
+            c.wlr_seat_pointer_clear_focus(server.seat);
+            return;
+        }
+        if (event.state == c.WL_POINTER_BUTTON_STATE_RELEASED and server.gesture_on) {
+            finishGesture();
+            return;
+        }
+    }
+    if (server.effects.shelf and event.state == c.WL_POINTER_BUTTON_STATE_PRESSED) {
+        if (shelfAt(server.cursor.*.x, server.cursor.*.y)) |t| {
+            toggleShelf(t);
+            return;
+        }
     }
     if (server.paint_on) {
         server.paint_down = event.state == c.WL_POINTER_BUTTON_STATE_PRESSED;
@@ -2813,7 +3152,7 @@ fn perform(action: keys.Action) void {
             }
             // The window at the bottom of this workspace comes to the top.
             for (server.toplevels.items) |t| {
-                if (!t.minimized and onActiveWorkspace(t)) {
+                if (!t.minimized and onActiveWorkspace(t) and !t.shelved and groupShows(t)) {
                     focus(t);
                     break;
                 }
@@ -2828,7 +3167,7 @@ fn perform(action: keys.Action) void {
             var i = server.toplevels.items.len;
             while (i > 0) : (i -= 1) {
                 const t = server.toplevels.items[i - 1];
-                if (t.minimized or !onActiveWorkspace(t)) continue;
+                if (t.minimized or !onActiveWorkspace(t) or t.shelved or !groupShows(t)) continue;
                 seen += 1;
                 if (seen == 2) {
                     focus(t);
@@ -2861,6 +3200,10 @@ fn perform(action: keys.Action) void {
         .fire => toggleFire(),
         .paint => togglePaint(),
         .paint_clear => clearPaint(),
+        .group => toggleGroup(),
+        .next_tab => tabStep(1),
+        .prev_tab => tabStep(-1),
+        .shelf => if (topWindow()) |t| toggleShelf(t),
         .scale => openOverview(false),
         .expo => openOverview(true),
         .opacity_up => if (topWindow()) |t| changeOpacity(t, 0.1),
@@ -3118,9 +3461,16 @@ fn loadConfig() void {
     rules.freeAll(gpa, server.rules);
     server.rules = cfg.rules;
     cfg.rules = &.{};
+    for (server.gestures) |e| {
+        gpa.free(e.key);
+        gpa.free(e.action);
+    }
+    gpa.free(server.gestures);
+    server.gestures = cfg.gestures;
+    cfg.gestures = &.{};
     server.placement = cfg.placement;
     server.snap_windows = cfg.snap_windows;
-    const dimming_changed = server.inactive_opacity != cfg.inactive_opacity or server.effects.trailfocus != cfg.effects.trailfocus;
+    const dimming_changed = server.inactive_opacity != cfg.inactive_opacity or server.effects.trailfocus != cfg.effects.trailfocus or server.effects.opacify != cfg.effects.opacify;
     server.inactive_opacity = cfg.inactive_opacity;
     server.effects = cfg.effects;
     server.filter = cfg.effects.filter;

@@ -1783,6 +1783,36 @@ pub const SettingsWindow = struct {
         paint.as(gtk.Widget).setName("paint");
         addRowDesc(page, common.tr("Draw on the screen (Super+Shift+P)"), common.tr("Super+Shift+P lets you draw on the screen with the pointer (Escape stops, Super+Shift+C wipes it). Needs the GLES renderer."), paint.as(gtk.Widget));
 
+        const opacify = gtk.Switch.new();
+        opacify.setActive(@intFromBool(cfg.effects.opacify));
+        _ = gtk.Switch.signals.state_set.connect(opacify, *SettingsWindow, &onEffectSwitch, self, .{});
+        opacify.as(gtk.Widget).setName("opacify");
+        addRowDesc(page, common.tr("Opacify"), common.tr("Windows on top of the one you point at turn see-through, so you can see it without raising it."), opacify.as(gtk.Widget));
+
+        const motion_blur = gtk.Switch.new();
+        motion_blur.setActive(@intFromBool(cfg.effects.motion_blur));
+        _ = gtk.Switch.signals.state_set.connect(motion_blur, *SettingsWindow, &onEffectSwitch, self, .{});
+        motion_blur.as(gtk.Widget).setName("motion-blur");
+        addRowDesc(page, common.tr("Motion blur"), common.tr("A faint trail follows windows as they move (a drag, an animation, the cube). Needs the GLES renderer."), motion_blur.as(gtk.Widget));
+
+        const gestures = gtk.Switch.new();
+        gestures.setActive(@intFromBool(cfg.effects.gestures));
+        _ = gtk.Switch.signals.state_set.connect(gestures, *SettingsWindow, &onEffectSwitch, self, .{});
+        gestures.as(gtk.Widget).setName("gestures");
+        addRowDesc(page, common.tr("Mouse gestures"), common.tr("Hold Super and drag with the right button; the direction you draw runs an action (left and right change desktop, up maximizes, down shows the desktop). More in compositor.toml under [gestures]."), gestures.as(gtk.Widget));
+
+        const shelf = gtk.Switch.new();
+        shelf.setActive(@intFromBool(cfg.effects.shelf));
+        _ = gtk.Switch.signals.state_set.connect(shelf, *SettingsWindow, &onEffectSwitch, self, .{});
+        shelf.as(gtk.Widget).setName("shelf");
+        addRowDesc(page, common.tr("Shelf (Super+Shift+S)"), common.tr("Shrinks the window to a thumbnail at the bottom right; click the thumbnail to bring it back."), shelf.as(gtk.Widget));
+
+        const groups = gtk.Switch.new();
+        groups.setActive(@intFromBool(cfg.effects.groups));
+        _ = gtk.Switch.signals.state_set.connect(groups, *SettingsWindow, &onEffectSwitch, self, .{});
+        groups.as(gtk.Widget).setName("groups");
+        addRowDesc(page, common.tr("Tab groups (Super+G)"), common.tr("Super+G groups the window with the one below it into tabs (a strip of coloured tabs shows above it); Super+] and Super+[ switch tabs, Super+G again takes the window out."), groups.as(gtk.Widget));
+
         const dim = gtk.SpinButton.newWithRange(10, 100, 5);
         dim.setValue(@round(@as(f64, cfg.inactive_opacity) * 100));
         _ = gtk.SpinButton.signals.value_changed.connect(dim, *SettingsWindow, &onInactiveOpacity, self, .{});
