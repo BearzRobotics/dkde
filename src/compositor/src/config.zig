@@ -84,6 +84,16 @@ pub const Effects = struct {
     cube: bool = false,
     /// Snow falls over the desktop (needs the GLES renderer).
     snow: bool = false,
+    /// Windows further back in the focus order are more see-through (instead of one dimming for all unfocused ones).
+    trailfocus: bool = false,
+    /// Super+M: a round magnifying lens that follows the pointer (needs the GLES renderer).
+    lens: bool = false,
+    /// Ripples spread from the pointer as it moves (needs the GLES renderer).
+    water: bool = false,
+    /// Super+Shift+F: flames follow the pointer (needs the GLES renderer).
+    fire: bool = false,
+    /// Super+Shift+P: draw on the screen with the pointer (needs the GLES renderer).
+    paint: bool = false,
 };
 
 /// A filter by its name in compositor.toml ("high-contrast" has a dash).
@@ -239,6 +249,12 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
             .boolean => |b| config.effects.wobbly = b,
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] wobbly: expected true or false; using false")),
         };
+        inline for (.{ .{ "trailfocus", "trailfocus" }, .{ "lens", "lens" }, .{ "water", "water" }, .{ "fire", "fire" }, .{ "paint", "paint" } }) |pair| {
+            if (t.get(pair[0])) |v| switch (v) {
+                .boolean => |b| @field(config.effects, pair[1]) = b,
+                else => try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[effects] {s}: expected true or false; using false", .{pair[0]})),
+            };
+        }
         if (t.get("snow")) |v| switch (v) {
             .boolean => |b| config.effects.snow = b,
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] snow: expected true or false; using false")),
@@ -399,6 +415,9 @@ test "effects are off until asked for" {
     const sn = try parse(std.testing.allocator, "[effects]\nsnow = true\n", &warnings);
     defer free(std.testing.allocator, sn);
     try std.testing.expect(sn.effects.snow);
+    const more = try parse(std.testing.allocator, "[effects]\ntrailfocus = true\nlens = true\nwater = true\nfire = true\npaint = true\n", &warnings);
+    defer free(std.testing.allocator, more);
+    try std.testing.expect(more.effects.trailfocus and more.effects.lens and more.effects.water and more.effects.fire and more.effects.paint);
     const bad = try parse(std.testing.allocator, "[effects]\nanimation-ms = 5\n", &warnings);
     defer free(std.testing.allocator, bad);
     try std.testing.expectEqual(@as(u32, 200), bad.effects.animation_ms);

@@ -4,6 +4,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 ## Unreleased
 
+- **Added** (dkde-compositor, Settings): close animations (a closed window fades from its last picture), trailing focus, a magnifier lens (Super+M), water ripples from the pointer, flames at the pointer (Super+Shift+F) and drawing on the screen (Super+Shift+P). The cube gains a faint floor reflection, and blur no longer extends behind a window's shadow. All are off by default; the GLES ones need the GLES renderer.
 - **Added** (dkde-compositor, Settings): optional snow over the desktop (`[effects] snow = true`) and a pointer finder (Super+P draws a ring that grows around the pointer), both drawn as sprites by the GLES composer.
 - **Added** (dkde-compositor, Settings): an optional desktop cube (`[effects] cube = true`): switching workspaces turns a prism with each workspace on a face, drawn with perspective by the GLES composer (each face is the scene with only that workspace's windows). Works with three to nine workspaces.
 - **Added** (dkde-compositor, Settings): optional blur behind translucent windows (`[effects] blur = true`), a two-pass gaussian on a half-size copy of what is behind the window, in the GLES composer.

@@ -23,11 +23,19 @@ pub const Post = struct {
     /// Column-major 3x3 colour matrix and a per-channel offset (identity = no change).
     m: [9]f32 = identity,
     off: [3]f32 = .{ 0, 0, 0 },
+    /// The magnifier lens: centre (fractions of the output), radius (fraction of the height), zoom; radius 0 = off.
+    lens_x: f32 = 0.5,
+    lens_y: f32 = 0.5,
+    lens_r: f32 = 0,
+    lens_zoom: f32 = 2.5,
+    ripples: [max_ripples][4]f32 = std.mem.zeroes([max_ripples][4]f32),
+    ripple_count: usize = 0,
 
+    pub const max_ripples = 8;
     pub const identity = [9]f32{ 1, 0, 0, 0, 1, 0, 0, 0, 1 };
 
     pub fn active(self: Post) bool {
-        return self.zoom != 1 or !std.mem.eql(f32, &self.m, &identity) or self.off[0] != 0 or self.off[1] != 0 or self.off[2] != 0;
+        return self.zoom != 1 or self.lens_r > 0 or self.ripple_count > 0 or !std.mem.eql(f32, &self.m, &identity) or self.off[0] != 0 or self.off[1] != 0 or self.off[2] != 0;
     }
 };
 
@@ -38,8 +46,26 @@ pub const Sprite = struct {
     y: f32,
     radius: f32,
     alpha: f32,
-    ring: bool = false,
+    kind: Kind = .dot,
+    tint: [3]f32 = .{ 1, 1, 1 },
+
+    pub const Kind = enum { dot, ring, flame };
 };
+
+/// A window that has closed, still drawn while it fades: its last picture, where it was and how big.
+pub const Ghost = struct {
+    texture: *c.wlr_texture,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    scale: f32,
+    alpha: f32,
+};
+
+/// A ripple in the screen (the water effect): centre as a fraction of the output, radius in the output's
+/// height, strength.
+pub const Ripple = struct { x: f32, y: f32, radius: f32, strength: f32 };
 
 /// The desktop cube for this frame.
 pub const Cube = struct {
@@ -72,9 +98,11 @@ const frag_tex =
     \\uniform sampler2D u_tex;
     \\uniform float u_alpha;
     \\uniform float u_has_alpha;
+    \\uniform vec3 u_tint;
     \\void main() {
     \\    vec4 t = texture2D(u_tex, v_uv);
     \\    if (u_has_alpha < 0.5) t.a = 1.0;
+    \\    t.rgb *= u_tint;
     \\    gl_FragColor = t * u_alpha;
     \\}
 ;
@@ -86,9 +114,11 @@ const frag_ext =
     \\uniform samplerExternalOES u_tex;
     \\uniform float u_alpha;
     \\uniform float u_has_alpha;
+    \\uniform vec3 u_tint;
     \\void main() {
     \\    vec4 t = texture2D(u_tex, v_uv);
     \\    if (u_has_alpha < 0.5) t.a = 1.0;
+    \\    t.rgb *= u_tint;
     \\    gl_FragColor = t * u_alpha;
     \\}
 ;
@@ -120,10 +150,33 @@ const frag_post =
     \\uniform vec2 u_focus;
     \\uniform mat3 u_matrix;
     \\uniform vec3 u_offset;
+    \\uniform float u_aspect;
+    \\uniform vec4 u_lens;
+    \\uniform vec4 u_ripple[8];
     \\void main() {
     \\    vec2 uv = u_focus + (v_uv - u_focus) / u_zoom;
+    \\    float edge = 0.0;
+    \\    if (u_lens.z > 0.0) {
+    \\        vec2 d = (uv - u_lens.xy) * vec2(u_aspect, 1.0);
+    \\        float dist = length(d);
+    \\        if (dist < u_lens.z) {
+    \\            uv = u_lens.xy + (uv - u_lens.xy) / u_lens.w;
+    \\            edge = smoothstep(u_lens.z - 0.012, u_lens.z, dist);
+    \\        }
+    \\    }
+    \\    for (int i = 0; i < 8; i++) {
+    \\        vec4 r = u_ripple[i];
+    \\        if (r.w > 0.0) {
+    \\            vec2 d = (uv - r.xy) * vec2(u_aspect, 1.0);
+    \\            float dist = length(d);
+    \\            float k = (dist - r.z) / 0.035;
+    \\            float wave = exp(-k * k) * sin(k * 3.0) * r.w;
+    \\            uv += normalize(d + vec2(0.0001)) * wave * vec2(1.0 / u_aspect, 1.0) * 0.03;
+    \\        }
+    \\    }
     \\    vec3 rgb = texture2D(u_tex, uv).rgb;
-    \\    gl_FragColor = vec4(clamp(u_matrix * rgb + u_offset, 0.0, 1.0), 1.0);
+    \\    rgb = clamp(u_matrix * rgb + u_offset, 0.0, 1.0);
+    \\    gl_FragColor = vec4(mix(rgb, vec3(0.1), edge * 0.8), 1.0);
     \\}
 ;
 
@@ -158,6 +211,10 @@ const Program = struct {
     offset: c.GLint = -1,
     step: c.GLint = -1,
     clamp: c.GLint = -1,
+    tint: c.GLint = -1,
+    aspect: c.GLint = -1,
+    lens: c.GLint = -1,
+    ripple: c.GLint = -1,
 };
 
 fn compile(kind: c.GLenum, source: [*:0]const u8) c.GLuint {
@@ -214,6 +271,10 @@ fn link(vertex: [*:0]const u8, fragment: [*:0]const u8) ?Program {
         .offset = c.glGetUniformLocation(id, "u_offset"),
         .step = c.glGetUniformLocation(id, "u_step"),
         .clamp = c.glGetUniformLocation(id, "u_clamp"),
+        .tint = c.glGetUniformLocation(id, "u_tint"),
+        .aspect = c.glGetUniformLocation(id, "u_aspect"),
+        .lens = c.glGetUniformLocation(id, "u_lens"),
+        .ripple = c.glGetUniformLocation(id, "u_ripple"),
     };
 }
 
@@ -237,6 +298,7 @@ pub const Gfx = struct {
     /// Textures for the sprites (made when first needed).
     dot_tex: c.GLuint = 0,
     ring_tex: c.GLuint = 0,
+    flame_tex: c.GLuint = 0,
     /// Blur of what is behind translucent windows: a copy of the frame, and two half-size targets to blur between.
     blur_src: c.GLuint = 0,
     blur_tex: [2]c.GLuint = .{ 0, 0 },
@@ -329,6 +391,35 @@ pub const Gfx = struct {
     }
 
     /// A white picture whose opacity follows `alpha_at(distance from the centre, 0..1)`.
+    /// A flame dot: white-yellow in the middle, orange, then red at the edge, premultiplied.
+    fn makeFlame() c.GLuint {
+        const size = 64;
+        var pixels: [size * size * 4]u8 = undefined;
+        for (0..size) |j| {
+            for (0..size) |i| {
+                const dx = (@as(f32, @floatFromInt(i)) + 0.5) / size * 2 - 1;
+                const dy = (@as(f32, @floatFromInt(j)) + 0.5) / size * 2 - 1;
+                const d = @sqrt(dx * dx + dy * dy);
+                const a = if (d >= 1) 0 else (1 - d) * (1 - d);
+                const heat = 1 - d; // 1 in the middle
+                const o = (j * size + i) * 4;
+                pixels[o] = @intFromFloat(std.math.clamp(a * 1.0, 0, 1) * 255);
+                pixels[o + 1] = @intFromFloat(std.math.clamp(a * (0.25 + 0.7 * heat), 0, 1) * 255);
+                pixels[o + 2] = @intFromFloat(std.math.clamp(a * heat * heat * 0.5, 0, 1) * 255);
+                pixels[o + 3] = @intFromFloat(std.math.clamp(a * 0.9, 0, 1) * 255);
+            }
+        }
+        var t: c.GLuint = 0;
+        c.glGenTextures(1, &t);
+        c.glBindTexture(c.GL_TEXTURE_2D, t);
+        c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_RGBA, size, size, 0, c.GL_RGBA, c.GL_UNSIGNED_BYTE, &pixels);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_LINEAR);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_LINEAR);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_S, c.GL_CLAMP_TO_EDGE);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_T, c.GL_CLAMP_TO_EDGE);
+        return t;
+    }
+
     fn makeSprite(comptime alpha_at: fn (f32) f32) c.GLuint {
         const size = 64;
         var pixels: [size * size * 4]u8 = undefined;
@@ -370,18 +461,64 @@ pub const Gfx = struct {
         if (sprites.len == 0) return;
         if (self.dot_tex == 0) self.dot_tex = makeSprite(dotAlpha);
         if (self.ring_tex == 0) self.ring_tex = makeSprite(ringAlpha);
+        if (self.flame_tex == 0) self.flame_tex = makeFlame();
         c.glEnable(c.GL_BLEND);
-        c.glBlendFunc(c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
         c.glUseProgram(self.tex.id);
         c.glUniform2f(self.tex.size, painter.w, painter.h);
         c.glUniform1f(self.tex.has_alpha, 1);
         c.glUniform1i(self.tex.tex, 0);
         c.glActiveTexture(c.GL_TEXTURE0);
+        var additive = false;
+        c.glBlendFunc(c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
         for (sprites) |sp| {
-            c.glBindTexture(c.GL_TEXTURE_2D, if (sp.ring) self.ring_tex else self.dot_tex);
+            const want_add = sp.kind == .flame;
+            if (want_add != additive) {
+                additive = want_add;
+                c.glBlendFunc(c.GL_ONE, if (additive) c.GL_ONE else c.GL_ONE_MINUS_SRC_ALPHA);
+            }
+            c.glBindTexture(c.GL_TEXTURE_2D, switch (sp.kind) {
+                .dot => self.dot_tex,
+                .ring => self.ring_tex,
+                .flame => self.flame_tex,
+            });
             c.glUniform1f(self.tex.alpha, sp.alpha);
+            c.glUniform3f(self.tex.tint, sp.tint[0], sp.tint[1], sp.tint[2]);
             const p0 = painter.dev(sp.x - sp.radius, sp.y - sp.radius, null);
             const p1 = painter.dev(sp.x + sp.radius, sp.y + sp.radius, null);
+            const quad = [_]Vertex{
+                .{ .x = p0[0], .y = p0[1], .u = 0, .v = 0 }, .{ .x = p1[0], .y = p0[1], .u = 1, .v = 0 }, .{ .x = p0[0], .y = p1[1], .u = 0, .v = 1 },
+                .{ .x = p1[0], .y = p0[1], .u = 1, .v = 0 }, .{ .x = p1[0], .y = p1[1], .u = 1, .v = 1 }, .{ .x = p0[0], .y = p1[1], .u = 0, .v = 1 },
+            };
+            c.glVertexAttribPointer(0, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &quad[0].x);
+            c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Vertex), &quad[0].u);
+            c.glDrawArrays(c.GL_TRIANGLES, 0, 6);
+        }
+        c.glUniform3f(self.tex.tint, 1, 1, 1);
+        c.glBlendFunc(c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+    }
+
+    /// Windows that have closed, fading out (their last picture).
+    fn drawGhosts(self: *Gfx, painter: *const Painter, ghosts: []const Ghost) void {
+        for (ghosts) |gh| {
+            if (!c.wlr_texture_is_gles2(gh.texture)) continue;
+            var attribs: c.wlr_gles2_texture_attribs = std.mem.zeroes(c.wlr_gles2_texture_attribs);
+            c.wlr_gles2_texture_get_attribs(gh.texture, &attribs);
+            const prog = if (attribs.target == c.GL_TEXTURE_EXTERNAL_OES) (self.ext orelse continue) else self.tex;
+            c.glEnable(c.GL_BLEND);
+            c.glBlendFunc(c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+            c.glUseProgram(prog.id);
+            c.glUniform2f(prog.size, painter.w, painter.h);
+            c.glUniform1f(prog.alpha, gh.alpha);
+            c.glUniform1f(prog.has_alpha, if (attribs.has_alpha) 1 else 0);
+            c.glUniform3f(prog.tint, 1, 1, 1);
+            c.glActiveTexture(c.GL_TEXTURE0);
+            c.glBindTexture(attribs.target, attribs.tex);
+            c.glUniform1i(prog.tex, 0);
+            const cx = gh.x + gh.w / 2;
+            const cy = gh.y + gh.h / 2;
+            const xf: Xf = .{ .scale = gh.scale, .ax = cx, .ay = cy };
+            const p0 = painter.dev(gh.x, gh.y, xf);
+            const p1 = painter.dev(gh.x + gh.w, gh.y + gh.h, xf);
             const quad = [_]Vertex{
                 .{ .x = p0[0], .y = p0[1], .u = 0, .v = 0 }, .{ .x = p1[0], .y = p0[1], .u = 1, .v = 0 }, .{ .x = p0[0], .y = p1[1], .u = 0, .v = 1 },
                 .{ .x = p1[0], .y = p0[1], .u = 1, .v = 0 }, .{ .x = p1[0], .y = p1[1], .u = 1, .v = 1 }, .{ .x = p0[0], .y = p1[1], .u = 0, .v = 1 },
@@ -416,7 +553,7 @@ pub const Gfx = struct {
     }
 
     /// Draws the whole scene onto the output and commits it. False when anything failed.
-    pub fn compose(self: *Gfx, output: *c.wlr_output, layout: *c.wlr_output_layout, root: *c.wlr_scene_tree, lookup: render.Lookup, post: Post, cube: ?Cube, sprites: []const Sprite) bool {
+    pub fn compose(self: *Gfx, output: *c.wlr_output, layout: *c.wlr_output_layout, root: *c.wlr_scene_tree, lookup: render.Lookup, post: Post, cube: ?Cube, sprites: []const Sprite, ghosts: []const Ghost) bool {
         if (c.eglMakeCurrent(self.display, c.EGL_NO_SURFACE, c.EGL_NO_SURFACE, self.context) == 0) return false;
         defer _ = c.eglMakeCurrent(self.display, c.EGL_NO_SURFACE, c.EGL_NO_SURFACE, c.EGL_NO_CONTEXT);
 
@@ -466,6 +603,7 @@ pub const Gfx = struct {
         } else {
             render.walk(&painter, lookup, &root.node, 0, 0, null);
         }
+        self.drawGhosts(&painter, ghosts);
         self.drawSprites(&painter, sprites);
 
         if (use_scene) {
@@ -481,6 +619,11 @@ pub const Gfx = struct {
             c.glUniform2f(self.post.focus, post.fx, post.fy);
             c.glUniformMatrix3fv(self.post.matrix, 1, c.GL_FALSE, &post.m);
             c.glUniform3f(self.post.offset, post.off[0], post.off[1], post.off[2]);
+            c.glUniform1f(self.post.aspect, @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h)));
+            c.glUniform4f(self.post.lens, post.lens_x, post.lens_y, post.lens_r, post.lens_zoom);
+            var rip = std.mem.zeroes([Post.max_ripples][4]f32);
+            for (0..post.ripple_count) |i| rip[i] = post.ripples[i];
+            c.glUniform4fv(self.post.ripple, Post.max_ripples, &rip[0][0]);
             // One quad over the whole output; positions are in 0..1 here (u_size is 1x1).
             const quad = [_]Vertex{
                 .{ .x = 0, .y = 0, .u = 0, .v = 0 }, .{ .x = 1, .y = 0, .u = 1, .v = 0 }, .{ .x = 0, .y = 1, .u = 0, .v = 1 },
@@ -515,7 +658,9 @@ pub const Gfx = struct {
 fn drawCubeImpl(self: *Gfx, painter: *Painter, lookup: render.Lookup, root: *c.wlr_scene_tree, cb: Cube, target: c.GLuint, w: i32, h: i32) void {
     var faces: [9]cube_mod.Face = undefined;
     const count = @min(cb.count, 9);
-    const shown = cube_mod.faces(count, cb.pos, @floatFromInt(w), @floatFromInt(h), &faces);
+    const shown = cube_mod.faces(count, cb.pos, @floatFromInt(w), @floatFromInt(h), false, &faces);
+    var mirrors: [9]cube_mod.Face = undefined;
+    const mirrored = cube_mod.faces(count, cb.pos, @floatFromInt(w), @floatFromInt(h), true, &mirrors);
     for (faces[0..shown]) |f| {
         if (!self.ensureFace(f.index, w, h)) continue;
         c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.face_fbo[f.index]);
@@ -535,6 +680,7 @@ fn drawCubeImpl(self: *Gfx, painter: *Painter, lookup: render.Lookup, root: *c.w
     c.glClear(c.GL_COLOR_BUFFER_BIT);
     c.glDisable(c.GL_BLEND);
     c.glUseProgram(self.persp.id);
+    c.glUniform3f(self.persp.tint, 1, 1, 1);
     c.glActiveTexture(c.GL_TEXTURE0);
     c.glUniform1i(self.persp.tex, 0);
     c.glUniform1f(self.persp.has_alpha, 0);
@@ -552,7 +698,25 @@ fn drawCubeImpl(self: *Gfx, painter: *Painter, lookup: render.Lookup, root: *c.w
         c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Pv), &quad[0].u);
         c.glDrawArrays(c.GL_TRIANGLES, 0, 6);
     }
+    // The floor reflection: the same faces mirrored below, faint.
     c.glEnable(c.GL_BLEND);
+    c.glBlendFunc(c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+    for (mirrors[0..mirrored]) |f| {
+        if (self.face_tex[f.index] == 0) continue;
+        c.glBindTexture(c.GL_TEXTURE_2D, self.face_tex[f.index]);
+        c.glUniform1f(self.persp.alpha, f.light * 0.22);
+        c.glUniform1f(self.persp.has_alpha, 0);
+        const Pv = extern struct { x: f32, y: f32, z: f32, w: f32, u: f32, v: f32 };
+        var quad: [6]Pv = undefined;
+        const order = [6]usize{ 0, 1, 2, 1, 3, 2 };
+        for (order, 0..) |q, i| {
+            const cv = f.corners[q];
+            quad[i] = .{ .x = cv.x, .y = cv.y, .z = 0, .w = cv.w, .u = cv.u, .v = cv.v };
+        }
+        c.glVertexAttribPointer(0, 4, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Pv), &quad[0].x);
+        c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Pv), &quad[0].u);
+        c.glDrawArrays(c.GL_TRIANGLES, 0, 6);
+    }
 }
 
 /// The scene walker's painter for GL: a quad (or, for a warped window, a grid) per rectangle and texture.
@@ -636,6 +800,7 @@ const Painter = struct {
         c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.fbo);
         c.glViewport(0, 0, iw, ih);
         c.glUseProgram(g.tex.id);
+        c.glUniform3f(g.tex.tint, 1, 1, 1);
         c.glUniform2f(g.tex.size, self.w, self.h);
         c.glUniform1f(g.tex.alpha, 1);
         c.glUniform1f(g.tex.has_alpha, 0);
@@ -718,9 +883,16 @@ const Painter = struct {
     pub fn texture(self: *const Painter, sb: *c.wlr_scene_buffer, tex: *c.wlr_texture, x: f32, y: f32, w: f32, h: f32, xf: ?Xf) void {
         if (!c.wlr_texture_is_gles2(tex)) return;
         if (xf != null and xf.?.blur) {
-            const b0 = self.dev(x, y, xf);
-            const b1 = self.dev(x + w, y + h, xf);
-            self.blurBehind(b0[0], b0[1], b1[0], b1[1]);
+            var b0 = self.dev(x, y, xf);
+            var b1 = self.dev(x + w, y + h, xf);
+            if (xf.?.blur_rect) |br| {
+                // Only behind the window itself, not behind its shadow.
+                const r0 = self.dev(br[0], br[1], xf);
+                const r1 = self.dev(br[0] + br[2], br[1] + br[3], xf);
+                b0 = .{ @max(b0[0], r0[0]), @max(b0[1], r0[1]) };
+                b1 = .{ @min(b1[0], r1[0]), @min(b1[1], r1[1]) };
+            }
+            if (b1[0] > b0[0] and b1[1] > b0[1]) self.blurBehind(b0[0], b0[1], b1[0], b1[1]);
         }
         var attribs: c.wlr_gles2_texture_attribs = std.mem.zeroes(c.wlr_gles2_texture_attribs);
         c.wlr_gles2_texture_get_attribs(tex, &attribs);
@@ -730,6 +902,7 @@ const Painter = struct {
         c.glUniform2f(prog.size, self.w, self.h);
         c.glUniform1f(prog.alpha, sb.opacity * (if (xf) |t| t.alpha else 1));
         c.glUniform1f(prog.has_alpha, if (attribs.has_alpha) 1 else 0);
+        c.glUniform3f(prog.tint, 1, 1, 1);
         c.glActiveTexture(c.GL_TEXTURE0);
         c.glBindTexture(attribs.target, attribs.tex);
         c.glTexParameteri(attribs.target, c.GL_TEXTURE_MIN_FILTER, c.GL_LINEAR);

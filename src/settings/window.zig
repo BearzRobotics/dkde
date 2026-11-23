@@ -1753,6 +1753,36 @@ pub const SettingsWindow = struct {
         snow.as(gtk.Widget).setName("snow");
         addRowDesc(page, common.tr("Snow"), common.tr("Snow falls over the desktop. Super+P also shows a ring around the pointer for a moment, to find it. Needs the GLES renderer."), snow.as(gtk.Widget));
 
+        const trailfocus = gtk.Switch.new();
+        trailfocus.setActive(@intFromBool(cfg.effects.trailfocus));
+        _ = gtk.Switch.signals.state_set.connect(trailfocus, *SettingsWindow, &onEffectSwitch, self, .{});
+        trailfocus.as(gtk.Widget).setName("trailfocus");
+        addRowDesc(page, common.tr("Trailing focus"), common.tr("Windows further back in the order you used them are more see-through, instead of one dimming for every window without focus."), trailfocus.as(gtk.Widget));
+
+        const lens = gtk.Switch.new();
+        lens.setActive(@intFromBool(cfg.effects.lens));
+        _ = gtk.Switch.signals.state_set.connect(lens, *SettingsWindow, &onEffectSwitch, self, .{});
+        lens.as(gtk.Widget).setName("lens");
+        addRowDesc(page, common.tr("Magnifier lens (Super+M)"), common.tr("A round lens that magnifies what is under the pointer. Super+M turns it on and off. Needs the GLES renderer."), lens.as(gtk.Widget));
+
+        const water = gtk.Switch.new();
+        water.setActive(@intFromBool(cfg.effects.water));
+        _ = gtk.Switch.signals.state_set.connect(water, *SettingsWindow, &onEffectSwitch, self, .{});
+        water.as(gtk.Widget).setName("water");
+        addRowDesc(page, common.tr("Water ripples"), common.tr("Ripples spread from the pointer as you move it. Needs the GLES renderer."), water.as(gtk.Widget));
+
+        const fire = gtk.Switch.new();
+        fire.setActive(@intFromBool(cfg.effects.fire));
+        _ = gtk.Switch.signals.state_set.connect(fire, *SettingsWindow, &onEffectSwitch, self, .{});
+        fire.as(gtk.Widget).setName("fire");
+        addRowDesc(page, common.tr("Fire (Super+Shift+F)"), common.tr("Flames follow the pointer; Super+Shift+F turns them on and off. Needs the GLES renderer."), fire.as(gtk.Widget));
+
+        const paint = gtk.Switch.new();
+        paint.setActive(@intFromBool(cfg.effects.paint));
+        _ = gtk.Switch.signals.state_set.connect(paint, *SettingsWindow, &onEffectSwitch, self, .{});
+        paint.as(gtk.Widget).setName("paint");
+        addRowDesc(page, common.tr("Draw on the screen (Super+Shift+P)"), common.tr("Super+Shift+P lets you draw on the screen with the pointer (Escape stops, Super+Shift+C wipes it). Needs the GLES renderer."), paint.as(gtk.Widget));
+
         const dim = gtk.SpinButton.newWithRange(10, 100, 5);
         dim.setValue(@round(@as(f64, cfg.inactive_opacity) * 100));
         _ = gtk.SpinButton.signals.value_changed.connect(dim, *SettingsWindow, &onInactiveOpacity, self, .{});

@@ -87,6 +87,11 @@ scale = true              # Super+W: every window of the workspace at once; clic
 filter = "negative"       # a colour filter over the whole screen: negative, grayscale, sepia, high-contrast,
                           #   or a colour-blindness simulation (protanopia, deuteranopia, tritanopia); Super+Ctrl+F steps through
 zoom = true               # Super+= / Super+- magnify the screen around the pointer (up to 8x), Super+0 resets
+trailfocus = true         # windows further back in the focus order are more see-through
+lens = true               # Super+M: a magnifying lens around the pointer (GLES renderer)
+water = true              # ripples spread from the pointer as it moves (GLES renderer)
+fire = true               # Super+Shift+F: flames follow the pointer (GLES renderer)
+paint = true              # Super+Shift+P: draw on the screen (Escape stops, Super+Shift+C wipes) (GLES renderer)
 snow = true               # snow falls over the desktop (GLES renderer); Super+P rings the pointer to find it
 cube = true               # switching workspaces turns a cube (3 or more workspaces; GLES renderer)
 blur = true               # translucent windows (opacity < 1, or dimmed when unfocused) lie on a blurred background
@@ -104,7 +109,7 @@ on real hardware); with the pixman renderer they are off and the compositor says
 
 While an effect is moving something, frames are drawn by our own composer (`src/render.zig`, a wlroots render
 pass over the same scene graph); the rest of the time the normal scene output runs, with damage tracking and
-direct scanout. Close animations are not done: a closed window's buffer is gone before it could be drawn.
+direct scanout. A closing window fades out from its last picture (kept at every commit, GLES renderer only).
 
 Optional extras in the style of Compiz, each switched in Settings (Effects) or in `[effects]` of
 `compositor.toml`, all off by default. They are Wayland only: on X11 `dkde-wm` does not composite, so the

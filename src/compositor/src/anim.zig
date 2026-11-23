@@ -49,6 +49,8 @@ pub const Xf = struct {
     warp: ?*const Warp = null,
     /// Blur what is behind the window (it is translucent).
     blur: bool = false,
+    /// The part of the window to blur behind (its geometry: x, y, w, h in layout coordinates), so its shadow is left alone.
+    blur_rect: ?[4]f32 = null,
     /// Do not draw (the cube draws one workspace's windows at a time).
     hidden: bool = false,
 };

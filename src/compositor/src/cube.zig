@@ -35,7 +35,7 @@ pub fn position(from: usize, to: usize, count: usize, p: f32) f32 {
 
 /// The faces to draw for a cube of `count` workspaces turned to `pos`, on a screen of w by h pixels, back to front.
 /// `out` needs room for `count` faces; returns how many are visible.
-pub fn faces(count: usize, pos: f32, w: f32, h: f32, out: []Face) usize {
+pub fn faces(count: usize, pos: f32, w: f32, h: f32, mirror: bool, out: []Face) usize {
     std.debug.assert(out.len >= count and count >= 3);
     const n: f32 = @floatFromInt(count);
     const tau: f32 = 2 * std.math.pi;
@@ -63,7 +63,8 @@ pub fn faces(count: usize, pos: f32, w: f32, h: f32, out: []Face) usize {
         for (spec, 0..) |sp, q| {
             const px = cx + tx * half_w * sp[0];
             const pz = cz + tz * half_w * sp[0];
-            const py = half_h * sp[1];
+            // The reflection is the same face mirrored in the plane of its bottom edge.
+            const py = if (mirror) -h - half_h * sp[1] else half_h * sp[1];
             const wc = (d - pz) / focal;
             const sx = px / wc;
             const sy = py / wc;
@@ -83,7 +84,7 @@ pub fn faces(count: usize, pos: f32, w: f32, h: f32, out: []Face) usize {
 
 test "at rest the front face fills the screen" {
     var out: [8]Face = undefined;
-    const n = faces(4, 0, 1600, 900, &out);
+    const n = faces(4, 0, 1600, 900, false, &out);
     try std.testing.expectEqual(@as(usize, 1), n);
     try std.testing.expectEqual(@as(usize, 0), out[0].index);
     const tl = out[0].corners[0];
@@ -96,7 +97,7 @@ test "at rest the front face fills the screen" {
 
 test "halfway between two workspaces both are visible and symmetric" {
     var out: [8]Face = undefined;
-    const n = faces(4, 0.5, 1600, 900, &out);
+    const n = faces(4, 0.5, 1600, 900, false, &out);
     try std.testing.expectEqual(@as(usize, 2), n);
     // Face 0 is to the left, face 1 to the right.
     var left: ?Face = null;
@@ -108,10 +109,21 @@ test "halfway between two workspaces both are visible and symmetric" {
     try std.testing.expectApproxEqAbs(left.?.light, right.?.light, 1e-3);
 }
 
+test "the reflection lies below the face" {
+    var a: [8]Face = undefined;
+    var b: [8]Face = undefined;
+    _ = faces(4, 0.5, 1600, 900, false, &a);
+    _ = faces(4, 0.5, 1600, 900, true, &b);
+    // Screen y grows downward: the mirrored face's top is lower than the real face's bottom.
+    const real_bottom = a[0].corners[2].y / a[0].corners[2].w;
+    const mirror_top = b[0].corners[0].y / b[0].corners[0].w;
+    try std.testing.expect(mirror_top >= real_bottom - 1e-3);
+}
+
 test "other cube sizes work" {
     var out: [9]Face = undefined;
     for ([_]usize{ 3, 5, 6, 9 }) |count| {
-        const n = faces(count, 0, 1280, 720, &out);
+        const n = faces(count, 0, 1280, 720, false, &out);
         try std.testing.expect(n >= 1);
         try std.testing.expectEqual(@as(usize, 0), out[n - 1].index);
     }

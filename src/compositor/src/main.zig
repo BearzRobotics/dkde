@@ -26,6 +26,7 @@ const filters = @import("filters.zig");
 const wobble_mod = @import("wobble.zig");
 const cube_mod = @import("cube.zig");
 const snow_mod = @import("snow.zig");
+const fire_mod = @import("fire.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -93,7 +94,19 @@ const Server = struct {
     snow_ms: u32 = 0,
     /// The pointer finder: when it started (0 = not showing).
     finder_ms: u32 = 0,
-    sprites: [snow_mod.max_flakes + 2]gfx.Sprite = undefined,
+    sprite_list: std.ArrayList(gfx.Sprite) = .empty,
+    /// Windows that have closed and are fading out, and the same for this frame in the form the composer takes.
+    ghosts: std.ArrayList(GhostRec) = .empty,
+    ghost_out: std.ArrayList(gfx.Ghost) = .empty,
+    lens_on: bool = false,
+    fire: ?fire_mod.Fire = null,
+    fire_on: bool = false,
+    fire_ms: u32 = 0,
+    paint_on: bool = false,
+    paint_down: bool = false,
+    paint_pts: std.ArrayList([2]f32) = .empty,
+    ripples: [gfx.Post.max_ripples]RippleRec = std.mem.zeroes([gfx.Post.max_ripples]RippleRec),
+    ripple_last: [2]f64 = .{ -1000, -1000 },
     filter: filters.Filter = .none,
     layout_options: layout.Options = .{},
     /// Edge snapping while a window is dragged: on or off (compositor.toml), the zone under the pointer and its preview.
@@ -161,6 +174,11 @@ fn unlisten(listener: *c.wl_listener) void {
 
 const CubeTurn = struct { from: usize, to: usize, start_ms: u32 };
 
+/// A closed window's last picture, held (locked) until it has faded.
+const GhostRec = struct { buf: *c.wlr_client_buffer, x: f32, y: f32, w: f32, h: f32, start_ms: u32 };
+
+const RippleRec = struct { x: f32 = 0, y: f32 = 0, start_ms: u32 = 0, live: bool = false };
+
 /// While the cube draws one workspace's face: that workspace (the scene then shows only its windows).
 var face_filter: ?usize = null;
 
@@ -187,9 +205,10 @@ const Output = struct {
         const wobbling = anyWobble();
         const cube = currentCube(nowMs(&now));
         const sprites = currentSprites(nowMs(&now), self.output);
-        if (server.animating > 0 or server.overview != null or post.active() or wobbling or blurNeeded() or cube != null or sprites.len > 0) {
+        const ghosts = currentGhosts(nowMs(&now));
+        if (server.animating > 0 or server.overview != null or post.active() or wobbling or blurNeeded() or cube != null or sprites.len > 0 or ghosts.len > 0) {
             const drawn = if (server.gfx) |g|
-                g.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf, post, cube, sprites)
+                g.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf, post, cube, sprites, ghosts)
             else
                 render.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf);
             if (drawn) {
@@ -197,7 +216,7 @@ const Output = struct {
             } else {
                 _ = c.wlr_scene_output_commit(scene_output, null);
             }
-            if (server.animating > 0 or overviewMoving() or zoomMoving() or wobbling or cube != null or sprites.len > 0) c.wlr_output_schedule_frame(self.output);
+            if (server.animating > 0 or overviewMoving() or zoomMoving() or wobbling or cube != null or sprites.len > 0 or ghosts.len > 0 or post.ripple_count > 0) c.wlr_output_schedule_frame(self.output);
         } else {
             if (server.custom_drawn) {
                 // The scene output does not know what was drawn behind its back.
@@ -337,6 +356,9 @@ const Toplevel = struct {
     anim: ?anim.Anim = null,
     /// Wobbly windows: the spring mesh while the window swings, and where the window was last frame.
     wobble: ?*wobble_mod.Wobble = null,
+    /// The window's latest picture (locked), kept so a close animation has something to draw, and where it was.
+    snap: ?*c.wlr_client_buffer = null,
+    snap_rect: [4]f32 = .{ 0, 0, 0, 0 },
     last_geom: ?layout.Rect = null,
     /// Minimized by Show Desktop, so that it can bring it back.
     hidden_by_desktop: bool = false,
@@ -485,6 +507,7 @@ const Toplevel = struct {
         if (server.grabbed == self) resetCursorMode();
         overviewForget(self);
         freeWobble(self);
+        startGhost(self);
         if (self.anim != null) {
             self.anim = null;
             if (server.animating > 0) server.animating -= 1;
@@ -506,11 +529,41 @@ const Toplevel = struct {
             }
         }
         // New surfaces of the window (menus, subsurfaces) start opaque.
-        if (self.opacity != 1.0 or server.inactive_opacity != 1.0) applyOpacity(self);
+        if (self.opacity != 1.0 or server.inactive_opacity != 1.0 or server.effects.trailfocus) applyOpacity(self);
+        if (server.effects.animations and server.gfx != null) self.snapshot();
+    }
+
+    /// Keeps the window's current picture, so that closing it can fade it out.
+    fn snapshot(self: *Toplevel) void {
+        const surface = self.surf() orelse return;
+        const buf = surface.*.buffer orelse return;
+        if (self.snap != buf) {
+            _ = c.wlr_buffer_lock(&buf.*.base);
+            self.releaseSnap();
+            self.snap = buf;
+        }
+        var gx: i32 = 0;
+        var gy: i32 = 0;
+        if (self.xdg) |x| {
+            gx = x.base.*.geometry.x;
+            gy = x.base.*.geometry.y;
+        }
+        self.snap_rect = .{
+            @floatFromInt(self.tree.*.node.x - gx),
+            @floatFromInt(self.tree.*.node.y - gy),
+            @floatFromInt(surface.*.current.width),
+            @floatFromInt(surface.*.current.height),
+        };
+    }
+
+    fn releaseSnap(self: *Toplevel) void {
+        if (self.snap) |b| c.wlr_buffer_unlock(&b.*.base);
+        self.snap = null;
     }
 
     fn onDestroy(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Toplevel = @fieldParentPtr("destroy", listener.?);
+        self.releaseSnap();
         unlisten(&self.map);
         unlisten(&self.unmap);
         unlisten(&self.commit);
@@ -1493,6 +1546,33 @@ fn currentPost(output: *c.wlr_output) gfx.Post {
         p.fx = @floatCast(std.math.clamp(fx, 0, 1));
         p.fy = @floatCast(std.math.clamp(fy, 0, 1));
     }
+    if (server.lens_on and server.effects.lens) {
+        var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
+        c.wlr_output_layout_get_box(server.output_layout, output, &box);
+        const bw: f64 = @floatFromInt(@max(box.width, 1));
+        const bh: f64 = @floatFromInt(@max(box.height, 1));
+        p.lens_x = @floatCast(std.math.clamp((server.cursor.*.x - @as(f64, @floatFromInt(box.x))) / bw, 0, 1));
+        p.lens_y = @floatCast(std.math.clamp((server.cursor.*.y - @as(f64, @floatFromInt(box.y))) / bh, 0, 1));
+        p.lens_r = 0.2; // a fifth of the screen's height
+        p.lens_zoom = 2.5;
+    }
+    if (server.effects.water or ripplesLive()) {
+        var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
+        c.wlr_output_layout_get_box(server.output_layout, output, &box);
+        const bw: f32 = @floatFromInt(@max(box.width, 1));
+        const bh: f32 = @floatFromInt(@max(box.height, 1));
+        const now = currentMs();
+        for (&server.ripples) |*r| {
+            if (!r.live) continue;
+            const f = anim.fraction(.{ .kind = .open, .start_ms = r.start_ms, .duration_ms = 1700 }, now);
+            if (f >= 1) {
+                r.live = false;
+                continue;
+            }
+            p.ripples[p.ripple_count] = .{ (r.x - @as(f32, @floatFromInt(box.x))) / bw, (r.y - @as(f32, @floatFromInt(box.y))) / bh, 0.01 + 0.4 * anim.easeOut(f), (1 - f) };
+            p.ripple_count += 1;
+        }
+    }
     if (server.filter != .none) {
         const m = filters.matrixFor(server.filter);
         p.m = gfx.fromRows(m.rows);
@@ -1553,9 +1633,11 @@ fn xfOf(node: *c.wlr_scene_node) ?anim.Xf {
         result = xf;
     }
     // Translucent windows (their own opacity, or dimmed for not having the focus) lie on a blurred background.
-    if (server.effects.blur and server.gfx != null and (t.opacity < 1.0 or (server.inactive_opacity < 1.0 and !isFocused(t)))) {
+    if (server.effects.blur and server.gfx != null and effectiveOpacity(t) < 1.0) {
         var xf = result orelse anim.Xf{};
         xf.blur = true;
+        const g = geometryOf(t);
+        xf.blur_rect = rectF(g);
         result = xf;
     }
     return result;
@@ -1577,34 +1659,159 @@ fn currentCube(now: u32) ?gfx.Cube {
     };
 }
 
-/// Snow and the pointer finder, as the sprites to draw this frame.
+/// Snow, the pointer finder, flames and the paint strokes, as the sprites to draw this frame.
 fn currentSprites(now: u32, output: *c.wlr_output) []const gfx.Sprite {
-    var n: usize = 0;
+    server.sprite_list.clearRetainingCapacity();
+    const list = &server.sprite_list;
     var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
     c.wlr_output_layout_get_box(server.output_layout, output, &box);
     const w: f32 = @floatFromInt(@max(box.width, 1));
     const h: f32 = @floatFromInt(@max(box.height, 1));
-    if (server.effects.snow and server.gfx != null) {
+    if (server.gfx == null) return list.items;
+    if (server.effects.snow) {
         if (server.snow == null) server.snow = snow_mod.Snow.init(w, h, 160, @as(u64, now) | 1);
         const dt: f32 = @as(f32, @floatFromInt(@min(now -% server.snow_ms, 100))) / 1000.0;
         server.snow_ms = now;
         server.snow.?.step(dt, w, h);
         for (server.snow.?.flakes[0..server.snow.?.count]) |f| {
-            server.sprites[n] = .{ .x = f.x + @as(f32, @floatFromInt(box.x)), .y = f.y + @as(f32, @floatFromInt(box.y)), .radius = f.r * 1.8, .alpha = 0.5 + f.r * 0.1 };
-            n += 1;
+            list.append(gpa, .{ .x = f.x + @as(f32, @floatFromInt(box.x)), .y = f.y + @as(f32, @floatFromInt(box.y)), .radius = f.r * 1.8, .alpha = 0.5 + f.r * 0.1 }) catch break;
         }
     } else server.snow = null;
-    if (server.finder_ms != 0 and server.gfx != null) {
+    if (server.finder_ms != 0) {
         const f = anim.fraction(.{ .kind = .open, .start_ms = server.finder_ms, .duration_ms = 900 }, now);
         if (f >= 1) {
             server.finder_ms = 0;
         } else {
             const e = anim.easeOut(f);
-            server.sprites[n] = .{ .x = @floatCast(server.cursor.*.x), .y = @floatCast(server.cursor.*.y), .radius = 30 + 160 * e, .alpha = 1 - f, .ring = true };
-            n += 1;
+            list.append(gpa, .{ .x = @floatCast(server.cursor.*.x), .y = @floatCast(server.cursor.*.y), .radius = 30 + 160 * e, .alpha = 1 - f, .kind = .ring }) catch {};
         }
     }
-    return server.sprites[0..n];
+    if (server.effects.fire and (server.fire_on or (server.fire != null and server.fire.?.count > 0))) {
+        if (server.fire == null) server.fire = fire_mod.Fire.init(@as(u64, now) | 1);
+        const dt: f32 = @as(f32, @floatFromInt(@min(now -% server.fire_ms, 100))) / 1000.0;
+        server.fire_ms = now;
+        server.fire.?.step(dt, server.fire_on, @floatCast(server.cursor.*.x), @floatCast(server.cursor.*.y));
+        for (server.fire.?.particles[0..server.fire.?.count]) |p| {
+            const pr = fire_mod.Fire.progress(p);
+            list.append(gpa, .{ .x = p.x, .y = p.y, .radius = p.size * (1 - 0.65 * pr), .alpha = 1 - pr, .kind = .flame }) catch break;
+        }
+    } else if (!server.effects.fire) {
+        server.fire = null;
+        server.fire_on = false;
+    }
+    if (server.effects.paint) {
+        for (server.paint_pts.items) |pt| {
+            list.append(gpa, .{ .x = pt[0], .y = pt[1], .radius = 4.5, .alpha = 0.95, .tint = .{ 1.0, 0.18, 0.1 } }) catch break;
+        }
+    }
+    return list.items;
+}
+
+/// A window that closes leaves its last picture to fade (the animations setting).
+fn startGhost(t: *Toplevel) void {
+    const buf = t.snap orelse return;
+    if (!server.effects.animations or server.gfx == null or t.minimized or !onActiveWorkspace(t) or t.snap_rect[2] <= 0) {
+        t.releaseSnap();
+        return;
+    }
+    // The ghost takes over the lock.
+    server.ghosts.append(gpa, .{ .buf = buf, .x = t.snap_rect[0], .y = t.snap_rect[1], .w = t.snap_rect[2], .h = t.snap_rect[3], .start_ms = currentMs() }) catch {
+        t.releaseSnap();
+        return;
+    };
+    t.snap = null;
+    wakeOutputs();
+}
+
+/// The fading windows for this frame; the ones that have faded are let go.
+fn currentGhosts(now: u32) []const gfx.Ghost {
+    server.ghost_out.clearRetainingCapacity();
+    var i: usize = 0;
+    while (i < server.ghosts.items.len) {
+        const gh = server.ghosts.items[i];
+        const f = anim.fraction(.{ .kind = .open, .start_ms = gh.start_ms, .duration_ms = server.effects.animation_ms }, now);
+        if (f >= 1 or server.gfx == null) {
+            c.wlr_buffer_unlock(&gh.buf.*.base);
+            _ = server.ghosts.orderedRemove(i);
+            continue;
+        }
+        if (gh.buf.*.texture) |tex| {
+            const e = anim.easeOut(f);
+            server.ghost_out.append(gpa, .{ .texture = tex, .x = gh.x, .y = gh.y, .w = gh.w, .h = gh.h, .scale = 1 - 0.1 * e, .alpha = 1 - e }) catch {};
+        }
+        i += 1;
+    }
+    return server.ghost_out.items;
+}
+
+fn addRipple(now: u32) void {
+    var slot: usize = 0;
+    var oldest: u32 = 0;
+    for (server.ripples, 0..) |r, i| {
+        if (!r.live) {
+            slot = i;
+            oldest = std.math.maxInt(u32);
+            break;
+        }
+        const age = now -% r.start_ms;
+        if (age >= oldest) {
+            oldest = age;
+            slot = i;
+        }
+    }
+    server.ripples[slot] = .{ .x = @floatCast(server.cursor.*.x), .y = @floatCast(server.cursor.*.y), .start_ms = now, .live = true };
+}
+
+fn ripplesLive() bool {
+    for (server.ripples) |r| {
+        if (r.live) return true;
+    }
+    return false;
+}
+
+fn toggleLens() void {
+    if (server.gfx == null or !server.effects.lens) return;
+    server.lens_on = !server.lens_on;
+    wakeOutputs();
+}
+
+fn toggleFire() void {
+    if (server.gfx == null or !server.effects.fire) return;
+    server.fire_on = !server.fire_on;
+    server.fire_ms = currentMs();
+    wakeOutputs();
+}
+
+fn togglePaint() void {
+    if (server.gfx == null or !server.effects.paint) return;
+    server.paint_on = !server.paint_on;
+    server.paint_down = false;
+    if (server.paint_on) c.wlr_seat_pointer_clear_focus(server.seat);
+    wakeOutputs();
+}
+
+fn clearPaint() void {
+    server.paint_pts.clearRetainingCapacity();
+    wakeOutputs();
+}
+
+/// Adds a point to the stroke being drawn, filling in the gap since the last one.
+fn paintPoint() void {
+    const x: f32 = @floatCast(server.cursor.*.x);
+    const y: f32 = @floatCast(server.cursor.*.y);
+    if (server.paint_pts.items.len > 20000) return;
+    if (server.paint_pts.items.len > 0 and server.paint_down) {
+        const last = server.paint_pts.items[server.paint_pts.items.len - 1];
+        const dx = x - last[0];
+        const dy = y - last[1];
+        const dist = @sqrt(dx * dx + dy * dy);
+        if (dist < 1.5) return;
+        var k: f32 = 3;
+        while (k < dist) : (k += 3) {
+            server.paint_pts.append(gpa, .{ last[0] + dx * k / dist, last[1] + dy * k / dist }) catch return;
+        }
+    }
+    server.paint_pts.append(gpa, .{ x, y }) catch {};
 }
 
 fn showPointer() void {
@@ -1619,7 +1826,7 @@ fn blurNeeded() bool {
     if (server.opened == 0) return false;
     for (server.toplevels.items) |t| {
         if (t.minimized or !onActiveWorkspace(t)) continue;
-        if (t.opacity < 1.0 or (server.inactive_opacity < 1.0 and !isFocused(t))) return true;
+        if (effectiveOpacity(t) < 1.0) return true;
     }
     return false;
 }
@@ -1804,9 +2011,31 @@ fn isFocused(t: *const Toplevel) bool {
 
 /// The window's own opacity, times the dimming for windows that do not have the focus.
 fn applyOpacity(t: *Toplevel) void {
-    var v: f32 = t.opacity;
-    if (server.inactive_opacity < 1.0 and !isFocused(t)) v *= server.inactive_opacity;
+    var v: f32 = effectiveOpacity(t);
     c.wlr_scene_node_for_each_buffer(&t.tree.*.node, setBufferOpacity, &v);
+}
+
+/// How far down the focus order a window is on its workspace (0 = the one on top).
+fn focusRank(t: *const Toplevel) usize {
+    var rank: usize = 0;
+    var i = server.toplevels.items.len;
+    while (i > 0) : (i -= 1) {
+        const o = server.toplevels.items[i - 1];
+        if (o == t) return rank;
+        if (!o.minimized and onActiveWorkspace(o)) rank += 1;
+    }
+    return rank;
+}
+
+/// The window's own opacity, with dimming for not having the focus: one step, or (trailfocus) more the further back.
+fn effectiveOpacity(t: *const Toplevel) f32 {
+    var v: f32 = t.opacity;
+    if (server.effects.trailfocus) {
+        v *= @max(0.35, 1.0 - 0.17 * @as(f32, @floatFromInt(focusRank(t))));
+    } else if (server.inactive_opacity < 1.0 and !isFocused(t)) {
+        v *= server.inactive_opacity;
+    }
+    return v;
 }
 
 fn refreshOpacity() void {
@@ -1902,7 +2131,7 @@ fn focus(t: *Toplevel) void {
         c.wlr_seat_keyboard_notify_enter(seat, surface, keyboard.*.keycodes[0..].ptr, keyboard.*.num_keycodes, &keyboard.*.modifiers);
     }
     updateStacking();
-    if (server.inactive_opacity < 1.0) refreshOpacity();
+    if (server.inactive_opacity < 1.0 or server.effects.trailfocus) refreshOpacity();
 }
 
 const Hit = struct { toplevel: ?*Toplevel, layer: ?*LayerSurface, surface: *c.wlr_surface, sx: f64, sy: f64 };
@@ -2221,6 +2450,21 @@ fn processCursorMotion(time: u32) void {
         overviewMotion();
         return;
     }
+    if (server.paint_on) {
+        c.wlr_cursor_set_xcursor(cursor, server.cursor_mgr, "crosshair");
+        if (server.paint_down) paintPoint();
+        wakeOutputs();
+        return;
+    }
+    if (server.effects.water and server.gfx != null) {
+        const dx = cursor.*.x - server.ripple_last[0];
+        const dy = cursor.*.y - server.ripple_last[1];
+        if (dx * dx + dy * dy > 30 * 30) {
+            server.ripple_last = .{ cursor.*.x, cursor.*.y };
+            addRipple(currentMs());
+            wakeOutputs();
+        }
+    }
     switch (server.cursor_mode) {
         .move => {
             if (server.grabbed) |t| {
@@ -2308,6 +2552,12 @@ fn onCursorButton(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
         _ = overviewButton(event.state == c.WL_POINTER_BUTTON_STATE_PRESSED);
         return;
     }
+    if (server.paint_on) {
+        server.paint_down = event.state == c.WL_POINTER_BUTTON_STATE_PRESSED;
+        if (server.paint_down) paintPoint();
+        wakeOutputs();
+        return;
+    }
     c._wlr_log(c.WLR_DEBUG, "button %u state %d alt=%d keyboards=%d", event.button, @as(c_int, @intCast(event.state)), @as(c_int, @intFromBool(altHeld())), @as(c_int, @intCast(server.keyboards.items.len)));
     // Alt + left button drags the window under the pointer, Alt + right button resizes it from the nearest corner;
     // the client never sees these clicks.
@@ -2350,7 +2600,7 @@ fn onCursorButton(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
 }
 
 fn onCursorAxis(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
-    if (server.overview != null) return;
+    if (server.overview != null or server.paint_on) return;
     const event: *c.wlr_pointer_axis_event = @ptrCast(@alignCast(data));
     c.wlr_seat_pointer_notify_axis(server.seat, event.time_msec, event.orientation, event.delta, event.delta_discrete, event.source, event.relative_direction);
 }
@@ -2399,6 +2649,15 @@ const Keyboard = struct {
             c.wlr_seat_set_keyboard(server.seat, self.keyboard);
             c.wlr_seat_keyboard_notify_key(server.seat, event.time_msec, event.keycode, event.state);
             return;
+        }
+        if (server.paint_on and pressed) {
+            var k: usize = 0;
+            while (k < @as(usize, @intCast(@max(count, 0)))) : (k += 1) {
+                if (syms[k] == c.XKB_KEY_Escape) {
+                    togglePaint();
+                    return;
+                }
+            }
         }
         if (server.overview != null) {
             // Nothing reaches the programs while Scale or Expo is up; the shortcuts and Escape/Return still work.
@@ -2598,6 +2857,10 @@ fn perform(action: keys.Action) void {
         .zoom_reset => zoomBy(0.01),
         .next_filter => nextFilter(),
         .show_pointer => showPointer(),
+        .lens => toggleLens(),
+        .fire => toggleFire(),
+        .paint => togglePaint(),
+        .paint_clear => clearPaint(),
         .scale => openOverview(false),
         .expo => openOverview(true),
         .opacity_up => if (topWindow()) |t| changeOpacity(t, 0.1),
@@ -2857,7 +3120,7 @@ fn loadConfig() void {
     cfg.rules = &.{};
     server.placement = cfg.placement;
     server.snap_windows = cfg.snap_windows;
-    const dimming_changed = server.inactive_opacity != cfg.inactive_opacity;
+    const dimming_changed = server.inactive_opacity != cfg.inactive_opacity or server.effects.trailfocus != cfg.effects.trailfocus;
     server.inactive_opacity = cfg.inactive_opacity;
     server.effects = cfg.effects;
     server.filter = cfg.effects.filter;
