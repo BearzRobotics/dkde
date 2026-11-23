@@ -106,7 +106,7 @@ pub fn build(b: *std.Build) void {
 
     // The pieces with no wlroots in them (layout, settings) are tested on their own.
     const test_step = b.step("test", "Run the tests");
-    inline for (.{ "src/layout.zig", "src/config.zig", "src/keys.zig", "src/place.zig", "src/rules.zig" }) |file| {
+    inline for (.{ "src/layout.zig", "src/config.zig", "src/keys.zig", "src/place.zig", "src/rules.zig", "src/anim.zig" }) |file| {
         const test_mod = b.createModule(.{ .root_source_file = b.path(file), .target = target, .optimize = optimize });
         test_mod.addImport("toml", toml);
         const t = b.addTest(.{ .root_module = test_mod });

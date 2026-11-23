@@ -18,6 +18,8 @@ const keys = @import("keys.zig");
 const developer = @import("developer.zig");
 const place_mod = @import("place.zig");
 const rules = @import("rules.zig");
+const anim = @import("anim.zig");
+const render = @import("render.zig");
 
 const gpa = std.heap.c_allocator;
 
@@ -65,6 +67,11 @@ const Server = struct {
     snap_windows: bool = true,
     inactive_opacity: f32 = 1.0,
     rules: []const rules.Rule = &.{},
+    effects: config.Effects = .{},
+    /// Windows with an animation running; while there are any, frames are composed by `render` instead of the scene output.
+    animating: usize = 0,
+    /// Whether the last frame was composed by `render` (the scene's damage then has to start over).
+    custom_drawn: bool = false,
     layout_options: layout.Options = .{},
     /// Edge snapping while a window is dragged: on or off (compositor.toml), the zone under the pointer and its preview.
     edge_snap: bool = true,
@@ -138,10 +145,25 @@ const Output = struct {
     fn onFrame(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
         const self: *Output = @fieldParentPtr("frame", listener.?);
         const scene_output = c.wlr_scene_get_scene_output(server.scene, self.output) orelse return;
-        _ = c.wlr_scene_output_commit(scene_output, null);
         // std's timespec rather than the C one: musl's is an opaque type to translate-c.
         var now: std.c.timespec = undefined;
         _ = std.c.clock_gettime(.MONOTONIC, &now);
+        tickAnimations(nowMs(&now));
+        if (server.animating > 0) {
+            if (render.compose(self.output, server.output_layout, &server.scene.*.tree, xfOf)) {
+                server.custom_drawn = true;
+            } else {
+                _ = c.wlr_scene_output_commit(scene_output, null);
+            }
+            c.wlr_output_schedule_frame(self.output);
+        } else {
+            if (server.custom_drawn) {
+                // The scene output does not know what was drawn behind its back.
+                c.wlr_damage_ring_add_whole(&scene_output.*.damage_ring);
+                server.custom_drawn = false;
+            }
+            _ = c.wlr_scene_output_commit(scene_output, null);
+        }
         c.wlr_scene_output_send_frame_done(scene_output, @ptrCast(&now));
     }
 
@@ -270,6 +292,7 @@ const Toplevel = struct {
     below: bool = false,
     /// The window's own opacity (1 = opaque); dimming for focus comes on top of it.
     opacity: f32 = 1.0,
+    anim: ?anim.Anim = null,
     /// Minimized by Show Desktop, so that it can bring it back.
     hidden_by_desktop: bool = false,
     maximized: bool = false,
@@ -405,6 +428,7 @@ const Toplevel = struct {
         if (onActiveWorkspace(self)) focus(self);
         updateStacking();
         applyOpacity(self);
+        if (onActiveWorkspace(self)) startAnimation(self, .open);
         if (rule.maximized == true) setMaximized(self, true);
         if (rule.fullscreen == true) setFullscreen(self, true);
         arrange();
@@ -414,6 +438,10 @@ const Toplevel = struct {
         const self: *Toplevel = @fieldParentPtr("unmap", listener.?);
         if (self.unmanaged()) return;
         if (server.grabbed == self) resetCursorMode();
+        if (self.anim != null) {
+            self.anim = null;
+            if (server.animating > 0) server.animating -= 1;
+        }
         dropHandle(self);
         removeFromList(self);
         removeManaged(self);
@@ -544,7 +572,16 @@ fn onHandleMinimize(listener: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) v
 fn setMinimized(t: *Toplevel, minimized: bool) void {
     if (t.minimized == minimized) return;
     t.minimized = minimized;
-    showIfVisible(t);
+    if (server.effects.animations and onActiveWorkspace(t)) {
+        // Minimizing: the window stays drawn until the animation ends (finishAnimation hides it).
+        // Restoring: it is shown now and grows back.
+        if (minimized) {
+            startAnimation(t, .minimize);
+        } else {
+            showIfVisible(t);
+            startAnimation(t, .restore);
+        }
+    } else showIfVisible(t);
     if (t.handle) |h| c.wlr_foreign_toplevel_handle_v1_set_minimized(h, minimized);
     if (minimized) {
         // The window now on top (not minimized) gets the keyboard.
@@ -964,6 +1001,66 @@ fn addPopup(xdg: *c.wlr_xdg_popup, parent_tree: *c.wlr_scene_tree) void {
 }
 
 /// Gives the keyboard focus to `t` and raises it.
+// ---- animations ------------------------------------------------------------------------------------------------
+
+fn nowMs(ts: *const std.c.timespec) u32 {
+    const ms: i64 = @as(i64, ts.sec) * 1000 + @divTrunc(@as(i64, ts.nsec), 1_000_000);
+    return @truncate(@as(u64, @bitCast(ms)));
+}
+
+fn currentMs() u32 {
+    var now: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.MONOTONIC, &now);
+    return nowMs(&now);
+}
+
+/// The transform of a window tree while it is animated (the lookup `render` calls for each tree).
+fn xfOf(node: *c.wlr_scene_node) ?anim.Xf {
+    if (node.parent != server.trees[2]) return null;
+    const t: *Toplevel = @ptrCast(@alignCast(node.data orelse return null));
+    const a = t.anim orelse return null;
+    const size = t.contentSize();
+    const cx: f32 = @floatFromInt(node.x + @divTrunc(size.w, 2));
+    const cy: f32 = @floatFromInt(node.y + @divTrunc(size.h, 2));
+    return anim.at(a, currentMs(), cx, cy);
+}
+
+fn wakeOutputs() void {
+    for (server.outputs.items) |o| c.wlr_output_schedule_frame(o.output);
+}
+
+fn startAnimation(t: *Toplevel, kind: anim.Kind) void {
+    if (!server.effects.animations) return;
+    var a: anim.Anim = .{ .kind = kind, .start_ms = currentMs(), .duration_ms = server.effects.animation_ms };
+    if (kind == .minimize) {
+        // Shrink toward the bottom middle of the screen, where the taskbar usually is.
+        const screen = screenArea();
+        const size = t.contentSize();
+        a.to_x = @as(f32, @floatFromInt(screen.x + @divTrunc(screen.w, 2))) - @as(f32, @floatFromInt(t.tree.*.node.x + @divTrunc(size.w, 2)));
+        a.to_y = @as(f32, @floatFromInt(screen.y + screen.h)) - @as(f32, @floatFromInt(t.tree.*.node.y + @divTrunc(size.h, 2)));
+    }
+    if (t.anim == null) server.animating += 1;
+    t.anim = a;
+    wakeOutputs();
+}
+
+fn finishAnimation(t: *Toplevel) void {
+    if (t.anim == null) return;
+    t.anim = null;
+    if (server.animating > 0) server.animating -= 1;
+    showIfVisible(t);
+}
+
+/// Called before each frame: ends the animations that have run their course.
+fn tickAnimations(now: u32) void {
+    if (server.animating == 0) return;
+    for (server.toplevels.items) |t| {
+        if (t.anim) |a| {
+            if (anim.done(a, now)) finishAnimation(t);
+        }
+    }
+}
+
 // ---- rules, placement, stacking and opacity ---------------------------------------------------------------------
 
 fn spanOrEmpty(p: [*c]const u8) []const u8 {
@@ -2051,6 +2148,7 @@ fn loadConfig() void {
     server.snap_windows = cfg.snap_windows;
     const dimming_changed = server.inactive_opacity != cfg.inactive_opacity;
     server.inactive_opacity = cfg.inactive_opacity;
+    server.effects = cfg.effects;
     config.free(gpa, cfg);
     cfg.keys = &.{};
     if (dimming_changed) refreshOpacity();

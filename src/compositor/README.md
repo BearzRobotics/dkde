@@ -79,6 +79,16 @@ Not done: shading a window to its title bar (windows draw their own title bars, 
 
 ## Effects
 
+```toml
+[effects]
+animations = true         # windows fade and grow when they open, and shrink toward the bottom when minimized
+animation-ms = 200        # 50 to 2000
+```
+
+While an effect is moving something, frames are drawn by our own composer (`src/render.zig`, a wlroots render
+pass over the same scene graph); the rest of the time the normal scene output runs, with damage tracking and
+direct scanout. Close animations are not done: a closed window's buffer is gone before it could be drawn.
+
 Optional extras in the style of Compiz, each switched in Settings (Effects) or in `[effects]` of
 `compositor.toml`, all off by default. They are Wayland only: on X11 `dkde-wm` does not composite, so the
 visual effects there need a custom X11 compositing manager (not written; see `ai/COMPOSITOR-SPEC.md`). Window

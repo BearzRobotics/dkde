@@ -7,3 +7,4 @@ pub const config = @import("config.zig");
 pub const developer = @import("developer.zig");
 pub const place = @import("place.zig");
 pub const rules = @import("rules.zig");
+pub const anim = @import("anim.zig");

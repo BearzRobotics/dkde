@@ -53,6 +53,13 @@ pub const Input = struct {
     pointer_speed: ?f64 = null,
 };
 
+/// The optional desktop effects (`[effects]`): every one is off until it is switched on.
+pub const Effects = struct {
+    /// Windows fade and grow when they open and shrink away when minimized.
+    animations: bool = false,
+    animation_ms: u32 = 200,
+};
+
 /// Where a new window is put.
 pub const Placement = enum { cascade, center, smart, pointer };
 
@@ -68,6 +75,7 @@ pub const Config = struct {
     snap_windows: bool = true,
     /// Opacity of windows that are not focused (1 = no dimming).
     inactive_opacity: f32 = 1.0,
+    effects: Effects = .{},
     /// The `[[rules]]` (owned: see `free`).
     rules: []const rules.Rule = &.{},
     /// How many virtual desktops (1 to 9).
@@ -162,6 +170,20 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
         };
     }
     config.rules = try rules.parse(gpa, doc.root, warnings);
+    if (doc.root.getTable("effects")) |t| {
+        if (t.get("animations")) |v| switch (v) {
+            .boolean => |b| config.effects.animations = b,
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] animations: expected true or false; using false")),
+        };
+        if (t.get("animation-ms")) |v| switch (v) {
+            .integer => |i| {
+                if (i < 50 or i > 2000) {
+                    try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[effects] animation-ms = {d}: expected 50 to 2000; using {d}", .{ i, config.effects.animation_ms }));
+                } else config.effects.animation_ms = @intCast(i);
+            },
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] animation-ms: expected an integer; using the default")),
+        };
+    }
     const windows = doc.root.getTable("windows") orelse return config;
     if (windows.get("placement")) |v| switch (v) {
         .string => |s| {
@@ -260,6 +282,24 @@ test "placement, window snapping, dimming and rules" {
     defer free(std.testing.allocator, bad);
     try std.testing.expectEqual(Placement.cascade, bad.placement);
     try std.testing.expectEqual(@as(usize, 2), warnings.items.len);
+}
+
+test "effects are off until asked for" {
+    var warnings: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (warnings.items) |w| std.testing.allocator.free(w);
+        warnings.deinit(std.testing.allocator);
+    }
+    const off = try parse(std.testing.allocator, "", &warnings);
+    try std.testing.expect(!off.effects.animations);
+    const on = try parse(std.testing.allocator, "[effects]\nanimations = true\nanimation-ms = 300\n", &warnings);
+    defer free(std.testing.allocator, on);
+    try std.testing.expect(on.effects.animations);
+    try std.testing.expectEqual(@as(u32, 300), on.effects.animation_ms);
+    const bad = try parse(std.testing.allocator, "[effects]\nanimation-ms = 5\n", &warnings);
+    defer free(std.testing.allocator, bad);
+    try std.testing.expectEqual(@as(u32, 200), bad.effects.animation_ms);
+    try std.testing.expectEqual(@as(usize, 1), warnings.items.len);
 }
 
 test "an empty document gives the defaults" {
