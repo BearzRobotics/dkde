@@ -63,7 +63,7 @@ Programs reach windows, workspaces, outputs and screenshots through `common.desk
 
 ### Own compositor and window manager (experimental)
 
-`src/compositor` (wlroots) and `src/xwm` (XCB) are separate packages with their own `zig build`, so the main build needs neither wlroots nor X11 development files. The window manager imports the compositor's `layout.zig`, `keys.zig` and `config.zig` (no display code in them) through `src/compositor/src/shared.zig`, so both read `~/.config/dkde/compositor.toml` and share layout policy and shortcuts. `dkde-session` can start either (`DKDE_COMPOSITOR`, `--x11`, `session.conf`). Progress and open items: `ai/COMPOSITOR-SURVEY.md`.
+`src/compositor` (wlroots) and `src/xwm` (XCB) are separate packages with their own `zig build`, so the main build needs neither wlroots nor X11 development files. The window manager imports the compositor's `layout.zig`, `keys.zig` and `config.zig` (no display code in them) through `src/compositor/src/shared.zig`, so both read `~/.config/dkde/compositor.toml` and share layout policy and shortcuts. `dkde-session` can start either (`DKDE_COMPOSITOR`, `--x11`, `session.conf`). Optional desktop effects (overview, animations, blur, ...) are Wayland only; X11 would need a custom compositing manager. Progress and open items: `ai/COMPOSITOR-SURVEY.md`.
 
 ## Privilege
 

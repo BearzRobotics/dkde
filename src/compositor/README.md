@@ -60,6 +60,13 @@ script; `~/.config/dkde/autostart` (a shell script) replaces it. `scripts/dkde-s
 Pointer: Alt+left-drag moves a window, Alt+right-drag resizes it from the nearest corner (a tiled window
 becomes floating); title bars drag as usual.
 
+## Effects
+
+Optional extras in the style of Compiz, each switched in Settings (Effects) or in `[effects]` of
+`compositor.toml`, all off by default. They are Wayland only: on X11 `dkde-wm` does not composite, so the
+visual effects there need a custom X11 compositing manager (not written; see `ai/COMPOSITOR-SPEC.md`). Window
+rules, placement and the other no-rendering features are meant for both.
+
 ## Tests
 
 `zig build test` runs the tests of the parts with no wlroots in them (layout, settings, shortcuts).

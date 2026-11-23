@@ -16,6 +16,16 @@ The project will contain:
 - A shared desktop integration interface used by DKDE applications.
 - Backend-specific implementations using the appropriate protocols, standards, and extensions.
 
+Desktop effects (Compiz-style: overview, switchers, animations, wobbly windows, blur, cube, accessibility zoom
+and colour filters) are optional, off by default, and switched one by one in Settings. They are written in pure
+Zig, with no dependency on scenefx or another compositor library. They are **Wayland only**: the compositor owns
+the final picture there. On X11, `dkde-wm` is only a window manager and nothing composites, so the visual
+effects need a custom X11 compositing manager (XComposite redirection, damage tracking and our own GL pass,
+which is the optional X11 compositor above). That is a separate piece of work. The effects code is written
+independent of the backend so that it can sit under that compositor later. The behaviour that needs no
+rendering (window rules, placement, put, sticky, always-on-top, shade, snapping) belongs to the window manager
+core and is meant to work on both.
+
 The existing GTK4 desktop shell and applications will remain independent of the compositor implementation.
 
 The goal is to provide a consistent DKDE experience across Wayland, Xorg, and XLibre without requiring applications to implement display-server-specific behavior themselves.
