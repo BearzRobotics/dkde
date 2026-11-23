@@ -14,6 +14,9 @@ const deco = @import("frame.zig");
 const look_mod = @import("look.zig");
 
 const layout = shared.layout;
+const place_mod = shared.place;
+const rules_mod = shared.rules;
+const gesture_mod = shared.gesture;
 const keys = shared.keys;
 const config = shared.config;
 
@@ -53,6 +56,9 @@ const Atom = enum {
     _NET_WM_STATE_DEMANDS_ATTENTION,
     _NET_WM_STATE_SKIP_TASKBAR,
     _NET_WM_STATE_ABOVE,
+    _NET_WM_STATE_BELOW,
+    _NET_WM_STATE_STICKY,
+    _NET_WM_WINDOW_OPACITY,
     _NET_WM_WINDOW_TYPE,
     _NET_WM_WINDOW_TYPE_DOCK,
     _NET_WM_WINDOW_TYPE_DESKTOP,
@@ -103,6 +109,18 @@ const Client = struct {
     /// Asked for by the client and kept in its state (a pop-up window that is not a task).
     skip_taskbar: bool = false,
     above: bool = false,
+    below: bool = false,
+    /// On every workspace.
+    sticky: bool = false,
+    /// The tab group it belongs to (0 = none): only the active member of a group is shown.
+    group: u32 = 0,
+    /// The window's own opacity (1 = opaque), as _NET_WM_WINDOW_OPACITY for a compositing manager to use.
+    opacity: f32 = 1.0,
+    /// Minimized by Show Desktop, so it can bring it back.
+    desk_hidden: bool = false,
+    /// WM_CLASS: the instance and the class, for the [[rules]].
+    instance: []u8 = &.{},
+    class: []u8 = &.{},
     mapped: bool = false,
     /// UnmapNotify events caused by our own unmap calls, which are not the client leaving.
     ignore_unmap: u8 = 0,
@@ -142,6 +160,15 @@ var ws_count: usize = 4;
 var ws_current: u8 = 0;
 var ws_policy: [9]layout.Policy = @splat(.floating);
 var cascade_index: usize = 0;
+const GroupRec = struct { id: u32, active: *Client };
+var groups: std.ArrayList(GroupRec) = .empty;
+var next_group: u32 = 1;
+var tab_plates: std.ArrayList(c.xcb_window_t) = .empty;
+var tab_sig: u64 = 0;
+/// Opacify: the window the pointer is over.
+var opacify_for: ?*Client = null;
+var gesture_on = false;
+var gesture_pts: std.ArrayList([2]f32) = .empty;
 var running = true;
 
 const Binding = struct { mods: u8, sym: u32, keycode: u8, action: keys.Action };
@@ -185,7 +212,21 @@ fn findAny(win: c.xcb_window_t) ?*Client {
 }
 
 fn visible(cl: *const Client) bool {
-    return cl.ws == ws_current and !cl.minimized;
+    return (cl.ws == ws_current or cl.sticky) and !cl.minimized and groupShows(cl);
+}
+
+fn groupRec(id: u32) ?*GroupRec {
+    for (groups.items) |*g| {
+        if (g.id == id) return g;
+    }
+    return null;
+}
+
+/// Not in a tab group, or the group's shown tab.
+fn groupShows(cl: *const Client) bool {
+    if (cl.group == 0) return true;
+    const g = groupRec(cl.group) orelse return true;
+    return g.active == cl;
 }
 
 fn getProp(win: c.xcb_window_t, prop: c.xcb_atom_t, typ: c.xcb_atom_t, words: u32) ?*c.xcb_get_property_reply_t {
@@ -499,8 +540,16 @@ fn publishWorkArea() void {
 }
 
 fn publishClientState(cl: *const Client) void {
-    var state: [6]u32 = undefined;
+    var state: [8]u32 = undefined;
     var n: usize = 0;
+    if (cl.sticky) {
+        state[n] = atom(._NET_WM_STATE_STICKY);
+        n += 1;
+    }
+    if (cl.below) {
+        state[n] = atom(._NET_WM_STATE_BELOW);
+        n += 1;
+    }
     if (cl.skip_taskbar) {
         state[n] = atom(._NET_WM_STATE_SKIP_TASKBAR);
         n += 1;
@@ -523,7 +572,7 @@ fn publishClientState(cl: *const Client) void {
         n += 1;
     }
     _ = c.xcb_change_property(conn, c.XCB_PROP_MODE_REPLACE, cl.win, atom(._NET_WM_STATE), c.XCB_ATOM_ATOM, 32, @intCast(n), &state);
-    setCardinal(cl.win, ._NET_WM_DESKTOP, &.{cl.ws});
+    setCardinal(cl.win, ._NET_WM_DESKTOP, &.{if (cl.sticky) 0xFFFFFFFF else cl.ws});
     // ICCCM WM_STATE: 1 normal, 3 iconic.
     const wm_state = [_]u32{ if (cl.minimized) 3 else 1, 0 };
     _ = c.xcb_change_property(conn, c.XCB_PROP_MODE_REPLACE, cl.win, atom(.WM_STATE), atom(.WM_STATE), 32, 2, &wm_state);
@@ -590,6 +639,7 @@ fn arrange() void {
     restack();
     publishWorkArea();
     paintBorders();
+    updateTabUi();
     _ = c.xcb_flush(conn);
 }
 
@@ -613,6 +663,13 @@ fn restack() void {
     for (stack.items) |cl| {
         if (cl.kind == .normal and cl.above and visible(cl)) {
             const v = [_]u32{c.XCB_STACK_MODE_ABOVE};
+            _ = c.xcb_configure_window(conn, outerWin(cl), c.XCB_CONFIG_WINDOW_STACK_MODE, &v);
+        }
+    }
+    // Windows kept below the others go to the bottom (the desktop window, if any, goes under them next).
+    for (stack.items) |cl| {
+        if (cl.kind == .normal and cl.below and visible(cl)) {
+            const v = [_]u32{c.XCB_STACK_MODE_BELOW};
             _ = c.xcb_configure_window(conn, outerWin(cl), c.XCB_CONFIG_WINDOW_STACK_MODE, &v);
         }
     }
@@ -647,6 +704,8 @@ fn focusClient(cl: ?*Client) void {
         return;
     };
     if (target.kind != .normal) return;
+    // Focusing a tab that is behind another brings it forward.
+    if (target.group != 0) activateTab(target);
     focused = target;
     raiseInStack(target);
     _ = c.xcb_set_input_focus(conn, c.XCB_INPUT_FOCUS_POINTER_ROOT, target.win, c.XCB_CURRENT_TIME);
@@ -654,6 +713,7 @@ fn focusClient(cl: ?*Client) void {
     restack();
     publishActive();
     paintBorders();
+    refreshOpacities();
     _ = c.xcb_flush(conn);
 }
 
@@ -670,7 +730,7 @@ fn focusOnly(target: *Client) void {
 
 fn clientEventMask() u32 {
     const base: u32 = c.XCB_EVENT_MASK_PROPERTY_CHANGE;
-    return if (cfg.focus_follows_mouse) base | c.XCB_EVENT_MASK_ENTER_WINDOW else base;
+    return if (cfg.focus_follows_mouse or cfg.effects.opacify) base | c.XCB_EVENT_MASK_ENTER_WINDOW else base;
 }
 
 /// The window that should have the focus on this workspace: the topmost visible one.
@@ -802,6 +862,84 @@ fn createFrame(cl: *Client) void {
     _ = c.xcb_change_property(conn, c.XCB_PROP_MODE_REPLACE, cl.win, atom(._NET_FRAME_EXTENTS), c.XCB_ATOM_CARDINAL, 32, 4, &extents);
 }
 
+/// WM_CLASS: "instance\0class\0".
+fn readClass(cl: *Client) void {
+    const r = getProp(cl.win, c.XCB_ATOM_WM_CLASS, c.XCB_GET_PROPERTY_TYPE_ANY, 128) orelse return;
+    defer std.c.free(r);
+    const len: usize = @intCast(c.xcb_get_property_value_length(r));
+    const ptr: [*]const u8 = @ptrCast(c.xcb_get_property_value(r));
+    const data = ptr[0..len];
+    const first = std.mem.indexOfScalar(u8, data, 0) orelse data.len;
+    const rest = if (first < data.len) data[first + 1 ..] else data[data.len..];
+    const second = std.mem.indexOfScalar(u8, rest, 0) orelse rest.len;
+    gpa.free(cl.instance);
+    gpa.free(cl.class);
+    cl.instance = gpa.dupe(u8, data[0..first]) catch &.{};
+    cl.class = gpa.dupe(u8, rest[0..second]) catch &.{};
+}
+
+/// The rules that match the window by class, and where that says nothing by instance.
+fn resolveRules(cl: *const Client) rules_mod.Rule {
+    var r = rules_mod.resolve(cfg.rules, cl.class, cl.title);
+    const i = rules_mod.resolve(cfg.rules, cl.instance, cl.title);
+    inline for (.{ "floating", "workspace", "sticky", "above", "below", "maximized", "fullscreen", "opacity", "position", "x", "y", "width", "height" }) |f| {
+        if (@field(r, f) == null) @field(r, f) = @field(i, f);
+    }
+    return r;
+}
+
+/// Opacity as _NET_WM_WINDOW_OPACITY (what compositing managers such as picom read); 1 removes it.
+fn applyOpacity(cl: *Client) void {
+    if (cl.kind != .normal) return;
+    var v: f32 = cl.opacity;
+    if (cfg.effects.trailfocus) {
+        var rank: usize = 0;
+        var i = stack.items.len;
+        while (i > 0) : (i -= 1) {
+            const o = stack.items[i - 1];
+            if (o == cl) break;
+            if (o.kind == .normal and visible(o)) rank += 1;
+        }
+        v *= @max(0.35, 1.0 - 0.17 * @as(f32, @floatFromInt(rank)));
+    } else if (cfg.inactive_opacity < 1.0 and focused != cl) {
+        v *= cfg.inactive_opacity;
+    }
+    if (opacified(cl)) v *= 0.28;
+    for ([_]c.xcb_window_t{ cl.win, outerWin(cl) }) |w| {
+        if (v >= 0.999) {
+            _ = c.xcb_delete_property(conn, w, atom(._NET_WM_WINDOW_OPACITY));
+        } else {
+            const val: u32 = @intFromFloat(@max(0, v) * 4294967295.0);
+            setCardinal(w, ._NET_WM_WINDOW_OPACITY, &.{val});
+        }
+    }
+}
+
+fn refreshOpacities() void {
+    for (clients.items) |cl| applyOpacity(cl);
+}
+
+/// Opacify: the window is above the one the pointer is over, and covers part of it.
+fn opacified(cl: *const Client) bool {
+    if (!cfg.effects.opacify) return false;
+    const h = opacify_for orelse return false;
+    if (h == cl or !visible(h) or !visible(cl)) return false;
+    var seen_h = false;
+    for (stack.items) |o| {
+        if (o == h) {
+            seen_h = true;
+            continue;
+        }
+        if (o == cl) {
+            if (!seen_h) return false;
+            const a = clientRect(cl);
+            const b = clientRect(h);
+            return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h;
+        }
+    }
+    return false;
+}
+
 fn manage(win: c.xcb_window_t) void {
     if (findClient(win) != null) return;
     const geo_cookie = c.xcb_get_geometry(conn, win);
@@ -834,6 +972,7 @@ fn manage(win: c.xcb_window_t) void {
         },
         .normal => {
             readTitle(cl);
+            readClass(cl);
             readProtocols(cl);
             readSizeHints(cl);
             readBorder(cl);
@@ -853,8 +992,12 @@ fn manage(win: c.xcb_window_t) void {
             }
             // New windows open on the monitor the pointer is on.
             var pointer_mon: usize = 0;
+            var pointer_x: i32 = 0;
+            var pointer_y: i32 = 0;
             if (c.xcb_query_pointer_reply(conn, c.xcb_query_pointer(conn, root), null)) |q| {
                 defer std.c.free(q);
+                pointer_x = q.*.root_x;
+                pointer_y = q.*.root_y;
                 pointer_mon = monitorOf(.{ .x = q.*.root_x, .y = q.*.root_y, .w = 1, .h = 1 });
             }
             const area = monitors[pointer_mon].work;
@@ -863,10 +1006,38 @@ fn manage(win: c.xcb_window_t) void {
                 cl.x = geo.*.x;
                 cl.y = geo.*.y;
             } else {
-                const p = layout.cascade(area, cascade_index);
+                const w = @min(cl.w, area.w);
+                const h = @min(cl.h, area.h);
+                switch (cfg.placement) {
+                    .cascade => {
+                        const p = layout.cascade(area, cascade_index);
+                        cl.x = p.x;
+                        cl.y = p.y;
+                    },
+                    .center => {
+                        const p = place_mod.put(area, w, h, .center);
+                        cl.x = p.x;
+                        cl.y = p.y;
+                    },
+                    .smart => {
+                        var others: [64]layout.Rect = undefined;
+                        var n: usize = 0;
+                        for (clients.items) |o| {
+                            if (o != cl and o.kind == .normal and visible(o) and n < others.len) {
+                                others[n] = clientRect(o);
+                                n += 1;
+                            }
+                        }
+                        const p = place_mod.smart(area, w, h, others[0..n]);
+                        cl.x = p.x;
+                        cl.y = p.y;
+                    },
+                    .pointer => {
+                        cl.x = std.math.clamp(pointer_x - @divTrunc(w, 2), area.x, @max(area.x, area.x + area.w - w));
+                        cl.y = std.math.clamp(pointer_y - @divTrunc(h, 2), area.y, @max(area.y, area.y + area.h - h));
+                    },
+                }
                 cascade_index += 1;
-                cl.x = p.x;
-                cl.y = p.y;
             }
             cl.w = @min(cl.w, area.w);
             cl.h = @min(cl.h, area.h);
@@ -881,6 +1052,37 @@ fn manage(win: c.xcb_window_t) void {
             // A cascaded window that is wide or tall is pulled back inside the work area rather than hanging off it.
             cl.x = @max(area.x, @min(cl.x, area.x + area.w - cl.w));
             cl.y = @max(area.y, @min(cl.y, area.y + area.h - cl.h));
+            // The [[rules]] for this window: what to do with it, and where it goes.
+            {
+                const rule = resolveRules(cl);
+                if (rule.floating) |f| cl.floating = f;
+                if (rule.workspace) |wsn| {
+                    if (wsn < ws_count) cl.ws = wsn;
+                }
+                if (rule.sticky) |v| cl.sticky = v;
+                if (rule.above) |v| {
+                    cl.above = v;
+                    if (v) cl.below = false;
+                }
+                if (rule.below) |v| {
+                    cl.below = v;
+                    if (v) cl.above = false;
+                }
+                if (rule.maximized) |v| cl.maximized = v;
+                if (rule.fullscreen) |v| cl.fullscreen = v;
+                if (rule.opacity) |v| cl.opacity = v;
+                const ins = insetsOf(cl);
+                if (rule.width) |v| cl.w = v + ins.l + ins.r;
+                if (rule.height) |v| cl.h = v + ins.t + ins.b;
+                if (rule.x) |v| cl.x = v;
+                if (rule.y) |v| cl.y = v;
+                if (rule.position) |pos| {
+                    const p = place_mod.put(area, cl.w, cl.h, pos);
+                    cl.x = p.x;
+                    cl.y = p.y;
+                }
+                if (rule.x != null or rule.y != null or rule.position != null or rule.width != null or rule.height != null) cl.floating = true;
+            }
             cl.mon = @intCast(monitorOf(clientRect(cl)));
             // A transient window goes where its parent is.
             if (transient != 0) if (findClient(transient)) |parent| {
@@ -915,6 +1117,10 @@ fn unmanage(cl: *Client) void {
         _ = stack.orderedRemove(i);
         break;
     };
+    leaveGroup(cl);
+    if (opacify_for == cl) opacify_for = null;
+    gpa.free(cl.instance);
+    gpa.free(cl.class);
     const was_focused = focused == cl;
     if (was_focused) focused = null;
     if (cl.frame != 0) {
@@ -975,6 +1181,194 @@ fn activate(cl: *Client) void {
 fn toggleFloat(cl: *Client) void {
     cl.floating = !cl.floating;
     arrange();
+}
+
+// ---- tab groups ----------------------------------------------------------------------------------------------
+
+fn groupMembers(id: u32, out: []*Client) usize {
+    var n: usize = 0;
+    for (clients.items) |cl| {
+        if (cl.group == id and n < out.len) {
+            out[n] = cl;
+            n += 1;
+        }
+    }
+    return n;
+}
+
+/// Makes `cl` the shown tab of its group; it takes the place of the one it replaces.
+fn activateTab(cl: *Client) void {
+    const g = groupRec(cl.group) orelse return;
+    const old = g.active;
+    if (old == cl) return;
+    cl.x = old.x;
+    cl.y = old.y;
+    cl.w = old.w;
+    cl.h = old.h;
+    cl.floating = true;
+    cl.maximized = old.maximized;
+    cl.fullscreen = old.fullscreen;
+    g.active = cl;
+    arrange();
+}
+
+/// Takes `cl` out of its group; a group of one is dissolved.
+fn leaveGroup(cl: *Client) void {
+    if (cl.group == 0) return;
+    const id = cl.group;
+    cl.group = 0;
+    var rest: [32]*Client = undefined;
+    const n = groupMembers(id, &rest);
+    if (groupRec(id)) |rec| {
+        if (n <= 1) {
+            for (rest[0..n]) |o| o.group = 0;
+            for (groups.items, 0..) |g, i| {
+                if (g.id == id) {
+                    _ = groups.orderedRemove(i);
+                    break;
+                }
+            }
+        } else if (rec.active == cl) rec.active = rest[0];
+    }
+    arrange();
+}
+
+/// Super+G: group the window with the one below it into tabs, or take it out of its group.
+fn toggleGroup() void {
+    if (!cfg.effects.groups) return;
+    const f = focused orelse return;
+    if (f.group != 0) {
+        leaveGroup(f);
+        return;
+    }
+    var partner: ?*Client = null;
+    var i = stack.items.len;
+    while (i > 0) : (i -= 1) {
+        const o = stack.items[i - 1];
+        if (o != f and o.kind == .normal and visible(o)) {
+            partner = o;
+            break;
+        }
+    }
+    const p = partner orelse return;
+    if (p.group == 0) {
+        const id = next_group;
+        next_group += 1;
+        groups.append(gpa, .{ .id = id, .active = p }) catch return;
+        p.group = id;
+    }
+    f.group = p.group;
+    activateTab(f);
+    focusClient(f);
+}
+
+fn tabStep(dir: i32) void {
+    const f = focused orelse return;
+    if (f.group == 0) return;
+    var members: [32]*Client = undefined;
+    const n = groupMembers(f.group, &members);
+    if (n < 2) return;
+    var idx: usize = 0;
+    for (members[0..n], 0..) |m, k| {
+        if (m == f) idx = k;
+    }
+    const next = members[@intCast(@mod(@as(i64, @intCast(idx)) + dir, @as(i64, @intCast(n))))];
+    activateTab(next);
+    focusClient(next);
+}
+
+/// The coloured strips above the groups' windows (small windows of our own, as the snap outline uses).
+fn updateTabUi() void {
+    var sig: u64 = 1469598103934665603;
+    for (groups.items) |g| {
+        const cl = g.active;
+        if (!visible(cl)) continue;
+        var members: [32]*Client = undefined;
+        const n = groupMembers(g.id, &members);
+        for ([_]u64{ @bitCast(@as(i64, cl.x)), @bitCast(@as(i64, cl.y)), @bitCast(@as(i64, cl.w)), n, @intFromPtr(cl) }) |v| sig = (sig ^ v) *% 1099511628211;
+    }
+    if (sig == tab_sig) return;
+    tab_sig = sig;
+    for (tab_plates.items) |w| _ = c.xcb_destroy_window(conn, w);
+    tab_plates.clearRetainingCapacity();
+    for (groups.items) |g| {
+        const cl = g.active;
+        if (!visible(cl)) continue;
+        var members: [32]*Client = undefined;
+        const n = groupMembers(g.id, &members);
+        if (n == 0) continue;
+        const seg = @min(@as(i32, 96), @divTrunc(cl.w, @as(i32, @intCast(n))));
+        for (members[0..n], 0..) |m, k| {
+            const color: u32 = if (m == cl) color_hot else 0x73777f;
+            const plate = newPlate(color, .{ .x = cl.x + @as(i32, @intCast(k)) * (seg + 2), .y = cl.y - 7, .w = seg, .h = 5 });
+            _ = c.xcb_map_window(conn, plate);
+            raise(plate);
+            tab_plates.append(gpa, plate) catch {};
+        }
+    }
+}
+
+// ---- mouse gestures ---------------------------------------------------------------------------------------------
+
+fn gestureAction(name: []const u8) ?keys.Action {
+    for (cfg.gestures) |e| {
+        if (std.mem.eql(u8, e.key, name)) return keys.parseAction(e.action);
+    }
+    for (gesture_mod.defaults) |e| {
+        if (std.mem.eql(u8, e.name, name)) return keys.parseAction(e.action);
+    }
+    return null;
+}
+
+fn finishGesture() void {
+    gesture_on = false;
+    _ = c.xcb_ungrab_pointer(conn, c.XCB_CURRENT_TIME);
+    _ = c.xcb_flush(conn);
+    var buf: [8]u8 = undefined;
+    const name = gesture_mod.classify(gesture_pts.items, &buf);
+    gesture_pts.clearRetainingCapacity();
+    if (name.len == 0) return;
+    if (gestureAction(name)) |action| perform(action);
+}
+
+// ---- actions with no compositing here ----------------------------------------------------------------------------
+
+var told_compositing = false;
+
+/// The visual effects (zoom, filters, shelf, Scale, Expo ...) need something that composes the screen; dkde-wm does
+/// not, and X11 would need a compositing manager of its own (see ai/COMPOSITOR-SPEC.md).
+fn needsCompositor() void {
+    if (told_compositing) return;
+    told_compositing = true;
+    warn("that action is a visual effect: it needs a compositing manager, which dkde-wm is not", .{});
+}
+
+fn showDesktop() void {
+    var any = false;
+    for (clients.items) |cl| {
+        if (cl.kind == .normal and visible(cl)) any = true;
+    }
+    if (any) {
+        for (clients.items) |cl| {
+            if (cl.kind == .normal and visible(cl)) {
+                cl.desk_hidden = true;
+                cl.minimized = true;
+            }
+        }
+        arrange();
+        focusTop();
+        return;
+    }
+    var back: ?*Client = null;
+    for (clients.items) |cl| {
+        if (cl.desk_hidden) {
+            cl.desk_hidden = false;
+            cl.minimized = false;
+            back = cl;
+        }
+    }
+    arrange();
+    if (back) |b| focusClient(b);
 }
 
 // ---- shortcuts ----------------------------------------------------------------------------------------------
@@ -1076,6 +1470,11 @@ fn grabBindings() void {
             _ = c.xcb_grab_key(conn, 1, root, x11Mods(b.mods) | extra, b.keycode, c.XCB_GRAB_MODE_ASYNC, c.XCB_GRAB_MODE_ASYNC);
         }
     }
+    if (cfg.effects.gestures) {
+        for (lock_variants) |extra| {
+            _ = c.xcb_grab_button(conn, 0, root, @intCast(c.XCB_EVENT_MASK_BUTTON_PRESS | c.XCB_EVENT_MASK_BUTTON_RELEASE), c.XCB_GRAB_MODE_ASYNC, c.XCB_GRAB_MODE_ASYNC, c.XCB_NONE, c.XCB_NONE, 3, @as(u16, c.XCB_MOD_MASK_4) | extra);
+        }
+    }
     // Alt + left button moves, Alt + right button resizes.
     const mask = c.XCB_EVENT_MASK_BUTTON_PRESS | c.XCB_EVENT_MASK_BUTTON_RELEASE | c.XCB_EVENT_MASK_BUTTON_MOTION;
     for ([_]u8{ 1, 3 }) |button| {
@@ -1153,6 +1552,45 @@ fn perform(action: keys.Action) void {
             f.fullscreen = false;
             arrange();
         },
+        .put => |pos| if (focused) |f| {
+            const r = place_mod.put(monitors[monitorFor(f)].work, f.w, f.h, pos);
+            f.x = r.x;
+            f.y = r.y;
+            f.floating = true;
+            f.maximized = false;
+            f.fullscreen = false;
+            arrange();
+        },
+        .sticky => if (focused) |f| {
+            f.sticky = !f.sticky;
+            if (!f.sticky) f.ws = ws_current;
+            arrange();
+        },
+        .above => if (focused) |f| {
+            f.above = !f.above;
+            if (f.above) f.below = false;
+            arrange();
+        },
+        .below => if (focused) |f| {
+            f.below = !f.below;
+            if (f.below) f.above = false;
+            arrange();
+        },
+        .show_desktop => showDesktop(),
+        .opacity_up => if (focused) |f| {
+            f.opacity = std.math.clamp(f.opacity + 0.1, 0.2, 1.0);
+            applyOpacity(f);
+            _ = c.xcb_flush(conn);
+        },
+        .opacity_down => if (focused) |f| {
+            f.opacity = std.math.clamp(f.opacity - 0.1, 0.2, 1.0);
+            applyOpacity(f);
+            _ = c.xcb_flush(conn);
+        },
+        .group => toggleGroup(),
+        .next_tab => tabStep(1),
+        .prev_tab => tabStep(-1),
+        .scale, .expo, .zoom_in, .zoom_out, .zoom_reset, .next_filter, .show_pointer, .lens, .fire, .paint, .paint_clear, .shelf => needsCompositor(),
         .exec => |cmd| runCommand(cmd),
     }
 }
@@ -1410,6 +1848,20 @@ fn dragMotion(root_x: i32, root_y: i32) void {
     if (!d.resize) {
         cl.x = d.orig.x + dx;
         cl.y = d.orig.y + dy;
+        if (cfg.snap_windows) {
+            // Meet the edges of the screen and of other windows.
+            var others: [64]layout.Rect = undefined;
+            var n: usize = 0;
+            for (clients.items) |o| {
+                if (o != cl and o.kind == .normal and visible(o) and n < others.len) {
+                    others[n] = clientRect(o);
+                    n += 1;
+                }
+            }
+            const meet = place_mod.magnet(.{ .x = cl.x, .y = cl.y, .w = cl.w, .h = cl.h }, monitors[monitorFor(cl)].work, others[0..n], 14);
+            cl.x = meet.x;
+            cl.y = meet.y;
+        }
     } else {
         const min: i32 = 80;
         var nx = d.orig.x;
@@ -1634,6 +2086,15 @@ fn onButtonPress(ev: *const c.xcb_button_press_event_t) void {
         beginDrag(ev);
         return;
     }
+    // Super + right button: a gesture (the direction drawn runs an action).
+    if (cfg.effects.gestures and ev.event == root and state == c.XCB_MOD_MASK_4 and ev.detail == 3) {
+        gesture_on = true;
+        gesture_pts.clearRetainingCapacity();
+        gesture_pts.append(gpa, .{ @floatFromInt(ev.root_x), @floatFromInt(ev.root_y) }) catch {};
+        _ = c.xcb_grab_pointer(conn, 0, root, c.XCB_EVENT_MASK_BUTTON_RELEASE | c.XCB_EVENT_MASK_POINTER_MOTION, c.XCB_GRAB_MODE_ASYNC, c.XCB_GRAB_MODE_ASYNC, c.XCB_NONE, c.XCB_NONE, c.XCB_CURRENT_TIME);
+        _ = c.xcb_flush(conn);
+        return;
+    }
     if (findClient(ev.event)) |cl| {
         if (cl.frame != 0 and ev.event == cl.frame) {
             onFramePress(cl, ev);
@@ -1670,7 +2131,7 @@ fn handle(ev: *c.xcb_generic_event_t) void {
         c.XCB_KEY_PRESS => onKeyPress(@ptrCast(ev)),
         c.XCB_KEY_RELEASE => onKeyRelease(@ptrCast(ev)),
         c.XCB_BUTTON_PRESS => onButtonPress(@ptrCast(ev)),
-        c.XCB_BUTTON_RELEASE => finishDrag(),
+        c.XCB_BUTTON_RELEASE => if (gesture_on) finishGesture() else finishDrag(),
         c.XCB_EXPOSE => {
             const e: *const c.xcb_expose_event_t = @ptrCast(ev);
             if (e.count == 0) if (findClient(e.window)) |cl| if (cl.frame != 0 and e.window == cl.frame) redrawFrame(cl);
@@ -1681,10 +2142,21 @@ fn handle(ev: *c.xcb_generic_event_t) void {
             if (cfg.focus_follows_mouse and e.mode == c.XCB_NOTIFY_MODE_NORMAL and e.detail != c.XCB_NOTIFY_DETAIL_INFERIOR and drag == null) {
                 if (findClient(e.event)) |cl| focusOnly(cl);
             }
+            if (cfg.effects.opacify and e.mode == c.XCB_NOTIFY_MODE_NORMAL and e.detail != c.XCB_NOTIFY_DETAIL_INFERIOR and drag == null) {
+                if (findClient(e.event)) |cl| {
+                    if (cl.kind == .normal and opacify_for != cl) {
+                        opacify_for = cl;
+                        refreshOpacities();
+                        _ = c.xcb_flush(conn);
+                    }
+                }
+            }
         },
         c.XCB_MOTION_NOTIFY => {
             const m: *const c.xcb_motion_notify_event_t = @ptrCast(ev);
-            dragMotion(m.root_x, m.root_y);
+            if (gesture_on) {
+                gesture_pts.append(gpa, .{ @floatFromInt(m.root_x), @floatFromInt(m.root_y) }) catch {};
+            } else dragMotion(m.root_x, m.root_y);
         },
         c.XCB_MAPPING_NOTIFY => {
             loadKeyboard();

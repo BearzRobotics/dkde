@@ -3,6 +3,15 @@
 
 const std = @import("std");
 
+/// The built-in gestures (the settings' `[gestures]` come first).
+pub const Default = struct { name: []const u8, action: []const u8 };
+pub const defaults = [_]Default{
+    .{ .name = "L", .action = "workspace-prev" },
+    .{ .name = "R", .action = "workspace-next" },
+    .{ .name = "U", .action = "maximize" },
+    .{ .name = "D", .action = "show-desktop" },
+};
+
 /// A stroke is a run of moves of at least this many pixels; shorter wobbles are ignored.
 pub const min_step: f32 = 28;
 

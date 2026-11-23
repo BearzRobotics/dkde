@@ -1337,13 +1337,6 @@ fn updateTabUi() void {
 
 // ---- mouse gestures -----------------------------------------------------------------------------------------------------
 
-const default_gestures = [_]keys.Entry{
-    .{ .key = "L", .action = "workspace-prev" },
-    .{ .key = "R", .action = "workspace-next" },
-    .{ .key = "U", .action = "maximize" },
-    .{ .key = "D", .action = "show-desktop" },
-};
-
 fn superHeld() bool {
     for (server.keyboards.items) |k| {
         if (c.wlr_keyboard_get_modifiers(k.keyboard) & c.WLR_MODIFIER_LOGO != 0) return true;
@@ -1356,8 +1349,8 @@ fn gestureAction(name: []const u8) ?keys.Action {
     for (server.gestures) |e| {
         if (std.mem.eql(u8, e.key, name)) return keys.parseAction(e.action);
     }
-    for (default_gestures) |e| {
-        if (std.mem.eql(u8, e.key, name)) return keys.parseAction(e.action);
+    for (gesture_mod.defaults) |e| {
+        if (std.mem.eql(u8, e.name, name)) return keys.parseAction(e.action);
     }
     return null;
 }
