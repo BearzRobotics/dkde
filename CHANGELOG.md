@@ -4,6 +4,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 ## Unreleased
 
+- **Added** (dkde-compositor, Settings): an optional Alt+Tab switcher with window previews, as a strip or a ring (`[effects] switcher = "strip"` or `"ring"`, also on the Effects page). Hold Alt and press Tab to step (Shift reverses), let go of Alt to go to the window in front, Escape to cancel. Minimized windows are listed and restored when picked.
 - **Added** (Settings): an Effects page (Personalization) for the compositor's optional extras: window animations and their length, Scale, Expo, and dimming of windows without focus. The Windows page gains where new windows open and whether dragged windows stick to edges. They are written to compositor.toml and apply at once; under labwc or X11 the page says effects need DKDE's own Wayland compositor.
 - **Added** (dkde-compositor): optional Scale (`[effects] scale = true`, Super+W: all windows of the workspace shrunk into a grid, click or Return to pick) and Expo (`expo = true`, Super+E: all workspaces as tiles with their windows, click a tile to go there or drag a window onto another tile to move it).
 - **Added** (dkde-compositor): optional window animations (`[effects] animations = true`): windows fade and grow when they open and shrink away when minimized or hidden by Show Desktop. They are drawn by our own render pass (`src/render.zig`), used only while something moves.

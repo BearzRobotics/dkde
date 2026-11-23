@@ -1017,6 +1017,8 @@ const Entry = struct {
     target: overview.Place,
     /// Expo: the workspace tile it sits on.
     tile: usize = 0,
+    /// Where the switcher last drew it (for clicks).
+    shown: layout.Rect = .{ .x = 0, .y = 0, .w = 0, .h = 0 },
 };
 
 const Overview = struct {
@@ -1036,6 +1038,12 @@ const Overview = struct {
     press: ?usize = null,
     /// The workspace that closing switches to (Expo).
     pick_ws: ?usize = null,
+    /// The Alt+Tab switcher (a strip or a ring of previews): the chosen window, and the animated position between them.
+    switcher: config.Switcher = .off,
+    sel: usize = 0,
+    pos_from: f32 = 0,
+    pos_to: f32 = 0,
+    pos_start: u32 = 0,
 
     fn duration() u32 {
         return if (server.effects.animations) server.effects.animation_ms else 0;
@@ -1046,6 +1054,16 @@ const Overview = struct {
         const f = anim.fraction(.{ .kind = .open, .start_ms = self.start_ms, .duration_ms = duration() }, currentMs());
         const e = anim.easeOut(f);
         return if (self.closing) 1 - e else e;
+    }
+
+    /// The switcher's position, easing from one window to the next.
+    fn posNow(self: *const Overview) f32 {
+        const f = anim.fraction(.{ .kind = .open, .start_ms = self.pos_start, .duration_ms = duration() }, currentMs());
+        return self.pos_from + (self.pos_to - self.pos_from) * anim.easeOut(f);
+    }
+
+    fn posMoving(self: *const Overview) bool {
+        return self.switcher != .off and !anim.done(.{ .kind = .open, .start_ms = self.pos_start, .duration_ms = duration() }, currentMs());
     }
 
     fn finished(self: *const Overview) bool {
@@ -1064,6 +1082,27 @@ const Overview = struct {
         const e = self.entries.items[i];
         var p = self.progress();
         var alpha: f32 = 1;
+        if (self.switcher != .off) {
+            const pos = self.posNow();
+            const th = if (self.switcher == .ring)
+                overview.ringThumb(self.screen, e.size, i, self.entries.items.len, pos)
+            else
+                overview.stripThumb(self.screen, e.size, i, pos);
+            const w: f32 = @floatFromInt(e.size.w);
+            const h: f32 = @floatFromInt(e.size.h);
+            const left = th.cx - w * th.scale / 2;
+            const top = th.cy - h * th.scale / 2;
+            self.entries.items[i].shown = .{ .x = @intFromFloat(left), .y = @intFromFloat(top), .w = @intFromFloat(w * th.scale), .h = @intFromFloat(h * th.scale) };
+            return .{
+                .scale = 1 + (th.scale - 1) * p,
+                .ax = @floatFromInt(e.x),
+                .ay = @floatFromInt(e.y),
+                .tx = (left - @as(f32, @floatFromInt(e.x))) * p,
+                .ty = (top - @as(f32, @floatFromInt(e.y))) * p,
+                .alpha = 1 + (th.alpha - 1) * p,
+                .force = true,
+            };
+        }
         if (self.closing and self.expo) {
             // Windows of the other workspaces stay on their tile and fade; the picked workspace's grow back.
             if (self.pick_ws != null and e.tile != self.pick_ws.?) {
@@ -1096,6 +1135,7 @@ const Overview = struct {
 
     /// The thumbnail rectangles in layout coordinates, for hit tests.
     fn thumb(e: Entry) layout.Rect {
+        if (e.shown.w > 0) return e.shown;
         return .{ .x = e.target.x, .y = e.target.y, .w = @intFromFloat(@as(f32, @floatFromInt(e.size.w)) * e.target.scale), .h = @intFromFloat(@as(f32, @floatFromInt(e.size.h)) * e.target.scale) };
     }
 
@@ -1116,7 +1156,7 @@ const tile_hover = [4]f32{ 0.21, 0.52, 0.89, 1 };
 
 fn overviewMoving() bool {
     const ov = server.overview orelse return false;
-    return !ov.finished();
+    return !ov.finished() or ov.posMoving();
 }
 
 fn openOverview(expo: bool) void {
@@ -1193,7 +1233,10 @@ fn closeOverview(pick: ?*Toplevel) void {
         ov.pick_ws = ws;
         if (ws != server.ws.active) switchWorkspace(ws);
     }
-    if (pick) |t| focus(t);
+    if (pick) |t| {
+        if (t.minimized) setMinimized(t, false);
+        focus(t);
+    }
     wakeOutputs();
 }
 
@@ -1236,6 +1279,81 @@ fn updateOverviewHover() void {
         }
     }
     wakeOutputs();
+}
+
+// ---- the Alt+Tab switcher ----------------------------------------------------------------------------------
+
+/// Draws the windows back to front by their distance from the chosen one, so the nearest is on top.
+fn restackSwitcher(ov: *Overview) void {
+    const n = ov.entries.items.len;
+    var dist: usize = n;
+    while (dist > 0) : (dist -= 1) {
+        for (ov.entries.items, 0..) |e, i| {
+            const d: usize = if (i > ov.sel) i - ov.sel else ov.sel - i;
+            const dd = if (ov.switcher == .ring) @min(d, n - d) else d;
+            if (dd == dist - 1 and dd < n) c.wlr_scene_node_raise_to_top(&e.t.tree.*.node);
+        }
+    }
+}
+
+/// Alt+Tab (dir = 1) or Alt+Shift+Tab (-1): opens the switcher on the next window, or moves on within it.
+fn switcherStep(dir: i32) void {
+    if (server.locked) return;
+    if (server.overview) |ov| {
+        if (ov.switcher == .off or ov.closing) return;
+        const n = ov.entries.items.len;
+        if (n == 0) return;
+        ov.pos_from = ov.posNow();
+        ov.pos_start = currentMs();
+        const ni: i64 = @as(i64, @intCast(ov.sel)) + dir;
+        const wrapped: usize = @intCast(@mod(ni, @as(i64, @intCast(n))));
+        if (ov.switcher == .ring) {
+            ov.pos_to = std.math.round(ov.pos_from) + @as(f32, @floatFromInt(dir));
+        } else ov.pos_to = @floatFromInt(wrapped);
+        ov.sel = wrapped;
+        restackSwitcher(ov);
+        wakeOutputs();
+        return;
+    }
+    const kind = server.effects.switcher;
+    if (kind == .off or server.cursor_mode != .passthrough) return;
+    const ov = gpa.create(Overview) catch return;
+    const bg = c.wlr_scene_tree_create(server.trees[1]) orelse {
+        gpa.destroy(ov);
+        return;
+    };
+    ov.* = .{ .expo = false, .start_ms = currentMs(), .screen = screenArea(), .bg = bg, .switcher = kind };
+    // Most recently used first.
+    var i = server.toplevels.items.len;
+    while (i > 0) : (i -= 1) {
+        const t = server.toplevels.items[i - 1];
+        if (t.unmanaged() or !onActiveWorkspace(t)) continue;
+        const g = geometryOf(t);
+        ov.entries.append(gpa, .{ .t = t, .x = g.x, .y = g.y, .size = .{ .w = g.w, .h = g.h }, .target = .{ .x = g.x, .y = g.y, .scale = 1 } }) catch {};
+    }
+    if (ov.entries.items.len == 0) {
+        c.wlr_scene_node_destroy(&bg.*.node);
+        ov.entries.deinit(gpa);
+        gpa.destroy(ov);
+        return;
+    }
+    _ = sceneRect(bg, ov.screen, overlay_dim);
+    const n = ov.entries.items.len;
+    ov.sel = if (n > 1) (if (dir > 0) 1 else n - 1) else 0;
+    ov.pos_from = @floatFromInt(ov.sel);
+    ov.pos_to = ov.pos_from;
+    ov.pos_start = 0;
+    server.overview = ov;
+    c.wlr_seat_pointer_clear_focus(server.seat);
+    restackSwitcher(ov);
+    wakeOutputs();
+}
+
+/// The Alt key came up: go to the chosen window.
+fn confirmSwitcher() void {
+    const ov = server.overview orelse return;
+    if (ov.switcher == .off or ov.closing) return;
+    if (ov.sel < ov.entries.items.len) closeOverview(ov.entries.items[ov.sel].t) else closeOverview(null);
 }
 
 fn overviewMotion() void {
@@ -2005,6 +2123,11 @@ const Keyboard = struct {
         const self: *Keyboard = @fieldParentPtr("modifiers", listener.?);
         c.wlr_seat_set_keyboard(server.seat, self.keyboard);
         c.wlr_seat_keyboard_notify_modifiers(server.seat, &self.keyboard.*.modifiers);
+        // The switcher goes to the chosen window when Alt comes up (a key release, or a virtual keyboard
+        // that only reports the modifier state).
+        if (server.overview) |ov| {
+            if (ov.switcher != .off and !ov.closing and modsOf(c.wlr_keyboard_get_modifiers(self.keyboard)) & keys.Mod.alt == 0) confirmSwitcher();
+        }
     }
 
     fn onKey(listener: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
@@ -2031,7 +2154,11 @@ const Keyboard = struct {
             // Nothing reaches the programs while Scale or Expo is up; the shortcuts and Escape/Return still work.
             var k: usize = 0;
             while (k < @as(usize, @intCast(@max(count, 0)))) : (k += 1) {
-                if (!pressed or isSuper(syms[k])) continue;
+                if (!pressed) {
+                    if ((syms[k] == c.XKB_KEY_Alt_L or syms[k] == c.XKB_KEY_Alt_R) and server.overview != null and server.overview.?.switcher != .off) confirmSwitcher();
+                    continue;
+                }
+                if (isSuper(syms[k])) continue;
                 if (!runBinding(mods, syms[k])) overviewKey(syms[k]);
             }
             return;
@@ -2171,6 +2298,10 @@ fn perform(action: keys.Action) void {
         .quit => c.wl_display_terminate(server.display),
         .close => if (topWindow()) |t| t.sendClose(),
         .next_window => {
+            if (server.effects.switcher != .off) {
+                switcherStep(1);
+                return;
+            }
             // The window at the bottom of this workspace comes to the top.
             for (server.toplevels.items) |t| {
                 if (!t.minimized and onActiveWorkspace(t)) {
@@ -2180,6 +2311,10 @@ fn perform(action: keys.Action) void {
             }
         },
         .prev_window => {
+            if (server.effects.switcher != .off) {
+                switcherStep(-1);
+                return;
+            }
             var seen: usize = 0;
             var i = server.toplevels.items.len;
             while (i > 0) : (i -= 1) {
@@ -2470,7 +2605,7 @@ fn loadConfig() void {
     const dimming_changed = server.inactive_opacity != cfg.inactive_opacity;
     server.inactive_opacity = cfg.inactive_opacity;
     server.effects = cfg.effects;
-    if (server.overview != null and !(cfg.effects.scale or cfg.effects.expo)) closeOverview(null);
+    if (server.overview != null and !(cfg.effects.scale or cfg.effects.expo or cfg.effects.switcher != .off)) closeOverview(null);
     config.free(gpa, cfg);
     cfg.keys = &.{};
     if (dimming_changed) refreshOpacity();

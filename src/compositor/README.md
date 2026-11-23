@@ -84,6 +84,7 @@ Not done: shading a window to its title bar (windows draw their own title bars, 
 animations = true         # windows fade and grow when they open, and shrink toward the bottom when minimized
 animation-ms = 200        # 50 to 2000
 scale = true              # Super+W: every window of the workspace at once; click one, or Return, to pick it
+switcher = "ring"         # Alt+Tab shows previews: "strip" or "ring" (off = the window just comes to the front)
 expo = true               # Super+E: every workspace as a tile; click a tile, or drag a window onto another tile
 ```
 

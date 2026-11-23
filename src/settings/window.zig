@@ -1711,6 +1711,12 @@ pub const SettingsWindow = struct {
         expo.as(gtk.Widget).setName("expo");
         addRowDesc(page, common.tr("Expo (Super+E)"), common.tr("Shows every desktop as a tile with its windows. Click a tile to go there, or drag a window onto another tile to move it."), expo.as(gtk.Widget));
 
+        const switchers = [_]?[*:0]const u8{ "Standard (no previews)", "Strip of window previews", "Ring of window previews", null };
+        const switch_drop = gtk.DropDown.newFromStrings(@ptrCast(&switchers));
+        switch_drop.setSelected(@intFromEnum(cfg.effects.switcher));
+        _ = gobject.Object.signals.notify.connect(switch_drop, *SettingsWindow, &onSwitcherPicked, self, .{ .detail = "selected" });
+        addRowDesc(page, common.tr("Window switcher (Alt+Tab)"), common.tr("Hold Alt and press Tab to step through the windows with previews; let go of Alt to go to the one shown in front. Escape cancels."), switch_drop.as(gtk.Widget));
+
         const dim = gtk.SpinButton.newWithRange(10, 100, 5);
         dim.setValue(@round(@as(f64, cfg.inactive_opacity) * 100));
         _ = gtk.SpinButton.signals.value_changed.connect(dim, *SettingsWindow, &onInactiveOpacity, self, .{});
@@ -1724,6 +1730,14 @@ pub const SettingsWindow = struct {
         var buf: [48]u8 = undefined;
         self.setCompositorValue("effects", key, std.fmt.bufPrint(&buf, "{s} = {s}", .{ key, if (state != 0) "true" else "false" }) catch return 0);
         return 0;
+    }
+
+    fn onSwitcherPicked(drop: *gtk.DropDown, _: *gobject.ParamSpec, self: *SettingsWindow) callconv(.c) void {
+        const names = [_][]const u8{ "off", "strip", "ring" };
+        const i = drop.getSelected();
+        if (i >= names.len) return;
+        var buf: [48]u8 = undefined;
+        self.setCompositorValue("effects", "switcher", std.fmt.bufPrint(&buf, "switcher = \"{s}\"", .{names[i]}) catch return);
     }
 
     fn onAnimationMs(button: *gtk.SpinButton, self: *SettingsWindow) callconv(.c) void {

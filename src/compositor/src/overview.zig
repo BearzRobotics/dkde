@@ -187,3 +187,63 @@ test "an odd number of workspaces" {
     const last = t.rect(4);
     try std.testing.expect(last.x + last.w <= 1280 and last.y + last.h <= 720);
 }
+
+/// How the switcher draws one window: the centre of its thumbnail, a scale for its size, and its opacity.
+pub const Thumb = struct { cx: f32, cy: f32, scale: f32, alpha: f32 };
+
+/// The strip: windows in a row, the one at `pos` (a position that animates between whole numbers) in the middle and larger.
+pub fn stripThumb(screen: Rect, size: Size, index: usize, pos: f32) Thumb {
+    const sw: f32 = @floatFromInt(screen.w);
+    const sh: f32 = @floatFromInt(screen.h);
+    const base = fit(size, sw * 0.26, sh * 0.30);
+    const off = @as(f32, @floatFromInt(index)) - pos;
+    const near = std.math.clamp(1 - @abs(off), 0, 1);
+    return .{
+        .cx = @as(f32, @floatFromInt(screen.x)) + sw / 2 + off * sw * 0.22,
+        .cy = @as(f32, @floatFromInt(screen.y)) + sh / 2,
+        .scale = base * (0.7 + 0.45 * near),
+        .alpha = std.math.clamp(1.25 - 0.3 * @abs(off), 0, 1),
+    };
+}
+
+/// The ring: windows on an ellipse with the one at `pos` in front (nearer: larger and more opaque).
+pub fn ringThumb(screen: Rect, size: Size, index: usize, count: usize, pos: f32) Thumb {
+    const sw: f32 = @floatFromInt(screen.w);
+    const sh: f32 = @floatFromInt(screen.h);
+    const base = fit(size, sw * 0.26, sh * 0.30);
+    const n: f32 = @floatFromInt(@max(count, 1));
+    const a = 2 * std.math.pi * (@as(f32, @floatFromInt(index)) - pos) / n + @as(f32, std.math.pi) / 2;
+    const depth = (@sin(a) + 1) / 2;
+    return .{
+        .cx = @as(f32, @floatFromInt(screen.x)) + sw / 2 + @cos(a) * sw * 0.32,
+        .cy = @as(f32, @floatFromInt(screen.y)) + sh * 0.46 + @sin(a) * sh * 0.2,
+        .scale = base * (0.5 + 0.6 * depth),
+        .alpha = 0.4 + 0.6 * depth,
+    };
+}
+
+fn fit(size: Size, max_w: f32, max_h: f32) f32 {
+    const w: f32 = @floatFromInt(@max(size.w, 1));
+    const h: f32 = @floatFromInt(@max(size.h, 1));
+    return @min(max_w / w, max_h / h);
+}
+
+test "the strip puts the chosen window in the middle and bigger" {
+    const screen = Rect{ .x = 0, .y = 0, .w = 1600, .h = 900 };
+    const size = Size{ .w = 800, .h = 600 };
+    const mid = stripThumb(screen, size, 2, 2);
+    try std.testing.expectApproxEqAbs(@as(f32, 800), mid.cx, 0.01);
+    const next = stripThumb(screen, size, 3, 2);
+    try std.testing.expect(next.cx > mid.cx and next.scale < mid.scale and next.alpha < mid.alpha);
+    const between = stripThumb(screen, size, 2, 2.5);
+    try std.testing.expect(between.scale < mid.scale and between.scale > next.scale);
+}
+
+test "the ring puts the chosen window in front" {
+    const screen = Rect{ .x = 0, .y = 0, .w = 1600, .h = 900 };
+    const size = Size{ .w = 800, .h = 600 };
+    const front = ringThumb(screen, size, 1, 4, 1);
+    const back = ringThumb(screen, size, 3, 4, 1);
+    try std.testing.expectApproxEqAbs(@as(f32, 800), front.cx, 0.5);
+    try std.testing.expect(front.scale > back.scale and front.alpha > back.alpha and front.cy > back.cy);
+}

@@ -27,7 +27,8 @@
 //!   (dim windows that are not focused; 1 turns it off)
 //!
 //!   [effects]                # optional extras, all off by default: animations = true, animation-ms = 200,
-//!                            # scale = true (Super+W), expo = true (Super+E)
+//!                            # scale = true (Super+W), expo = true (Super+E),
+//!                            # switcher = "strip" or "ring" (Alt+Tab shows window previews)
 //!
 //!   [[rules]]                # per-window rules: see rules.zig
 //!   app_id = "mpv"
@@ -56,6 +57,9 @@ pub const Input = struct {
     pointer_speed: ?f64 = null,
 };
 
+/// What Alt+Tab shows: nothing (the next window just comes to the front), a strip of window previews, or a ring of them.
+pub const Switcher = enum { off, strip, ring };
+
 /// The optional desktop effects (`[effects]`): every one is off until it is switched on.
 pub const Effects = struct {
     /// Windows fade and grow when they open and shrink away when minimized.
@@ -64,6 +68,7 @@ pub const Effects = struct {
     /// Scale (Super+W): all windows of the workspace at once. Expo (Super+E): all workspaces, drag windows between them.
     scale: bool = false,
     expo: bool = false,
+    switcher: Switcher = .off,
 };
 
 /// Where a new window is put.
@@ -184,6 +189,14 @@ pub fn parse(gpa: std.mem.Allocator, text: []const u8, warnings: *std.ArrayList(
         if (t.get("scale")) |v| switch (v) {
             .boolean => |b| config.effects.scale = b,
             else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] scale: expected true or false; using false")),
+        };
+        if (t.get("switcher")) |v| switch (v) {
+            .string => |sw| {
+                if (std.meta.stringToEnum(Switcher, sw)) |e| {
+                    config.effects.switcher = e;
+                } else try warnings.append(gpa, try std.fmt.allocPrint(gpa, "[effects] switcher = \"{s}\": expected off, strip or ring; using off", .{sw}));
+            },
+            else => try warnings.append(gpa, try gpa.dupe(u8, "[effects] switcher: expected a string; using off")),
         };
         if (t.get("expo")) |v| switch (v) {
             .boolean => |b| config.effects.expo = b,
@@ -310,6 +323,9 @@ test "effects are off until asked for" {
     defer free(std.testing.allocator, on);
     try std.testing.expect(on.effects.animations);
     try std.testing.expectEqual(@as(u32, 300), on.effects.animation_ms);
+    const sw = try parse(std.testing.allocator, "[effects]\nswitcher = \"ring\"\n", &warnings);
+    defer free(std.testing.allocator, sw);
+    try std.testing.expectEqual(Switcher.ring, sw.effects.switcher);
     const bad = try parse(std.testing.allocator, "[effects]\nanimation-ms = 5\n", &warnings);
     defer free(std.testing.allocator, bad);
     try std.testing.expectEqual(@as(u32, 200), bad.effects.animation_ms);
