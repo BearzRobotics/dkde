@@ -88,5 +88,7 @@ cannot resolve `pc:libpng`; glibconfig.h sits in the `glib` package, not `glib-d
 binaries and a compositor.toml, then in the guest (as root for the first two): `dinitctl stop greetd`, `pkill labwc`,
 `Xorg :1 vt7 -noreset -nolisten tcp &`, and as `live`: `DISPLAY=:1 /mnt/dkde-wm &`, `DISPLAY=:1
 DKDE_COMPOSITOR_CONFIG=/mnt/compositor.toml /mnt/dkde-xcomp &`, `DISPLAY=:1 dkde-term &`. QMP `screendump` works
-(modesetting, software EGL, no DRI3). Checked 2026-11-24: opacity, snow, the negative filter, and Super+M (the lens)
+(modesetting, software EGL, no DRI3; every frame is slow, so give each step a few seconds and set animation-ms = 2000 to catch
+the cube). Checked 2026-11-24 with the real keys: opacity, snow, filters (Super+Ctrl+F cycles), zoom (Super+=, Super+0), the cube
+(Super+2 / Super+1: tilt, top cap, motion-blur trails), water ripples from pointer moves, and Super+M (the lens)
 sent by dkde-wm to dkde-xcomp.
