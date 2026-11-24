@@ -87,7 +87,7 @@ Super+Shift+C wipe it; Super+P find the pointer. Alt+Tab steps through the windo
 
 Each is one key in `[effects]` of compositor.toml, or a switch on the Effects page of Settings, and applies at once.
 "GLES" means it needs wlroots' GLES2 renderer (the default on real hardware; with `WLR_RENDERER=pixman` those are off
-and the log says so). X11: dkde-wm cannot do the ones that need a compositing manager (see below).
+and the log says so). X11: dkde-wm does not compose; **dkde-xcomp** does the effects it can (see below).
 
 | Key | What it does | Needs |
 |---|---|---|

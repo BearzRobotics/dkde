@@ -70,6 +70,8 @@ Expo, the Alt+Tab ring, wobbly windows, blur, painting, the negative filter, she
 The cube (tilted, with motion blur trails), the lens and motion blur on a dragged wobbling window were also seen in the VM.
 dkde-wm: rules, placement, sticky, opacity property, gestures and tab groups under Xvfb with xdotool. dkde-xcomp (X11
 compositing manager) under Xvfb with Mesa software GL: fades, opacity, blur, colour filter, zoom, lens, finder, snow, the cube.
+On a real Xorg in the QEMU VM (modesetting, software EGL), with dkde-wm sending the real keys: opacity, snow, filters, zoom,
+the lens, the cube and water ripples. Not seen there: the finder ring, fades, blur and trail focus (timing or nothing translucent).
 
 On real hardware (a GPU with the GLES2 renderer, wlroots 0.19 or 0.20) check, with each effect switched on in
 Settings > Effects and the compositor's log open:

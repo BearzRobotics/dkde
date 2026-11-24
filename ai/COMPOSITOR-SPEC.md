@@ -243,6 +243,8 @@ A separate DKDE compositing component may use XComposite, XDamage, and related e
 
 Compositing must not be required for panels, launchers, taskbars, or ordinary window management.
 
+Status: built as `dkde-xcomp` (`src/xcomp`, pure Zig; Composite, Damage, XFixes, EGL/GLES2 on the overlay window). It composes only while a setting needs it. It provides opacity, open and close fades, blur behind, the cube, colour filters, zoom, lens, water, motion blur, snow and the pointer finder; shadows are not done. Window pictures come from GetImage (texture-from-pixmap is future work). Checked under Xvfb and on a real Xorg in QEMU (software EGL); a real GPU is untested.
+
 ## 6. Shared desktop application integration
 
 This section is a core requirement.
