@@ -77,3 +77,16 @@ compositor: write `compositor=/home/live/bin/labwc` (the wrapper) to `~/.config/
 sign in at the greeter (press Return). Checked this way, with real pointer events: the Alt+Tab ring, Expo, wobbly
 windows (a drag), blur behind dimmed windows, painting on the screen and the negative filter, the workspace cube (tilted, with
 motion-blur trails), the lens (Super+M) and motion blur on a dragged, wobbling window (checked 2026-11-23).
+
+## Testing the X11 side (dkde-wm + dkde-xcomp)
+
+The ISO has Xorg, dkde-wm and the xcb libraries. Build `src/xcomp` and `src/xwm` for musl against the same sysroot
+(`PKG_CONFIG_LIBDIR=<folder of rewritten .pc files> zig build -Dtarget=x86_64-linux-musl`; xcomp also needs
+`-Dxcb-prefix=<sysroot>/usr`; xwm needs the cairo, pango, glib, freetype, harfbuzz, fribidi, libthai, expat, pcre2,
+bzip2 and graphite2 `-devel` packages, which `apk extract --destination` can unpack from dkbuild's repo when `apk add`
+cannot resolve `pc:libpng`; glibconfig.h sits in the `glib` package, not `glib-devel`). Boot as above, share the
+binaries and a compositor.toml, then in the guest (as root for the first two): `dinitctl stop greetd`, `pkill labwc`,
+`Xorg :1 vt7 -noreset -nolisten tcp &`, and as `live`: `DISPLAY=:1 /mnt/dkde-wm &`, `DISPLAY=:1
+DKDE_COMPOSITOR_CONFIG=/mnt/compositor.toml /mnt/dkde-xcomp &`, `DISPLAY=:1 dkde-term &`. QMP `screendump` works
+(modesetting, software EGL, no DRI3). Checked 2026-11-24: opacity, snow, the negative filter, and Super+M (the lens)
+sent by dkde-wm to dkde-xcomp.
