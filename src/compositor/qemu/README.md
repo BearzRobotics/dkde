@@ -75,4 +75,5 @@ does not work with a GL scanout ("no surface"); take screenshots over VNC instea
 for the switcher. The image's greetd starts the first session by itself, so `vm.sh up` does not replace its
 compositor: write `compositor=/home/live/bin/labwc` (the wrapper) to `~/.config/dkde/session.conf` in the guest and
 sign in at the greeter (press Return). Checked this way, with real pointer events: the Alt+Tab ring, Expo, wobbly
-windows (a drag), blur behind dimmed windows, painting on the screen and the negative filter.
+windows (a drag), blur behind dimmed windows, painting on the screen and the negative filter, the workspace cube (tilted, with
+motion-blur trails), the lens (Super+M) and motion blur on a dragged, wobbling window (checked 2026-11-23).
