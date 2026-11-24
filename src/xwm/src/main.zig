@@ -48,6 +48,7 @@ const Atom = enum {
     _NET_WM_DESKTOP,
     _NET_WM_MOVERESIZE,
     _DKDE_SNAP_REGION,
+    _DKDE_COMP_ACTION,
     _NET_WM_STATE,
     _NET_WM_STATE_FULLSCREEN,
     _NET_WM_STATE_MAXIMIZED_VERT,
@@ -1336,11 +1337,39 @@ fn finishGesture() void {
 var told_compositing = false;
 
 /// The visual effects (zoom, filters, shelf, Scale, Expo ...) need something that composes the screen; dkde-wm does
-/// not, and X11 would need a compositing manager of its own (see ai/COMPOSITOR-SPEC.md).
+/// not. dkde-xcomp is the compositing manager: it does zoom, filters, the lens and the pointer finder when asked
+/// (see askCompositor); the others are not done on X11 yet.
 fn needsCompositor() void {
     if (told_compositing) return;
     told_compositing = true;
-    warn("that action is a visual effect: it needs a compositing manager, which dkde-wm is not", .{});
+    warn("that action is a visual effect that is not done on X11 yet (dkde-xcomp does zoom, filters, the lens and the pointer finder)", .{});
+}
+
+/// Asks the compositing manager (dkde-xcomp) for an effect, with a ClientMessage on the root window (which it
+/// selects events on). Says so, once, when none is running.
+fn askCompositor(req: shared.fx.Request) void {
+    const sel_name = "_NET_WM_CM_S0";
+    const sel = c.xcb_intern_atom_reply(conn, c.xcb_intern_atom(conn, 0, sel_name.len, sel_name), null) orelse return;
+    const sel_atom = sel.*.atom;
+    std.c.free(sel);
+    const owner = c.xcb_get_selection_owner_reply(conn, c.xcb_get_selection_owner(conn, sel_atom), null) orelse return;
+    const running_comp = owner.*.owner != 0;
+    std.c.free(owner);
+    if (!running_comp) {
+        if (!told_compositing) {
+            told_compositing = true;
+            warn("that action is a visual effect: start dkde-xcomp (the compositing manager) for it", .{});
+        }
+        return;
+    }
+    var ev: c.xcb_client_message_event_t = std.mem.zeroes(c.xcb_client_message_event_t);
+    ev.response_type = c.XCB_CLIENT_MESSAGE;
+    ev.format = 32;
+    ev.window = root;
+    ev.type = atom(._DKDE_COMP_ACTION);
+    ev.data.data32[0] = @intFromEnum(req);
+    _ = c.xcb_send_event(conn, 0, root, c.XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY, @ptrCast(&ev));
+    _ = c.xcb_flush(conn);
 }
 
 fn showDesktop() void {
@@ -1590,7 +1619,13 @@ fn perform(action: keys.Action) void {
         .group => toggleGroup(),
         .next_tab => tabStep(1),
         .prev_tab => tabStep(-1),
-        .scale, .expo, .zoom_in, .zoom_out, .zoom_reset, .next_filter, .show_pointer, .lens, .fire, .paint, .paint_clear, .shelf => needsCompositor(),
+        .zoom_in => askCompositor(.zoom_in),
+        .zoom_out => askCompositor(.zoom_out),
+        .zoom_reset => askCompositor(.zoom_reset),
+        .next_filter => askCompositor(.next_filter),
+        .show_pointer => askCompositor(.show_pointer),
+        .lens => askCompositor(.lens),
+        .scale, .expo, .fire, .paint, .paint_clear, .shelf => needsCompositor(),
         .exec => |cmd| runCommand(cmd),
     }
 }

@@ -137,13 +137,15 @@ magnetism), `rules.zig`, `anim.zig`, `overview.zig` (Scale and Expo layouts, swi
 
 ## X11 (dkde-wm)
 
-The effects above are Wayland only: on X11 nothing composes the screen, so they need a compositing manager of our
-own (XComposite redirection, damage tracking, a GL pass), which does not exist yet (`ai/COMPOSITOR-SPEC.md`). dkde-wm
-has parity for everything that needs no compositing: `[[rules]]`, `placement`, `snap-windows`, `put`, `sticky`,
+On X11 nothing in dkde-wm composes the screen: `dkde-xcomp` (`src/xcomp`, see its README) is our compositing
+manager (Composite redirection, Damage, EGL/GLES2 on the overlay window, the shaders and effect code shared from
+this folder). It does window opacity, open and close fades, blur, the cube, colour filters, zoom, lens, water, motion
+blur, snow and the pointer finder, and composes only while a setting needs it; Scale, Expo, the switcher previews,
+wobbly windows, the shelf, fire and paint are Wayland only. dkde-wm has parity for everything that needs no compositing: `[[rules]]`, `placement`, `snap-windows`, `put`, `sticky`,
 `above`, `below`, `show-desktop`, `group` / tabs, `gestures`, and window opacity (`inactive-opacity`, `trailfocus`,
-`opacify`, `opacity-up/down` and rule opacity are set as `_NET_WM_WINDOW_OPACITY`, which a compositing manager such
-as picom applies). The visual effects (Scale, Expo, switcher previews, animations, filters, zoom, lens, wobbly, blur,
-cube, snow, water, fire, paint, shelf) do nothing there and dkde-wm says so once in its log.
+`opacify`, `opacity-up/down` and rule opacity are set as `_NET_WM_WINDOW_OPACITY`, which dkde-xcomp (or picom)
+applies) and forwards the zoom, filter, lens and finder keys to dkde-xcomp. Scale, Expo, wobbly, fire, paint and the
+shelf do nothing there and dkde-wm says so once in its log.
 
 ## Tests
 

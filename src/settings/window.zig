@@ -1677,13 +1677,23 @@ pub const SettingsWindow = struct {
 
     fn effectsPage(self: *SettingsWindow) *gtk.Box {
         const page = newPage(common.tr("Effects"));
-        if (common.session.kind() != .dkde_compositor) {
-            const note = gtk.Label.new(common.tr("Effects are part of DKDE's own Wayland compositor. They are not available under labwc or on X11, where nothing draws the windows but the program itself. Choose the DKDE compositor under Windows to use them."));
+        const session_kind = common.session.kind();
+        if (session_kind == .labwc) {
+            const note = gtk.Label.new(common.tr("Effects are part of DKDE's own compositor (Wayland) and of dkde-wm with its compositing manager dkde-xcomp (X11). They are not available under labwc, where nothing draws the windows but the program itself. Choose a DKDE window system under Windows to use them."));
             note.setWrap(1);
             note.setXalign(0);
             note.as(gtk.Widget).addCssClass("dim-label");
             page.append(note.as(gtk.Widget));
             return page;
+        }
+        // On X11 dkde-xcomp draws them; it is started with the session and only composes while a setting here needs it.
+        const x11 = session_kind == .dkde_wm;
+        if (x11) {
+            const note = gtk.Label.new(common.tr("On X11 these effects are drawn by dkde-xcomp, DKDE's compositing manager (the session starts it). Scale, Expo, the Alt+Tab previews, wobbly windows, fire, drawing on the screen and the shelf are only in the Wayland compositor, so they are not listed."));
+            note.setWrap(1);
+            note.setXalign(0);
+            note.as(gtk.Widget).addCssClass("dim-label");
+            page.append(note.as(gtk.Widget));
         }
         const cfg = self.compositorConfig();
         defer shared.config.free(self.allocator, cfg);
@@ -1703,19 +1713,19 @@ pub const SettingsWindow = struct {
         scale.setActive(@intFromBool(cfg.effects.scale));
         _ = gtk.Switch.signals.state_set.connect(scale, *SettingsWindow, &onEffectSwitch, self, .{});
         scale.as(gtk.Widget).setName("scale");
-        addRowDesc(page, common.tr("Scale (Super+W)"), common.tr("Shows every window of the desktop at once. Click one, or press Return, to go to it; Escape leaves."), scale.as(gtk.Widget));
+        if (!x11) addRowDesc(page, common.tr("Scale (Super+W)"), common.tr("Shows every window of the desktop at once. Click one, or press Return, to go to it; Escape leaves."), scale.as(gtk.Widget));
 
         const expo = gtk.Switch.new();
         expo.setActive(@intFromBool(cfg.effects.expo));
         _ = gtk.Switch.signals.state_set.connect(expo, *SettingsWindow, &onEffectSwitch, self, .{});
         expo.as(gtk.Widget).setName("expo");
-        addRowDesc(page, common.tr("Expo (Super+E)"), common.tr("Shows every desktop as a tile with its windows. Click a tile to go there, or drag a window onto another tile to move it."), expo.as(gtk.Widget));
+        if (!x11) addRowDesc(page, common.tr("Expo (Super+E)"), common.tr("Shows every desktop as a tile with its windows. Click a tile to go there, or drag a window onto another tile to move it."), expo.as(gtk.Widget));
 
         const switchers = [_]?[*:0]const u8{ "Standard (no previews)", "Strip of window previews", "Ring of window previews", null };
         const switch_drop = gtk.DropDown.newFromStrings(@ptrCast(&switchers));
         switch_drop.setSelected(@intFromEnum(cfg.effects.switcher));
         _ = gobject.Object.signals.notify.connect(switch_drop, *SettingsWindow, &onSwitcherPicked, self, .{ .detail = "selected" });
-        addRowDesc(page, common.tr("Window switcher (Alt+Tab)"), common.tr("Hold Alt and press Tab to step through the windows with previews; let go of Alt to go to the one shown in front. Escape cancels."), switch_drop.as(gtk.Widget));
+        if (!x11) addRowDesc(page, common.tr("Window switcher (Alt+Tab)"), common.tr("Hold Alt and press Tab to step through the windows with previews; let go of Alt to go to the one shown in front. Escape cancels."), switch_drop.as(gtk.Widget));
 
         const filter_names = [_]?[*:0]const u8{ "None", "Negative (invert colours)", "Grayscale", "Sepia", "High contrast", "Simulate protanopia", "Simulate deuteranopia", "Simulate tritanopia", null };
         const filter_drop = gtk.DropDown.newFromStrings(@ptrCast(&filter_names));
@@ -1733,7 +1743,7 @@ pub const SettingsWindow = struct {
         wobbly.setActive(@intFromBool(cfg.effects.wobbly));
         _ = gtk.Switch.signals.state_set.connect(wobbly, *SettingsWindow, &onEffectSwitch, self, .{});
         wobbly.as(gtk.Widget).setName("wobbly");
-        addRowDesc(page, common.tr("Wobbly windows"), common.tr("Windows stretch and swing like jelly when you drag them, snap them or maximize them. Needs the GLES renderer."), wobbly.as(gtk.Widget));
+        if (!x11) addRowDesc(page, common.tr("Wobbly windows"), common.tr("Windows stretch and swing like jelly when you drag them, snap them or maximize them. Needs the GLES renderer."), wobbly.as(gtk.Widget));
 
         const blur = gtk.Switch.new();
         blur.setActive(@intFromBool(cfg.effects.blur));
@@ -1775,13 +1785,13 @@ pub const SettingsWindow = struct {
         fire.setActive(@intFromBool(cfg.effects.fire));
         _ = gtk.Switch.signals.state_set.connect(fire, *SettingsWindow, &onEffectSwitch, self, .{});
         fire.as(gtk.Widget).setName("fire");
-        addRowDesc(page, common.tr("Fire (Super+Shift+F)"), common.tr("Flames follow the pointer; Super+Shift+F turns them on and off. Needs the GLES renderer."), fire.as(gtk.Widget));
+        if (!x11) addRowDesc(page, common.tr("Fire (Super+Shift+F)"), common.tr("Flames follow the pointer; Super+Shift+F turns them on and off. Needs the GLES renderer."), fire.as(gtk.Widget));
 
         const paint = gtk.Switch.new();
         paint.setActive(@intFromBool(cfg.effects.paint));
         _ = gtk.Switch.signals.state_set.connect(paint, *SettingsWindow, &onEffectSwitch, self, .{});
         paint.as(gtk.Widget).setName("paint");
-        addRowDesc(page, common.tr("Draw on the screen (Super+Shift+P)"), common.tr("Super+Shift+P lets you draw on the screen with the pointer (Escape stops, Super+Shift+C wipes it). Needs the GLES renderer."), paint.as(gtk.Widget));
+        if (!x11) addRowDesc(page, common.tr("Draw on the screen (Super+Shift+P)"), common.tr("Super+Shift+P lets you draw on the screen with the pointer (Escape stops, Super+Shift+C wipes it). Needs the GLES renderer."), paint.as(gtk.Widget));
 
         const opacify = gtk.Switch.new();
         opacify.setActive(@intFromBool(cfg.effects.opacify));
@@ -1805,7 +1815,7 @@ pub const SettingsWindow = struct {
         shelf.setActive(@intFromBool(cfg.effects.shelf));
         _ = gtk.Switch.signals.state_set.connect(shelf, *SettingsWindow, &onEffectSwitch, self, .{});
         shelf.as(gtk.Widget).setName("shelf");
-        addRowDesc(page, common.tr("Shelf (Super+Shift+S)"), common.tr("Shrinks the window to a thumbnail at the bottom right; click the thumbnail to bring it back."), shelf.as(gtk.Widget));
+        if (!x11) addRowDesc(page, common.tr("Shelf (Super+Shift+S)"), common.tr("Shrinks the window to a thumbnail at the bottom right; click the thumbnail to bring it back."), shelf.as(gtk.Widget));
 
         const groups = gtk.Switch.new();
         groups.setActive(@intFromBool(cfg.effects.groups));

@@ -1,0 +1,13 @@
+.{
+    .name = .dkde_xcomp,
+    .version = "0.0.0",
+    .minimum_zig_version = "0.17.1",
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+    .fingerprint = 0xb6abbf0cc17d24df,
+    .dependencies = .{
+        .toml = .{
+            .url = "https://github.com/BearzRobotics/toml-zig/releases/download/v0.2.0/toml-0.2.0.tar.gz",
+            .hash = "toml-0.2.0-dDatLIhiAgBq8q4SLFu0RZSUcCJLAwl49UZRIZ-fHqqx",
+        },
+    },
+}

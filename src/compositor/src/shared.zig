@@ -10,3 +10,6 @@ pub const rules = @import("rules.zig");
 pub const anim = @import("anim.zig");
 pub const filters = @import("filters.zig");
 pub const gesture = @import("gesture.zig");
+pub const fx = @import("fx.zig");
+pub const cube = @import("cube.zig");
+pub const snow = @import("snow.zig");

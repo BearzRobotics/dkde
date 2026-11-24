@@ -4,7 +4,7 @@ case "${1:-}" in
     -h|--help)
         echo "dkde-session - start the DKDE session (labwc, the panel and a session D-Bus when available)"
         echo "Usage: dkde-session [--x11]"
-        echo "  --x11          an X11 session: dkde-wm and the panel (needs dkde-wm; started with startx"
+        echo "  --x11          an X11 session: dkde-wm, dkde-xcomp (when installed) and the panel (needs dkde-wm; started with startx"
         echo "                 when there is no X server yet)"
         echo "  -h, --help     show this help and exit"
         echo "  -V, --version  show the version and exit"
@@ -164,6 +164,9 @@ fi
 x11_body='
 dkde-wm &
 wm=$!
+# The compositing manager (window opacity, fades, blur, the cube, zoom, filters...): it only composes while a
+# setting in Settings > Effects asks for it, and ends when the X server does.
+command -v dkde-xcomp >/dev/null 2>&1 && dkde-xcomp &
 cfg="${XDG_CONFIG_HOME:-$HOME/.config}/dkde"
 if [ -r "$cfg/autostart" ]; then
     sh "$cfg/autostart" &

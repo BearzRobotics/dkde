@@ -9,8 +9,9 @@ at the login screen. See `ai/DKDE-SPEC.md` for the design.
 The compositor also offers optional, Compiz-style desktop effects (window rules and tab groups, Scale and Expo
 overviews, an Alt+Tab switcher with previews, animations, and with the GLES renderer colour filters, a magnifier,
 wobbly windows, blur, a desktop cube and more), all off until switched on in Settings > Effects; see
-`src/compositor/README.md`. On X11, `dkde-wm` has everything that needs no compositing; the visual effects need a
-compositing manager of their own.
+`src/compositor/README.md`. On X11, `dkde-wm` has everything that needs no compositing and `dkde-xcomp`, our own compositing manager
+(`src/xcomp`), adds opacity, fades, blur, the cube, filters, zoom, lens and more (Scale, Expo and the switcher
+are Wayland only).
 
 | Binary | What it is |
 |---|---|

@@ -15,6 +15,12 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 - **Fixed**: the GLES composer asked wlroots for a new swapchain every frame and leaked all its buffers; the compositor was killed for running out of memory within two minutes in the VM. It now uses the output's own swapchain.
 - Window rules, placement, key and gesture parsing, animation timing, overview and cube geometry, wobble physics, filters, snow, fire and gestures are pure modules with unit tests, shared with dkde-wm and Settings through `shared.zig`.
 
+**dkde-xcomp (X11 compositing manager)**
+- **Added**: `src/xcomp`, a pure-Zig X11 compositing manager (XCB Composite, Damage and XFixes; EGL and GLES2 on the overlay window; the compositor's own shaders and effect code). It does real window opacity (`_NET_WM_WINDOW_OPACITY`: `inactive-opacity`, trail focus, Opacify, rule opacity), open and close fades, blur behind translucent windows, the desktop cube, colour filters, the screen magnifier, the lens, water ripples, motion blur, snow and the pointer finder. It composes only while a setting needs it and starts and stops at run time. `dkde-session --x11` starts it; dkde-wm forwards the zoom, filter, lens and finder keys to it; Settings > Effects lists what X11 can do. Scale, Expo, the switcher previews, wobbly windows, the shelf, fire and paint stay Wayland only. Packaging: `XCOMP=no`, `XCB_PREFIX=DIR`.
+- **Changed**: the shader sources and the frame settings moved from `gfx.zig` into the shared `fx.zig`.
+- **Fixed**: the first frame with a post effect (filter, zoom, lens, motion blur) sampled an empty texture for one frame in the Wayland GLES composer.
+- Verified in the QEMU VM: the cube (tilted, with trails), the lens, and motion blur on a dragged, wobbling window. dkde-xcomp is verified under Xvfb with software GL; real X servers with a GPU are untested.
+
 **dkde-wm (X11)**
 - **Added**: parity with the compositor for everything that needs no compositing: `[[rules]]` (WM_CLASS and title), `placement`, `snap-windows`, `put`, `sticky`, `above`, `below`, `show-desktop`, tab groups, mouse gestures, and window opacity (`inactive-opacity`, trail focus, Opacify, `opacity-up/down`, rule opacity) as `_NET_WM_WINDOW_OPACITY` for a compositing manager such as picom. The visual effects need a compositing manager of their own, which does not exist yet (documented in `ai/COMPOSITOR-SPEC.md`).
 

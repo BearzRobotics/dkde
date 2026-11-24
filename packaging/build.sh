@@ -21,8 +21,10 @@
 #   GREETD_USER  the account greetd runs the greeter as           (default _greetd)
 #   COMPOSITOR yes | no   build and install dkde-compositor (wlroots)   (default yes)
 #   WM         yes | no   build and install dkde-wm (X11, XCB)          (default yes)
+#   XCOMP      yes | no   build and install dkde-xcomp (X11 compositing manager, EGL/GLES2)  (default: same as WM)
 #   WLROOTS    wlroots version for the compositor: 0.19 or 0.20  (default: whichever pkg-config finds)
 #   XCB_RANDR_PREFIX  folder with include/ and lib/ of libxcb-randr, if not system-wide
+#   XCB_PREFIX        folder with include/ and lib/ of libxcb-composite, -damage and -xfixes, if not system-wide
 #
 # See packaging/PACKAGING.md for the dependencies and what is installed.
 set -eu
@@ -43,8 +45,10 @@ INIT=${INIT:-dinit}
 GREETD_USER=${GREETD_USER:-_greetd}
 COMPOSITOR=${COMPOSITOR:-yes}
 WM=${WM:-yes}
+XCOMP=${XCOMP:-$WM}
 WLROOTS=${WLROOTS:-}
 XCB_RANDR_PREFIX=${XCB_RANDR_PREFIX:-}
+XCB_PREFIX=${XCB_PREFIX:-}
 
 # zig build install adds DESTDIR itself, so it must be in the environment.
 export DESTDIR
@@ -82,6 +86,18 @@ check() {
         [ -n "$XCB_RANDR_PREFIX" ] || pkg-config --exists xcb-randr 2>/dev/null || missing="$missing xcb-randr"
         [ -z "$missing" ] || die "dkde-wm: missing development files for:$missing (or WM=no; XCB_RANDR_PREFIX=DIR for a private libxcb-randr)"
     fi
+    if [ "$XCOMP" = yes ]; then
+        missing=""
+        for m in xcb egl glesv2; do
+            pkg-config --exists "$m" 2>/dev/null || missing="$missing $m"
+        done
+        if [ -z "$XCB_PREFIX" ]; then
+            for m in xcb-composite xcb-damage xcb-xfixes; do
+                pkg-config --exists "$m" 2>/dev/null || missing="$missing $m"
+            done
+        fi
+        [ -z "$missing" ] || die "dkde-xcomp: missing development files for:$missing (or XCOMP=no; XCB_PREFIX=DIR for private libxcb-composite, -damage and -xfixes)"
+    fi
     [ -d zig-pkg ] || die "no zig-pkg/ directory: use the release tarball, or run 'zig build --fetch' once with a network."
 }
 
@@ -108,6 +124,13 @@ build() {
         # shellcheck disable=SC2086
         (cd src/xwm && "$ZIG" build --release="$MODE" -Dcpu="$CPU" ${TARGET:+-Dtarget="$TARGET"} \
             ${XCB_RANDR_PREFIX:+-Dxcb-randr-prefix="$XCB_RANDR_PREFIX"} \
+            --system "$src/zig-pkg" --prefix "$PREFIX" $FLAGS install)
+    fi
+    if [ "$XCOMP" = yes ]; then
+        say "building dkde-xcomp"
+        # shellcheck disable=SC2086
+        (cd src/xcomp && "$ZIG" build --release="$MODE" -Dcpu="$CPU" ${TARGET:+-Dtarget="$TARGET"} \
+            ${XCB_PREFIX:+-Dxcb-prefix="$XCB_PREFIX"} \
             --system "$src/zig-pkg" --prefix "$PREFIX" $FLAGS install)
     fi
 }

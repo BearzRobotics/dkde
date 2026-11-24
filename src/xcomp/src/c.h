@@ -1,0 +1,17 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <signal.h>
+#include <unistd.h>
+#include <poll.h>
+#include <time.h>
+#include <sys/inotify.h>
+#include <sys/stat.h>
+#include <xcb/xcb.h>
+#include <xcb/composite.h>
+#include <xcb/damage.h>
+#include <xcb/xfixes.h>
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>

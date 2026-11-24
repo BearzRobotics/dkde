@@ -34,17 +34,18 @@ Make one yourself from a clean checkout with `scripts/make-source-tarball.sh`.
 | pkg-config | any | | `pkg-config` |
 | wlroots, wayland-server, xkbcommon, pixman, libinput, GLESv2 and EGL, `wayland-scanner` (for **dkde-compositor**; skip with `COMPOSITOR=no`) | wlroots 0.19 or 0.20 | `wlroots-0.19` or `wlroots-0.20`, `glesv2`, `egl` | `libwlroots-0.19-dev` (or the distro's), `libxkbcommon-dev`, `libpixman-1-dev`, `libinput-dev`, `libgles-dev`, `libegl-dev`, `libwayland-bin` |
 | libxcb, libxcb-randr, libxkbcommon, cairo, pango (for **dkde-wm**; skip with `WM=no`) | any | `xcb`, `xcb-randr`, `xkbcommon`, `pangocairo` | `libxcb1-dev`, `libxcb-randr0-dev`, `libxkbcommon-dev`, `libpango1.0-dev` |
+| libxcb-composite, libxcb-damage, libxcb-xfixes, EGL and GLESv2 (for **dkde-xcomp**, the X11 compositing manager; skip with `XCOMP=no`) | any | `xcb-composite`, `xcb-damage`, `xcb-xfixes`, `egl`, `glesv2` | `libxcb-composite0-dev`, `libxcb-damage0-dev`, `libxcb-xfixes0-dev`, `libegl-dev`, `libgles-dev` |
 | C compiler / libc headers | for linking only | | `build-essential` (dkrescue: LLVM/Clang) |
 
 The compositor's optional desktop effects (colour filters, zoom, wobbly windows, blur, cube, snow) draw with GLES shaders, so it links GLESv2 and EGL; at run time they need wlroots' GLES2 renderer (Mesa; the default on real hardware) and switch themselves off with the pixman renderer.
 
-`dkde-compositor` (`src/compositor`) and `dkde-wm` (`src/xwm`) are separate Zig
+`dkde-compositor` (`src/compositor`), `dkde-wm` (`src/xwm`) and `dkde-xcomp` (`src/xcomp`) are separate Zig
 packages so the main build needs neither wlroots nor X11 headers.
-`packaging/build.sh` builds and installs both by default, from the same vendored
-`zig-pkg/`; `COMPOSITOR=no` or `WM=no` leaves one out (a split package can run
+`packaging/build.sh` builds and installs all three by default, from the same vendored
+`zig-pkg/`; `COMPOSITOR=no`, `WM=no` or `XCOMP=no` leaves one out (a split package can run
 the script twice, or take just those files from the stage). `WLROOTS=0.20`
 picks the wlroots version, `XCB_RANDR_PREFIX=DIR` a libxcb-randr that is not
-system-wide.
+system-wide (`XCB_PREFIX=DIR` likewise for libxcb-composite, -damage and -xfixes).
 
 The Zig dependencies are pinned by hash in `build.zig.zon` and vendored in the
 tarball: zig-gobject (GTK bindings), zig-wayland, libghostty-vt (the terminal
