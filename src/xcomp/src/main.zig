@@ -135,9 +135,9 @@ var last_paint_ms: u32 = 0;
 // ---- time -------------------------------------------------------------------------------------------------
 
 fn nowMs() u32 {
-    var ts: c.struct_timespec = undefined;
-    _ = c.clock_gettime(c.CLOCK_MONOTONIC, &ts);
-    const ms: i64 = @as(i64, ts.tv_sec) * 1000 + @divTrunc(@as(i64, ts.tv_nsec), 1_000_000);
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.MONOTONIC, &ts);
+    const ms: i64 = @as(i64, ts.sec) * 1000 + @divTrunc(@as(i64, ts.nsec), 1_000_000);
     return @truncate(@as(u64, @bitCast(ms)));
 }
 
