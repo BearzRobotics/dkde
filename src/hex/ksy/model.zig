@@ -4,12 +4,13 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Yaml = @import("yaml").Yaml;
-const Value = @import("yaml").Yaml.Value;
+const yaml = @import("yaml");
+const Value = yaml.Value;
 const expr = @import("expr.zig");
-const prep = @import("prep.zig");
 
 pub const Expr = expr.Expr;
+
+const whitespace = " \t\r\n";
 
 pub const Endian = enum { default, le, be };
 
@@ -148,17 +149,15 @@ fn loadDepth(gpa: Allocator, source: []const u8, loader: ?Loader, depth: u8, cha
     }
     const arena = f.arena.allocator();
 
-    const prepared = try prep.prepare(gpa, source);
-    defer gpa.free(prepared);
-    var y: Yaml = .{ .source = prepared };
-    defer y.deinit(gpa);
-    y.load(gpa) catch |err| switch (err) {
+    var doc = yaml.Document.parse(gpa, source, .{}, null) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.BadFormat,
     };
-    if (y.docs.items.len == 0) return error.BadFormat;
-    const top = y.docs.items[0];
-    if (top != .map) return error.BadFormat;
+    defer doc.deinit();
+    const top = doc.root;
+    // Descriptions do not use aliases, and one that leads back into its own
+    // node would send the walk below round for ever.
+    if (top != .map or hasAlias(top)) return error.BadFormat;
 
     var ctx: Ctx = .{ .gpa = gpa, .arena = arena, .loader = loader, .depth = depth, .importing = chain };
     const meta = get(top, "meta");
@@ -218,13 +217,34 @@ fn loadDepth(gpa: Allocator, source: []const u8, loader: ?Loader, depth: u8, cha
     return f;
 }
 
+/// Whether any value or key is an alias. Aliases are not followed here, so
+/// the walk is over a tree, and the parser bounds its depth.
+fn hasAlias(v: Value) bool {
+    switch (v) {
+        .alias => return true,
+        .scalar => return false,
+        .seq => |q| for (q.items.items) |item| {
+            if (hasAlias(item)) return true;
+        },
+        .map => |m| for (m.entries.keys(), m.entries.values()) |k, e| {
+            if (hasAlias(k) or hasAlias(e.value)) return true;
+        },
+    }
+    return false;
+}
+
+/// A scalar's text, whatever its type; null for an empty value.
 fn text(v: ?Value) ?[]const u8 {
     const x = v orelse return null;
     return switch (x) {
-        .scalar => |s| s,
-        .boolean => |b| if (b) "true" else "false",
+        .scalar => |s| if (s.kind == .null and s.text.len == 0) null else s.text,
         else => null,
     };
+}
+
+/// A mapping key's text; null for a collection used as a key.
+fn keyText(k: Value) ?[]const u8 {
+    return if (k == .scalar) k.scalar.text else null;
 }
 
 fn get(v: Value, key: []const u8) ?Value {
@@ -234,29 +254,14 @@ fn get(v: Value, key: []const u8) ?Value {
 
 fn stringList(arena: Allocator, v: ?Value) Allocator.Error![]const []const u8 {
     const x = v orelse return &.{};
+    var out: std.ArrayList([]const u8) = .empty;
     switch (x) {
-        .scalar => |s| {
-            const t = std.mem.trim(u8, s, " ");
-            if (t.len >= 2 and t[0] == '[' and t[t.len - 1] == ']') {
-                var out: std.ArrayList([]const u8) = .empty;
-                var it = std.mem.splitScalar(u8, t[1 .. t.len - 1], ',');
-                while (it.next()) |part| {
-                    const p = std.mem.trim(u8, part, " '\"");
-                    if (p.len > 0) try out.append(arena, try arena.dupe(u8, p));
-                }
-                return out.items;
-            }
-            const out = try arena.alloc([]const u8, 1);
-            out[0] = try arena.dupe(u8, s);
-            return out;
+        .seq => |q| for (q.items.items) |item| {
+            if (text(item)) |s| try out.append(arena, try arena.dupe(u8, s));
         },
-        .list => |l| {
-            var out: std.ArrayList([]const u8) = .empty;
-            for (l) |item| if (text(item)) |s| try out.append(arena, try arena.dupe(u8, s));
-            return out.items;
-        },
-        else => return &.{},
+        else => if (text(x)) |s| try out.append(arena, try arena.dupe(u8, s)),
     }
+    return out.items;
 }
 
 fn parseExpr(ctx: *Ctx, src: []const u8) ?*const Expr {
@@ -278,7 +283,7 @@ fn exprOf(ctx: *Ctx, v: ?Value) ?*const Expr {
 
 fn flag(v: ?Value, default: bool) bool {
     const s = text(v) orelse return default;
-    return std.mem.eql(u8, s, "true");
+    return std.ascii.eqlIgnoreCase(s, "true");
 }
 
 fn fillType(ctx: *Ctx, td: *TypeDef, v: Value, lexical: ?*TypeDef) LoadError!void {
@@ -288,17 +293,21 @@ fn fillType(ctx: *Ctx, td: *TypeDef, v: Value, lexical: ?*TypeDef) LoadError!voi
         if (get(meta, "endian")) |e| td.endian = endianSpec(ctx, e);
     }
     if (get(v, "params")) |p| {
-        if (p == .list) {
+        if (p == .seq) {
             var names: std.ArrayList([]const u8) = .empty;
-            for (p.list) |item| if (text(get(item, "id"))) |n| try names.append(arena, try arena.dupe(u8, n));
+            for (p.seq.items.items) |item| if (text(get(item, "id"))) |n| try names.append(arena, try arena.dupe(u8, n));
             td.params = names.items;
         }
     }
     if (get(v, "enums")) |enums| {
-        if (enums == .map) for (enums.map.keys(), enums.map.values()) |name, ev| {
+        if (enums == .map) for (enums.map.keys(), enums.map.entries.values()) |name_key, entry| {
+            const name = keyText(name_key) orelse continue;
+            const ev = entry.value;
             const e = try arena.create(EnumDef);
             e.* = .{ .name = try arena.dupe(u8, name) };
-            if (ev == .map) for (ev.map.keys(), ev.map.values()) |k, member| {
+            if (ev == .map) for (ev.map.keys(), ev.map.entries.values()) |k_value, member_entry| {
+                const k = keyText(k_value) orelse continue;
+                const member = member_entry.value;
                 const num = parseInt(k) orelse continue;
                 const mname = text(member) orelse text(get(member, "id")) orelse continue;
                 const owned = try arena.dupe(u8, mname);
@@ -309,7 +318,9 @@ fn fillType(ctx: *Ctx, td: *TypeDef, v: Value, lexical: ?*TypeDef) LoadError!voi
         };
     }
     if (get(v, "types")) |types| {
-        if (types == .map) for (types.map.keys(), types.map.values()) |name, tv| {
+        if (types == .map) for (types.map.keys(), types.map.entries.values()) |name_key, entry| {
+            const name = keyText(name_key) orelse continue;
+            const tv = entry.value;
             const child = try arena.create(TypeDef);
             child.* = .{ .name = try arena.dupe(u8, name), .parent = td };
             try td.types.put(arena, child.name, child);
@@ -317,9 +328,9 @@ fn fillType(ctx: *Ctx, td: *TypeDef, v: Value, lexical: ?*TypeDef) LoadError!voi
         };
     }
     if (get(v, "seq")) |seq| {
-        if (seq == .list) {
+        if (seq == .seq) {
             var attrs: std.ArrayList(Attr) = .empty;
-            for (seq.list, 0..) |item, i| {
+            for (seq.seq.items.items, 0..) |item, i| {
                 const id = if (text(get(item, "id"))) |n| try arena.dupe(u8, n) else try std.fmt.allocPrint(arena, "_unnamed{d}", .{i});
                 try attrs.append(arena, try parseAttr(ctx, id, item));
             }
@@ -329,7 +340,9 @@ fn fillType(ctx: *Ctx, td: *TypeDef, v: Value, lexical: ?*TypeDef) LoadError!voi
     if (get(v, "instances")) |inst| {
         if (inst == .map) {
             var attrs: std.ArrayList(Attr) = .empty;
-            for (inst.map.keys(), inst.map.values()) |name, item| {
+            for (inst.map.keys(), inst.map.entries.values()) |name_key, entry| {
+                const name = keyText(name_key) orelse continue;
+                const item = entry.value;
                 try attrs.append(arena, try parseAttr(ctx, try arena.dupe(u8, name), item));
             }
             td.instances = attrs.items;
@@ -347,9 +360,9 @@ fn endianSpec(ctx: *Ctx, v: Value) EndianSpec {
     const cases = get(v, "cases") orelse return .inherit;
     if (cases != .map) return .inherit;
     var out: std.ArrayList(EndianCase) = .empty;
-    for (cases.map.keys(), cases.map.values()) |k, cv| {
-        const val = text(cv) orelse continue;
-        const key = prep.unescapeKey(ctx.arena, k) catch continue;
+    for (cases.map.keys(), cases.map.entries.values()) |k, entry| {
+        const val = text(entry.value) orelse continue;
+        const key = keyText(k) orelse continue;
         const match: ?*const Expr = if (std.mem.eql(u8, key, "_")) null else (parseExpr(ctx, key) orelse continue);
         out.append(ctx.arena, .{ .match = match, .little = std.mem.eql(u8, val, "le") }) catch continue;
     }
@@ -357,7 +370,7 @@ fn endianSpec(ctx: *Ctx, v: Value) EndianSpec {
 }
 
 fn parseInt(s: []const u8) ?i64 {
-    const t = std.mem.trim(u8, s, " ");
+    const t = std.mem.trim(u8, s, whitespace);
     var neg = false;
     var digits = t;
     if (std.mem.startsWith(u8, digits, "-")) {
@@ -427,38 +440,26 @@ fn parseAttr(ctx: *Ctx, id: []const u8, v: Value) LoadError!Attr {
     return a;
 }
 
+/// `contents` is a string, or a list in which a plain number is one byte and
+/// anything else is its text.
 fn contentsBytes(ctx: *Ctx, v: Value) LoadError![]const u8 {
     const arena = ctx.arena;
     var out: std.ArrayList(u8) = .empty;
     switch (v) {
-        .scalar => |s| {
-            const t = std.mem.trim(u8, s, " ");
-            if (t.len >= 2 and t[0] == '[' and t[t.len - 1] == ']') {
-                const e = parseExpr(ctx, t) orelse return out.items;
-                if (e.* == .array) for (e.array) |item| try appendContent(&out, arena, item);
-            } else {
-                try out.appendSlice(arena, s);
-            }
-        },
-        .list => |l| for (l) |item| {
-            const s = text(item) orelse continue;
-            if (parseInt(s)) |n| {
+        .scalar => |s| try out.appendSlice(arena, s.text),
+        .seq => |q| for (q.items.items) |item| {
+            if (item != .scalar) continue;
+            const s = item.scalar;
+            const number = if (s.style == .plain) parseInt(s.text) else null;
+            if (number) |n| {
                 try out.append(arena, @truncate(@as(u64, @bitCast(n))));
             } else {
-                try out.appendSlice(arena, s);
+                try out.appendSlice(arena, s.text);
             }
         },
         else => {},
     }
     return out.items;
-}
-
-fn appendContent(out: *std.ArrayList(u8), arena: Allocator, e: *const Expr) !void {
-    switch (e.*) {
-        .int => |n| try out.append(arena, @truncate(@as(u64, @bitCast(n)))),
-        .str => |s| try out.appendSlice(arena, s),
-        else => {},
-    }
 }
 
 fn builtinOf(name: []const u8) ?Builtin {
@@ -489,7 +490,7 @@ fn typeRef(ctx: *Ctx, v: Value) LoadError!*const TypeRef {
     const arena = ctx.arena;
     const out = try arena.create(TypeRef);
     if (text(v)) |s| {
-        out.* = typeFromText(ctx, std.mem.trim(u8, s, " "));
+        out.* = typeFromText(ctx, std.mem.trim(u8, s, whitespace));
         return out;
     }
     if (v == .map) {
@@ -497,12 +498,12 @@ fn typeRef(ctx: *Ctx, v: Value) LoadError!*const TypeRef {
         const cases = get(v, "cases");
         if (on != null and cases != null and cases.? == .map) {
             var list: std.ArrayList(Case) = .empty;
-            for (cases.?.map.keys(), cases.?.map.values()) |k, cv| {
-                const ts = text(cv) orelse continue;
-                const key = try prep.unescapeKey(arena, k);
+            for (cases.?.map.keys(), cases.?.map.entries.values()) |k, entry| {
+                const ts = text(entry.value) orelse continue;
+                const key = keyText(k) orelse continue;
                 const match: ?*const Expr = if (std.mem.eql(u8, key, "_")) null else (parseExpr(ctx, key) orelse continue);
                 const sub = try arena.create(TypeRef);
-                sub.* = typeFromText(ctx, std.mem.trim(u8, ts, " "));
+                sub.* = typeFromText(ctx, std.mem.trim(u8, ts, whitespace));
                 try list.append(arena, .{ .match = match, .ty = sub });
             }
             out.* = .{ .switch_on = .{ .on = on.?, .cases = list.items } };
@@ -612,4 +613,44 @@ test "loads types, enums and instances" {
     try std.testing.expect(sw.cases[1].match == null);
     try std.testing.expectEqual(@as(i64, 2), resolveEnumMember(f.root, &.{ "kinds", "two" }).?.value);
     try std.testing.expect(findType(f.root, "one") != null);
+}
+
+test "block scalars, comments and quoted keys are read as YAML" {
+    const src =
+        \\meta:
+        \\  id: demo # trailing
+        \\  file-extension: dm
+        \\doc: |
+        \\  Prose: with # and *stars*.
+        \\seq:
+        \\  - id: magic
+        \\    contents:
+        \\      - 0x44
+        \\      - "0"
+        \\      - EM
+        \\  - id: n
+        \\    type: u1
+        \\    if: >-
+        \\      1 == 1 and
+        \\      2 == 2
+        \\enums:
+        \\  kinds:
+        \\    0: null
+        \\    0x01: "yes"
+    ;
+    const f = try load(std.testing.allocator, src, null);
+    defer f.deinit();
+    try std.testing.expectEqualStrings("demo", f.id);
+    try std.testing.expectEqualStrings("dm", f.extensions[0]);
+    try std.testing.expectEqualStrings("D0EM", f.magic);
+    try std.testing.expect(f.root.seq[1].cond != null);
+    try std.testing.expectEqual(@as(usize, 0), f.warnings.len);
+    try std.testing.expectEqual(@as(i64, 0), resolveEnumMember(f.root, &.{ "kinds", "null" }).?.value);
+    try std.testing.expectEqual(@as(i64, 1), resolveEnumMember(f.root, &.{ "kinds", "yes" }).?.value);
+}
+
+test "aliases are refused, even one that contains itself" {
+    for ([_][]const u8{ "types: &a\n  x:\n    types: *a\n", "a: &x 1\nb: *x\n", "? &k a\n: 1\n*k : 2\n" }) |src| {
+        try std.testing.expectError(error.BadFormat, load(std.testing.allocator, src, null));
+    }
 }

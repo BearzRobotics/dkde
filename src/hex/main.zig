@@ -3177,7 +3177,6 @@ test {
     _ = @import("devsearch.zig");
     _ = @import("image.zig");
     _ = @import("ksy/coverage_test.zig");
-    _ = @import("ksy/prep.zig");
     _ = @import("ksy/expr.zig");
     _ = @import("ksy/model.zig");
     _ = @import("ksy/interp.zig");

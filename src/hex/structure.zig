@@ -55,7 +55,7 @@ fn freeEntry(a: std.mem.Allocator, e: Entry) void {
 // so that opening the editor does not parse hundreds of files again. A file is
 // parsed again only when it is new or its size or modification time changed.
 
-const index_header = "dkde-hex-index 1";
+const index_header = "dkde-hex-index 2";
 const sep_list: u8 = 0x1f;
 
 fn indexPath(a: std.mem.Allocator) ![:0]u8 {

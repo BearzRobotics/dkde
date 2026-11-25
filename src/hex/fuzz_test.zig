@@ -8,7 +8,6 @@ const hexpat = @import("hexpat/eval.zig");
 const ksy_model = @import("ksy/model.zig");
 const ksy_interp = @import("ksy/interp.zig");
 const ksy_expr = @import("ksy/expr.zig");
-const ksy_prep = @import("ksy/prep.zig");
 const disk = @import("disk.zig");
 
 const sample_data = "\x7fELF\x02\x01\x01\x00\x03\x00\x3e\x00\x01\x00\x00\x00 DKDE sample bytes 0123456789";
@@ -53,6 +52,8 @@ test "fuzz: kaitai descriptions" {
         "meta:\n  id: t\nseq:\n  - id: a\n    type: u1\n  - id: b\n    size: a\n    type: str\n    encoding: ASCII\n",
         "meta:\n  id: t\nseq:\n  - id: k\n    type: u1\n  - id: body\n    type:\n      switch-on: k\n      cases:\n        1: u1\n        127: u2\n",
         "meta:\n  id: t\nseq:\n  - id: xs\n    type: u1\n    repeat: until\n    repeat-until: _ == 0\n",
+        "meta:\n  id: t # comment\ndoc: |\n  text: with colon\nseq:\n  - id: a\n    type: u1\n    enum: {x: 1}\n    if: >-\n      1 == 1\n",
+        "a: &x [1, {b: *x}]\n? [c]\n: !tag d\n",
     } });
 }
 
@@ -69,21 +70,6 @@ test "fuzz: kaitai expressions" {
         "a + b * 2 == 0x10 ? foo.bar[3] : -1",
         "(len > 4 and not _io.eof) or x.to_s == \"hi\"",
         "[1, 2, 3].size >> 1",
-    } });
-}
-
-fn fuzzPrep(_: void, smith: *std.testing.Smith) anyerror!void {
-    var buf: [2048]u8 = undefined;
-    const n = smith.slice(&buf);
-    const a = std.testing.allocator;
-    const out = try ksy_prep.prepare(a, buf[0..n]);
-    a.free(out);
-}
-
-test "fuzz: ksy preprocessor" {
-    try std.testing.fuzz({}, fuzzPrep, .{ .corpus = &.{
-        "meta:\n  id: t # comment\ndoc: |\n  text: with colon\nseq:\n  - id: a\n    enum: {x: 1}\n",
-        "a: [1, 2, {b: c}]\n\"quoted key\": 1\n",
     } });
 }
 

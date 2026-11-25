@@ -2,8 +2,7 @@
 //! checks that every .ksy file there loads through the YAML parser.
 
 const std = @import("std");
-const prep = @import("prep.zig");
-const Yaml = @import("yaml").Yaml;
+const yaml = @import("yaml");
 
 test "every format file parses as YAML" {
     const dir_env = std.c.getenv("KSY_FORMATS_DIR") orelse return error.SkipZigTest;
@@ -21,17 +20,14 @@ test "every format file parses as YAML" {
         if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".ksy")) continue;
         const source = try dir.readFileAlloc(io, entry.path, a, .limited(1 << 22));
         defer a.free(source);
-        const prepared = try prep.prepare(a, source);
-        defer a.free(prepared);
-        var y: Yaml = .{ .source = prepared };
-        defer y.deinit(a);
         count += 1;
-        y.load(a) catch |err| {
-            var msg: []const u8 = "";
-            if (err == error.ParseFailure and y.parse_errors.errorMessageCount() > 0) msg = y.parse_errors.nullTerminatedString(y.parse_errors.getErrorMessage(y.parse_errors.getMessages()[0]).msg);
+        var diag: yaml.Diagnostic = .{};
+        var doc = yaml.Document.parse(a, source, .{}, &diag) catch |err| {
             failed += 1;
-            std.debug.print("YAML failed: {s}: {s} {s}\n", .{ entry.path, @errorName(err), msg });
+            std.debug.print("YAML failed: {s}: {s} {f}\n", .{ entry.path, @errorName(err), diag });
+            continue;
         };
+        doc.deinit();
     }
     std.debug.print("{d} files, {d} failed\n", .{ count, failed });
     try std.testing.expectEqual(@as(usize, 0), failed);

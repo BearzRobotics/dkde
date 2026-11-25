@@ -57,15 +57,11 @@ panel's note.
 
 ## Notes for developers
 
-The `.ksy` YAML is read with a vendored copy of zig-yaml (`third_party/zig-yaml`).
-That parser lacks block scalars, trailing comments and a few other YAML
-features that real `.ksy` files use, so `src/hex/ksy/prep.zig` rewrites the text
-first (keys are escaped, plain values quoted, `doc` text dropped). All 191 files
-of kaitai_struct_formats load; run
+The `.ksy` YAML is read with [yaml-zig](https://github.com/BearzRobotics/yaml-zig), fetched as a package. A description that uses YAML aliases is refused.
+To check that every file in a clone of kaitai_struct_formats loads, and to run
+every format over a sample file without crashing, run
 
     KSY_FORMATS_DIR=/path/to/kaitai_struct_formats zig build test
-
-to check that, and to run every format over a sample file without crashing.
 
 ## ImHex patterns
 

@@ -18,6 +18,11 @@
             .url = "https://github.com/BearzRobotics/util-unix/archive/refs/tags/v0.4.0.tar.gz",
             .hash = "util_unix-0.4.0-pehS_Z_1DwBbbopYAvC0z1tzhl-aLKcK0-DXk5nrfqeq",
         },
+        // yaml-zig, for the Kaitai Struct descriptions dkde-hex reads.
+        .yaml = .{
+            .url = "https://github.com/BearzRobotics/yaml-zig/releases/download/v0.3.1/yaml-0.3.1.tar.gz",
+            .hash = "yaml-0.3.1-fE0bW3geBQDJZbnwWh0TuYOXsPhO7ldTqBq46OWuMQsV",
+        },
         // pdf-zig: reader, display lists, text layout, outlines, annotations, forms and the
         // incremental writer.
         .pdf = .{

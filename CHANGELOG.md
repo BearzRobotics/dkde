@@ -4,6 +4,10 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 ## Unreleased
 
+**dkde-hex**
+- **Changed**: Kaitai `.ksy` files are read with yaml-zig 0.3.1, fetched as a package. The vendored zig-yaml and the text rewriting it needed are gone. A description that uses YAML aliases is refused. The format index cache is rebuilt once.
+- **Fixed**: some descriptions were read wrongly. Over kaitai_struct_formats: enum members were missing in `mach_o`, `python_pyc_27` and the three SOME/IP formats; about a hundred bit fields in `ttf` were read as unnamed bytes; escapes such as `\n` and `\x00` in `dex`, `uf2`, `tplink_minifs` and ID3v2 were kept as typed; and the iNES magic lost its `NES`.
+
 **dkde-charmap**
 - **Changed**: covers every assigned Unicode block (332, from Unicode 16) instead of 26, skips unassigned code points, and shows each character's Unicode name, UTF-8 bytes and a large preview. A search box finds characters by name words, by the character itself or by code point (`U+00E9`, `0xe9`). Large blocks and results are paged, the last 16 characters picked are kept, combining marks are drawn on a dotted circle, and Enter in the text field copies it. The name data is generated from the `unicode-data` package by `scripts/gen-charmap-data.py`.
 - **Added**: private-use fonts (Rosquin Glyphs, RE_iO Script). A font drop-down draws everything in the chosen font, the three Private Use blocks list exactly the characters that font defines with the font's own glyph names, Rosquin Glyphs is built in, the + button adds a TTF/OTF file without installing it, and the font, block, recent characters and added files are remembered.
