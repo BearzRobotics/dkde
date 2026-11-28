@@ -56,7 +56,7 @@ fn btrfsIds(arena: std.mem.Allocator) []const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     const dir = glib.Dir.open("/sys/fs/btrfs", 0, null) orelse return &.{};
     defer dir.close();
-    while (dir.readName()) |name| {
+    while (@as(?[*:0]const u8, dir.readName())) |name| {
         out.append(arena, arena.dupe(u8, std.mem.span(name)) catch break) catch break;
     }
     return out.items;
