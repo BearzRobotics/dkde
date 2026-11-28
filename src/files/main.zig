@@ -101,4 +101,5 @@ test {
     _ = @import("ops.zig");
     _ = @import("folder.zig");
     _ = @import("arc.zig");
+    _ = @import("search.zig");
 }

@@ -19,6 +19,7 @@ const folder_model = @import("folder.zig");
 const progress = @import("progress.zig");
 const props = @import("props.zig");
 const pure = @import("pure.zig");
+const search_mod = @import("search.zig");
 
 const log = std.log.scoped(.files);
 
@@ -100,8 +101,7 @@ const Tab = struct {
     current: *gio.File,
     back: std.ArrayList(*gio.File),
     forward: std.ArrayList(*gio.File),
-    query: [128]u8,
-    query_len: usize,
+    matcher: ?search_mod.Matcher,
     label: *gtk.Label,
 };
 
@@ -164,9 +164,8 @@ pub const FilesWindow = struct {
     show_hidden: bool = false,
     /// The view was scrolled to the top when the folder's list last changed.
     was_at_top: bool = true,
-    /// Lower-cased type-to-search text; empty shows everything.
-    query: [128]u8 = undefined,
-    query_len: usize = 0,
+    /// What the search box asks for; null shows everything.
+    matcher: ?search_mod.Matcher = null,
 
     notebook: *gtk.Notebook,
     tabs: std.ArrayList(*Tab) = .empty,
@@ -462,6 +461,7 @@ pub const FilesWindow = struct {
         if (self.tabs.items.len > 0) self.snapshotInto(self.tabs.items[self.active_tab]);
         for (self.tabs.items) |tab| {
             tab.folder.destroy();
+            if (tab.matcher) |m| m.deinit();
             tab.current.as(gobject.Object).unref();
             for (tab.back.items) |f| f.as(gobject.Object).unref();
             tab.back.deinit(self.allocator);
@@ -484,7 +484,7 @@ pub const FilesWindow = struct {
         self.view_stack = gtk.Stack.new();
         self.scroller_list = gtk.ScrolledWindow.new();
         self.scroller_grid = gtk.ScrolledWindow.new();
-        self.query_len = 0;
+        self.matcher = null;
         self.buildModels();
 
         self.scroller_list.setChild(self.column_view.as(gtk.Widget));
@@ -754,8 +754,7 @@ pub const FilesWindow = struct {
         t.current = self.current;
         t.back = self.back;
         t.forward = self.forward;
-        t.query = self.query;
-        t.query_len = self.query_len;
+        t.matcher = self.matcher;
     }
 
     fn loadFrom(self: *FilesWindow, t: *const Tab) void {
@@ -770,8 +769,7 @@ pub const FilesWindow = struct {
         self.current = t.current;
         self.back = t.back;
         self.forward = t.forward;
-        self.query = t.query;
-        self.query_len = t.query_len;
+        self.matcher = t.matcher;
         self.search.setKeyCaptureWidget(self.view_stack.as(gtk.Widget));
     }
 
@@ -883,6 +881,7 @@ pub const FilesWindow = struct {
             break;
         };
         tab.folder.destroy();
+        if (tab.matcher) |m| m.deinit();
         tab.current.as(gobject.Object).unref();
         for (tab.back.items) |f| f.as(gobject.Object).unref();
         tab.back.deinit(self.allocator);
@@ -928,7 +927,7 @@ pub const FilesWindow = struct {
     fn afterNavigate(self: *FilesWindow) void {
         self.folder.setFile(self.current);
         self.search.as(gtk.Editable).setText("");
-        self.query_len = 0;
+        self.setMatcher(null);
         _ = self.selection.as(gtk.SelectionModel).unselectAll();
         self.rebuildCrumbs();
         self.path_stack.setVisibleChildName("crumbs");
@@ -1525,9 +1524,8 @@ pub const FilesWindow = struct {
         const self: *FilesWindow = @ptrCast(@alignCast(data.?));
         const info: *gio.FileInfo = @ptrCast(item);
         if (!self.show_hidden and (info.getIsHidden() != 0 or info.getIsBackup() != 0)) return 0;
-        if (self.query_len == 0) return 1;
-        const name = std.mem.span(info.getDisplayName());
-        return @intFromBool(std.ascii.findIgnoreCase(name, self.query[0..self.query_len]) != null);
+        const matcher = self.matcher orelse return 1;
+        return @intFromBool(matcher.matches(info.getDisplayName()));
     }
 
     /// The sorter for one column: folders first, then the column's value.
@@ -3688,9 +3686,14 @@ pub const FilesWindow = struct {
     }
 
     fn onSearchChanged(entry: *gtk.SearchEntry, self: *FilesWindow) callconv(.c) void {
-        const text = std.mem.span(entry.as(gtk.Editable).getText());
-        self.query_len = @min(text.len, self.query.len);
-        @memcpy(self.query[0..self.query_len], text[0..self.query_len]);
+        self.setMatcher(search_mod.Matcher.init(entry.as(gtk.Editable).getText()));
+    }
+
+    /// Takes over `matcher` and filters the view by it.
+    fn setMatcher(self: *FilesWindow, matcher: ?search_mod.Matcher) void {
+        if (matcher == null and self.matcher == null) return;
+        if (self.matcher) |old| old.deinit();
+        self.matcher = matcher;
         self.filter.as(gtk.Filter).changed(.different);
     }
 
