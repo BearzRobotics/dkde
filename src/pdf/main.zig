@@ -29,6 +29,7 @@ const layout_mod = @import("layout.zig");
 const ocr = @import("ocr.zig");
 const places = @import("places.zig");
 const render = @import("pdfrender");
+const fonts = @import("fonts.zig");
 const session_mod = @import("session.zig");
 const Session = session_mod.Session;
 
@@ -1439,6 +1440,8 @@ const DocView = struct {
             error.CannotEdit => common.tr("This file cannot be edited in place."),
             error.ReadOnly => common.tr("This field is read-only."),
             error.TooLong => common.tr("That text is longer than the field allows."),
+            error.NoFont, error.MissingGlyph => common.tr("No installed font that can be embedded in a PDF has all of these characters. Installing a TrueType (.ttf) font that has them will help; .otf fonts with CFF outlines and .ttc collections cannot be used."),
+            error.FontNotForForms, error.BadFont => common.tr("The font found for these characters cannot be embedded in this PDF."),
             else => common.tr("The change could not be made."),
         };
         common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot change the PDF"), msg);
@@ -1563,6 +1566,11 @@ const DocView = struct {
         self.rebuildSidebar();
         self.updateTitle();
         self.area.as(gtk.Widget).queueDraw();
+    }
+
+    /// Says so when what was just typed is in a script this program cannot lay out.
+    fn warnShaping(self: *DocView, text: []const u8) void {
+        if (fonts.needsShaping(text)) self.status.setText(common.tr("The text is saved correctly, but this script may not be drawn correctly on the page."));
     }
 
     fn markSelection(self: *DocView, kind: pdf.annot.Kind) void {
@@ -1745,6 +1753,8 @@ const DocView = struct {
             else => return,
         }
         v.changed();
+        // A note's text is not drawn on the page.
+        if (action != .add_note) v.warnShaping(text);
     }
 
     // ---- form fields ------------------------------------------------------------------------------------
@@ -1895,6 +1905,7 @@ const DocView = struct {
                 if (std.mem.eql(u8, f.value, text)) return; // unchanged: no new revision
                 s.fillText(f, text) catch |e| return v.editFailed(e);
                 v.changed();
+                v.warnShaping(text);
                 return;
             };
         }

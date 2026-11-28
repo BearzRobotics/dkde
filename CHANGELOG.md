@@ -4,6 +4,9 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 ## Unreleased
 
+**dkde-pdf**
+- **Added**: form fields and text boxes can be filled with text beyond Western European, such as Greek, Cyrillic or Chinese: a suitable installed TrueType font is found and embedded (it used to be drawn as `?`). Needs the fontconfig library, which GTK already uses. See `dkde-pdf(1)` for the limits.
+
 **PDF library**
 - **Changed**: pdf-zig 0.6.0 (from 0.2.2), which is LGPL-2.0-or-later (it was MIT up to 0.2.2). It fixes crashes, hangs and unbounded memory use on malformed files, and edits that could damage a saved file. Form fields and annotations saved without a picture of themselves are now drawn, and search and text extraction include those values.
 

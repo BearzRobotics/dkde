@@ -11,12 +11,13 @@
 const std = @import("std");
 const pdf = @import("pdf");
 const render = @import("pdfrender");
+const fonts = @import("fonts.zig");
 
 const Allocator = std.mem.Allocator;
 
 pub const max_undo = 50;
 
-pub const Error = render.Document.OpenError || pdf.write.Error || pdf.annot.Error || pdf.form.Error || pdf.outline.EditError || error{ NoSuchPage, NothingToUndo, CannotEdit };
+pub const Error = render.Document.OpenError || pdf.write.Error || pdf.annot.Error || pdf.form.Error || pdf.outline.EditError || pdf.draw.StampError || fonts.Error || error{ NoSuchPage, NothingToUndo, CannotEdit };
 
 pub const Session = struct {
     gpa: Allocator,
@@ -222,14 +223,30 @@ pub const Session = struct {
     pub fn addFreeText(self: *Session, index: usize, x: f64, y: f64, w: f64, h: f64, size: f64, meta: pdf.annot.Meta) Error!void {
         var upd = try self.begin();
         defer upd.deinit();
-        _ = try pdf.annot.addFreeText(&upd, try self.page(index), x, y, w, h, size, meta);
+        const target = try self.page(index);
+        if (fonts.needsEmbedding(meta.contents)) {
+            var font = try fonts.find(self.gpa, &.{meta.contents});
+            defer font.deinit();
+            var embedder = pdf.draw.Embedder.init(&upd);
+            _ = try pdf.annot.addFreeTextWith(&upd, target, x, y, w, h, size, meta, .{ .embedder = &embedder, .font = &font });
+            try embedder.finish();
+        } else _ = try pdf.annot.addFreeText(&upd, target, x, y, w, h, size, meta);
         try self.commit(&upd);
     }
 
     pub fn setNoteText(self: *Session, num: u32, contents: []const u8, date: ?[]const u8) Error!void {
         var upd = try self.begin();
         defer upd.deinit();
-        try pdf.annot.setContents(&upd, num, contents, date);
+        // Only a text box draws its text on the page; a note's needs no font.
+        const target = upd.get(num).asDict();
+        const subtype = if (target) |d| self.doc.doc.getName(d, "Subtype") else null;
+        if (subtype != null and std.mem.eql(u8, subtype.?, "FreeText") and fonts.needsEmbedding(contents)) {
+            var font = try fonts.find(self.gpa, &.{contents});
+            defer font.deinit();
+            var embedder = pdf.draw.Embedder.init(&upd);
+            try pdf.annot.setContentsWith(&upd, num, contents, date, .{ .embedder = &embedder, .font = &font });
+            try embedder.finish();
+        } else try pdf.annot.setContents(&upd, num, contents, date);
         try self.commit(&upd);
     }
 
@@ -261,7 +278,22 @@ pub const Session = struct {
     pub fn fillText(self: *Session, field: pdf.form.Field, value: []const u8) Error!void {
         var upd = try self.begin();
         defer upd.deinit();
-        try pdf.form.setText(&upd, field, value);
+        // A combo box shows the display text of the choice that `value` names.
+        var shown = value;
+        if (field.kind == .combo) for (field.exports, field.options) |exported, option| {
+            if (std.mem.eql(u8, exported, value) or std.mem.eql(u8, option, value)) {
+                shown = option;
+                break;
+            }
+        };
+        // A password is drawn as stars, whatever it is.
+        if (!field.password and fonts.needsEmbedding(shown)) {
+            var font = try fonts.find(self.gpa, &.{shown});
+            defer font.deinit();
+            var embedder = pdf.draw.Embedder.init(&upd);
+            try pdf.form.setTextWith(&upd, field, value, .{ .embedder = &embedder, .font = &font });
+            try embedder.finish();
+        } else try pdf.form.setText(&upd, field, value);
         try self.commit(&upd);
     }
 
@@ -273,12 +305,29 @@ pub const Session = struct {
     }
 
     pub fn fillChoice(self: *Session, field: pdf.form.Field, choice: []const u8) Error!void {
+        if (field.kind == .combo) return self.fillText(field, choice);
         var upd = try self.begin();
         defer upd.deinit();
-        try pdf.form.setChoice(&upd, field, choice);
+        // A list box draws all its entries, so the font must have every one of them.
+        var font: ?pdf.truetype.Font = if (anyNeedsEmbedding(field.options)) fonts.find(self.gpa, field.options) catch |e| switch (e) {
+            // The choice can still be stored; entries the built-in font lacks show as `?`.
+            error.NoFont => null,
+            else => return e,
+        } else null;
+        defer if (font) |*f| f.deinit();
+        if (font) |*f| {
+            var embedder = pdf.draw.Embedder.init(&upd);
+            try pdf.form.setChoicesWith(&upd, field, &.{choice}, .{ .embedder = &embedder, .font = f });
+            try embedder.finish();
+        } else try pdf.form.setChoice(&upd, field, choice);
         try self.commit(&upd);
     }
 };
+
+fn anyNeedsEmbedding(texts: []const []const u8) bool {
+    for (texts) |text| if (fonts.needsEmbedding(text)) return true;
+    return false;
+}
 
 /// The current time as a PDF date string, `D:YYYYMMDDHHmmSSZ` (UTC), written into `buf`.
 pub fn pdfDate(buf: *[20]u8, unix_seconds: i64) []const u8 {
@@ -379,6 +428,37 @@ test "form fields can be filled and the value survives an undo of a later edit" 
     // The filled value is part of the page's text now.
     const lay = try s.layout(0);
     try testing.expect(std.mem.indexOf(u8, lay.text, "Dakota") != null);
+}
+
+test "text beyond WinAnsi embeds a font and stays readable" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const s = try Session.openBytes(testing.allocator, try testPdf(aa));
+    defer s.close();
+    const plain_size = s.bytes().len;
+
+    // Ordinary text embeds nothing.
+    try s.fillText((try s.fields(aa))[0], "plain caf\u{e9}");
+    try testing.expect(std.mem.indexOf(u8, s.bytes()[plain_size..], "FontFile2") == null);
+
+    const greek = "\u{391}\u{3b8}\u{3ae}\u{3bd}\u{3b1}";
+    const before = s.bytes().len;
+    s.fillText((try s.fields(aa))[0], greek) catch |e| switch (e) {
+        error.NoFont => return error.SkipZigTest, // no TrueType font with Greek installed
+        else => return e,
+    };
+    try testing.expect(std.mem.indexOf(u8, s.bytes()[before..], "FontFile2") != null);
+    try testing.expectEqualStrings(greek, (try s.fields(aa))[0].value);
+    // The letters drawn on the page are the ones typed, not `?`.
+    try testing.expect(std.mem.indexOf(u8, (try s.layout(0)).text, greek) != null);
+
+    // A text box, then its text changed.
+    try s.addFreeText(0, 10, 10, 150, 30, 12, .{ .contents = greek });
+    const box = (try s.annotations(aa, 0))[1];
+    try s.setNoteText(box.num, greek ++ " 2", null);
+    try testing.expect(std.mem.indexOf(u8, (try s.layout(0)).text, greek ++ " 2") != null);
+    try s.undo();
 }
 
 test "bookmarks are added and removed as edits" {

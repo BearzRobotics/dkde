@@ -9,6 +9,7 @@ pub const menu_entry = true;
 pub fn configure(ctx: *const Ctx, mod: *std.Build.Module) void {
     ctx.gtk(mod);
     ctx.imports(mod, &.{"cairo1"});
+    mod.linkSystemLibrary("fontconfig", .{}); // finds a font to embed (fonts.zig)
     mod.addImport("pdfrender", ctx.pdfrender);
     mod.addImport("pdf", ctx.pdf);
 }

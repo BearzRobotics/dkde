@@ -91,6 +91,7 @@ sudo apt install libgtk-4-dev libgtk4-layer-shell-dev libwayland-dev libxcb1-dev
 | wayland-client, wayland-protocols | Taskbar, screenshots |
 | wlroots 0.19 or 0.20, wayland-scanner, xkbcommon, pixman, libinput, GLESv2, EGL | dkde-compositor (leave it out with `-Dcompositor=false`) |
 | libxcb-randr, xkbcommon, cairo, pango | dkde-wm, the X11 window manager (leave it out with `-Dwm=false`) |
+| fontconfig | dkde-pdf: finding a font to embed (GTK uses it too, and its development package brings these files) |
 | libarchive (3.x) | Archives in the file manager: browsing, extracting and creating zip, tar, 7z, rar, iso and more. At run time it needs the library (`libarchive13`) and, for each format, its compression libraries, which a normal libarchive package already depends on |
 
 ### Run-time programs and data
