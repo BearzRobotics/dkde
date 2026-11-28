@@ -17,6 +17,7 @@ const App = struct {
     /// Folder to open, from the command line.
     start: ?[:0]const u8,
     appearance: ?*common.style.Appearance = null,
+    window: ?*FilesWindow = null,
 
     fn activate(app: *gtk.Application, self: *App) callconv(.c) void {
         common.style.load(self.allocator) catch |err|
@@ -27,6 +28,7 @@ const App = struct {
             std.log.err("cannot create the window: {s}", .{@errorName(err)});
             return;
         };
+        self.window = window;
         window.present();
     }
 };
@@ -79,6 +81,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
     };
     defer app.config.deinit();
     defer if (app.appearance) |a| a.destroy();
+
+    // Declared before the application, so it runs after GTK has let go.
+    defer if (app.window) |w| w.free();
 
     // Uniqueness needs a session D-Bus, which dkde does not have.
     const gtk_app = gtk.Application.new("org.dkde.files", .{ .non_unique = true });

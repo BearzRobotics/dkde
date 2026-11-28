@@ -9,6 +9,9 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 **dkde-files**
 - **Added**: the search box takes wildcards: `*.pdf`, `photo?.jpg`.
+- **Added**: the Subfolders button (Ctrl+Shift+F) searches the folders below too, showing where each match is, with Stop and Show in Its Folder.
+- **Fixed**: the file manager could crash while closing (a debug build did every time it was closed straight after opening).
+- **Fixed**: files appearing in a background tab were filtered by the search text of the tab being looked at.
 - **Fixed**: searching ignored case only for unaccented English letters.
 
 **dkde-settings**

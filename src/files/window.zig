@@ -87,6 +87,44 @@ const ViewMode = enum {
 };
 const columns = [_]Column{ .name, .size, .kind, .modified };
 
+/// A tab's search. The tab's filter owns it, so it lives as long as anything
+/// can ask the filter about a file.
+const TabSearch = struct {
+    window: *FilesWindow,
+    /// What the views show comes through this: the folder's list or the results.
+    filtered: *gtk.FilterListModel = undefined,
+    results: *search_mod.Results,
+    location_column: *gtk.ColumnViewColumn = undefined,
+    /// The search box's text for this tab.
+    text: [:0]u8,
+    matcher: ?search_mod.Matcher = null,
+    /// The Subfolders button.
+    subfolders: bool = false,
+    /// The views hold the results of a search below the folder.
+    showing_results: bool = false,
+    /// Whether that search includes hidden files.
+    hidden: bool = false,
+
+    fn create(window: *FilesWindow) *TabSearch {
+        const a = std.heap.c_allocator;
+        const self = a.create(TabSearch) catch @panic("out of memory");
+        self.* = .{
+            .window = window,
+            .results = search_mod.Results.create(list_attributes),
+            .text = a.dupeSentinel(u8, "", 0) catch @panic("out of memory"),
+        };
+        return self;
+    }
+
+    /// The filter is gone. `results` was destroyed when the tab closed.
+    fn free(data: ?*anyopaque) callconv(.c) void {
+        const self: *TabSearch = @ptrCast(@alignCast(data.?));
+        if (self.matcher) |m| m.deinit();
+        std.heap.c_allocator.free(self.text);
+        std.heap.c_allocator.destroy(self);
+    }
+};
+
 /// Everything that belongs to one tab. The window's own fields of the same
 /// names always hold the *active* tab's state; switching tabs swaps them.
 const Tab = struct {
@@ -101,7 +139,7 @@ const Tab = struct {
     current: *gio.File,
     back: std.ArrayList(*gio.File),
     forward: std.ArrayList(*gio.File),
-    matcher: ?search_mod.Matcher,
+    find: *TabSearch,
     label: *gtk.Label,
 };
 
@@ -164,8 +202,16 @@ pub const FilesWindow = struct {
     show_hidden: bool = false,
     /// The view was scrolled to the top when the folder's list last changed.
     was_at_top: bool = true,
-    /// What the search box asks for; null shows everything.
-    matcher: ?search_mod.Matcher = null,
+    find: *TabSearch = undefined,
+    subfolders_button: *gtk.ToggleButton = undefined,
+    stop_button: *gtk.Button = undefined,
+    /// True while the search widgets are being set to a tab's state.
+    syncing_search: bool = false,
+    /// The window is going away: its widgets still send signals as they are
+    /// taken down, and there is nothing left to update.
+    closing: bool = false,
+    /// A file to select once its folder has been listed.
+    reveal: ?*gio.File = null,
 
     notebook: *gtk.Notebook,
     tabs: std.ArrayList(*Tab) = .empty,
@@ -438,6 +484,7 @@ pub const FilesWindow = struct {
     }
 
     fn onWindowDestroy(_: *gtk.ApplicationWindow, self: *FilesWindow) callconv(.c) void {
+        self.closing = true;
         if (self.opening) |o| self.allocator.free(o.dest);
         if (self.volumes_source != 0) _ = glib.Source.remove(self.volumes_source);
         self.freeVolumes();
@@ -461,7 +508,7 @@ pub const FilesWindow = struct {
         if (self.tabs.items.len > 0) self.snapshotInto(self.tabs.items[self.active_tab]);
         for (self.tabs.items) |tab| {
             tab.folder.destroy();
-            if (tab.matcher) |m| m.deinit();
+            tab.find.results.destroy();
             tab.current.as(gobject.Object).unref();
             for (tab.back.items) |f| f.as(gobject.Object).unref();
             tab.back.deinit(self.allocator);
@@ -470,7 +517,15 @@ pub const FilesWindow = struct {
             self.allocator.destroy(tab);
         }
         self.tabs.deinit(self.allocator);
+        if (self.reveal) |f| f.as(gobject.Object).unref();
         self.term_panel.destroy();
+        // The struct itself stays: GTK takes widgets down after this signal,
+        // some even after the window object is gone, and their cleanup (drop
+        // targets, item menus) still reaches it. `free` is for after GTK.
+    }
+
+    /// Frees a destroyed window's memory, once GTK is done with its widgets.
+    pub fn free(self: *FilesWindow) void {
         self.allocator.destroy(self);
     }
 
@@ -479,12 +534,13 @@ pub const FilesWindow = struct {
     fn makeViews(self: *FilesWindow) void {
         self.folder = folder_model.Folder.create(list_attributes);
         self.folder.observer = .{ .data = self, .loaded = onFolderLoaded, .changing = onFolderChanging };
-        self.filter = gtk.CustomFilter.new(filterFunc, self, null);
+        self.find = TabSearch.create(self);
+        self.find.results.observer = .{ .data = self.find, .changed = onResultsChanged, .changing = onResultsChanging };
+        self.filter = gtk.CustomFilter.new(filterFunc, self.find, TabSearch.free);
         self.column_view = gtk.ColumnView.new(null);
         self.view_stack = gtk.Stack.new();
         self.scroller_list = gtk.ScrolledWindow.new();
         self.scroller_grid = gtk.ScrolledWindow.new();
-        self.matcher = null;
         self.buildModels();
 
         self.scroller_list.setChild(self.column_view.as(gtk.Widget));
@@ -509,6 +565,7 @@ pub const FilesWindow = struct {
         // the column view its sorter. Without these a closed tab freed both twice.
         const store: *gio.ListModel = @ptrCast(self.folder.store.as(gobject.Object).ref());
         const filtered = gtk.FilterListModel.new(store, self.filter.as(gtk.Filter));
+        self.find.filtered = filtered;
         const sorter = self.column_view.getSorter();
         const sorter_ref: ?*gtk.Sorter = if (sorter) |x| @ptrCast(x.as(gobject.Object).ref()) else null;
         const sorted = gtk.SortListModel.new(filtered.as(gio.ListModel), sorter_ref);
@@ -530,6 +587,16 @@ pub const FilesWindow = struct {
             self.column_view.appendColumn(column);
             if (kind == self.sort_key.column()) self.column_view.sortByColumn(column, self.sort_key.order());
         }
+        // Last, so the columns above keep their places: shown only for search results.
+        const location_factory = gtk.SignalListItemFactory.new();
+        _ = gtk.SignalListItemFactory.signals.setup.connect(location_factory, *FilesWindow, &onCellSetup, self, .{});
+        _ = gtk.SignalListItemFactory.signals.bind.connect(location_factory, *FilesWindow, &onLocationBind, self, .{});
+        const location = gtk.ColumnViewColumn.new(common.tr("Location"), location_factory.as(gtk.ListItemFactory));
+        location.setResizable(1);
+        location.setExpand(1);
+        location.setVisible(0);
+        self.column_view.appendColumn(location);
+        self.find.location_column = location;
         if (sorter) |s| _ = gtk.Sorter.signals.changed.connect(s, *FilesWindow, &onSorterChanged, self, .{});
         _ = gtk.ColumnView.signals.activate.connect(self.column_view, *FilesWindow, &onActivate, self, .{});
 
@@ -614,6 +681,10 @@ pub const FilesWindow = struct {
         _ = gtk.SearchEntry.signals.stop_search.connect(self.search, *FilesWindow, &onSearchStop, self, .{});
         // Search, then the view button at the right edge.
         middle.append(self.search.as(gtk.Widget));
+        self.subfolders_button = gtk.ToggleButton.newWithLabel(common.tr("Subfolders"));
+        self.subfolders_button.as(gtk.Widget).setTooltipText(common.tr("Search the folders below this one too (Ctrl+Shift+F)"));
+        _ = gtk.ToggleButton.signals.toggled.connect(self.subfolders_button, *FilesWindow, &onSubfoldersToggled, self, .{});
+        middle.append(self.subfolders_button.as(gtk.Widget));
         middle.append(self.buildViewButton());
         // Beside the window buttons, not in the centre: GtkHeaderBar caps the
         // centre's width, and a button there pushed itself out of sight.
@@ -644,7 +715,16 @@ pub const FilesWindow = struct {
 
         const right = gtk.Box.new(.vertical, 0);
         right.append(self.notebook.as(gtk.Widget));
-        right.append(self.status.as(gtk.Widget));
+        const status_row = gtk.Box.new(.horizontal, 6);
+        self.status.as(gtk.Widget).setHexpand(1);
+        self.status.setEllipsize(.end);
+        status_row.append(self.status.as(gtk.Widget));
+        self.stop_button = gtk.Button.newWithLabel(common.tr("Stop"));
+        self.stop_button.as(gtk.Widget).setTooltipText(common.tr("Stop searching and keep what was found"));
+        self.stop_button.as(gtk.Widget).setVisible(0);
+        _ = gtk.Button.signals.clicked.connect(self.stop_button, *FilesWindow, &onStopSearchClicked, self, .{});
+        status_row.append(self.stop_button.as(gtk.Widget));
+        right.append(status_row.as(gtk.Widget));
 
         // The folder view above, the terminal panel below (hidden until F4).
         const vertical = gtk.Paned.new(.vertical);
@@ -700,6 +780,7 @@ pub const FilesWindow = struct {
                 mb.check("Lar_ge Icons", "view-large", self.view_mode == .large),
                 .separator,
                 mb.check("Show _Hidden Files", "toggle-hidden", self.show_hidden),
+                mb.item("Search Su_bfolders", "search-subfolders", "<Control><Shift>f"),
                 .separator,
                 mb.item("_Terminal Panel", "toggle-terminal", "F4"),
                 mb.item("Terminal: _Go to This Folder", "terminal-cd", null),
@@ -754,7 +835,7 @@ pub const FilesWindow = struct {
         t.current = self.current;
         t.back = self.back;
         t.forward = self.forward;
-        t.matcher = self.matcher;
+        t.find = self.find;
     }
 
     fn loadFrom(self: *FilesWindow, t: *const Tab) void {
@@ -769,7 +850,7 @@ pub const FilesWindow = struct {
         self.current = t.current;
         self.back = t.back;
         self.forward = t.forward;
-        self.matcher = t.matcher;
+        self.find = t.find;
         self.search.setKeyCaptureWidget(self.view_stack.as(gtk.Widget));
     }
 
@@ -853,11 +934,14 @@ pub const FilesWindow = struct {
         defer if (name) |n| glib.free(n);
         var buf: [512]u8 = undefined;
         self.window.as(gtk.Window).setTitle(std.fmt.bufPrintSentinel(&buf, "{s}", .{if (name) |n| std.mem.span(n) else "Files"}, 0) catch "Files");
+        self.syncSearchWidgets();
+        // Hidden files may have been turned on or off since this tab searched.
+        self.applySearch();
         self.updateStatus();
     }
 
     fn onSwitchPage(_: *gtk.Notebook, page: *gtk.Widget, _: c_uint, self: *FilesWindow) callconv(.c) void {
-        if (self.switching) return;
+        if (self.switching or self.closing) return;
         for (self.tabs.items, 0..) |t, i| {
             if (t.view_stack.as(gtk.Widget) == page) return self.activateTab(i);
         }
@@ -867,6 +951,11 @@ pub const FilesWindow = struct {
         if (self.tabs.items.len <= 1) return self.window.as(gtk.Window).close();
         self.snapshotInto(self.tabs.items[self.active_tab]);
         const tab = self.tabs.orderedRemove(index);
+        // Removing the page takes the views with it; the filter, which holds the
+        // tab's search, has to last until the neighbour is in place.
+        const closed_filter = tab.filter.as(gobject.Object).ref();
+        defer closed_filter.unref();
+        tab.find.results.destroy();
         const page = tab.view_stack.as(gtk.Widget);
         // Removing the page makes GTK switch to a neighbour right away; the
         // tab list is already shorter, so the switch handler must not run.
@@ -881,7 +970,6 @@ pub const FilesWindow = struct {
             break;
         };
         tab.folder.destroy();
-        if (tab.matcher) |m| m.deinit();
         tab.current.as(gobject.Object).unref();
         for (tab.back.items) |f| f.as(gobject.Object).unref();
         tab.back.deinit(self.allocator);
@@ -902,6 +990,8 @@ pub const FilesWindow = struct {
             self.switching = false;
             self.filter.as(gtk.Filter).changed(.different);
             self.rebuildCrumbs();
+            self.syncSearchWidgets();
+            self.applySearch();
             self.updateStatus();
         } else if (index < self.active_tab) {
             self.active_tab -= 1;
@@ -926,8 +1016,12 @@ pub const FilesWindow = struct {
 
     fn afterNavigate(self: *FilesWindow) void {
         self.folder.setFile(self.current);
+        // A new folder starts without a search.
+        self.syncing_search = true;
         self.search.as(gtk.Editable).setText("");
-        self.setMatcher(null);
+        self.syncing_search = false;
+        self.applySearch();
+        self.syncSearchWidgets();
         _ = self.selection.as(gtk.SelectionModel).unselectAll();
         self.rebuildCrumbs();
         self.path_stack.setVisibleChildName("crumbs");
@@ -1521,10 +1615,12 @@ pub const FilesWindow = struct {
     // ---- model callbacks -------------------------------------------------
 
     fn filterFunc(item: *gobject.Object, data: ?*anyopaque) callconv(.c) c_int {
-        const self: *FilesWindow = @ptrCast(@alignCast(data.?));
+        const find: *TabSearch = @ptrCast(@alignCast(data.?));
+        // The search below a folder has already done the choosing.
+        if (find.showing_results) return 1;
         const info: *gio.FileInfo = @ptrCast(item);
-        if (!self.show_hidden and (info.getIsHidden() != 0 or info.getIsBackup() != 0)) return 0;
-        const matcher = self.matcher orelse return 1;
+        if (!find.window.show_hidden and (info.getIsHidden() != 0 or info.getIsBackup() != 0)) return 0;
+        const matcher = find.matcher orelse return 1;
         return @intFromBool(matcher.matches(info.getDisplayName()));
     }
 
@@ -1610,6 +1706,7 @@ pub const FilesWindow = struct {
         var buf: [256]u8 = undefined;
         switch (column.*) {
             .name => {
+                setLocationTooltip(box.as(gtk.Widget), info);
                 icon.as(gtk.Widget).setVisible(1);
                 if (info.getIcon()) |gicon| icon.setFromGicon(gicon) else icon.setFromIconName("text-x-generic");
                 setNameLabel(label, info);
@@ -1689,7 +1786,42 @@ pub const FilesWindow = struct {
         const icon: *gtk.Image = @ptrCast(box.as(gtk.Widget).getFirstChild().?);
         const label: *gtk.Label = @ptrCast(icon.as(gtk.Widget).getNextSibling().?);
         if (info.getIcon()) |gicon| icon.setFromGicon(gicon) else icon.setFromIconName("text-x-generic");
+        setLocationTooltip(box.as(gtk.Widget), info);
         setNameLabel(label, info);
+    }
+
+    /// The folder a search result is in, relative to the one searched; null in
+    /// a folder's own list.
+    fn locationOf(info: *gio.FileInfo) ?[*:0]const u8 {
+        if (info.hasAttribute(search_mod.location_attribute) == 0) return null;
+        return info.getAttributeString(search_mod.location_attribute);
+    }
+
+    /// In icon views the name's tooltip says where a search result is.
+    fn setLocationTooltip(widget: *gtk.Widget, info: *gio.FileInfo) void {
+        const location = locationOf(info) orelse return widget.setTooltipText(null);
+        if (std.mem.span(location).len == 0) return widget.setTooltipText(null);
+        const revealed = pure.revealBidi(std.heap.c_allocator, std.mem.span(location)) catch null;
+        defer if (revealed) |r| std.heap.c_allocator.free(r);
+        const shown: [*:0]const u8 = if (revealed) |r| r.ptr else location;
+        widget.setTooltipText(shown);
+    }
+
+    fn onLocationBind(_: *gtk.SignalListItemFactory, item_obj: *gobject.Object, _: *FilesWindow) callconv(.c) void {
+        const item: *gtk.ListItem = @ptrCast(item_obj);
+        const info: *gio.FileInfo = @ptrCast(item.getItem() orelse return);
+        const box: *gtk.Box = @ptrCast(item.getChild().?);
+        const icon: *gtk.Image = @ptrCast(box.as(gtk.Widget).getFirstChild().?);
+        const label: *gtk.Label = @ptrCast(icon.as(gtk.Widget).getNextSibling().?);
+        icon.as(gtk.Widget).setVisible(0);
+        label.setEllipsize(.middle);
+        const location = locationOf(info) orelse return label.setText("");
+        const text: [*:0]const u8 = if (std.mem.span(location).len == 0) common.tr("This folder").ptr else location;
+        const revealed = pure.revealBidi(std.heap.c_allocator, std.mem.span(text)) catch null;
+        defer if (revealed) |r| std.heap.c_allocator.free(r);
+        const shown: [*:0]const u8 = if (revealed) |r| r.ptr else text;
+        label.setText(shown);
+        setLocationTooltip(box.as(gtk.Widget), info);
     }
 
     /// Shows a file's name; hidden text-direction characters (which can make
@@ -1776,6 +1908,9 @@ pub const FilesWindow = struct {
         const bits = self.selection.as(gtk.SelectionModel).getSelection();
         defer bits.unref();
         const selected = bits.getSize();
+        const find = self.find;
+        self.stop_button.as(gtk.Widget).setVisible(@intFromBool(find.showing_results and find.results.running));
+        if (find.showing_results) return self.searchStatus(total, selected);
         var buf: [128]u8 = undefined;
         const text = if (selected > 0)
             std.fmt.bufPrintSentinel(&buf, "{d} of {d} selected", .{ selected, total }, 0) catch ""
@@ -1793,6 +1928,27 @@ pub const FilesWindow = struct {
         self.status.setText(text);
     }
 
+    fn searchStatus(self: *FilesWindow, total: c_uint, selected: u64) void {
+        const results = self.find.results;
+        var buf: [512]u8 = undefined;
+        var text: std.Io.Writer = .fixed(buf[0 .. buf.len - 1]);
+        // What does not fit is cut off.
+        writeSearchStatus(&text, results, total, selected) catch {};
+        const len = text.end;
+        buf[len] = 0;
+        self.status.setText(buf[0..len :0]);
+    }
+
+    fn writeSearchStatus(text: *std.Io.Writer, results: *const search_mod.Results, total: c_uint, selected: u64) std.Io.Writer.Error!void {
+        if (results.err) |e| return text.print("Cannot search this folder: {s}", .{std.mem.span(e.f_message orelse "")});
+        if (selected > 0) try text.print("{d} of ", .{selected});
+        try text.print("{d} {s}", .{ total, if (selected > 0) "selected" else "found" });
+        if (results.running) try text.writeAll("  \u{2014}  searching\u{2026}");
+        if (results.stopped) try text.writeAll("  \u{2014}  stopped before the end");
+        if (results.truncated) try text.print("  \u{2014}  only the first {d} matches; type more to narrow the search", .{results.limit});
+        if (results.unreadable > 0) try text.print("  \u{2014}  {d} {s} could not be read", .{ results.unreadable, if (results.unreadable == 1) "folder" else "folders" });
+    }
+
     /// When a folder finishes loading with an error (no permission, gone,
     /// server dropped), says so instead of showing an empty folder.
     /// Files arrive in batches in no particular order. GTK keeps the item at
@@ -1800,7 +1956,11 @@ pub const FilesWindow = struct {
     /// would open scrolled into its middle; a view at the top stays there.
     fn onFolderChanging(data: *anyopaque, folder: *folder_model.Folder, done: bool) void {
         const self: *FilesWindow = @ptrCast(@alignCast(data));
-        if (folder != self.folder) return;
+        if (folder != self.folder or self.find.showing_results) return;
+        self.keepAtTop(done);
+    }
+
+    fn keepAtTop(self: *FilesWindow, done: bool) void {
         const scroller = if (self.view_mode == .details) self.scroller_list else self.scroller_grid;
         if (!done) {
             self.was_at_top = scroller.getVadjustment().getValue() < 1;
@@ -1813,7 +1973,10 @@ pub const FilesWindow = struct {
 
     fn onFolderLoaded(data: *anyopaque, folder: *folder_model.Folder) void {
         const self: *FilesWindow = @ptrCast(@alignCast(data));
-        const err = folder.err orelse return;
+        const err = folder.err orelse {
+            if (folder == self.folder) self.revealIn(folder);
+            return;
+        };
         // Only the tab being looked at reports.
         if (folder != self.folder) return;
         const message = std.mem.span(err.f_message orelse "");
@@ -1991,6 +2154,7 @@ pub const FilesWindow = struct {
                 if (err) |e| e.free();
                 break;
             }
+            self.forgetFile(f);
         }
     }
 
@@ -2014,7 +2178,10 @@ pub const FilesWindow = struct {
         if (index != 1) return;
         var files = self.selectedFiles() catch return;
         defer freeFiles(self.allocator, &files);
-        for (files.items) |f| self.deleteRecursive(f);
+        for (files.items) |f| {
+            self.deleteRecursive(f);
+            if (f.queryExists(null) == 0) self.forgetFile(f);
+        }
     }
 
     fn deleteRecursive(self: *FilesWindow, file: *gio.File) void {
@@ -2122,6 +2289,7 @@ pub const FilesWindow = struct {
         const name = text orelse return;
         var err: ?*glib.Error = null;
         if (ctx.file.setDisplayName(name, null, &err)) |renamed| {
+            for (ctx.window.tabs.items) |tab| tab.find.results.renamed(ctx.file, renamed);
             renamed.as(gobject.Object).unref();
         } else {
             const message = if (err) |e| e.f_message orelse "unknown error" else "unknown error";
@@ -2192,6 +2360,7 @@ pub const FilesWindow = struct {
         self.show_hidden = !self.show_hidden;
         common.menubar.setChecked(self.window, "toggle-hidden", self.show_hidden);
         self.filter.as(gtk.Filter).changed(.different);
+        self.applySearch();
         self.config.setBool("files", "show-hidden", self.show_hidden) catch {};
     }
 
@@ -2347,6 +2516,11 @@ pub const FilesWindow = struct {
             box.append(gtk.Separator.new(.horizontal).as(gtk.Widget));
         }
 
+        if (sel.on_item and sel.count == 1 and self.find.showing_results) {
+            self.menuItem(box, popover, common.tr("Show in Its Folder"), "show-in-folder", true);
+            box.append(gtk.Separator.new(.horizontal).as(gtk.Widget));
+        }
+
         // Text entries.
         const list = if (sel.on_item) self.configuredIds("item", context.default_item) else self.configuredIds("folder", context.default_folder);
         defer list.deinit(self.allocator);
@@ -2473,10 +2647,10 @@ pub const FilesWindow = struct {
         if (eql(u8, id, "empty-trash")) return if (!item and sel.in_trash) .{ .label = t("Empty Trash") } else null;
         if (eql(u8, id, "cut")) return if (item and !sel.in_trash) .{ .label = t("Cut") } else null;
         if (eql(u8, id, "copy")) return if (item) .{ .label = t("Copy") } else null;
-        if (eql(u8, id, "paste")) return if (!sel.in_trash) .{ .label = t("Paste"), .enabled = self.clipboardHasFiles() } else null;
+        if (eql(u8, id, "paste")) return if (!sel.in_trash and !self.find.showing_results) .{ .label = t("Paste"), .enabled = self.clipboardHasFiles() } else null;
         if (eql(u8, id, "rename")) return if (item and !sel.in_trash) .{ .label = t("Rename\u{2026}"), .enabled = sel.count == 1 } else null;
         if (eql(u8, id, "trash")) return if (item and !sel.in_trash) .{ .label = t("Move to Trash") } else null;
-        if (eql(u8, id, "new-folder")) return if (!item and !sel.in_trash) .{ .label = t("New Folder") } else null;
+        if (eql(u8, id, "new-folder")) return if (!item and !sel.in_trash and !self.find.showing_results) .{ .label = t("New Folder") } else null;
         if (eql(u8, id, "terminal-here")) return if (!sel.in_trash) .{ .label = t("Open Terminal Here") } else null;
         if (eql(u8, id, "open-admin")) return if (!sel.in_trash) .{ .label = t("Open Folder as Administrator") } else null;
         if (eql(u8, id, "toggle-hidden")) return .{ .label = t("Show Hidden Files") };
@@ -2825,6 +2999,17 @@ pub const FilesWindow = struct {
         var files = self.selectedFiles() catch return;
         defer freeFiles(self.allocator, &files);
         if (files.items.len == 0) return;
+        // The archive's names are relative to one folder. Search results can
+        // come from several.
+        const source = files.items[0].getParent() orelse return;
+        defer source.as(gobject.Object).unref();
+        for (files.items[1..]) |f| {
+            const parent = f.getParent() orelse return;
+            defer parent.as(gobject.Object).unref();
+            if (parent.equal(source) == 0) return common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot compress these together"), common.tr("Select items that are in the same folder."));
+        }
+        const source_path = source.getPath() orelse return;
+        defer glib.free(source_path);
         const dir_path = self.current.getPath() orelse return;
         defer glib.free(dir_path);
 
@@ -2861,7 +3046,7 @@ pub const FilesWindow = struct {
             for (owned.items) |o| glib.free(o);
             owned.deinit(self.allocator);
         }
-        argv.appendSlice(self.allocator, &.{ exe, "--archive-pack", format_name, out, std.mem.span(dir_path) }) catch return;
+        argv.appendSlice(self.allocator, &.{ exe, "--archive-pack", format_name, out, std.mem.span(source_path) }) catch return;
         for (files.items) |f| {
             const n = f.getBasename() orelse continue;
             owned.append(self.allocator, n) catch continue;
@@ -2881,6 +3066,16 @@ pub const FilesWindow = struct {
 
     fn perform(self: *FilesWindow, action: []const u8, app: ?*gio.AppInfo) void {
         const eql = std.mem.eql;
+        if (self.find.showing_results and (eql(u8, action, "paste") or eql(u8, action, "new-folder"))) {
+            // They would act on the folder being searched, which is not what is on screen.
+            return self.status.setText(common.tr("Clear the search first to paste or to make a folder."));
+        }
+        if (eql(u8, action, "show-in-folder")) return if (self.find.showing_results) self.showInFolder();
+        if (eql(u8, action, "search-subfolders")) {
+            if (self.subfolders_button.as(gtk.Widget).getSensitive() != 0)
+                self.subfolders_button.setActive(@intFromBool(self.subfolders_button.getActive() == 0));
+            return;
+        }
         if (eql(u8, action, "open")) return self.openSelected();
         if (eql(u8, action, "back")) return self.goBack();
         if (eql(u8, action, "forward")) return self.goForward();
@@ -2986,7 +3181,8 @@ pub const FilesWindow = struct {
     /// The folder a drop would go into; the caller unrefs it.
     fn dropFolder(self: *FilesWindow, dest: Dest) ?*gio.File {
         switch (dest) {
-            .current => return @ptrCast(self.current.as(gobject.Object).ref()),
+            // Search results are not a folder: letting go over them must not move anything.
+            .current => return if (self.find.showing_results) null else @ptrCast(self.current.as(gobject.Object).ref()),
             .path => |p| return gio.File.newForPath(p),
             .item => |item| {
                 const info: *gio.FileInfo = @ptrCast(item.getItem() orelse return null);
@@ -3052,6 +3248,7 @@ pub const FilesWindow = struct {
                     if (err) |e| e.free();
                     return false;
                 }
+                self.forgetFile(f);
             }
             return true;
         }
@@ -3476,7 +3673,7 @@ pub const FilesWindow = struct {
 
     /// A column header was clicked: tick the matching sort in the menu.
     fn onSorterChanged(sorter: *gtk.Sorter, _: gtk.SorterChange, self: *FilesWindow) callconv(.c) void {
-        if (sorter != self.column_view.getSorter()) return;
+        if (self.closing or sorter != self.column_view.getSorter()) return;
         const view_sorter: *gtk.ColumnViewSorter = @ptrCast(@alignCast(sorter));
         const column = view_sorter.getPrimarySortColumn() orelse return;
         const list = self.column_view.getColumns();
@@ -3522,6 +3719,7 @@ pub const FilesWindow = struct {
         .{ .trigger = "Delete", .action = "trash" },
         .{ .trigger = "<Shift>Delete", .action = "delete-permanent" },
         .{ .trigger = "<Control>h", .action = "toggle-hidden" },
+        .{ .trigger = "<Control><Shift>f", .action = "search-subfolders" },
         .{ .trigger = "<Control><Shift>n", .action = "new-folder" },
         .{ .trigger = "<Control>d", .action = "bookmark" },
         .{ .trigger = "<Alt>Return", .action = "properties" },
@@ -3602,11 +3800,11 @@ pub const FilesWindow = struct {
     }
 
     fn onItemsChanged(_: *gio.ListModel, _: c_uint, _: c_uint, _: c_uint, self: *FilesWindow) callconv(.c) void {
-        self.updateStatus();
+        if (!self.closing) self.updateStatus();
     }
 
     fn onSelectionChanged(_: *gtk.SelectionModel, _: c_uint, _: c_uint, self: *FilesWindow) callconv(.c) void {
-        self.updateStatus();
+        if (!self.closing) self.updateStatus();
     }
 
     fn onBackClicked(_: *gtk.Button, self: *FilesWindow) callconv(.c) void {
@@ -3685,16 +3883,110 @@ pub const FilesWindow = struct {
         return 0;
     }
 
-    fn onSearchChanged(entry: *gtk.SearchEntry, self: *FilesWindow) callconv(.c) void {
-        self.setMatcher(search_mod.Matcher.init(entry.as(gtk.Editable).getText()));
+    fn onSearchChanged(_: *gtk.SearchEntry, self: *FilesWindow) callconv(.c) void {
+        if (!self.syncing_search and !self.closing) self.applySearch();
     }
 
-    /// Takes over `matcher` and filters the view by it.
-    fn setMatcher(self: *FilesWindow, matcher: ?search_mod.Matcher) void {
-        if (matcher == null and self.matcher == null) return;
-        if (self.matcher) |old| old.deinit();
-        self.matcher = matcher;
+    fn onSubfoldersToggled(button: *gtk.ToggleButton, self: *FilesWindow) callconv(.c) void {
+        if (self.syncing_search or self.closing) return;
+        self.find.subfolders = button.getActive() != 0;
+        self.syncSearchWidgets();
+        self.applySearch();
+        _ = self.search.as(gtk.Widget).grabFocus();
+    }
+
+    fn onStopSearchClicked(_: *gtk.Button, self: *FilesWindow) callconv(.c) void {
+        self.find.results.stop();
+    }
+
+    /// Sets the search widgets to the active tab's search.
+    fn syncSearchWidgets(self: *FilesWindow) void {
+        const find = self.find;
+        self.syncing_search = true;
+        defer self.syncing_search = false;
+        const editable = self.search.as(gtk.Editable);
+        if (!std.mem.eql(u8, std.mem.span(editable.getText()), find.text)) editable.setText(find.text);
+        self.subfolders_button.setActive(@intFromBool(find.subfolders));
+        // Trash is restored by the name at its top level, so nothing deeper is offered.
+        const trash = self.isInTrash();
+        self.subfolders_button.as(gtk.Widget).setSensitive(@intFromBool(!trash));
+        self.search.setPlaceholderText(if (find.subfolders and !trash) common.tr("Search here and below") else common.tr("Search this folder"));
+    }
+
+    /// Brings the views in line with the search box, the Subfolders button and
+    /// the hidden files setting. Does nothing when they already are.
+    fn applySearch(self: *FilesWindow) void {
+        const find = self.find;
+        const text = std.mem.span(self.search.as(gtk.Editable).getText());
+        const deep = find.subfolders and text.len > 0 and !self.isInTrash();
+        const same_text = std.mem.eql(u8, text, find.text);
+        if (same_text and deep == find.showing_results and (!deep or find.hidden == self.show_hidden)) return;
+
+        if (!same_text) {
+            const copy = std.heap.c_allocator.dupeSentinel(u8, text, 0) catch return;
+            std.heap.c_allocator.free(find.text);
+            find.text = copy;
+            if (find.matcher) |m| m.deinit();
+            find.matcher = search_mod.Matcher.init(find.text);
+        }
+        const was = find.showing_results;
+        find.showing_results = deep;
+        find.hidden = self.show_hidden;
+        if (deep) find.results.start(self.current, find.text, self.show_hidden, 300);
+        if (deep != was) {
+            _ = self.selection.as(gtk.SelectionModel).unselectAll();
+            const shown = if (deep) find.results.store else self.folder.store;
+            find.filtered.setModel(shown.as(gio.ListModel));
+            find.location_column.setVisible(@intFromBool(deep));
+        }
+        if (!deep) find.results.clear();
         self.filter.as(gtk.Filter).changed(.different);
+        self.updateStatus();
+    }
+
+    fn onResultsChanged(data: *anyopaque) void {
+        const find: *TabSearch = @ptrCast(@alignCast(data));
+        if (find == find.window.find) find.window.updateStatus();
+    }
+
+    fn onResultsChanging(data: *anyopaque, done: bool) void {
+        const find: *TabSearch = @ptrCast(@alignCast(data));
+        if (find == find.window.find and find.showing_results) find.window.keepAtTop(done);
+    }
+
+    /// A file went away: it leaves every tab's search results.
+    fn forgetFile(self: *FilesWindow, file: *gio.File) void {
+        for (self.tabs.items) |tab| tab.find.results.removed(file);
+    }
+
+    /// Shows the folder a search result is in, with the result selected.
+    fn showInFolder(self: *FilesWindow) void {
+        const file = self.singleSelected() orelse return;
+        const parent = file.getParent() orelse return file.as(gobject.Object).unref();
+        defer parent.as(gobject.Object).unref();
+        if (self.reveal) |old| old.as(gobject.Object).unref();
+        self.reveal = file;
+        self.go(parent, true);
+    }
+
+    fn revealIn(self: *FilesWindow, folder: *folder_model.Folder) void {
+        const file = self.reveal orelse return;
+        self.reveal = null;
+        defer file.as(gobject.Object).unref();
+        const parent = file.getParent() orelse return;
+        defer parent.as(gobject.Object).unref();
+        const listed = folder.file orelse return;
+        if (parent.equal(listed) == 0) return;
+        const model = self.selection.as(gio.ListModel);
+        for (0..model.getNItems()) |i| {
+            const object: *gobject.Object = @ptrCast(@alignCast(model.getItem(@intCast(i)) orelse continue));
+            defer object.unref();
+            const own = fileOf(@ptrCast(object)) orelse continue;
+            if (own.equal(file) == 0) continue;
+            _ = self.selection.as(gtk.SelectionModel).selectItem(@intCast(i), 1);
+            if (self.view_mode == .details) self.column_view.scrollTo(@intCast(i), null, .{}, null) else self.grid_view.scrollTo(@intCast(i), .{}, null);
+            return;
+        }
     }
 
     fn onSearchStop(entry: *gtk.SearchEntry, self: *FilesWindow) callconv(.c) void {
