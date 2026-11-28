@@ -4,6 +4,9 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 ## Unreleased
 
+**Dependencies**
+- **Changed**: util-core 0.3.0 (from 0.1.0), which brings regex-zig 0.5.0 and yaml-zig 0.3.1. No dkde program uses it yet.
+
 **dkde-pdf**
 - **Added**: Annotate > Stamp or Watermark puts a diagonal line of text, or a picture such as a logo or scanned signature (not a digital signature), on chosen pages.
 - **Added**: File > Organise Pages reorders, rotates, deletes, extracts, splits and merges pages and adds blank ones. The result is always a new file; the originals are not changed. Leaving a page out is not redaction.

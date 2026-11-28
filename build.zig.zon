@@ -49,8 +49,8 @@
             .lazy = true,
         },
         .util_core = .{
-            .url = "https://github.com/BearzRobotics/util-core/archive/refs/tags/v0.1.0.tar.gz",
-            .hash = "util_core-0.1.0-yZFABFYhNAB6iCdKh_LW9iAGqMs8nw6s6m66IrSANV0K",
+            .url = "https://github.com/BearzRobotics/util-core/archive/refs/tags/v0.3.0.tar.gz",
+            .hash = "util_core-0.3.0-yZFABHycQQA4OGPBr8WIkNJCj_4aWyWPtHzNFIZRkSVl",
         },
     },
     .paths = .{ "build.zig", "build.zig.zon", "src", "data", "protocols", "third_party", "LICENSE", "README.md", "CHANGELOG.md" },
