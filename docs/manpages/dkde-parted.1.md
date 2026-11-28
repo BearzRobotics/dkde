@@ -20,7 +20,7 @@ Operands are file names or URIs and are never interpreted as shell text.
 
 # OPTIONS
 --selftest IMAGE
-: Run the program's checks against the disk image IMAGE (a file, not a device) without a window, report a pass or FAIL per step and exit.
+: Create the disk image file IMAGE, run the program's checks on it without a window, report a pass or FAIL per step, remove the file and exit. IMAGE must not exist yet: a file, device or link that is already there is refused and left alone. Needs administrator rights.
 
 -h, --help
 : Print help to standard output and exit.

@@ -44,9 +44,10 @@ are Wayland only).
 ## Trying the partition tool safely
 
 `dkde-parted` changes disks, so test it first on a machine you do not care about.
-Run `sudo dkde-parted --selftest /tmp/test.img`: it exercises every filesystem
+Run `sudo dkde-parted --selftest /tmp/dkde-selftest.img`: it exercises every filesystem
 whose tools are installed on a scratch image file (no disk is touched) and prints
-pass or FAIL per step. Every apply is also written to `~/.local/state/dkde/parted.log`.
+pass or FAIL per step. It creates that file and removes it afterwards, and refuses a
+path where anything already exists. Every apply is also written to `~/.local/state/dkde/parted.log`.
 
 ## Theming
 

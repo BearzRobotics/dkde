@@ -1481,4 +1481,5 @@ test {
     _ = @import("model.zig");
     _ = @import("fs.zig");
     _ = @import("ops.zig");
+    _ = @import("selftest.zig");
 }

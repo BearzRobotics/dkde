@@ -3,7 +3,7 @@
 //! a scratch image file, one filesystem at a time, and says what worked. It
 //! needs administrator rights (loop devices), so run it as root on a machine
 //! where that is safe. It never touches a disk, only the image file it
-//! creates (and deletes).
+//! creates (and deletes): a path that already exists is refused.
 
 const std = @import("std");
 const common = @import("common");
@@ -47,6 +47,18 @@ fn capture(a: std.mem.Allocator, command: []const u8) ![]u8 {
     return out.toOwnedSlice(a);
 }
 
+/// Creates `path` as a new empty file, readable by its owner only. False when
+/// anything is already there (a file, a device or a link, even a broken one),
+/// so the self-test can never overwrite or remove what it did not make.
+fn claimImage(path: []const u8) bool {
+    var buf: [4096]u8 = undefined;
+    const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{path}, 0) catch return false;
+    const fd = std.c.open(z.ptr, .{ .ACCMODE = .WRONLY, .CREAT = true, .EXCL = true, .NOFOLLOW = true, .CLOEXEC = true }, @as(c_uint, 0o600));
+    if (fd < 0) return false;
+    _ = std.c.close(fd);
+    return true;
+}
+
 fn runCmd(a: std.mem.Allocator, cmd: ops.Cmd) bool {
     var line: std.ArrayList(u8) = .empty;
     defer line.deinit(a);
@@ -78,12 +90,16 @@ pub fn run(allocator: std.mem.Allocator, image: []const u8) u8 {
         return 2;
     }
     say("Self-test on the scratch image {s} (it is created and removed here).\n", .{image});
+    if (!claimImage(image)) {
+        say("Cannot create {s}. Give a file name that does not exist yet, in a folder you can write to.\n", .{image});
+        return 2;
+    }
+    defer _ = shell(a, std.fmt.allocPrint(a, "rm -f {s}", .{fs.quote(a, image) catch ""}) catch "true");
     const make = ops.Cmd{ .argv = fs.newImage(a, image, 768, "gpt") catch return 2, .root = false };
     if (!runCmd(a, make)) {
         say("Cannot create the image.\n", .{});
         return 2;
     }
-    defer _ = shell(a, std.fmt.allocPrint(a, "rm -f {s}", .{fs.quote(a, image) catch ""}) catch "true");
 
     var failures: usize = 0;
     var tested: usize = 0;
@@ -129,4 +145,29 @@ pub fn run(allocator: std.mem.Allocator, image: []const u8) u8 {
     }
     say("\n{d} filesystems tested, {d} step{s} failed.\n", .{ tested, failures, if (failures == 1) "" else "s" });
     return if (failures == 0) 0 else 1;
+}
+
+test "the self-test only takes a path where nothing exists yet" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var buf: [256]u8 = undefined;
+    const dir = try std.fmt.bufPrint(&buf, ".zig-cache/tmp/{s}", .{tmp.sub_path});
+    var path_buf: [320]u8 = undefined;
+
+    const kept = try std.fmt.bufPrint(&path_buf, "{s}/kept.img", .{dir});
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "kept.img", .data = "do not touch" });
+    try std.testing.expect(!claimImage(kept));
+    var read: [32]u8 = undefined;
+    try std.testing.expectEqualStrings("do not touch", try tmp.dir.readFile(std.testing.io, "kept.img", &read));
+
+    // A link is refused even when it points nowhere, so nothing is made behind it.
+    try tmp.dir.symLink(std.testing.io, "elsewhere", "link.img", .{});
+    var link_buf: [320]u8 = undefined;
+    try std.testing.expect(!claimImage(try std.fmt.bufPrint(&link_buf, "{s}/link.img", .{dir})));
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access(std.testing.io, "elsewhere", .{}));
+
+    var new_buf: [320]u8 = undefined;
+    const fresh = try std.fmt.bufPrint(&new_buf, "{s}/new.img", .{dir});
+    try std.testing.expect(claimImage(fresh));
+    try std.testing.expect(!claimImage(fresh));
 }
