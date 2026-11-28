@@ -47,6 +47,10 @@ pub const Disk = struct {
     image: bool = false,
     /// As `Part.held`, for something built straight on the disk.
     held: bool = false,
+    /// The drive's serial number and the partition table's id, where there are
+    /// any: how one drive is told from another that took its device name.
+    serial: []const u8 = "",
+    ptuuid: []const u8 = "",
 };
 
 pub const Gap = struct {
@@ -198,6 +202,8 @@ pub fn parseLsblk(arena: Allocator, text: []const u8) !([]const Disk) {
             .fstype = try arena.dupe(u8, str(o.get("fstype"))),
             .mounts = disk_mounts.items,
             .held = disk_held,
+            .serial = try arena.dupe(u8, std.mem.trim(u8, str(o.get("serial")), " ")),
+            .ptuuid = try arena.dupe(u8, str(o.get("ptuuid"))),
         });
     }
     return disks.items;
@@ -318,6 +324,20 @@ pub fn isSystemDisk(d: Disk) bool {
         for (system) |s| if (std.mem.eql(u8, m, s)) return true;
     };
     return false;
+}
+
+/// Whether `now` is the drive `then` was, laid out as it was.
+pub fn sameDisk(then: Disk, now: Disk) bool {
+    const eql = std.mem.eql;
+    if (!eql(u8, then.path, now.path) or then.size != now.size or then.sector != now.sector) return false;
+    if (!eql(u8, then.table, now.table) or !eql(u8, then.fstype, now.fstype)) return false;
+    if (!eql(u8, then.model, now.model) or !eql(u8, then.serial, now.serial) or !eql(u8, then.ptuuid, now.ptuuid)) return false;
+    if (then.parts.len != now.parts.len) return false;
+    for (then.parts, now.parts) |a, b| {
+        if (a.number != b.number or a.start != b.start or a.size != b.size) return false;
+        if (!eql(u8, a.fstype, b.fstype) or !eql(u8, a.label, b.label)) return false;
+    }
+    return true;
 }
 
 /// Why `d` must not be changed, or null.
@@ -502,6 +522,31 @@ test "members of a mounted btrfs volume or an imported ZFS pool are in use" {
         try std.testing.expectEqual(c.held, got[0].parts[0].held);
         try std.testing.expectEqual(c.held, refuseReason(got[0]) != null);
     }
+}
+
+test "a drive that changed since it was read is noticed" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const disks = try parseLsblk(arena.allocator(), sample);
+    const then = disks[0];
+    try std.testing.expect(sameDisk(then, then));
+    var other = then;
+    other.serial = "another drive";
+    try std.testing.expect(!sameDisk(then, other));
+    other = then;
+    other.ptuuid = "new table";
+    try std.testing.expect(!sameDisk(then, other));
+    other = then;
+    other.size += 1;
+    try std.testing.expect(!sameDisk(then, other));
+    other = then;
+    other.parts = then.parts[0 .. then.parts.len - 1];
+    try std.testing.expect(!sameDisk(then, other));
+    const moved = try arena.allocator().dupe(Part, then.parts);
+    moved[0].start += 8;
+    other = then;
+    other.parts = moved;
+    try std.testing.expect(!sameDisk(then, other));
 }
 
 test "a filesystem on the bare disk is not free space, and its mount counts" {

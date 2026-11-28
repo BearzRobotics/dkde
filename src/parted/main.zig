@@ -21,7 +21,7 @@ const selftest = @import("selftest.zig");
 
 pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };
 
-const lsblk_columns = "NAME,PATH,TYPE,SIZE,START,FSTYPE,LABEL,MOUNTPOINTS,PTTYPE,MODEL,RM,RO,LOG-SEC";
+const lsblk_columns = "NAME,PATH,TYPE,SIZE,START,FSTYPE,LABEL,MOUNTPOINTS,PTTYPE,MODEL,RM,RO,LOG-SEC,SERIAL,PTUUID";
 /// Older lsblk has no usage columns; the call is repeated without them.
 const lsblk_columns_usage = lsblk_columns ++ ",FSUSED,FSAVAIL";
 
@@ -1224,6 +1224,12 @@ const Parted = struct {
         self.recompute();
     }
 
+    /// Whether any operation queued so far (before `end`) is for `path`.
+    fn queuedBefore(self: *Parted, path: []const u8, end: usize) bool {
+        for (self.pending.items[0..end]) |p| if (std.mem.eql(u8, p.disk_path, path)) return true;
+        return false;
+    }
+
     /// The commands the queue would run, grouped by whether they need root.
     const Plan = struct { plain: []const ops_mod.Cmd, root: []const ops_mod.Cmd };
 
@@ -1234,6 +1240,13 @@ const Parted = struct {
         // The layout of each disk as the queue is walked.
         const state = a.alloc(model.Disk, self.real.len) catch return null;
         @memcpy(state, self.real);
+        // Each stage starts by checking the disks it is about to change.
+        for (self.pending.items, 0..) |p, i| {
+            if (self.queuedBefore(p.disk_path, i)) continue;
+            const d = self.realDisk(p.disk_path) orelse continue;
+            if (d.image and model.plainImage(d)) continue;
+            root.append(a, ops_mod.guard(a, d) catch return null) catch return null;
+        }
         for (self.pending.items) |p| {
             var di: usize = 0;
             while (di < state.len and !std.mem.eql(u8, state[di].path, p.disk_path)) di += 1;
@@ -1266,13 +1279,66 @@ const Parted = struct {
             const line = std.fmt.bufPrint(buf[w..], "\u{2022} {s}\n", .{p.text}) catch break;
             w += line.len;
         }
+        // Say which drives these are, not only their device names.
+        for (self.pending.items, 0..) |p, i| {
+            if (self.queuedBefore(p.disk_path, i)) continue;
+            const d = self.realDisk(p.disk_path) orelse continue;
+            var size_buf: [32]u8 = undefined;
+            const line = std.fmt.bufPrint(buf[w..], "{s}: {s} {s}\n", .{ d.path, d.model, formatSize(&size_buf, d.size) }) catch break;
+            w += line.len;
+        }
         const text = std.fmt.allocPrintSentinel(self.allocator, "{s}\nThese changes cannot be undone. Make sure you have a backup of anything important on these disks.", .{buf[0..w]}, 0) catch return;
         defer self.allocator.free(text);
         common.dialogs.choose(self.window.as(gtk.Window), common.tr("Apply the pending operations?"), text, &.{ "Cancel", "Apply" }, 0, Parted, onApplyAnswer, self);
     }
 
     fn onApplyAnswer(self: *Parted, index: c_int) void {
-        if (index != 1) return;
+        if (index != 1 or self.busy) return;
+        var devices = false;
+        for (self.pending.items) |p| {
+            if (self.realDisk(p.disk_path)) |d| devices = devices or !d.image;
+        }
+        if (!devices) return self.runPlan();
+        // The queue was made from an earlier reading: look again first.
+        self.busy = true;
+        self.updateButtons();
+        common.proc.run(Parted, self.proc_guard, &.{ "lsblk", "-J", "-b", "-o", lsblk_columns }, onApplyCheck);
+    }
+
+    fn onApplyCheck(self: *Parted, ok: bool, out: []const u8) void {
+        self.busy = false;
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const a = arena.allocator();
+        var now: []const model.Disk = &.{};
+        if (ok) now = model.parseLsblk(a, out) catch &.{};
+        now = model.markPooled(a, now, btrfsIds(a), pathExists) catch &.{};
+        for (self.pending.items) |p| {
+            const then = self.realDisk(p.disk_path) orelse continue;
+            if (then.image) continue;
+            const found: ?model.Disk = for (now) |d| {
+                if (std.mem.eql(u8, d.path, then.path)) break d;
+            } else null;
+            const why: ?[]const u8 = if (found) |d|
+                (if (!model.sameDisk(then, d)) "A disk changed since it was read" else model.refuseReason(d))
+            else
+                "A disk is no longer there";
+            if (why) |text| {
+                self.logText("NOT APPLIED", text);
+                self.updateButtons();
+                // The queue no longer fits what is there: read again, then say why.
+                self.rescan();
+                var buf: [240]u8 = undefined;
+                common.dialogs.choose(self.window.as(gtk.Window), common.tr("Nothing was applied"), std.fmt.bufPrintSentinel(&buf, "{s}. The disks have been read again; check them and queue the changes again.", .{std.mem.trimEnd(u8, text, ".")}, 0) catch "The disks changed.", &.{"Close"}, 0, Parted, onNotApplied, self);
+                return;
+            }
+        }
+        self.runPlan();
+    }
+
+    fn onNotApplied(_: *Parted, _: c_int) void {}
+
+    fn runPlan(self: *Parted) void {
         const p = self.plan() orelse return self.status.setText(common.tr("Some operation cannot be turned into commands."));
         const a = self.sim_arena.allocator();
         self.busy = true;

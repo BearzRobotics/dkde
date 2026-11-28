@@ -187,6 +187,28 @@ pub fn master(arena: Allocator, cmds: []const Cmd) Allocator.Error![]const []con
     return arena.dupe([]const u8, &.{ "sh", "-c", s.items });
 }
 
+/// The check that runs, as administrator, right before the first change: it
+/// stops everything when the disk is no longer the one that was read (another
+/// drive can take its name while the password is being typed) or has come into
+/// use. `d` is the disk as it was read, before any queued operation.
+pub fn guard(arena: Allocator, d: model.Disk) Allocator.Error!Cmd {
+    const q = try fs.quote(arena, d.path);
+    const script = if (d.image)
+        try std.fmt.allocPrint(arena, "if command -v losetup >/dev/null && [ -n \"$(losetup -j {s})\" ]; then echo {s} >&2; exit 1; fi", .{ q, try fs.quote(arena, try std.fmt.allocPrint(arena, "{s} is attached to a loop device. Detach it first. Nothing was changed.", .{d.path})) })
+    else
+        try std.fmt.allocPrint(arena,
+            \\if [ "$(lsblk -bdno SIZE {s} | tr -d ' ')" != {d} ] || [ "$(lsblk -dno PTUUID {s} | tr -d ' ')" != {s} ] || [ "$(lsblk -dno SERIAL {s} | sed 's/^ *//;s/ *$//')" != {s} ]; then echo {s} >&2; exit 1; fi
+            \\if [ -n "$(lsblk -nro MOUNTPOINT {s} | tr -d '[:space:]')" ] || lsblk -nro TYPE {s} | grep -qvxE 'disk|part'; then echo {s} >&2; exit 1; fi
+        , .{
+            q,                                                                                                                        d.size,
+            q,                                                                                                                        try fs.quote(arena, d.ptuuid),
+            q,                                                                                                                        try fs.quote(arena, d.serial),
+            try fs.quote(arena, try std.fmt.allocPrint(arena, "{s} is not the disk that was read. Nothing was changed.", .{d.path})), q,
+            q,                                                                                                                        try fs.quote(arena, try std.fmt.allocPrint(arena, "{s} is now in use. Nothing was changed.", .{d.path})),
+        });
+    return .{ .argv = try arena.dupe([]const u8, &.{ "sh", "-c", script }), .root = true };
+}
+
 /// What would run, for the preview: one command per line.
 pub fn preview(arena: Allocator, cmds: []const Cmd) Allocator.Error![]const u8 {
     var s: std.ArrayList(u8) = .empty;
@@ -271,4 +293,39 @@ test "the master script runs everything once and stops on failure" {
     try std.testing.expect(std.mem.indexOf(u8, text, "administrator") != null);
     const desc = try describe(a, d, .{ .delete = .{ .number = 1 } });
     try std.testing.expectEqualStrings("Delete partition 1 of /dev/sdb", desc);
+}
+
+/// Runs `cmd` with stand-ins for lsblk and losetup that report `answers`.
+fn runGuard(a: Allocator, cmd: Cmd, size: []const u8, ptuuid: []const u8, serial: []const u8, mounts: []const u8, types: []const u8) !u32 {
+    const script = try std.fmt.allocPrint(a,
+        \\exec 2>/dev/null
+        \\lsblk() {{ for w; do case $w in SIZE|PTUUID|SERIAL|MOUNTPOINT|TYPE) col=$w;; esac; done
+        \\case $col in SIZE) echo '{s}';; PTUUID) echo '{s}';; SERIAL) echo '{s}';;
+        \\MOUNTPOINT) printf '%b' '{s}';; TYPE) printf '%b' '{s}';; esac; }}
+        \\{s}
+    , .{ size, ptuuid, serial, mounts, types, cmd.argv[2] });
+    const z = try a.dupeSentinel(u8, script, 0);
+    return @intCast(system(z.ptr));
+}
+
+extern fn system(command: [*:0]const u8) c_int;
+
+test "the guard stops when the disk was swapped or is in use" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var d = sampleDisk();
+    d.serial = "AB 12";
+    d.ptuuid = "1111-22";
+    const g = try guard(a, d);
+    try std.testing.expect(g.root);
+    const size = "1073741824";
+    const idle = "\\n\\n";
+    const plain = "disk\\npart\\n";
+    try std.testing.expectEqual(@as(u32, 0), try runGuard(a, g, size, "1111-22", "AB 12", idle, plain));
+    try std.testing.expect(try runGuard(a, g, "999", "1111-22", "AB 12", idle, plain) != 0);
+    try std.testing.expect(try runGuard(a, g, size, "other", "AB 12", idle, plain) != 0);
+    try std.testing.expect(try runGuard(a, g, size, "1111-22", "CD 34", idle, plain) != 0);
+    try std.testing.expect(try runGuard(a, g, size, "1111-22", "AB 12", "\\n/mnt\\n", plain) != 0);
+    try std.testing.expect(try runGuard(a, g, size, "1111-22", "AB 12", idle, "disk\\npart\\ncrypt\\n") != 0);
 }
