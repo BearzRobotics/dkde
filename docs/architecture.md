@@ -7,7 +7,7 @@ Describes what the code does today, not the goals; goals are in `ai/DKDE-SPEC.md
 ```
  cli (src/cli.zig)            --help / --version / bad-option handling. std only.
  core (src/common/core.zig)   Config (TOML), migrate, paths, state, log, perf, events/ics/civil,
-                              apps/appinfo, power, proc, labwc, notify, icons, i18n, user.
+                              apps/appinfo, power, proc, labwc, notify, icons, i18n, user, userdb.
                               Needs GLib/GIO and toml-zig. No GTK.
  common (src/common/root.zig) re-exports core, plus GTK: style, dialogs, header, menubar,
                               contextmenu, runapp, elevate.
@@ -38,11 +38,12 @@ No program imports another program's source. They start each other only as optio
 
 - `dkde-term`: tabs, each a tree of panes (`gtk.Paned`); every pane is a `TerminalView`. Panes report focus, title and exit to their tab.
 - `dkde-pdf`: a `Window` with a notebook of `DocView` tabs. Each tab owns a `Session` (`pdf/session.zig`): the PDF, its text layouts and an undo list. Edits are pdf-zig incremental updates; undo cuts the file back to its earlier length.
+- `dkde-files` search (`files/search.zig`): a `Matcher` for names, and `Results`, which walks the folders below one with asynchronous GIO calls into a list the views show in place of the folder's. Each tab has its own. Rows carry their `GFile` as in a folder's list, so most file actions need no special case.
 - `dkde-files`, `dkde-edit`: host a `termembed.Panel` below their content. The shell starts the first time the panel is shown.
 
 ## Testing and smoke tests
 
-`zig build test` runs every program's unit tests. `DKDE_EXIT_AFTER_MS=<ms>` makes a program close its windows and quit after that long; Debug builds print a leak report on exit, and every program is expected to exit without one. Per-tab and per-popover data must be owned by the window struct, not freed by a widget's destroy signal: GTK does not destroy notebook tab labels or popovers with the window, and children are destroyed before the window's own destroy handler runs.
+`zig build test` runs every program's unit tests. `DKDE_EXIT_AFTER_MS=<ms>` makes a program close its windows and quit after that long; Debug builds print a leak report on exit, and every program is expected to exit without one. Per-tab and per-popover data must be owned by the window struct, not freed by a widget's destroy signal: GTK does not destroy notebook tab labels or popovers with the window. Do not count on widgets being destroyed before the window's own destroy handler runs, or even before the window object is gone: in `dkde-files` some were destroyed later and their cleanup reached freed memory, so it frees its window struct after GTK has shut down (`files/main.zig`). The other programs have not been checked for this.
 
 ## Configuration
 

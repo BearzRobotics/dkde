@@ -85,7 +85,7 @@ Respect Freedesktop specifications and musl/glibc portability. Do not rely on sy
 Define and benchmark minimum CPU, RAM, display and input requirements before stable release.
 
 ### 7.2 Software
-Linux with Wayland (dkde-compositor on wlroots; labwc as the backup), GTK4/GLib/GIO and selected layer-shell/Wayland protocol support. No systemd or logind requirement. Optional features may use a session D-Bus and external system services.
+Linux with Wayland (dkde-compositor on wlroots; labwc as the backup), GTK4/GLib/GIO and selected layer-shell/Wayland protocol support. `dkde-pdf` also links fontconfig, to find an installed font to embed. No systemd or logind requirement. Optional features may use a session D-Bus and external system services.
 
 ### 7.3 Supported environments
 FenrirOS musl is the reference; glibc-based Linux distributions are supported. Xwayland applications may run under the compositor without making DKDE itself an X11 application.
@@ -111,6 +111,8 @@ Integrate through available Wayland protocols, workspace protocols among them; d
 
 ### 9.1 File manager
 Nautilus-level local-file operations, drag/drop, copy/cut/paste, rename, trash, properties, views and removable media integration. Windows 11-style compact icon/emoji action row is a UI target.
+
+Search is by name. By default it filters the folder shown; it can also search the folders below. Plain text matches part of a name; `*` and `?` make a pattern for the whole name; case is ignored in any script. It is built in (no `find`, no regular expressions). The subfolder search is asynchronous and can be stopped, does not enter links to folders, and is limited in how many matches it lists. Its results are not a folder: they offer no paste or new folder, accept no drop on empty space, and are not offered in the Trash.
 
 ### 9.2 Terminal integration
 DKTerm is independently maintained. DKDE integrates its launcher, default-terminal selection and theme where available; its terminal emulation implementation belongs to DKTermCore.

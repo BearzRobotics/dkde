@@ -29,6 +29,9 @@ Operands are file names or URIs and are never interpreted as shell text.
 # EXIT STATUS
 0 on a normal exit. 2 when an option is not recognised (the message goes to standard error). Other nonzero values mean the program could not start; the reason is written to standard error.
 
+# USERS
+The Users page (--page users) adds and deletes accounts, changes passwords and full names, gives or takes away administrator rights, and manages groups. It uses the system's own tools (**useradd**, **usermod**, **userdel**, **chpasswd**, **groupadd**, **groupdel** and **gpasswd**), each change run through **sudo** after asking for your password. It reads **/etc/passwd** and **/etc/group** directly, so accounts that come from the network (such as LDAP) are not listed. A password is used exactly as typed, including spaces at its start or end. If a new account's password cannot be set, the account is removed again (a home folder that was there before is kept), and you are told if removing it failed. You cannot delete root or the account you are signed in with, or remove your own administrator rights. Deleting an account asks whether to keep its files.
+
 # ONLINE ACCOUNTS
 The Online accounts page (--page online, under Accounts) is where optional online calendars are set up for dkde-calendar and the panel's reminders. It is the only place they are managed. An account is the private https link of an iCalendar (.ics) feed, with a name, an on/off switch and a choice of when to update: only when asked, or on start of dkde-calendar if the last update is older than an hour, 6 hours or a day. Add calendar saves the account and downloads it once; Update now downloads every account that is on; Remove (after a question) deletes the account and its cached copy. Each button acts at once, and is not held back until Apply like the other pages.
 

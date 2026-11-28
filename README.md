@@ -20,11 +20,11 @@ are Wayland only).
 |---|---|
 | `dkde-panel` | Taskbar, start menu, clock, wallpaper |
 | `dkde-term` | Terminal with tabs and split panes (DKTermCore) |
-| `dkde-files` | File manager |
+| `dkde-files` | File manager: tabs, search by name with wildcards (here or in subfolders), archives, terminal panel |
 | `dkde-settings` | Settings |
 | `dkde-edit` | Text editor |
 | `dkde-help` | Help viewer: DKDE's documents and the system's man pages, in tabs |
-| `dkde-pdf` | PDF viewer: tabs, search, text selection, bookmarks, highlights, notes and form filling |
+| `dkde-pdf` | PDF viewer: tabs, search, text selection, links, bookmarks, highlights, notes, form filling, stamps and watermarks, and organising pages |
 | `dkde-charmap` | Character map: every assigned Unicode block with names, search, and private-use fonts such as Rosquin Glyphs and RE_iO Script |
 | `dkde-clock` | Stopwatch, timer, alarm |
 | `dkde-calendar` | Calendar with events, notes and liturgical calendars |

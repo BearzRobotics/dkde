@@ -10,6 +10,17 @@ accounts with the system's own tools (`useradd`, `usermod`, `userdel`, `groupadd
 `src/settings/users.zig`). dkde does not depend on util-unix or util-core for now. The
 standard tools are the thing to keep improving in the meantime.
 
+## First: this conflicts with the spec
+
+Section 24 of `ai/DKDE-SPEC.md` says DKDE uses Polkit, and must not implement password
+verification, **shadow-file access** or a generic `sudo` password prompt.
+
+- The `sudo` prompt Settings uses today already breaks that rule (`docs/architecture.md`,
+  and gap G11 in `docs/decisions/0001-architecture-realignment.md`).
+- Changing accounts through a library means code in a DKDE helper writes `/etc/shadow`.
+  The spec would have to be changed to allow that, or this idea cannot go ahead as
+  described. A Polkit-authorized helper that runs the standard tools would not need it.
+
 ## The idea
 
 Use the library behind util-unix to carry out Settings' account changes, so that the
@@ -19,10 +30,11 @@ Settings runs as the signed-in user and must not run as root, so it would not ca
 library itself. A small program that runs as root would:
 
 ```
-Settings (the user) → asks for the password → dkde-accounts (root) → util-unix
+Settings (the user) → dkde-accounts (root; Polkit authorizes each request) → util-unix
 ```
 
-It would accept only a short list of operations and check every value again.
+Polkit's agent and authority would handle the password, not Settings. The helper would accept
+only a short list of operations and check every value again.
 
 What it could give:
 
@@ -64,6 +76,9 @@ versions were not looked at for this.
 
 ## Questions to settle
 
+- Should the spec allow a DKDE helper to access the shadow file?
+- Does Polkit work on the target system (musl, dinit, seatd, no logind)? The spec asks for
+  that to be shown first.
 - Does dkde's own distribution replace the standard account tools?
 - Which util-unix release would be the base, and what does it offer by then?
 - Does Settings keep the standard tools as a fallback, and for how long?
