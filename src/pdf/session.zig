@@ -17,7 +17,7 @@ const Allocator = std.mem.Allocator;
 
 pub const max_undo = 50;
 
-pub const Error = render.Document.OpenError || pdf.write.Error || pdf.annot.Error || pdf.form.Error || pdf.outline.EditError || pdf.draw.StampError || fonts.Error || error{ NoSuchPage, NothingToUndo, CannotEdit };
+pub const Error = render.Document.OpenError || pdf.write.Error || pdf.annot.Error || pdf.form.Error || pdf.outline.EditError || pdf.draw.StampError || pdf.flatten.Error || fonts.Error || error{ NoSuchPage, NothingToUndo, CannotEdit };
 
 pub const Session = struct {
     gpa: Allocator,
@@ -340,21 +340,90 @@ pub const Session = struct {
 
     pub fn fillChoice(self: *Session, field: pdf.form.Field, choice: []const u8) Error!void {
         if (field.kind == .combo) return self.fillText(field, choice);
+        return self.fillChoices(field, &.{choice});
+    }
+
+    /// Selects `choices` (any number, for a list that takes several) in a list box.
+    pub fn fillChoices(self: *Session, field: pdf.form.Field, choices: []const []const u8) Error!void {
         var upd = try self.begin();
         defer upd.deinit();
         // A list box draws all its entries, so the font must have every one of them.
-        var font: ?pdf.truetype.Font = if (anyNeedsEmbedding(field.options)) fonts.find(self.gpa, field.options) catch |e| switch (e) {
-            // The choice can still be stored; entries the built-in font lacks show as `?`.
-            error.NoFont => null,
-            else => return e,
-        } else null;
+        var font: ?pdf.truetype.Font = if (anyNeedsEmbedding(field.options)) try self.fontFor(field.options) else null;
         defer if (font) |*f| f.deinit();
         if (font) |*f| {
             var embedder = pdf.draw.Embedder.init(&upd);
-            try pdf.form.setChoicesWith(&upd, field, &.{choice}, .{ .embedder = &embedder, .font = f });
+            try pdf.form.setChoicesWith(&upd, field, choices, .{ .embedder = &embedder, .font = f });
             try embedder.finish();
-        } else try pdf.form.setChoice(&upd, field, choice);
+        } else try pdf.form.setChoices(&upd, field, choices);
         try self.commit(&upd);
+    }
+
+    /// A font with every character of `texts`, or null when there is none: for
+    /// where the value can still be stored, and only its drawing shows `?`.
+    fn fontFor(self: *Session, texts: []const []const u8) Error!?pdf.truetype.Font {
+        return fonts.find(self.gpa, texts) catch |e| switch (e) {
+            error.NoFont => null,
+            else => return e,
+        };
+    }
+
+    /// Gives the field named `only`, or every field, its default value again,
+    /// as one edit. Fields that cannot be reset (read-only, buttons,
+    /// signatures) are left alone. Returns how many were reset.
+    pub fn resetFields(self: *Session, only: ?[]const u8) Error!usize {
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const all = try self.fields(a);
+        var upd = try self.begin();
+        defer upd.deinit();
+        var embedder = pdf.draw.Embedder.init(&upd);
+        var done: usize = 0;
+        for (all) |field| {
+            if (only) |name| if (!std.mem.eql(u8, field.name, name)) continue;
+            switch (field.kind) {
+                .text, .combo, .list, .checkbox, .radio => {},
+                else => continue,
+            }
+            if (field.read_only) continue;
+            // What the default will draw, to know whether it needs a font.
+            var shown: std.ArrayList([]const u8) = .empty;
+            if (field.kind == .list) try shown.appendSlice(a, field.options);
+            if ((field.kind == .text or field.kind == .combo) and !field.password) {
+                if (try defaultText(a, &upd, field)) |text| try shown.append(a, text);
+            }
+            var font: ?pdf.truetype.Font = if (anyNeedsEmbedding(shown.items)) try self.fontFor(shown.items) else null;
+            defer if (font) |*f| f.deinit();
+            const result = if (font) |*f|
+                pdf.form.resetWith(&upd, field, .{ .embedder = &embedder, .font = f })
+            else
+                pdf.form.reset(&upd, field);
+            result catch |e| switch (e) {
+                // This one field cannot be rewritten; when it was asked for, say so.
+                error.DirectObject, error.NoAppearanceState => if (only != null) return e else continue,
+                else => return e,
+            };
+            done += 1;
+        }
+        if (done == 0) return 0;
+        try embedder.finish();
+        try self.commit(&upd);
+        return done;
+    }
+
+    /// Makes the form's filled-in fields part of their pages, as one edit.
+    /// This erases nothing: the file still holds the earlier version.
+    pub fn flattenForm(self: *Session) Error!pdf.flatten.Result {
+        var upd = try self.begin();
+        defer upd.deinit();
+        var total: pdf.flatten.Result = .{};
+        for (0..self.pageCount()) |i| {
+            const one = try pdf.flatten.widgets(&upd, try self.page(i));
+            total.flattened += one.flattened;
+            total.kept += one.kept;
+        }
+        if (total.flattened > 0) try self.commit(&upd);
+        return total;
     }
 };
 
@@ -370,6 +439,18 @@ pub fn mayOpen(uri: []const u8) bool {
         if (uri.len > scheme.len and std.ascii.startsWithIgnoreCase(uri, scheme)) return true;
     }
     return false;
+}
+
+/// The display text of `field`'s default value, if it has one.
+fn defaultText(a: Allocator, upd: *pdf.write.Update, field: pdf.form.Field) Error!?[]const u8 {
+    const dict = upd.get(field.num).asDict() orelse return null;
+    const value = pdf.form.inheritedIn(upd, dict, "DV") orelse return null;
+    if (value != .string) return null;
+    const text = try pdf.write.textToUtf8(a, value.string);
+    for (field.exports, field.options) |exported, option| {
+        if (std.mem.eql(u8, exported, text)) return option;
+    }
+    return text;
 }
 
 fn anyNeedsEmbedding(texts: []const []const u8) bool {
@@ -542,6 +623,50 @@ test "a link is found under the pointer" {
     // The cache goes with the document it was read from.
     try s.addNote(0, 1, 1, .{});
     try testing.expect(s.linkAt(0, 20, 20) != null);
+}
+
+test "several choices, reset and flatten" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const s = try Session.openBytes(testing.allocator, try buildPdf(aa, &.{
+        "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [4 0 R 5 0 R] /DA (/Helv 0 Tf 0 g) >> >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Annots [4 0 R 5 0 R] >>",
+        // A list that takes several choices (flag 22), and a text field with a default.
+        "<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 2097152 /T (fruit) /Opt [(apple) (pear) (plum)] /Rect [10 40 90 95] /P 3 0 R >>",
+        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /DV (unset) /V (unset) /Rect [10 10 120 30] /P 3 0 R >>",
+    }));
+    defer s.close();
+
+    var all = try s.fields(aa);
+    try testing.expect(all[0].multi_select);
+    try s.fillChoices(all[0], &.{ "plum", "apple" });
+    all = try s.fields(aa);
+    try testing.expectEqual(@as(usize, 2), all[0].selected.len);
+    try testing.expectEqualStrings("apple", all[0].selected[0]);
+    try testing.expectEqualStrings("plum", all[0].selected[1]);
+
+    try s.fillText(all[1], "Ada");
+    try testing.expectEqual(@as(usize, 1), try s.resetFields("name"));
+    all = try s.fields(aa);
+    try testing.expectEqualStrings("unset", all[1].value);
+    try testing.expectEqual(@as(usize, 2), all[0].selected.len);
+    try testing.expectEqual(@as(usize, 2), try s.resetFields(null));
+    try testing.expectEqual(@as(usize, 0), (try s.fields(aa))[0].selected.len);
+    // Resetting the whole form was one edit.
+    try s.undo();
+    try testing.expectEqual(@as(usize, 2), (try s.fields(aa))[0].selected.len);
+
+    try s.fillText((try s.fields(aa))[1], "kept on the page");
+    const flat = try s.flattenForm();
+    try testing.expectEqual(@as(usize, 2), flat.flattened);
+    try testing.expectEqual(@as(usize, 0), (try s.fields(aa)).len);
+    try testing.expect(std.mem.indexOf(u8, (try s.layout(0)).text, "kept on the page") != null);
+    // Nothing left to do, so no edit is recorded.
+    const history = s.history.items.len;
+    try testing.expectEqual(@as(usize, 0), (try s.flattenForm()).flattened);
+    try testing.expectEqual(history, s.history.items.len);
 }
 
 test "bookmarks are added and removed as edits" {

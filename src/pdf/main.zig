@@ -66,6 +66,7 @@ const Action = enum {
     delete_annotation,
     add_bookmark_here,
     pick_choice,
+    reset_field,
 };
 
 /// What a menu button or a dialog needs to remember.
@@ -1889,21 +1890,68 @@ const DocView = struct {
     // ---- form fields ------------------------------------------------------------------------------------
 
     /// Handles a click on a form field. Returns true when the click was on one.
-    fn hitField(self: *DocView, spot: Spot) bool {
-        const s = self.session orelse return false;
+    const FieldHit = struct { field: pdf.form.Field, widget: usize };
+
+    fn fieldUnder(self: *DocView, spot: Spot) ?FieldHit {
+        const s = self.session orelse return null;
         self.ensureFields();
-        const p = pdf.pages.page(&s.doc.doc, s.doc.pages, spot.page) orelse return false;
-        const inv = pdf.interp.baseMatrix(p).invert() orelse return false;
+        const p = pdf.pages.page(&s.doc.doc, s.doc.pages, spot.page) orelse return null;
+        const inv = pdf.interp.baseMatrix(p).invert() orelse return null;
         const u = inv.apply(spot.x, spot.y);
         for (self.fields) |f| {
             for (f.widgets, 0..) |wd, wi| {
                 if (wd.page != spot.page) continue;
                 if (u.x < wd.rect.x0 or u.x > wd.rect.x1 or u.y < wd.rect.y0 or u.y > wd.rect.y1) continue;
-                self.activateField(f, wi, spot);
-                return true;
+                return .{ .field = f, .widget = wi };
             }
         }
-        return false;
+        return null;
+    }
+
+    fn hitField(self: *DocView, spot: Spot) bool {
+        const found = self.fieldUnder(spot) orelse return false;
+        self.activateField(found.field, found.widget, spot);
+        return true;
+    }
+
+    /// Resets the field called `name`, or with null the whole form.
+    fn resetForm(self: *DocView, name: ?[]const u8) void {
+        const s = self.session orelse return;
+        // The name may belong to a menu button that goes away during the edit.
+        const owned: ?[]u8 = if (name) |n| self.allocator.dupe(u8, n) catch return else null;
+        defer if (owned) |n| self.allocator.free(n);
+        const count = s.resetFields(owned) catch |e| return self.editFailed(e);
+        if (count == 0) return self.status.setText(common.tr("There are no fields that can be reset."));
+        self.changed();
+    }
+
+    fn askToFlatten(self: *DocView) void {
+        if (self.session == null) return;
+        self.ensureFields();
+        if (self.fields.len == 0) return self.status.setText(common.tr("This file has no form to flatten."));
+        const buttons = [_][*:0]const u8{ common.tr("Cancel"), common.tr("Flatten") };
+        common.dialogs.choose(
+            self.window.as(gtk.Window),
+            common.tr("Flatten the form?"),
+            common.tr("What is filled in becomes part of the pages and can no longer be edited. Undo brings the fields back until the file is closed.\n\nThis is not redaction: the saved file still holds the earlier version, with the fields and their values."),
+            &buttons,
+            0,
+            Window,
+            onFlattenChosen,
+            self.host,
+        );
+    }
+
+    /// Takes the window, not the document: its tab may have been closed meanwhile.
+    fn onFlattenChosen(window: *Window, index: c_int) void {
+        if (index != 1) return;
+        const self = window.active() orelse return;
+        const s = self.session orelse return;
+        const result = s.flattenForm() catch |e| return self.editFailed(e);
+        if (result.flattened == 0) return self.status.setText(common.tr("Nothing could be flattened."));
+        self.changed();
+        var buf: [128]u8 = undefined;
+        if (result.kept > 0) self.status.setText(std.fmt.bufPrintSentinel(&buf, "Flattened. {d} fields stay as they were (signatures, hidden fields and the like).", .{result.kept}, 0) catch "");
     }
 
     fn activateField(self: *DocView, f: pdf.form.Field, which: usize, spot: Spot) void {
@@ -2055,6 +2103,11 @@ const DocView = struct {
             self.menuButton(box, pop, common.tr("Underline"), .{ .viewer = self, .action = .underline });
             self.menuButton(box, pop, common.tr("Strike out"), .{ .viewer = self, .action = .strikeout });
         }
+        if (self.fieldUnder(spot)) |found| if (!found.field.read_only and found.field.name.len > 0) {
+            if (self.allocator.dupeSentinel(u8, found.field.name, 0)) |name| {
+                self.menuButton(box, pop, common.tr("Reset this field"), .{ .viewer = self, .action = .reset_field, .text = name });
+            } else |_| {}
+        };
         if (self.hitAnnotation(spot)) |a| {
             if (a.kind == .note) self.menuButton(box, pop, common.tr("Edit note…"), .{ .viewer = self, .action = .edit_note, .page = spot.page, .num = a.num });
             self.menuButton(box, pop, common.tr("Delete annotation"), .{ .viewer = self, .action = .delete_annotation, .page = spot.page, .num = a.num });
@@ -2115,6 +2168,7 @@ const DocView = struct {
         const s = v.session orelse return;
         switch (act.action) {
             .copy => v.copySelection(),
+            .reset_field => if (act.text) |name| v.resetForm(name),
             .highlight => v.markSelection(.highlight),
             .underline => v.markSelection(.underline),
             .strikeout => v.markSelection(.strikeout),
@@ -2134,7 +2188,73 @@ const DocView = struct {
     }
 
     /// The options of a list or combo box, as a popup menu at the field.
+    /// A list that takes several choices: a tick box for each, and OK.
+    const MultiPick = struct {
+        viewer: *DocView,
+        name: []u8,
+        pop: *gtk.Popover,
+        checks: std.ArrayList(*gtk.CheckButton) = .empty,
+
+        fn onOk(_: *gtk.Button, pick: *MultiPick) callconv(.c) void {
+            const v = pick.viewer;
+            const pop = pick.pop;
+            // `pick` lives until the popover is gone; it goes after this.
+            defer pop.popdown();
+            const s = v.session orelse return;
+            v.ensureFields();
+            for (v.fields) |f| if (std.mem.eql(u8, f.name, pick.name)) {
+                if (f.options.len != pick.checks.items.len) return;
+                var chosen: std.ArrayList([]const u8) = .empty;
+                defer chosen.deinit(v.allocator);
+                for (pick.checks.items, f.exports) |check, exported| {
+                    if (check.getActive() != 0) chosen.append(v.allocator, exported) catch return;
+                }
+                s.fillChoices(f, chosen.items) catch |e| return v.editFailed(e);
+                v.changed();
+                return;
+            };
+        }
+
+        fn onGone(_: *gtk.Box, pick: *MultiPick) callconv(.c) void {
+            const a = pick.viewer.allocator;
+            pick.checks.deinit(a);
+            a.free(pick.name);
+            a.destroy(pick);
+        }
+    };
+
+    fn showSeveralChoices(self: *DocView, f: pdf.form.Field, spot: Spot) void {
+        const pick = self.allocator.create(MultiPick) catch return;
+        const name = self.allocator.dupe(u8, f.name) catch return self.allocator.destroy(pick);
+        const at = self.toView(spot.page, spot.x, spot.y);
+        const pop = self.newPopover(at.x, at.y);
+        pick.* = .{ .viewer = self, .name = name, .pop = pop };
+        const box = gtk.Box.new(.vertical, 4);
+        const entries = gtk.Box.new(.vertical, 0);
+        for (f.options, f.exports) |option, exported| {
+            const label = self.allocator.dupeSentinel(u8, option, 0) catch continue;
+            defer self.allocator.free(label);
+            const check = gtk.CheckButton.newWithLabel(label);
+            for (f.selected) |chosen| if (std.mem.eql(u8, chosen, exported)) check.setActive(1);
+            pick.checks.append(self.allocator, check) catch continue;
+            entries.append(check.as(gtk.Widget));
+        }
+        const scroller = gtk.ScrolledWindow.new();
+        scroller.setPropagateNaturalHeight(1);
+        scroller.setPropagateNaturalWidth(1);
+        scroller.setMaxContentHeight(320);
+        scroller.setChild(entries.as(gtk.Widget));
+        box.append(scroller.as(gtk.Widget));
+        const ok = gtk.Button.newWithLabel(common.tr("OK"));
+        _ = gtk.Button.signals.clicked.connect(ok, *MultiPick, &MultiPick.onOk, pick, .{});
+        box.append(ok.as(gtk.Widget));
+        _ = gtk.Widget.signals.destroy.connect(box, *MultiPick, &MultiPick.onGone, pick, .{});
+        pop.setChild(box.as(gtk.Widget));
+        pop.popup();
+    }
+
     fn showChoices(self: *DocView, f: pdf.form.Field, spot: Spot) void {
+        if (f.multi_select) return self.showSeveralChoices(f, spot);
         const at = self.toView(spot.page, spot.x, spot.y);
         const pop = self.newPopover(at.x, at.y);
         const box = gtk.Box.new(.vertical, 0);
@@ -2494,6 +2614,8 @@ const DocView = struct {
             act.* = .{ .viewer = self, .action = .add_note, .page = page, .x = 40, .y = 40 };
             return self.openTextDialog(act, common.tr("New note"), "", false);
         }
+        if (eql(u8, action, "reset-form")) return self.resetForm(null);
+        if (eql(u8, action, "flatten-form")) return self.askToFlatten();
         if (eql(u8, action, "add-bookmark")) return self.askBookmarkTitle(self.currentPage(), null);
         if (eql(u8, action, "toggle-sidebar")) {
             const w = self.sidebar.as(gtk.Widget);
@@ -2625,6 +2747,9 @@ const Window = struct {
                 mb.item("Annotation _Colour…", "pen-color", null),
                 .separator,
                 mb.item("Add _bookmark here", "add-bookmark", "<Control>d"),
+                .separator,
+                mb.item("_Reset Form", "reset-form", null),
+                mb.item("_Flatten Form…", "flatten-form", null),
             } },
             .{ .label = "_View", .entries = &.{
                 mb.item("Zoom _In", "zoom-in", "<Control>plus"),

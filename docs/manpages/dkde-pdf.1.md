@@ -17,6 +17,8 @@ Links: the pointer turns into a hand over a link and a tooltip shows where it go
 
 When part of a page cannot be shown, the status line says so.
 
+Forms: a list that takes several entries offers a tick box for each. Right-click a field and choose **Reset this field** to give it its default value again; **Annotate > Reset Form** does that to every field that can be filled, as one change. **Annotate > Flatten Form** makes what is filled in part of the pages, so it can no longer be edited; signature, hidden and a few other kinds of fields stay. It is **not redaction**: the saved file still holds the earlier version with the fields and their values. Undo works until the file is closed.
+
 Limits: selection works on one page at a time. Filled form fields and text boxes use Helvetica for Western European text. For other characters an installed TrueType font that has all of them is found through fontconfig, and the part of it that is used is embedded in the file. One font must cover the whole of a field or box; **.otf** fonts with CFF outlines, **.ttc** collections and fonts that do not allow it are not used, and when no font fits, the change is refused. Hebrew, Arabic and Indic scripts are stored correctly but may be drawn wrongly (no shaping or right-to-left layout). The field keeps its own font setting, so another program that edits the value later may not have these characters. In a list box with entries no font covers, those entries show as ?. Signature fields are not filled, and XFA forms are not supported. Encrypted files and files whose structure had to be repaired when opened can be read but not edited in place.
 
 # CONVENTIONS

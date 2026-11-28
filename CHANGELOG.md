@@ -5,6 +5,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 ## Unreleased
 
 **dkde-pdf**
+- **Added**: lists that take several entries can have several selected; a field or the whole form can be reset to its defaults; and Annotate > Flatten Form turns a filled form into page content (not redaction: the file keeps the earlier version).
 - **Added**: the status line says when part of a page cannot be shown, and `dkde-pdfcheck` reports what pages use that is left out or approximated (`omit-` notes).
 - **Added**: links work. Links within a file go to their place; web and email links are shown and opened only after you agree. Other kinds (such as `file:` addresses and actions that start programs) are never opened.
 - **Fixed**: with the page fitted to the window width (the usual way a file opens), the scrollbar could be shorter than the document, so its end could not be reached. The first click in a document could also jump back to the top.
