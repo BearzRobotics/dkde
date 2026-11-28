@@ -45,6 +45,23 @@ const Dlg = struct {
     n_kinds: usize = 0,
 };
 
+fn pathExists(path: []const u8) bool {
+    var buf: [512]u8 = undefined;
+    const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{path}, 0) catch return false;
+    return glib.fileTest(z.ptr, .{ .exists = true }) != 0;
+}
+
+/// The mounted btrfs volumes the kernel knows, from /sys/fs/btrfs.
+fn btrfsIds(arena: std.mem.Allocator) []const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    const dir = glib.Dir.open("/sys/fs/btrfs", 0, null) orelse return &.{};
+    defer dir.close();
+    while (dir.readName()) |name| {
+        out.append(arena, arena.dupe(u8, std.mem.span(name)) catch break) catch break;
+    }
+    return out.items;
+}
+
 const Parted = struct {
     allocator: std.mem.Allocator,
     window: *gtk.ApplicationWindow,
@@ -376,7 +393,8 @@ const Parted = struct {
         var fresh = std.heap.ArenaAllocator.init(self.allocator);
         self.scan_disks.clearRetainingCapacity();
         if (ok) {
-            const disks = model.parseLsblk(fresh.allocator(), out) catch &.{};
+            var disks = model.parseLsblk(fresh.allocator(), out) catch &.{};
+            disks = model.markPooled(fresh.allocator(), disks, btrfsIds(fresh.allocator()), pathExists) catch disks;
             self.scan_disks.appendSlice(self.allocator, disks) catch {};
         } else if (self.images.items.len == 0) {
             fresh.deinit();
@@ -671,9 +689,9 @@ const Parted = struct {
         set(self.buttons[b_format], writable and part != null);
         // Mounting does not rewrite a disk, so only the busy state matters.
         const dirty = self.pending.items.len > 0;
-        set(self.buttons[b_mount], !dirty and !self.busy and part != null and !d.?.image and part.?.mounts.len == 0 and part.?.fstype.len > 0);
-        set(self.buttons[b_unmount], !dirty and !self.busy and part != null and part.?.mounts.len > 0 and !(d != null and model.isSystemDisk(d.?)));
-        set(self.buttons[b_check], !dirty and !self.busy and part != null and part.?.mounts.len == 0 and part.?.fstype.len > 0 and fs.byId(part.?.fstype) != null and fs.byId(part.?.fstype).?.check.len > 0);
+        set(self.buttons[b_mount], !dirty and !self.busy and part != null and !d.?.image and !part.?.held and part.?.mounts.len == 0 and part.?.fstype.len > 0);
+        set(self.buttons[b_unmount], !dirty and !self.busy and part != null and !part.?.held and part.?.mounts.len > 0 and !(d != null and model.isSystemDisk(d.?)));
+        set(self.buttons[b_check], !dirty and !self.busy and part != null and !part.?.held and part.?.mounts.len == 0 and part.?.fstype.len > 0 and fs.byId(part.?.fstype) != null and fs.byId(part.?.fstype).?.check.len > 0);
         set(self.buttons[b_label], writable and part != null and part.?.fstype.len > 0 and fs.byId(part.?.fstype) != null and fs.byId(part.?.fstype).?.relabel != null);
         set(self.buttons[b_flag], writable and part != null and common.proc.hasProgram("parted") and d.?.table.len > 0);
         set(self.buttons[b_wipe], writable and part != null);

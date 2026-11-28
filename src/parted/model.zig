@@ -23,6 +23,9 @@ pub const Part = struct {
     avail: ?u64 = null,
     /// Partition flags as parted names them (images only).
     flags: []const u8 = "",
+    /// Something else is using it: encryption, LVM, RAID or a pool built on it.
+    /// `mounts` then includes what is mounted from what is stacked on it.
+    held: bool = false,
 };
 
 pub const Disk = struct {
@@ -42,6 +45,8 @@ pub const Disk = struct {
     /// A disk image file rather than a device. Its partitions have no device
     /// path of their own; they are reached through a loop device when needed.
     image: bool = false,
+    /// As `Part.held`, for something built straight on the disk.
+    held: bool = false,
 };
 
 pub const Gap = struct {
@@ -108,6 +113,22 @@ fn mountsOf(arena: Allocator, obj: std.json.ObjectMap) Allocator.Error![]const [
     return out.items;
 }
 
+/// The block devices lsblk lists under `obj`.
+fn childrenOf(obj: std.json.ObjectMap) []const std.json.Value {
+    const kids = obj.get("children") orelse return &.{};
+    return if (kids == .array) kids.array.items else &.{};
+}
+
+/// Adds the mount points of everything stacked on `obj` (`/` on an encrypted or
+/// LVM system is only reported there), however deep, to `out`.
+fn stackedMounts(arena: Allocator, obj: std.json.ObjectMap, out: *std.ArrayList([]const u8)) Allocator.Error!void {
+    for (childrenOf(obj)) |k| {
+        if (k != .object) continue;
+        try out.appendSlice(arena, try mountsOf(arena, k.object));
+        try stackedMounts(arena, k.object, out);
+    }
+}
+
 /// Parses the output of
 /// `lsblk -J -b -o NAME,PATH,TYPE,SIZE,START,FSTYPE,LABEL,MOUNTPOINTS,PTTYPE,MODEL,RM,RO,LOG-SEC`.
 /// Everything is allocated from `arena`.
@@ -127,12 +148,24 @@ pub fn parseLsblk(arena: Allocator, text: []const u8) !([]const Disk) {
         if (!std.mem.eql(u8, str(o.get("type")), "disk")) continue;
         const sector: u32 = @intCast(@max(num(o.get("log-sec")), 512));
         var parts: std.ArrayList(Part) = .empty;
-        if (o.get("children")) |kids| if (kids == .array) {
-            for (kids.array.items) |k| {
+        var disk_mounts: std.ArrayList([]const u8) = .empty;
+        try disk_mounts.appendSlice(arena, try mountsOf(arena, o));
+        var disk_held = false;
+        {
+            for (childrenOf(o)) |k| {
                 if (k != .object) continue;
                 const ko = k.object;
-                if (!std.mem.eql(u8, str(ko.get("type")), "part")) continue;
+                if (!std.mem.eql(u8, str(ko.get("type")), "part")) {
+                    // Built on the whole disk.
+                    disk_held = true;
+                    try disk_mounts.appendSlice(arena, try mountsOf(arena, ko));
+                    try stackedMounts(arena, ko, &disk_mounts);
+                    continue;
+                }
                 const name = str(ko.get("name"));
+                var mounts: std.ArrayList([]const u8) = .empty;
+                try mounts.appendSlice(arena, try mountsOf(arena, ko));
+                try stackedMounts(arena, ko, &mounts);
                 try parts.append(arena, .{
                     .path = try arena.dupe(u8, str(ko.get("path"))),
                     .number = trailingNumber(name),
@@ -140,12 +173,13 @@ pub fn parseLsblk(arena: Allocator, text: []const u8) !([]const Disk) {
                     .size = num(ko.get("size")),
                     .fstype = try arena.dupe(u8, str(ko.get("fstype"))),
                     .label = try arena.dupe(u8, str(ko.get("label"))),
-                    .mounts = try mountsOf(arena, ko),
+                    .mounts = mounts.items,
+                    .held = childrenOf(ko).len > 0,
                     .used = optNum(ko.get("fsused")),
                     .avail = optNum(ko.get("fsavail")),
                 });
             }
-        };
+        }
         std.mem.sort(Part, parts.items, {}, struct {
             fn less(_: void, a: Part, b: Part) bool {
                 return a.start < b.start;
@@ -162,7 +196,8 @@ pub fn parseLsblk(arena: Allocator, text: []const u8) !([]const Disk) {
             .readonly = flag(o.get("ro")),
             .parts = parts.items,
             .fstype = try arena.dupe(u8, str(o.get("fstype"))),
-            .mounts = try mountsOf(arena, o),
+            .mounts = disk_mounts.items,
+            .held = disk_held,
         });
     }
     return disks.items;
@@ -232,6 +267,42 @@ fn partedFs(fs: []const u8) []const u8 {
     return fs;
 }
 
+/// Marks what a pool is using although lsblk shows nothing on top of it: a
+/// member of a mounted btrfs volume that was mounted through another member, or
+/// of an imported ZFS pool. `exists` says whether a path exists (the kernel's
+/// own lists under `sys` and `proc`).
+pub fn markPooled(arena: Allocator, disks: []const Disk, btrfs_ids: []const []const u8, exists: *const fn ([]const u8) bool) Allocator.Error![]const Disk {
+    const out = try arena.dupe(Disk, disks);
+    for (out) |*d| {
+        if (try pooled(arena, d.path, d.fstype, "", btrfs_ids, exists)) d.held = true;
+        const parts = try arena.dupe(Part, d.parts);
+        for (parts) |*p| {
+            if (try pooled(arena, p.path, p.fstype, p.label, btrfs_ids, exists)) p.held = true;
+        }
+        d.parts = parts;
+    }
+    return out;
+}
+
+fn pooled(arena: Allocator, path: []const u8, fstype: []const u8, label: []const u8, btrfs_ids: []const []const u8, exists: *const fn ([]const u8) bool) Allocator.Error!bool {
+    if (std.mem.eql(u8, fstype, "btrfs")) {
+        for (btrfs_ids) |id| {
+            if (exists(try std.fmt.allocPrint(arena, "/sys/fs/btrfs/{s}/devices/{s}", .{ id, std.fs.path.basename(path) }))) return true;
+        }
+    }
+    // lsblk reports the pool's name as a member's label.
+    if (std.mem.eql(u8, fstype, "zfs_member") and label.len > 0) {
+        return exists(try std.fmt.allocPrint(arena, "/proc/spl/kstat/zfs/{s}", .{label}));
+    }
+    return false;
+}
+
+pub fn anyHeld(d: Disk) bool {
+    if (d.held) return true;
+    for (d.parts) |p| if (p.held) return true;
+    return false;
+}
+
 pub fn anyMounted(d: Disk) bool {
     if (d.mounts.len > 0) return true;
     for (d.parts) |p| if (p.mounts.len > 0) return true;
@@ -254,6 +325,7 @@ pub fn refuseReason(d: Disk) ?[]const u8 {
     if (d.readonly) return "This disk is read-only.";
     if (isSystemDisk(d)) return "This disk holds your running system, so it cannot be changed here.";
     if (anyMounted(d)) return "A partition of this disk is mounted. Unmount it first.";
+    if (anyHeld(d)) return "This disk is in use by encryption, LVM, RAID or a storage pool. Close that first.";
     return null;
 }
 
@@ -378,6 +450,58 @@ test "mounted and system disks are protected" {
     try std.testing.expect(refuseReason(disks[1]) == null);
     const root_disk: Disk = .{ .path = "/dev/x", .name = "x", .model = "", .size = 1, .sector = 512, .table = "gpt", .removable = false, .readonly = false, .parts = &.{.{ .path = "/dev/x1", .number = 1, .start = 2048, .size = 1, .fstype = "ext4", .label = "", .mounts = &.{"/"} }} };
     try std.testing.expect(isSystemDisk(root_disk));
+}
+
+test "mounts on encryption, LVM and RAID count for the disk under them" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const head = "{\"blockdevices\":[{\"name\":\"sda\",\"path\":\"/dev/sda\",\"type\":\"disk\",\"size\":1000000,\"pttype\":\"gpt\",\"children\":[{\"name\":\"sda1\",\"path\":\"/dev/sda1\",\"type\":\"part\",\"size\":900000,\"start\":2048,\"fstype\":\"crypto_LUKS\",\"mountpoints\":[null],\"children\":[";
+    const tail = "]}]}]}";
+    // LUKS, LVM inside LUKS, and md RAID, each with the root filesystem on top.
+    for ([_][]const u8{
+        "{\"type\":\"crypt\",\"mountpoints\":[\"/\"]}",
+        "{\"type\":\"crypt\",\"mountpoints\":[null],\"children\":[{\"type\":\"lvm\",\"mountpoints\":[\"/\"]}]}",
+        "{\"type\":\"raid1\",\"mountpoints\":[\"/\"]}",
+    }) |stack| {
+        const d = (try parseLsblk(a, try std.mem.concat(a, u8, &.{ head, stack, tail })))[0];
+        try std.testing.expect(isSystemDisk(d));
+        try std.testing.expect(d.parts[0].held);
+        try std.testing.expect(refuseReason(d) != null);
+    }
+    // Open but with nothing mounted on it: still in use.
+    const open = (try parseLsblk(a, try std.mem.concat(a, u8, &.{ head, "{\"type\":\"crypt\",\"mountpoints\":[null]}", tail })))[0];
+    try std.testing.expect(!isSystemDisk(open));
+    try std.testing.expect(refuseReason(open) != null);
+    // Closed: it may be changed.
+    const closed = (try parseLsblk(a, try std.mem.concat(a, u8, &.{ head, "", tail })))[0];
+    try std.testing.expect(refuseReason(closed) == null);
+    // The same stack built on a whole disk, with no partition table.
+    const bare = (try parseLsblk(a, "{\"blockdevices\":[{\"name\":\"sdb\",\"path\":\"/dev/sdb\",\"type\":\"disk\",\"size\":1000,\"children\":[{\"type\":\"crypt\",\"mountpoints\":[\"[SWAP]\"]}]}]}"))[0];
+    try std.testing.expect(isSystemDisk(bare));
+}
+
+fn fakePool(path: []const u8) bool {
+    return std.mem.eql(u8, path, "/sys/fs/btrfs/1234/devices/sdc1") or std.mem.eql(u8, path, "/proc/spl/kstat/zfs/tank");
+}
+
+test "members of a mounted btrfs volume or an imported ZFS pool are in use" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const base: Disk = .{ .path = "/dev/sdc", .name = "sdc", .model = "", .size = 1, .sector = 512, .table = "gpt", .removable = false, .readonly = false, .parts = &.{} };
+    const cases = [_]struct { path: []const u8, fstype: []const u8, label: []const u8, held: bool }{
+        .{ .path = "/dev/sdc1", .fstype = "btrfs", .label = "", .held = true },
+        .{ .path = "/dev/sdc2", .fstype = "btrfs", .label = "", .held = false },
+        .{ .path = "/dev/sdc1", .fstype = "zfs_member", .label = "tank", .held = true },
+        .{ .path = "/dev/sdc1", .fstype = "zfs_member", .label = "gone", .held = false },
+    };
+    for (cases) |c| {
+        var d = base;
+        d.parts = &.{.{ .path = c.path, .number = 1, .start = 2048, .size = 1, .fstype = c.fstype, .label = c.label, .mounts = &.{} }};
+        const got = try markPooled(arena.allocator(), &.{d}, &.{"1234"}, fakePool);
+        try std.testing.expectEqual(c.held, got[0].parts[0].held);
+        try std.testing.expectEqual(c.held, refuseReason(got[0]) != null);
+    }
 }
 
 test "a filesystem on the bare disk is not free space, and its mount counts" {
