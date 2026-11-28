@@ -1,13 +1,17 @@
 .{
     .name = .dkde,
     .fingerprint = 0xedcba0fd02e2c514,
-    .version = "0.3.5",
+    .version = "0.3.6",
     .minimum_zig_version = "0.17.1",
     .dependencies = .{
         .zigimg = .{ .path = "third_party/zigimg" },
+        // The Wayland compositor and the X11 window manager: packages of their own (each also
+        // builds alone from its folder), configured only when they are being built.
+        .compositor = .{ .path = "src/compositor" },
+        .wm = .{ .path = "src/xwm" },
         .toml = .{
-            .url = "https://github.com/BearzRobotics/toml-zig/releases/download/v0.2.0/toml-0.2.0.tar.gz",
-            .hash = "toml-0.2.0-dDatLIhiAgBq8q4SLFu0RZSUcCJLAwl49UZRIZ-fHqqx",
+            .url = "https://github.com/BearzRobotics/toml-zig/releases/download/v0.3.0/toml-0.3.0.tar.gz",
+            .hash = "toml-0.3.0-dDatLHHPAwDGJqTia2l02jhc2Hm6D0tZw1VtOAOWcm-E",
         },
         .dkman = .{
             .url = "https://github.com/BearzRobotics/dkman/releases/download/v0.5.1/dkman-0.5.1.tar.gz",
@@ -31,8 +35,8 @@
         },
         // DKTermCore: terminal state, key encoding, schemes, PTY, and libghostty-vt.
         .dkterm = .{
-            .url = "https://github.com/BearzRobotics/dkterm/releases/download/v0.1.1/dkterm-0.1.1.tar.gz",
-            .hash = "dkterm-0.1.1-yV77apLsAADpg3_p1DCpxNqOpEyzQIwG8guWTRiSd5u_",
+            .url = "https://github.com/BearzRobotics/dkterm/releases/download/v0.2.1/dkterm-0.2.1.tar.gz",
+            .hash = "dkterm-0.2.1-yV77apfjAQB5mXtM-D9ySsF3sx0ZQLWZmY0uWVgPd2K_",
         },
         .gobject = .{
             .url = "https://deps.files.ghostty.org/gobject-2026-10-02-38-1.tar.zst",

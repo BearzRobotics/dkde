@@ -3,11 +3,16 @@
 //! `src/<name>/build.zig`; this file sets up what programs share and calls
 //! each of them.
 //!
-//!   zig build                    every program (also: -Dapp=all)
+//!   zig build                    every program, with dkde-compositor and dkde-wm (also: -Dapp=all)
 //!   zig build -Dapp=calc         one program, with only its own data
 //!   zig build -Dapp=term,edit    a few programs
 //!   zig build test               the tests of what is selected
 //!   zig build run-<name>         build and run one program from the tree
+//!
+//! dkde-compositor needs wlroots (-Dwlroots=0.20 for 0.20) and dkde-wm needs
+//! X11 libraries. -Dcompositor=false and -Dwm=false leave them out;
+//! -Dapp=compositor and -Dapp=wm build just them. dkde-xcomp is built from
+//! src/xcomp.
 
 const std = @import("std");
 
@@ -41,6 +46,9 @@ const programs = .{
     .{ "help", @import("src/help/build.zig") },
     .{ "pdfcheck", @import("src/pdfcheck/build.zig") },
 };
+
+/// -Dapp names that are packages of their own (see `addSessionPackages`).
+const packages = [_][]const u8{ "compositor", "wm" };
 
 /// Data files (under data/) installed with every program in a per-app install.
 const shared_data = [_][]const u8{ "style.css", "dkde.toml" };
@@ -340,6 +348,8 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    addSessionPackages(&ctx, selection, strip, test_step);
+
     if (selection.single()) {
         // A per-app install carries only that program's data (and the shared defaults).
         for (shared_data) |file| installDataFile(b, file);
@@ -357,8 +367,10 @@ pub fn build(b: *std.Build) void {
             const generated = sed.addOutputFileArg(script);
             b.getInstallStep().dependOn(&b.addInstallBinFile(generated, script).step);
         }
-        // The Wayland session entry for greetd and other login managers.
-        b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path("data/dkde.desktop"), .prefix, "share/wayland-sessions/dkde.desktop").step);
+        // The Wayland session entries for greetd and other login managers: dkde, and the labwc backup.
+        for ([_][]const u8{ "dkde.desktop", "dkde-labwc.desktop" }) |entry| {
+            b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path(b.fmt("data/{s}", .{entry})), .prefix, b.fmt("share/wayland-sessions/{s}", .{entry})).step);
+        }
         // Which DKDE program opens what, until the person chooses otherwise.
         b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path("data/dkde-mimeapps.list"), .prefix, "share/applications/dkde-mimeapps.list").step);
         // The Fluent icon theme goes where every toolkit looks for icon themes.
@@ -366,6 +378,43 @@ pub fn build(b: *std.Build) void {
         // Microsoft's Fluent UI System Icons for dkde's own controls; it inherits Fluent.
         b.installDirectory(.{ .source_dir = b.path("icons/dkde-ui"), .install_dir = .prefix, .install_subdir = "share/icons/dkde-ui" });
     }
+}
+
+/// dkde-compositor and dkde-wm, from their own packages. A package is
+/// configured, and its libraries looked for, only when it is being built.
+fn addSessionPackages(ctx: *const Ctx, selection: Selection, strip: bool, test_step: *std.Build.Step) void {
+    const b = ctx.b;
+    const want_compositor = b.option(bool, "compositor", "Build dkde-compositor, which needs wlroots (default: true)") orelse true;
+    const want_wm = b.option(bool, "wm", "Build dkde-wm, which needs X11 libraries (default: true)") orelse true;
+    const wlroots = b.option([]const u8, "wlroots", "wlroots version for dkde-compositor: 0.19 (default) or 0.20") orelse "0.19";
+    const protocols = b.option([]const u8, "wayland-protocols", "Folder with the wayland-protocols XML files, for dkde-compositor") orelse "/usr/share/wayland-protocols";
+
+    // Naming one with -Dapp builds it whatever -Dcompositor and -Dwm say.
+    if (selection.has("compositor") and (want_compositor or !selection.all)) {
+        const dep = b.dependency("compositor", .{ .target = ctx.target, .optimize = ctx.optimize, .wlroots = wlroots, .@"wayland-protocols" = protocols });
+        const exe = addPackageProgram(b, dep, "dkde-compositor", strip, test_step, "test-compositor");
+        b.step("run-compositor", "Build and run dkde-compositor").dependOn(&b.addRunArtifact(exe).step);
+    }
+    if (selection.has("wm") and (want_wm or !selection.all)) {
+        const dep = if (ctx.randr_prefix) |prefix|
+            b.dependency("wm", .{ .target = ctx.target, .optimize = ctx.optimize, .@"xcb-randr-prefix" = prefix })
+        else
+            b.dependency("wm", .{ .target = ctx.target, .optimize = ctx.optimize });
+        _ = addPackageProgram(b, dep, "dkde-wm", strip, test_step, "test-wm");
+        // The login-manager entry for the X11 session.
+        b.getInstallStep().dependOn(&b.addInstallFileWithDir(b.path("data/dkde-x11.desktop"), .prefix, "share/xsessions/dkde-x11.desktop").step);
+    }
+}
+
+/// Installs a package's program and adds the package's tests to ours.
+fn addPackageProgram(b: *std.Build, dep: *std.Build.Dependency, name: []const u8, strip: bool, test_step: *std.Build.Step, own_test_step: []const u8) *std.Build.Step.Compile {
+    const exe = dep.artifact(name);
+    exe.root_module.strip = strip;
+    b.installArtifact(exe);
+    const tests = &dep.builder.top_level_steps.get("test").?.step;
+    test_step.dependOn(tests);
+    b.step(own_test_step, b.fmt("Run the tests of {s}", .{name})).dependOn(tests);
+    return exe;
 }
 
 /// The programs -Dapp chose.
@@ -382,6 +431,7 @@ const Selection = struct {
             if (!known(name)) {
                 var list: std.ArrayList(u8) = .empty;
                 inline for (programs) |p| list.print(b.allocator, " {s}", .{p[0]}) catch @panic("OOM");
+                for (packages) |package| list.print(b.allocator, " {s}", .{package}) catch @panic("OOM");
                 std.process.fatal("unknown -Dapp={s}; choose all or any of:{s}", .{ name, list.items });
             }
             names.append(b.allocator, name) catch @panic("OOM");
@@ -392,6 +442,7 @@ const Selection = struct {
 
     fn known(name: []const u8) bool {
         inline for (programs) |p| if (std.mem.eql(u8, p[0], name)) return true;
+        for (packages) |package| if (std.mem.eql(u8, package, name)) return true;
         return false;
     }
 

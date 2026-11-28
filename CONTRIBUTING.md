@@ -9,6 +9,10 @@ as the code when the code changes the design.
 - **Spec first.** No new dependency, Wayland protocol or config key without
   updating `ai/DKDE-SPEC.md` in the same change. If the spec turns out to be wrong,
   fix the spec, then the code.
+- **New features target `dkde-compositor` and `dkde-wm` only.** labwc is the
+  backup compositor and is being phased out: keep what already works with it
+  working, but add nothing new for it. Support is removed only after the new
+  compositor has had real use.
 - **One topic per pull request.** Small and reviewable beats large.
 - **Tests ship with the logic they test.** Parsing, config handling, labwc
   `rc.xml` editing and similar pure logic need unit tests.
@@ -21,7 +25,7 @@ as the code when the code changes the design.
 ## Building and testing
 
 ```
-zig build               # needs Zig 0.17.1, see the README for libraries (Debug build)
+zig build               # everything, with the compositor and window manager; needs Zig 0.17.1 and the README's libraries (Debug build)
 zig build --release=small   # what to install: far smaller and faster
 zig build test          # unit tests
 zig build -Dapp=term    # one program (or -Dapp=term,edit; each has src/<name>/build.zig)

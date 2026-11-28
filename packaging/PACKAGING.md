@@ -39,11 +39,11 @@ Make one yourself from a clean checkout with `scripts/make-source-tarball.sh`.
 
 The compositor's optional desktop effects (colour filters, zoom, wobbly windows, blur, cube, snow) draw with GLES shaders, so it links GLESv2 and EGL; at run time they need wlroots' GLES2 renderer (Mesa; the default on real hardware) and switch themselves off with the pixman renderer.
 
-`dkde-compositor` (`src/compositor`), `dkde-wm` (`src/xwm`) and `dkde-xcomp` (`src/xcomp`) are separate Zig
-packages so the main build needs neither wlroots nor X11 headers.
-`packaging/build.sh` builds and installs all three by default, from the same vendored
-`zig-pkg/`; `COMPOSITOR=no`, `WM=no` or `XCOMP=no` leaves one out (a split package can run
-the script twice, or take just those files from the stage). `WLROOTS=0.20`
+The main `zig build` includes `dkde-compositor` (`src/compositor`) and `dkde-wm` (`src/xwm`);
+`dkde-xcomp` (`src/xcomp`) is built separately. `packaging/build.sh` builds and installs all
+three by default, from the same vendored `zig-pkg/`; `COMPOSITOR=no`, `WM=no` or `XCOMP=no`
+leaves one out (with plain `zig build`: `-Dcompositor=false`, `-Dwm=false`). A split package can
+take just those files from the stage. `WLROOTS=0.20`
 picks the wlroots version, `XCB_RANDR_PREFIX=DIR` a libxcb-randr that is not
 system-wide (`XCB_PREFIX=DIR` likewise for libxcb-composite, -damage and -xfixes).
 
@@ -82,7 +82,7 @@ Things worth knowing:
 |---|---|
 | `$PREFIX/bin/` | `dkde-panel`, `dkde-session`, `dkde-greeter`, `dkde-greeter-session`, `dkde-greeter-start`, `dkde-setup`, `dkde-idle`, `dkde-pointer`, the apps (`dkde-term`, `-files`, `-settings`, `-edit`, `-calc`, `-calendar`, `-clock`, `-color`, `-charmap`, `-parted`, `-hex`, `-snip`, `-tasks`, `-view`) |
 | `$PREFIX/share/applications/` | the apps' `.desktop` files |
-| `$PREFIX/share/wayland-sessions/dkde.desktop`, `dkde-compositor.desktop` | the login-manager session entries (labwc; dkde-compositor) |
+| `$PREFIX/share/wayland-sessions/dkde.desktop`, `dkde-labwc.desktop` | the login-manager session entries (dkde on dkde-compositor; the labwc backup) |
 | `$PREFIX/share/xsessions/dkde-x11.desktop` | the X11 session entry (dkde-wm) |
 | `$PREFIX/share/dkde/` | defaults (`*.toml`, `style.css`), labwc config and keybindings, the service-file templates |
 | `/etc/greetd/config.toml`, `/etc/pam.d/greetd` | login screen (from `packaging/build.sh install`) |
@@ -98,7 +98,7 @@ on first use; `dkde-setup --once` runs from `dkde-session` on first login.
 | What | Why | Command / library |
 |---|---|---|
 | GTK 4 runtime libraries, gtk4-layer-shell, libwayland-client | every program | |
-| `labwc` 0.9.3 or newer | the compositor; must offer `wlr-layer-shell`, `wlr-foreign-toplevel-management`, `wlr-screencopy` (`ext-workspace-v1` and `wlr-virtual-pointer` are optional features) | `labwc` |
+| `labwc` 0.9.3 or newer (optional: the backup compositor, being phased out) | if used, must offer `wlr-layer-shell`, `wlr-foreign-toplevel-management`, `wlr-screencopy` (`ext-workspace-v1` and `wlr-virtual-pointer` are optional features) | `labwc` |
 | `shared-mime-info` | file types | |
 | an icon theme (Papirus is the default) and fonts (Noto) | icons and glyphs | |
 | `dbus` | the session bus for notifications, **calendar reminders** and the tray (`dkde-session` starts one with `dbus-run-session`) | `dbus-run-session` |
@@ -114,7 +114,7 @@ packages are added). As a safety net, every dkde program compiles the system's s
 `~/.cache/dkde/schemas` at start-up when none are compiled, but an image should not rely on it.
 
 **The login screen** lists every session entry it finds in `share/wayland-sessions` and
-`share/xsessions` whose program is installed (dkde on labwc, dkde-compositor, dkde-wm), and
+`share/xsessions` whose program is installed (dkde, the labwc backup, dkde on X11), and
 remembers the last choice in `/var/cache/dkde-greeter/last-session` (the install step creates the
 folder, owned by the greeter account).
 
@@ -131,9 +131,11 @@ dependencies). It needs `parted`, and util-linux's `lsblk` (with `-J`) and
 filesystem is offered only when its tools are installed (`e2fsprogs`,
 `dosfstools`, `xfsprogs`, `btrfs-progs`, `exfatprogs`, `ntfs-3g`, ...).
 
-With dkde-compositor and dkde-wm installed, labwc becomes optional: it is only
-the default of `dkde-session` (`DKDE_COMPOSITOR`, `compositor=` in
-`~/.config/dkde/session.conf`, or `--x11`). dkde-compositor also runs Xwayland
+dkde-compositor is the default Wayland compositor and dkde-wm the X11 window manager. labwc is
+optional: `dkde-session` and the login screen use it only when dkde-compositor is not installed or
+fails in its first ten seconds, or when it is chosen (`DKDE_COMPOSITOR`, or `compositor=labwc` in
+`~/.config/dkde/session.conf`; `DKDE_GREETER_COMPOSITOR=labwc` for the login screen). Its support is
+being phased out. dkde-compositor also runs Xwayland
 (optional) for X11 programs. dkde-wm needs an X server (Xorg or Xvfb).
 
 **Drives in Files:** unmounted partitions on removable drives are listed with `lsblk` and mounted on
@@ -178,7 +180,7 @@ one. Apps allocate with plain `malloc` and nothing polls while idle.
    pkg-config modules). *Unverified: GTK 4 and gtk4-layer-shell on musl.*
 2. `packaging/build.sh install` finishes; `ldd $(command -v dkde-panel)` shows
    no missing libraries.
-3. `dkde-session` from a tty starts labwc and the panel (taskbar, start menu).
+3. `dkde-session` from a tty starts dkde-compositor and the panel (taskbar, start menu).
 4. `dinitctl enable seatd dbus greetd`, reboot: the greeter appears and logs in.
 5. Open `dkde-term`, `dkde-files`, `dkde-settings`, `dkde-calendar`.
 6. Create a calendar event with a reminder two minutes ahead; the notification

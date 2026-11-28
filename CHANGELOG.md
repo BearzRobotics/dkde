@@ -2,7 +2,22 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
-## Unreleased
+## 0.3.6 (2026-11-27)
+
+**Pre-release.** dkde-compositor is now the default for the session and the login screen, and that has not been tried on a real boot: the new `--kiosk` login screen, the fix for windows that start fullscreen or maximized, the default session and an actual fall back to labwc are untested (the fall back scripts were tried with stand-in programs). If the login screen gives trouble, set `command = "env DKDE_GREETER_COMPOSITOR=labwc dkde-greeter-session"` in `/etc/greetd/config.toml`. Console switching was tested in a VM, before the other changes here; not on real hardware or with two monitors. On X11, the picture can stay off after returning from another console until the output is turned off and on with `xrandr`.
+
+**Building**
+- **Changed**: a plain `zig build` now builds dkde-compositor and dkde-wm too, so it needs wlroots (`-Dwlroots=0.20` for 0.20) and the X11 libraries. `-Dcompositor=false` and `-Dwm=false` leave them out. `-Dapp=compositor`, `-Dapp=wm`, `zig build test-compositor` and `test-wm` are new; `zig build test` runs their tests. dkde-xcomp is still built from `src/xcomp`.
+
+**Default compositor** (labwc deprecation, step one)
+- **Changed**: the Wayland session and the login screen run **dkde-compositor** by default. labwc is the backup: it is used when dkde-compositor is not installed or fails in its first ten seconds, or when it is chosen (the "dkde (labwc, backup)" login entry, Settings > Windows, `compositor=labwc` in `session.conf`, `DKDE_GREETER_COMPOSITOR=labwc`). New features come to dkde-compositor and dkde-wm only. labwc support is removed later, after real use of the new compositor.
+- **Note if you used labwc:** an empty `session.conf` now means dkde-compositor. Shortcuts and mouse or touchpad settings made for labwc (`~/.config/labwc/rc.xml`) are not carried over; set them again in Settings, or keep labwc. (The keyboard layout in labwc's `environment` file is still read.)
+- **Added**: `dkde-compositor --kiosk COMMAND`, for the login screen: no shortcuts, no X11 programs.
+- **Changed**: login entries are now `dkde.desktop` (dkde) and `dkde-labwc.desktop`; `dkde-compositor.desktop` is gone. The login screen lists "dkde" first (it preselected the X11 session when both were installed).
+- **Fixed**: dkde-compositor ignored a window that asked to start fullscreen or maximized. XDG autostart programs could be skipped after signing in again under dkde-compositor on a system without logind.
+
+**Dependencies**
+- **Changed**: toml-zig 0.3.0 (all four manifests) and DKTermCore (dkterm) 0.2.1. DKTermCore is LGPL-2.0-or-later from 0.2.0 (it was MIT). It now builds libghostty-vt in dkde's optimize mode instead of always ReleaseFast, so safe builds check the parser of terminal output. toml-zig 0.3.0 refuses some input it used to accept, such as a float too large for 64 bits.
 
 **dkde-hex**
 - **Changed**: Kaitai `.ksy` files are read with yaml-zig 0.3.1, fetched as a package. The vendored zig-yaml and the text rewriting it needed are gone. A description that uses YAML aliases is refused. The format index cache is rebuilt once.
@@ -16,6 +31,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 - **Added, window management**: `[[rules]]` (by application id or title: floating, workspace, sticky, above, below, maximized, fullscreen, opacity, position, size), `placement` (cascade, center, smart, pointer), edge magnetism when dragging (`snap-windows`), dimming of unfocused windows (`inactive-opacity`) and trail focus, Opacify, the actions `put`, `sticky`, `above`, `below`, `show-desktop` (Super+D), `opacity-up/down`, tab groups (Super+G, Super+] / Super+[), the shelf (Super+Shift+S) and mouse gestures (Super + right button; `[gestures]`).
 - **Added, with a wlroots render pass** (works with any renderer): window animations (open, minimize, restore), Scale (Super+W), Expo (Super+E) and the Alt+Tab switcher with previews as a strip or a ring.
 - **Added, with our own GLES composer** (`src/gfx.zig`, pure Zig; needs the GLES2 renderer): close animations, whole-screen colour filters (negative, grayscale, sepia, high contrast, protanopia, deuteranopia, tritanopia simulations), a screen magnifier (Super+=, Super+-, Super+0) and lens (Super+M), wobbly windows, blur behind translucent windows, motion blur, a desktop cube (tilted, with a top and a floor reflection), snow, water ripples, flames at the pointer (Super+Shift+F) and drawing on the screen (Super+Shift+P), plus Super+P to find the pointer.
+- **Fixed**: Ctrl+Alt+F1 … F12 did nothing; they now switch consoles. Also fixed what a switch (including `chvt`) or an unplugged screen would run into: the compositor read freed memory when the settings were reloaded after a mouse or touchpad had been removed; panels and other layer surfaces on a removed screen were not told they were closed; a screen that appeared while locked had no black cover; the lock screen got no keyboard focus if it came up before the keyboard; and a returning screen lost its mode, scale, rotation and position.
 - **Fixed**: the GLES composer asked wlroots for a new swapchain every frame and leaked all its buffers; the compositor was killed for running out of memory within two minutes in the VM. It now uses the output's own swapchain.
 - Window rules, placement, key and gesture parsing, animation timing, overview and cube geometry, wobble physics, filters, snow, fire and gestures are pure modules with unit tests, shared with dkde-wm and Settings through `shared.zig`.
 

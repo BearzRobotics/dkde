@@ -13,6 +13,7 @@
 #include <libinput.h>
 #include <wlr/backend.h>
 #include <wlr/backend/libinput.h>
+#include <wlr/backend/session.h>
 #include <wlr/render/allocator.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>

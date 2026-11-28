@@ -1564,11 +1564,11 @@ pub const SettingsWindow = struct {
         // Which window system starts at the next sign-in (dkde-session reads session.conf).
         const text = self.readSessionConf();
         defer self.allocator.free(text);
-        const choices = [_]?[*:0]const u8{ "labwc", "DKDE compositor (Wayland)", "DKDE window manager (X11)", null };
+        const choices = [_]?[*:0]const u8{ "DKDE compositor (Wayland)", "DKDE window manager (X11)", "labwc (backup, being phased out)", null };
         const picker = gtk.DropDown.newFromStrings(@ptrCast(&choices));
         picker.setSelected(@intFromEnum(sessionconf.current(text)));
         _ = gobject.Object.signals.notify.connect(picker, *SettingsWindow, &onSessionPicked, self, .{ .detail = "selected" });
-        addRowDesc(page, common.tr("Window system at next sign-in"), common.tr("Takes effect the next time you sign in. The DKDE choices need dkde-compositor or dkde-wm installed."), picker.as(gtk.Widget));
+        addRowDesc(page, common.tr("Window system at next sign-in"), common.tr("Takes effect the next time you sign in. labwc is used instead of the DKDE compositor when that is not installed or fails to start. New features come to the DKDE compositor and window manager only."), picker.as(gtk.Widget));
 
         if (!self.ownSession()) {
             const note = gtk.Label.new(common.tr("The options below are for DKDE's own compositor and window manager. This session runs labwc, which is set through its own files."));

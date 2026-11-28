@@ -1,6 +1,6 @@
 //! dkde-wm: DKDE's X11 window manager (experimental; see ai/COMPOSITOR-SPEC.md
-//! section 5). A separate package, like the compositor, so the main build
-//! needs no X11 development files. Build it from this folder:
+//! section 5). A package of its own, like the compositor: the main build takes
+//! it in, and it also builds alone from this folder:
 //!
 //!   zig build        the window manager
 //!   zig build test   its tests

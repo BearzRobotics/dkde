@@ -23,7 +23,7 @@ const snow_mod = shared.snow;
 const cube_mod = shared.cube;
 const fx = shared.fx;
 
-const version = "0.3.1";
+const version = "0.3.6";
 const gpa = std.heap.c_allocator;
 
 var debug_on = false;

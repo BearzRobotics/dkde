@@ -9,7 +9,7 @@ dkde-wm - DKDE's own X11 window manager (experimental)
 **dkde-wm** [**--help**] [**--version**]
 
 # DESCRIPTION
-A window manager for X11 (Xorg or XLibre), written against plain XCB, with no compositing of its own (**dkde-xcomp**(1) does that). It is a separate package (**src/xwm**) so the rest of DKDE builds without X11 development files. It shares its layout, shortcut and settings code with **dkde-compositor**, so the same **compositor.toml** and the same keys apply.
+A window manager for X11 (Xorg or XLibre), written against plain XCB, with no compositing of its own (**dkde-xcomp**(1) does that). It is a package of its own (**src/xwm**), built with the rest of DKDE or alone. It shares its layout, shortcut and settings code with **dkde-compositor**, so the same **compositor.toml** and the same keys apply.
 
 Windows are not reparented and get no frame: DKDE's programs draw their own title bars. Windows float by default; **Super+T** switches the workspace to tiling and back. **Alt+left-drag** moves a window and **Alt+right-drag** resizes it from the nearest corner. **Super+1** to **Super+9** switch workspace, **Super+Shift+1** to **9** carry the focused window, **Alt+F4** closes, and **Super+Left/Right/Up/Down** snap.
 

@@ -281,7 +281,7 @@ pub fn remove(id: []const u8) Error!void {
 pub fn runOnce(gpa: std.mem.Allocator) void {
     var mb: [512]u8 = undefined;
     const mark = std.fmt.bufPrintSentinel(&mb, "{s}/dkde-autostart.done", .{std.mem.span(glib.getUserRuntimeDir())}, 0) catch return;
-    const session = std.mem.span(glib.getenv("LABWC_PID") orelse glib.getenv("WAYLAND_DISPLAY") orelse "");
+    const session = std.mem.span(glib.getenv("DKDE_SESSION_PID") orelse glib.getenv("LABWC_PID") orelse glib.getenv("WAYLAND_DISPLAY") orelse "");
     var contents: [*]u8 = undefined;
     var length: usize = 0;
     if (glib.fileGetContents(mark, &contents, &length, null) != 0) {

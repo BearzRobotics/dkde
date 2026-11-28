@@ -1,6 +1,6 @@
-//! dkde-compositor: DKDE's own Wayland compositor (experimental; see
-//! ai/COMPOSITOR-SPEC.md). A separate package so the rest of dkde builds
-//! without wlroots; build it from this folder:
+//! dkde-compositor: DKDE's own Wayland compositor (see ai/COMPOSITOR-SPEC.md).
+//! A package of its own: the main build takes it in, and it also builds alone
+//! from this folder:
 //!
 //!   zig build                      the compositor
 //!   zig build run                  run it (nested in a Wayland session, or headless)

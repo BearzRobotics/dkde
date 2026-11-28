@@ -103,29 +103,19 @@ check() {
 
 build() {
     check
-    say "building (mode $MODE, cpu $CPU${TARGET:+, target $TARGET})"
+    say "building (mode $MODE, cpu $CPU${TARGET:+, target $TARGET}${WLROOTS:+, wlroots $WLROOTS})"
+    compositor=false wm=false
+    [ "$COMPOSITOR" = yes ] && compositor=true
+    [ "$WM" = yes ] && wm=true
     # --system: never touch the network, read dependencies from zig-pkg/.
+    # This one build covers every program, with dkde-compositor and dkde-wm.
     # shellcheck disable=SC2086
     "$ZIG" build --release="$MODE" -Dcpu="$CPU" ${TARGET:+-Dtarget="$TARGET"} \
+        -Dcompositor="$compositor" -Dwm="$wm" ${WLROOTS:+-Dwlroots="$WLROOTS"} \
+        ${XCB_RANDR_PREFIX:+-Dxcb-randr-prefix="$XCB_RANDR_PREFIX"} \
         --system zig-pkg --prefix "$PREFIX" $FLAGS install
-    # The compositor and the X11 window manager are separate Zig packages (so the
-    # main build needs neither wlroots nor X11); they share the same vendored
-    # dependencies and install into the same prefix.
-    if [ "$COMPOSITOR" = yes ]; then
-        say "building dkde-compositor (wlroots $WLROOTS)"
-        # shellcheck disable=SC2086
-        (cd src/compositor && "$ZIG" build --release="$MODE" -Dcpu="$CPU" ${TARGET:+-Dtarget="$TARGET"} \
-            -Dwlroots="$WLROOTS" ${XCB_RANDR_PREFIX:+-Dxcb-randr-prefix="$XCB_RANDR_PREFIX"} \
-            --system "$src/zig-pkg" --prefix "$PREFIX" $FLAGS install)
-        install -D -m 644 data/dkde-compositor.desktop "$DESTDIR$PREFIX/share/wayland-sessions/dkde-compositor.desktop"
-    fi
-    if [ "$WM" = yes ]; then
-        say "building dkde-wm"
-        # shellcheck disable=SC2086
-        (cd src/xwm && "$ZIG" build --release="$MODE" -Dcpu="$CPU" ${TARGET:+-Dtarget="$TARGET"} \
-            ${XCB_RANDR_PREFIX:+-Dxcb-randr-prefix="$XCB_RANDR_PREFIX"} \
-            --system "$src/zig-pkg" --prefix "$PREFIX" $FLAGS install)
-    fi
+    # The X11 compositing manager is a separate Zig package; it shares the same
+    # vendored dependencies and installs into the same prefix.
     if [ "$XCOMP" = yes ]; then
         say "building dkde-xcomp"
         # shellcheck disable=SC2086

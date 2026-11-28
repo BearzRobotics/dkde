@@ -272,6 +272,21 @@ pub const defaults = [_]Entry{
     .{ .key = "W-S-9", .action = "move-to-workspace 9" },
 };
 
+/// The console a keysym asks for: XF86Switch_VT_1 .. XF86Switch_VT_12.
+pub fn consoleOf(sym: u32) ?c_uint {
+    const first: u32 = 0x1008FE01;
+    if (sym < first or sym > first + 11) return null;
+    return @intCast(sym - first + 1);
+}
+
+test "the console switch keysyms" {
+    try std.testing.expectEqual(@as(?c_uint, 1), consoleOf(0x1008FE01));
+    try std.testing.expectEqual(@as(?c_uint, 12), consoleOf(0x1008FE0C));
+    try std.testing.expectEqual(@as(?c_uint, null), consoleOf(0x1008FE00));
+    try std.testing.expectEqual(@as(?c_uint, null), consoleOf(0x1008FE0D));
+    try std.testing.expectEqual(@as(?c_uint, null), consoleOf(0xffbf)); // plain F2
+}
+
 test "keys parse" {
     const k = parseKey("C-A-t").?;
     try std.testing.expectEqual(Mod.ctrl | Mod.alt, k.mods);

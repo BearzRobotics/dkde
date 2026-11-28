@@ -3,13 +3,13 @@
 % 2026
 
 # NAME
-dkde-compositor - DKDE's own Wayland compositor (experimental)
+dkde-compositor - DKDE's own Wayland compositor
 
 # SYNOPSIS
-**dkde-compositor** [**-h** | **--help**] [**-V** | **--version**]
+**dkde-compositor** [**--kiosk** *COMMAND*] [**-h** | **--help**] [**-V** | **--version**]
 
 # DESCRIPTION
-A Wayland compositor on wlroots, for the DKDE desktop. It is a separate package (**src/compositor**) because the rest of DKDE builds without wlroots. It runs from a TTY on DRM/KMS through seatd, nested in another Wayland session, or headless (**WLR_BACKENDS=headless**). **dkde-session** runs it when **DKDE_COMPOSITOR=dkde-compositor** is set or **~/.config/dkde/session.conf** has a line **compositor=dkde-compositor**.
+A Wayland compositor on wlroots, for the DKDE desktop. It is a package of its own (**src/compositor**), built with the rest of DKDE or alone. It runs from a TTY on DRM/KMS through seatd, nested in another Wayland session, or headless (**WLR_BACKENDS=headless**). It is the compositor **dkde-session** and the login screen run by default; labwc is the backup, used when this is not installed, fails as it starts, or is chosen. Ctrl+Alt+F1 to F12 switch consoles.
 
 It serves xdg-shell, layer-shell (the panel, wallpaper, launchers), foreign-toplevel management (the taskbar), ext-workspace, screencopy, output management (**wlr-randr**, Settings > Display), session lock (swaylock, gtklock), idle notification, virtual keyboard and pointer, and Xwayland (X11 programs, started on demand).
 
@@ -20,6 +20,9 @@ Beyond the basics it manages windows with per-program rules, smart placement and
 dkde-compositor watches **~/.config/dkde/compositor.toml** and applies a change at once (SIGHUP reloads it too). SIGTERM ends the session. It sets **DKDE_SESSION_COMPOSITOR=dkde-compositor** and **DKDE_SESSION_PID** for the programs it starts, so **dkde-settings** edits this file (shortcuts, desktops, keyboard, touchpad) and Log Off can end the session.
 
 # OPTIONS
+**--kiosk** *COMMAND*
+: For a login screen: start only *COMMAND*, with no shortcuts (the settings add none either), no X11 programs and no moving windows with Alt. Console switching still works. *COMMAND* ends the compositor with **kill "$DKDE_SESSION_PID"**.
+
 **-h**, **--help**
 : Print help to standard output and exit.
 

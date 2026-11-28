@@ -57,8 +57,15 @@ const Server = struct {
     locked: bool = false,
     lock: ?*Lock = null,
     lock_tree: ?*c.wlr_scene_tree = null,
+    /// The black rectangles in `lock_tree`, one over each output, under the lock surfaces.
+    lock_covers: ?*c.wlr_scene_tree = null,
     outputs: std.ArrayList(*Output) = .empty,
-    pointers: std.ArrayList(*c.wlr_input_device) = .empty,
+    /// How output management last set each output up, by name.
+    saved_outputs: std.ArrayList(SavedOutput) = .empty,
+    pointers: std.ArrayList(*Pointer) = .empty,
+    /// The seat session, for console (VT) switching: null when nested in another session or headless.
+    session: ?*c.wlr_session = null,
+    session_destroy: c.wl_listener = std.mem.zeroes(c.wl_listener),
     cursor: *c.wlr_cursor,
     cursor_mgr: *c.wlr_xcursor_manager,
     seat: *c.wlr_seat,
@@ -171,6 +178,11 @@ const Server = struct {
 
 var server: Server = undefined;
 
+/// `--kiosk COMMAND`, for a login screen: only COMMAND is started, and there are no shortcuts (nothing
+/// may open a terminal or run a program), no X11 programs and no window dragging with Alt. Console
+/// switching still works. The command ends the compositor with `kill "$DKDE_SESSION_PID"`.
+var kiosk: ?[]const u8 = null;
+
 fn listen(signal: *c.wl_signal, listener: *c.wl_listener, notify: c.wl_notify_func_t) void {
     listener.notify = notify;
     c.wl_signal_add(signal, listener);
@@ -262,19 +274,49 @@ const Output = struct {
         unlisten(&self.frame);
         unlisten(&self.request_state);
         unlisten(&self.destroy);
+        const output = self.output;
         gpa.destroy(self);
+        closeLayersOn(output);
     }
 };
+
+/// Layer surfaces belong to one output. When it goes (unplugged, or a switch to another console, which
+/// removes every output) they are told they are closed; their programs make new ones for the new output.
+fn closeLayersOn(output: *c.wlr_output) void {
+    var i = server.layer_surfaces.items.len;
+    while (i > 0) {
+        i -= 1;
+        // Closing one takes it out of the list.
+        if (i >= server.layer_surfaces.items.len) continue;
+        const surface = server.layer_surfaces.items[i].surface;
+        if (surface.*.output != output) continue;
+        surface.*.output = null;
+        c.wlr_layer_surface_v1_destroy(surface);
+    }
+}
 
 fn onNewOutput(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     const output: *c.wlr_output = @ptrCast(@alignCast(data));
     _ = c.wlr_output_init_render(output, server.allocator, server.renderer);
 
+    // An output that has been here before (after a switch to another console they all come back as new
+    // ones) gets the mode, scale, rotation and place it was last given.
+    const saved = savedOutput(std.mem.span(output.name));
     var state: c.wlr_output_state = undefined;
     c.wlr_output_state_init(&state);
     c.wlr_output_state_set_enabled(&state, true);
-    if (c.wlr_output_preferred_mode(output)) |mode| c.wlr_output_state_set_mode(&state, mode);
-    _ = c.wlr_output_commit_state(output, &state);
+    const preferred = c.wlr_output_preferred_mode(output);
+    var mode = preferred;
+    if (saved) |s| {
+        if (findMode(output, s)) |found| mode = found;
+        c.wlr_output_state_set_scale(&state, s.scale);
+        c.wlr_output_state_set_transform(&state, s.transform);
+    }
+    if (mode != null) c.wlr_output_state_set_mode(&state, mode);
+    if (!c.wlr_output_commit_state(output, &state) and mode != preferred) {
+        c.wlr_output_state_set_mode(&state, preferred);
+        _ = c.wlr_output_commit_state(output, &state);
+    }
     c.wlr_output_state_finish(&state);
 
     const out = gpa.create(Output) catch return;
@@ -284,10 +326,79 @@ fn onNewOutput(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     listen(&output.events.destroy, &out.destroy, Output.onDestroy);
 
     server.outputs.append(gpa, out) catch {};
-    const layout_output = c.wlr_output_layout_add_auto(server.output_layout, output);
+    const layout_output = if (saved) |s| c.wlr_output_layout_add(server.output_layout, output, s.x, s.y) else c.wlr_output_layout_add_auto(server.output_layout, output);
     const scene_output = c.wlr_scene_output_create(server.scene, output);
     c.wlr_scene_output_layout_add_output(server.scene_layout, layout_output, scene_output);
+    // An output that was switched off stays off, unless that would leave every screen dark.
+    if (saved) |s| {
+        if (!s.enabled and anyOtherOutputOn(output)) {
+            var off: c.wlr_output_state = undefined;
+            c.wlr_output_state_init(&off);
+            c.wlr_output_state_set_enabled(&off, false);
+            if (c.wlr_output_commit_state(output, &off)) c.wlr_output_layout_remove(server.output_layout, output);
+            c.wlr_output_state_finish(&off);
+        }
+    }
     publishOutputs();
+}
+
+/// An output's setup, as output management (Settings > Display, wlr-randr) last left it.
+const SavedOutput = struct {
+    name: []u8,
+    enabled: bool = true,
+    width: i32 = 0,
+    height: i32 = 0,
+    refresh: i32 = 0,
+    scale: f32 = 1,
+    transform: c.enum_wl_output_transform = 0,
+    x: i32 = 0,
+    y: i32 = 0,
+};
+
+fn savedOutput(name: []const u8) ?*SavedOutput {
+    for (server.saved_outputs.items) |*s| {
+        if (std.mem.eql(u8, s.name, name)) return s;
+    }
+    return null;
+}
+
+fn rememberOutput(head: *const c.wlr_output_head_v1_state) void {
+    const output: *c.wlr_output = head.output orelse return;
+    const name = std.mem.span(output.name);
+    const s = savedOutput(name) orelse blk: {
+        const copy = gpa.dupe(u8, name) catch return;
+        server.saved_outputs.append(gpa, .{ .name = copy }) catch {
+            gpa.free(copy);
+            return;
+        };
+        break :blk &server.saved_outputs.items[server.saved_outputs.items.len - 1];
+    };
+    s.enabled = head.enabled;
+    // Switching an output off says nothing about the rest: keep what it had.
+    if (!head.enabled) return;
+    s.width = output.width;
+    s.height = output.height;
+    s.refresh = output.refresh;
+    s.scale = output.scale;
+    s.transform = output.transform;
+    s.x = head.x;
+    s.y = head.y;
+}
+
+fn findMode(output: *c.wlr_output, s: *const SavedOutput) ?*c.wlr_output_mode {
+    var node: *c.struct_wl_list = @ptrCast(output.modes.next);
+    while (node != &output.modes) : (node = @ptrCast(node.next)) {
+        const mode: *c.wlr_output_mode = @fieldParentPtr("link", node);
+        if (mode.width == s.width and mode.height == s.height and mode.refresh == s.refresh) return mode;
+    }
+    return null;
+}
+
+fn anyOtherOutputOn(output: *c.wlr_output) bool {
+    for (server.outputs.items) |o| {
+        if (o.output != output and o.output.enabled) return true;
+    }
+    return false;
 }
 
 // ---- output management (wlr-randr, Settings > Display, screen off) ---------------------------------------------
@@ -323,6 +434,7 @@ fn applyOutputConfig(cfg: *c.wlr_output_configuration_v1, test_only: bool) bool 
         node = @ptrCast(cfg.heads.next);
         while (node != &cfg.heads) : (node = @ptrCast(node.next)) {
             const head: *c.wlr_output_configuration_head_v1 = @fieldParentPtr("link", node);
+            rememberOutput(&head.state);
             if (head.state.enabled) {
                 _ = c.wlr_output_layout_add(server.output_layout, head.state.output, head.state.x, head.state.y);
             } else {
@@ -517,8 +629,10 @@ const Toplevel = struct {
         updateStacking();
         applyOpacity(self);
         if (onActiveWorkspace(self)) startAnimation(self, .open);
-        if (rule.maximized == true) setMaximized(self, true);
-        if (rule.fullscreen == true) setFullscreen(self, true);
+        // A rule decides; otherwise what the window asked for before it was mapped, which could not be
+        // done then (the login screen starts fullscreen this way).
+        if (rule.maximized orelse self.wantsMaximized()) setMaximized(self, true);
+        if (rule.fullscreen orelse self.wantsFullscreen()) setFullscreen(self, true);
         arrange();
     }
 
@@ -808,16 +922,9 @@ fn onNewLock(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
             c.wlr_session_lock_v1_destroy(lock);
             return;
         };
-        for (server.outputs.items) |o| {
-            var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
-            c.wlr_output_layout_get_box(server.output_layout, o.output, &box);
-            const black = [4]f32{ 0, 0, 0, 1 };
-            if (c.wlr_scene_rect_create(tree, box.width, box.height, &black)) |rect| {
-                c.wlr_scene_node_set_position(&rect.*.node, box.x, box.y);
-            }
-        }
         c.wlr_scene_node_raise_to_top(&tree.*.node);
         server.lock_tree = tree;
+        coverOutputs();
     }
     server.locked = true;
     server.lock = self;
@@ -828,6 +935,25 @@ fn onNewLock(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     listen(&lock.events.unlock, &self.unlock, Lock.onUnlock);
     listen(&lock.events.destroy, &self.destroy, Lock.onDestroy);
     c.wlr_session_lock_v1_send_locked(lock);
+}
+
+/// (Re)draws the black covers of a locked screen. Outputs come and go while it is locked (plugged in, or
+/// back from another console), and each must be covered before its first frame.
+fn coverOutputs() void {
+    const tree = server.lock_tree orelse return;
+    if (server.lock_covers) |old| c.wlr_scene_node_destroy(&old.*.node);
+    const covers = c.wlr_scene_tree_create(tree);
+    server.lock_covers = covers;
+    const parent = covers orelse return;
+    c.wlr_scene_node_lower_to_bottom(&parent.*.node);
+    for (server.outputs.items) |o| {
+        var box: c.wlr_box = std.mem.zeroes(c.wlr_box);
+        c.wlr_output_layout_get_box(server.output_layout, o.output, &box);
+        const black = [4]f32{ 0, 0, 0, 1 };
+        if (c.wlr_scene_rect_create(parent, box.width, box.height, &black)) |rect| {
+            c.wlr_scene_node_set_position(&rect.*.node, box.x, box.y);
+        }
+    }
 }
 
 fn lockSurfaceFor(surface: *c.wlr_session_lock_surface_v1) void {
@@ -841,6 +967,10 @@ fn lockSurfaceFor(surface: *c.wlr_session_lock_surface_v1) void {
     }
     if (c.wlr_seat_get_keyboard(server.seat)) |kb| {
         c.wlr_seat_keyboard_notify_enter(server.seat, surface.surface, kb.*.keycodes[0..].ptr, kb.*.num_keycodes, &kb.*.modifiers);
+    } else {
+        // Coming back from another console the outputs can be here before the keyboards: the lock screen
+        // still gets the focus, so that the keyboard that follows types into it.
+        c.wlr_seat_keyboard_notify_enter(server.seat, surface.surface, null, 0, null);
     }
 }
 
@@ -855,6 +985,7 @@ fn Lock_onUnlock(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
     server.locked = false;
     if (server.lock_tree) |tree| c.wlr_scene_node_destroy(&tree.*.node);
     server.lock_tree = null;
+    server.lock_covers = null;
     c.wlr_seat_keyboard_clear_focus(server.seat);
     if (topWindow()) |t| focus(t);
 }
@@ -1011,7 +1142,15 @@ fn toggleWindowFloating() void {
     arrange();
 }
 
+/// libseat can fail under us; wlroots then frees the session.
+fn onSessionDestroy(_: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+    unlisten(&server.session_destroy);
+    server.session = null;
+}
+
 fn onLayoutChange(_: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+    coverOutputs();
+    arrangeLayers();
     arrange();
     publishOutputs();
 }
@@ -2576,6 +2715,8 @@ fn arrangeLayers() void {
         var layer: i32 = 3;
         while (layer >= 0) : (layer -= 1) {
             for (server.layer_surfaces.items) |ls| {
+                // wlroots asserts on configuring one before its first commit.
+                if (!ls.surface.*.initialized) continue;
                 if (ls.surface.*.current.layer != layer) continue;
                 const exclusive = ls.surface.*.current.exclusive_zone > 0;
                 if ((pass == 0) != exclusive) continue;
@@ -2893,7 +3034,7 @@ fn onCursorButton(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     c._wlr_log(c.WLR_DEBUG, "button %u state %d alt=%d keyboards=%d", event.button, @as(c_int, @intCast(event.state)), @as(c_int, @intFromBool(altHeld())), @as(c_int, @intCast(server.keyboards.items.len)));
     // Alt + left button drags the window under the pointer, Alt + right button resizes it from the nearest corner;
     // the client never sees these clicks.
-    if (event.state == c.WL_POINTER_BUTTON_STATE_PRESSED and altHeld()) {
+    if (kiosk == null and event.state == c.WL_POINTER_BUTTON_STATE_PRESSED and altHeld()) {
         const BTN_LEFT = 0x110;
         const BTN_RIGHT = 0x111;
         if (windowAt(server.cursor.*.x, server.cursor.*.y)) |hit| {
@@ -2947,6 +3088,8 @@ const Keyboard = struct {
     keyboard: *c.wlr_keyboard,
     /// A virtual keyboard (an on-screen keyboard, wtype) brings its own keymap.
     virtual: bool = false,
+    /// The key that asked for a console switch, until it comes up: no program saw it go down.
+    vt_key: ?u32 = null,
     modifiers: c.wl_listener = std.mem.zeroes(c.wl_listener),
     key: c.wl_listener = std.mem.zeroes(c.wl_listener),
     destroy: c.wl_listener = std.mem.zeroes(c.wl_listener),
@@ -2970,6 +3113,9 @@ const Keyboard = struct {
         // Translate the evdev keycode to an xkb one and look up what the key is without Shift
         // (level 0), so "S-1" matches the 1 key whatever the layout makes of Shift.
         const keycode: u32 = event.keycode + 8;
+        // Console switching comes before everything that can take or forward a key: the screen lock,
+        // painting, Scale and Expo, and the user's shortcuts.
+        if (self.switchConsole(event, keycode)) return;
         const mods = modsOf(c.wlr_keyboard_get_modifiers(self.keyboard));
         const layout_index = c.xkb_state_key_get_layout(self.keyboard.*.xkb_state, keycode);
         var syms: [*c]const c.xkb_keysym_t = null;
@@ -3029,6 +3175,29 @@ const Keyboard = struct {
             c.wlr_seat_set_keyboard(server.seat, self.keyboard);
             c.wlr_seat_keyboard_notify_key(server.seat, event.time_msec, event.keycode, event.state);
         }
+    }
+
+    /// Ctrl+Alt+F1..F12. True when the key was one of these and must go no further. With no session
+    /// (nested, headless) it is an ordinary key.
+    fn switchConsole(self: *Keyboard, event: *const c.wlr_keyboard_key_event, keycode: u32) bool {
+        if (event.state != c.WL_KEYBOARD_KEY_STATE_PRESSED) {
+            if (self.vt_key != event.keycode) return false;
+            self.vt_key = null;
+            return true;
+        }
+        const session = server.session orelse return false;
+        // With the modifiers applied: the keymap has XF86Switch_VT_n on the Ctrl+Alt level of F1..F12.
+        var syms: [*c]const c.xkb_keysym_t = null;
+        const count = c.xkb_state_key_get_syms(self.keyboard.*.xkb_state, keycode, &syms);
+        var i: usize = 0;
+        while (i < @as(usize, @intCast(@max(count, 0)))) : (i += 1) {
+            const vt = keys.consoleOf(syms[i]) orelse continue;
+            self.vt_key = event.keycode;
+            server.super_pending = false;
+            if (!c.wlr_session_change_vt(session, vt)) c._wlr_log(c.WLR_ERROR, "cannot switch to console %u", vt);
+            return true;
+        }
+        return false;
     }
 
     fn onDestroy(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
@@ -3108,6 +3277,7 @@ fn addBinding(key_text: []const u8, action_text: []const u8) void {
 /// The built-in shortcuts, then the user's from compositor.toml on top.
 fn buildBindings(user: []const keys.Entry) void {
     clearBindings();
+    if (kiosk != null) return;
     for (keys.defaults) |d| addBinding(d.key, d.action);
     for (user) |e| addBinding(e.key, e.action);
 }
@@ -3272,7 +3442,7 @@ fn applyInput() void {
     for (server.keyboards.items) |k| {
         if (!k.virtual) applyKeymap(k.keyboard);
     }
-    for (server.pointers.items) |d| configurePointer(d);
+    for (server.pointers.items) |p| configurePointer(p.device);
 }
 
 /// labwc's `~/.config/labwc/environment` (KEY=VALUE lines; Settings > Keyboard writes XKB_DEFAULT_* there):
@@ -3316,13 +3486,41 @@ fn addKeyboard(device: *c.wlr_input_device, set_keymap: bool) void {
     server.keyboards.append(gpa, k) catch {};
 }
 
+/// A real pointer, kept so that changed `[input]` settings reach it.
+const Pointer = struct {
+    device: *c.wlr_input_device,
+    destroy: c.wl_listener = std.mem.zeroes(c.wl_listener),
+
+    fn onDestroy(listener: ?*c.wl_listener, _: ?*anyopaque) callconv(.c) void {
+        const self: *Pointer = @fieldParentPtr("destroy", listener.?);
+        unlisten(&self.destroy);
+        for (server.pointers.items, 0..) |item, i| {
+            if (item == self) {
+                _ = server.pointers.orderedRemove(i);
+                break;
+            }
+        }
+        gpa.destroy(self);
+    }
+};
+
+fn addPointer(device: *c.wlr_input_device) void {
+    const p = gpa.create(Pointer) catch return;
+    p.* = .{ .device = device };
+    server.pointers.append(gpa, p) catch {
+        gpa.destroy(p);
+        return;
+    };
+    listen(&device.events.destroy, &p.destroy, Pointer.onDestroy);
+}
+
 fn onNewInput(_: ?*c.wl_listener, data: ?*anyopaque) callconv(.c) void {
     const device: *c.wlr_input_device = @ptrCast(@alignCast(data));
     switch (device.type) {
         c.WLR_INPUT_DEVICE_KEYBOARD => addKeyboard(device, true),
         c.WLR_INPUT_DEVICE_POINTER => {
             c.wlr_cursor_attach_input_device(server.cursor, device);
-            server.pointers.append(gpa, device) catch {};
+            addPointer(device);
             configurePointer(device);
         },
         else => {},
@@ -3577,6 +3775,10 @@ const default_autostart =
     "command -v pkexec >/dev/null 2>&1 && dkde-polkit &\n";
 
 fn runAutostart() void {
+    if (kiosk) |command| {
+        runCommand(command);
+        return;
+    }
     if (std.c.getenv("DKDE_NO_AUTOSTART") != null) return;
     var path_buf: [1024]u8 = undefined;
     const user_script: ?[:0]const u8 = blk: {
@@ -3602,19 +3804,27 @@ fn runAutostart() void {
 
 // ---- start ---------------------------------------------------------------------------------------------------
 
-const version = "0.3.1";
+const version = "0.3.6";
 
 const help_text =
-    "dkde-compositor - DKDE's own Wayland compositor (experimental)\n\n" ++
-    "Usage: dkde-compositor\n\n" ++
+    "dkde-compositor - DKDE's own Wayland compositor\n\n" ++
+    "Usage: dkde-compositor [--kiosk COMMAND]\n\n" ++
+    "  --kiosk COMMAND  for a login screen: start only COMMAND, with no shortcuts and no X11\n" ++
     "  -h, --help     show this help and exit\n" ++
     "  -V, --version  show the version and exit\n\n" ++
     "Settings: ~/.config/dkde/compositor.toml (see dkde-compositor(1)).\n";
 
 pub fn main(init: std.process.Init.Minimal) !void {
     // The command-line contract every dkde program follows: --help and --version exit 0; an unknown option exits 2.
-    for (init.args.vector[1..]) |arg_z| {
-        const arg = std.mem.span(arg_z);
+    var args = init.args.vector[1..];
+    while (args.len > 0) {
+        const arg = std.mem.span(args[0]);
+        args = args[1..];
+        if (std.mem.eql(u8, arg, "--kiosk") and args.len > 0) {
+            kiosk = std.mem.span(args[0]);
+            args = args[1..];
+            continue;
+        }
         if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
             _ = std.c.write(1, help_text.ptr, help_text.len);
             return;
@@ -3638,7 +3848,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
     c._wlr_log(c.WLR_INFO, "dkde-compositor %s starting (log level %s)", version.ptr, @tagName(dev.level).ptr);
 
     const display = c.wl_display_create() orelse return error.NoDisplay;
-    const backend = c.wlr_backend_autocreate(c.wl_display_get_event_loop(display), null) orelse return error.NoBackend;
+    var session: ?*c.wlr_session = null;
+    const backend = c.wlr_backend_autocreate(c.wl_display_get_event_loop(display), @ptrCast(&session)) orelse return error.NoBackend;
     const renderer = c.wlr_renderer_autocreate(backend) orelse return error.NoRenderer;
     _ = c.wlr_renderer_init_wl_display(renderer, display);
     const allocator = c.wlr_allocator_autocreate(backend, renderer) orelse return error.NoAllocator;
@@ -3676,6 +3887,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     server = .{
         .display = display,
         .backend = backend,
+        .session = session,
         .renderer = renderer,
         .allocator = allocator,
         .scene = scene,
@@ -3703,6 +3915,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     watchConfigFile(display);
     listen(&output_layout.*.events.change, &server.layout_change, onLayoutChange);
     listen(&backend.*.events.new_output, &server.new_output, onNewOutput);
+    if (session) |s| listen(&s.events.destroy, &server.session_destroy, onSessionDestroy);
     listen(&xdg_shell.*.events.new_toplevel, &server.new_xdg_toplevel, onNewToplevel);
     listen(&xdg_shell.*.events.new_popup, &server.new_xdg_popup, onNewPopup);
     listen(&layer_shell.*.events.new_surface, &server.new_layer_surface, onNewLayerSurface);
@@ -3726,7 +3939,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     // X11 programs: Xwayland starts when the first one connects.
     var xwayland: ?*c.wlr_xwayland = null;
-    if (std.c.getenv("DKDE_NO_XWAYLAND") == null) {
+    if (kiosk == null and std.c.getenv("DKDE_NO_XWAYLAND") == null) {
         xwayland = c.wlr_xwayland_create(display, compositor, true);
         if (xwayland) |xw| {
             listen(&xw.events.new_surface, &server.new_x_surface, onNewXSurface);
@@ -3754,6 +3967,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     }
     // Detach the listeners first: wlroots asserts that none are left when it frees an object.
     unlisten(&server.new_output);
+    unlisten(&server.session_destroy);
     unlisten(&server.layout_change);
     unlisten(&server.new_xdg_toplevel);
     unlisten(&server.new_xdg_popup);

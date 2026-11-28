@@ -20,7 +20,7 @@ const gesture_mod = shared.gesture;
 const keys = shared.keys;
 const config = shared.config;
 
-const version = "0.3.1";
+const version = "0.3.6";
 const gpa = std.heap.c_allocator;
 
 // ---- atoms ----------------------------------------------------------------------------------------------------

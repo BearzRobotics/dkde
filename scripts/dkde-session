@@ -2,7 +2,7 @@
 
 case "${1:-}" in
     -h|--help)
-        echo "dkde-session - start the DKDE session (labwc, the panel and a session D-Bus when available)"
+        echo "dkde-session - start the DKDE session (dkde-compositor, the panel and a session D-Bus when available)"
         echo "Usage: dkde-session [--x11]"
         echo "  --x11          an X11 session: dkde-wm, dkde-xcomp (when installed) and the panel (needs dkde-wm; started with startx"
         echo "                 when there is no X server yet)"
@@ -15,8 +15,9 @@ case "${1:-}" in
 esac
 # The dkde Wayland session: greetd (or any login manager, or a tty) runs this.
 # It prepares the environment a systemd-less system does not provide, then
-# starts labwc (or the compositor named by DKDE_COMPOSITOR) under a private session
-# D-Bus when one can be had. The labwc autostart (see data/labwc/autostart) starts the panel.
+# starts dkde-compositor (or the compositor named by DKDE_COMPOSITOR) under a private session
+# D-Bus when one can be had. dkde-compositor starts the panel itself. labwc is the backup,
+# and on its way out: its autostart file (see data/labwc/autostart) starts the panel.
 
 # DKDE_SESSION_TYPE=x11 (or --x11, or `type=x11` in ~/.config/dkde/session.conf) starts the X11 session instead.
 if [ -z "$DKDE_SESSION_TYPE" ] && [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/dkde/session.conf" ]; then
@@ -27,7 +28,7 @@ fi
 case "$DKDE_SESSION_TYPE" in x11) export XDG_SESSION_TYPE=x11 ;; *) export XDG_SESSION_TYPE=wayland ;; esac
 
 # This session's own messages go to ~/.local/state/dkde/session.log (the last
-# session only). When labwc cannot start (no seat, no GPU), greetd just shows the
+# session only). When the compositor cannot start (no seat, no GPU), greetd just shows the
 # login screen again; without this log nothing says why. Run from a terminal,
 # the messages stay on the terminal.
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dkde"
@@ -93,8 +94,8 @@ fi
 command -v dkde-setup >/dev/null 2>&1 && dkde-setup --once >/dev/null 2>&1
 
 # Without logind or elogind, the session's display and input devices come from
-# seatd, through /run/seatd.sock. Say what is wrong when that cannot work: labwc
-# only reports that it found no seat.
+# seatd, through /run/seatd.sock. Say what is wrong when that cannot work: a
+# compositor only reports that it found no seat.
 seat_check() {
     [ -d /run/systemd/seats ] && return 0            # logind or elogind
     [ -n "$LIBSEAT_BACKEND" ] && [ "$LIBSEAT_BACKEND" != seatd ] && return 0
@@ -139,9 +140,9 @@ fi
 
 # A session bus is optional (SPEC.md 2): notifications and the tray use it.
 started=$(date +%s)
-# The compositor is labwc unless DKDE_COMPOSITOR names another (dkde-compositor, DKDE's own, which starts the
-# panel itself; labwc's autostart file does that for labwc).
-# ~/.config/dkde/session.conf may hold a line `compositor=dkde-compositor` (the environment wins).
+# The Wayland compositor is dkde-compositor unless DKDE_COMPOSITOR names another. labwc is the backup:
+# it is used when dkde-compositor is not installed or fails as it starts, or when it is chosen.
+# ~/.config/dkde/session.conf may hold a line `compositor=labwc` (the environment wins).
 session_conf="${XDG_CONFIG_HOME:-$HOME/.config}/dkde/session.conf"
 if [ -z "$DKDE_COMPOSITOR" ] && [ -f "$session_conf" ]; then
     while IFS='=' read -r key value; do
@@ -153,7 +154,7 @@ if [ "$XDG_SESSION_TYPE" = x11 ]; then
     command -v dkde-wm >/dev/null 2>&1 || { echo "dkde-session: dkde-wm not found (it is built from src/xwm)"; exit 1; }
     DKDE_COMPOSITOR=dkde-wm
 fi
-compositor="${DKDE_COMPOSITOR:-labwc}"
+compositor="${DKDE_COMPOSITOR:-dkde-compositor}"
 if ! command -v "$compositor" >/dev/null 2>&1; then
     echo "dkde-session: $compositor not found; using labwc"
     compositor=labwc
@@ -178,22 +179,11 @@ else
 fi
 wait "$wm"
 '
-if [ "$XDG_SESSION_TYPE" = x11 ]; then
-    if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
-        dbus-run-session -- sh -c "$x11_body"
-    else
-        sh -c "$x11_body"
-    fi
-elif [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
-    dbus-run-session -- "$compositor" "$@"
-else
-    "$compositor" "$@"
-fi
-status=$?
-# Leaving the session: end whatever it started and left running (the panel, the idle
-# watcher...). Nothing does that without logind, and the next login would then
-# show two panels. Everything greetd starts for the session is in this session id.
-if [ -d /proc/self ]; then
+# Ends whatever the session started and left running (the panel, the idle watcher...). Nothing does
+# that without logind, and the next login would then show two panels. Everything greetd starts for
+# the session is in this session id.
+end_leftovers() {
+    [ -d /proc/self ] || return 0
     me=$$
     for p in /proc/[0-9]*; do
         pid=${p#/proc/}
@@ -201,6 +191,37 @@ if [ -d /proc/self ]; then
         sid=$(awk '{ sub(/^.*\) /, ""); print $4 }' "$p/stat" 2>/dev/null)
         [ "$sid" = "$me" ] && kill "$pid" 2>/dev/null
     done
+}
+run_wayland() {
+    if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
+        dbus-run-session -- "$compositor" "$@"
+    else
+        "$compositor" "$@"
+    fi
+}
+if [ "$XDG_SESSION_TYPE" = x11 ]; then
+    if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
+        dbus-run-session -- sh -c "$x11_body"
+    else
+        sh -c "$x11_body"
+    fi
+    status=$?
+else
+    run_wayland "$@"
+    status=$?
+    # The backup: a dkde-compositor that fails as it starts would otherwise only bring the login
+    # screen back. One that has run for a while and then fails is not replaced.
+    if [ "$compositor" = dkde-compositor ] && [ "$status" -ne 0 ] && [ $(( $(date +%s) - started )) -lt 10 ] &&
+        command -v labwc >/dev/null 2>&1; then
+        echo "dkde-session: dkde-compositor failed with status $status as it started; using labwc"
+        end_leftovers
+        compositor=labwc
+        started=$(date +%s)
+        run_wayland "$@"
+        status=$?
+    fi
 fi
+# Leaving the session.
+end_leftovers
 echo "dkde-session: $compositor exited with status $status after $(( $(date +%s) - started )) s"
 exit "$status"

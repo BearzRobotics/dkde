@@ -7,7 +7,7 @@ dkde-greeter [-h | --help] [-V | --version]
 dkde-greeter
 
 # DESCRIPTION
-dkde-greeter is the login screen. greetd runs it as an unprivileged user under a kiosk labwc. It asks greetd to authenticate the chosen account and, on success, to start the DKDE session. The program does not check passwords itself; greetd and PAM do. It takes no operands and is not meant to be started by hand.
+dkde-greeter is the login screen. greetd runs it as an unprivileged user under **dkde-compositor --kiosk** (or a kiosk labwc, the backup). It asks greetd to authenticate the chosen account and, on success, to start the DKDE session. The program does not check passwords itself; greetd and PAM do. It takes no operands and is not meant to be started by hand.
 
 # CONVENTIONS
 Bold represents literal commands, options, and keywords.

@@ -22,12 +22,12 @@ The reference distribution is **FenrirOS** (musl, LLVM/Clang, dinit, no systemd)
 - Windows 7-style Start menu: pinned/recent apps, All Programs, search and right-hand places.
 - Cohesive, independently executable applications: file manager, settings, editor, image viewer, hex editor, PDF viewer/editor, partition manager, calculator, clock, calendar, screenshot tool and help viewer.
 - Integration with the separately maintained **DKTerm** terminal, using **DKTermCore** for terminal emulation. DKTerm targets a Windows Terminal-like experience with tabs, profiles and split panes.
-- Operation under labwc without requiring systemd or logind. A session D-Bus is optional; dependent features degrade gracefully when absent.
+- Operation under dkde-compositor (and the labwc backup, see 12.2) without requiring systemd or logind. A session D-Bus is optional; dependent features degrade gracefully when absent.
 - Support building and installing individual applications without requiring the complete desktop suite.
 
 ## 4. Non-goals
 
-- Replacing labwc as the *only* compositor. (Updated 2026-11-16: labwc remains the default and the reference, but DKDE also ships its own optional wlroots compositor, `dkde-compositor`, and an optional X11 window manager, `dkde-wm`; see `ai/COMPOSITOR-SPEC.md`. They are experimental.)
+- (Replaced 2026-11-27.) labwc is no longer the default. `dkde-compositor` is the default Wayland compositor and `dkde-wm` the X11 window manager; see `ai/COMPOSITOR-SPEC.md` and 12.2.
 - Depending on libadwaita or a GNOME desktop stack beyond the explicitly selected GTK4/GLib/GIO libraries.
 - (Reversed 2026-11-16.) DKDE now has an X11 backend: `src/x11desktop` (the shared desktop API over EWMH and RandR), the panel's X11 surfaces, and `dkde-wm`, started with `dkde-session --x11`. It is optional and experimental; Wayland remains the primary target, and Xwayland compatibility for legacy applications is still handled by the compositor.
 - Owning or building **DKConsole**. It is a separate, standalone project and is not part of the DKDE desktop or its build graph.
@@ -85,10 +85,10 @@ Respect Freedesktop specifications and musl/glibc portability. Do not rely on sy
 Define and benchmark minimum CPU, RAM, display and input requirements before stable release.
 
 ### 7.2 Software
-Linux with Wayland, labwc, GTK4/GLib/GIO and selected layer-shell/Wayland protocol support. No systemd or logind requirement. Optional features may use a session D-Bus and external system services.
+Linux with Wayland (dkde-compositor on wlroots; labwc as the backup), GTK4/GLib/GIO and selected layer-shell/Wayland protocol support. No systemd or logind requirement. Optional features may use a session D-Bus and external system services.
 
 ### 7.3 Supported environments
-FenrirOS musl is the reference; glibc-based Linux distributions are supported. Xwayland applications may run under labwc without making DKDE itself an X11 application.
+FenrirOS musl is the reference; glibc-based Linux distributions are supported. Xwayland applications may run under the compositor without making DKDE itself an X11 application.
 
 ## 8. Desktop shell
 
@@ -105,7 +105,7 @@ Implement the desktop notifications specification over the optional session D-Bu
 Per-output wallpaper handling with configurable fit and color.
 
 ### 8.5 Workspaces
-Integrate with labwc and available Wayland workspace protocols; do not invent compositor-private APIs.
+Integrate through available Wayland protocols, workspace protocols among them; do not invent compositor-private APIs.
 
 ## 9. Desktop applications
 
@@ -154,8 +154,14 @@ Settings may manage system tools via documented interfaces and explicit privileg
 ### 12.1 Wayland
 Use supported Wayland protocols for surfaces and window-management integration.
 
-### 12.2 Labwc
-Labwc owns compositing, focus and window placement; DKDE supplies panel, launcher and user-facing integration.
+### 12.2 Compositor, window manager and labwc
+`dkde-compositor` (Wayland) and `dkde-wm` (X11) own compositing, focus and window placement; the same desktop programs run on both.
+
+labwc is the backup compositor and is being deprecated (decided 2026-11-27):
+
+1. **Now:** `dkde-compositor` is the default for the session and the login screen. labwc is used when it is not installed, when it fails in its first ten seconds, or when it is chosen. What works under labwc keeps working.
+2. **New features target `dkde-compositor` and `dkde-wm` only.** Nothing new is added for labwc.
+3. **Later:** full labwc support is removed, only after the new compositor has had real use. No date is set.
 
 ### 12.3 Xwayland
 Allow Xwayland applications to coexist when the compositor supports them; DKDE itself remains Wayland-native.
@@ -214,7 +220,7 @@ The historical component-level design is retained in `DKDE-LEGACY-REQUIREMENTS.m
 
 | Component | Owns | Minimum independent smoke test |
 |---|---|---|
-| `dkde-panel` | panel, Start menu, wallpaper, tray and shell integrations | starts under labwc; quits/restarts without affecting other applications |
+| `dkde-panel` | panel, Start menu, wallpaper, tray and shell integrations | starts under the compositor; quits/restarts without affecting other applications |
 | `dkde-files` | file browsing and operations | open a directory, copy/rename a file, exit with panel absent |
 | `dkde-settings` | desktop configuration UI | open appearance settings with panel absent; save valid config |
 | `dkde-edit` | text editing | open, modify, save and reopen a UTF-8 text file |
@@ -323,7 +329,7 @@ These are the **two required forms of independence** for DKDE's bundled applicat
 
 ## 28. Console and graphical session integration (adopted)
 
-DKDE runs on labwc, with seatd/libseat used by the compositor on the FenrirOS reference platform. DKDE does not own DKConsole's login, DRM/KMS, VT or recovery implementation. DKConsole is an external console project using DKTermCore. A graphical session launched from a DKConsole PTY is an integration test and not an assumed capability. Do not create a DKDE session launcher merely to satisfy an untested assumption. A failed desktop session must leave the independently configured console and rescue getty available.
+DKDE runs on dkde-compositor (labwc as the backup), with seatd/libseat used by the compositor on the FenrirOS reference platform. DKDE does not own DKConsole's login, DRM/KMS, VT or recovery implementation. DKConsole is an external console project using DKTermCore. A graphical session launched from a DKConsole PTY is an integration test and not an assumed capability. Do not create a DKDE session launcher merely to satisfy an untested assumption. A failed desktop session must leave the independently configured console and rescue getty available.
 
 ## 29. Requirements and source traceability
 

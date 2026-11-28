@@ -2,9 +2,12 @@
 
 A small Wayland desktop shell with the layout of classic Windows: taskbar,
 Windows 7 style start menu, and a matching set of apps. Written in Zig on
-GTK4 (no libadwaita). It runs on labwc by default, or on DKDE's own experimental
-Wayland compositor (`dkde-compositor`) or X11 window manager (`dkde-wm`); pick one
-at the login screen. See `ai/DKDE-SPEC.md` for the design.
+GTK4 (no libadwaita). It runs on DKDE's own Wayland compositor
+(`dkde-compositor`), or on X11 with DKDE's own window manager (`dkde-wm`).
+[labwc](https://labwc.github.io/) is the backup compositor and is being phased
+out: support stays until the new compositor has had real use, and **new features
+come to `dkde-compositor` and `dkde-wm` only**. See `ai/DKDE-SPEC.md` for the
+design.
 
 The compositor also offers optional, Compiz-style desktop effects (window rules and tab groups, Scale and Expo
 overviews, an Alt+Tab switcher with previews, animations, and with the GLES renderer colour filters, a magnifier,
@@ -76,7 +79,9 @@ Ubuntu 26.04 package names:
 
 ```
 sudo apt install libgtk-4-dev libgtk4-layer-shell-dev libwayland-dev libxcb1-dev \
-    libarchive-dev wayland-protocols pkg-config git curl
+    libarchive-dev wayland-protocols pkg-config git curl \
+    libwlroots-0.19-dev libwayland-bin libxkbcommon-dev libpixman-1-dev libinput-dev \
+    libgles-dev libegl-dev libxcb-randr0-dev libpango1.0-dev
 ```
 
 | Library | Used for |
@@ -84,17 +89,19 @@ sudo apt install libgtk-4-dev libgtk4-layer-shell-dev libwayland-dev libxcb1-dev
 | GTK 4 (and its chain: GLib, GIO, Pango, Cairo, HarfBuzz, gdk-pixbuf, Graphene) | Every app |
 | gtk4-layer-shell | Panel, start menu, wallpaper surfaces |
 | wayland-client, wayland-protocols | Taskbar, screenshots |
+| wlroots 0.19 or 0.20, wayland-scanner, xkbcommon, pixman, libinput, GLESv2, EGL | dkde-compositor (leave it out with `-Dcompositor=false`) |
+| libxcb-randr, xkbcommon, cairo, pango | dkde-wm, the X11 window manager (leave it out with `-Dwm=false`) |
 | libarchive (3.x) | Archives in the file manager: browsing, extracting and creating zip, tar, 7z, rar, iso and more. At run time it needs the library (`libarchive13`) and, for each format, its compression libraries, which a normal libarchive package already depends on |
 
 ### Run-time programs and data
 
 ```
-sudo apt install labwc shared-mime-info papirus-icon-theme
+sudo apt install shared-mime-info papirus-icon-theme labwc    # labwc: only for the backup
 ```
 
 | Package | Why |
 |---|---|
-| labwc (0.9.3 or newer) | The compositor. Must offer `wlr-layer-shell`, `wlr-foreign-toplevel-management` and `wlr-screencopy`; `ext-workspace-v1` (virtual desktops) and `wlr-virtual-pointer` (scrolling screenshots; on X11 the XTEST extension does it) are used when present |
+| labwc (0.9.3 or newer, optional) | The backup compositor, being phased out; the default, dkde-compositor, is built with dkde. If used, it must offer `wlr-layer-shell`, `wlr-foreign-toplevel-management` and `wlr-screencopy`; `ext-workspace-v1` (virtual desktops) and `wlr-virtual-pointer` (scrolling screenshots; on X11 the XTEST extension does it) are used when present |
 | shared-mime-info | Content types for the file manager and Open With |
 | papirus-icon-theme | Fallback icons (Fluent ships with dkde) |
 
@@ -165,7 +172,8 @@ sudo apt install \
 
 | Feature | Packages | Without them |
 |---|---|---|
-| Desktop, session | `labwc`, `xwayland` (X11 apps), `seatd` (device access without logind) | no desktop |
+| Desktop, session | `dkde-compositor` (or `dkde-wm` on X11; see below for building them), `xwayland` (X11 apps), `seatd` (device access without logind) | no desktop |
+| Backup compositor (being phased out) | `labwc` | used if `dkde-compositor` is missing or fails to start |
 | Login screen | `greetd` (then see `data/greetd/`, `data/pam/` and "Init systems" below) | log in on a tty and run `dkde-session` |
 | Notifications, system tray | `dbus` (provides `dbus-run-session`, which `dkde-session` uses) | both are off; the panel logs it |
 | Sound: volume, devices, test tone | `pipewire`, `pipewire-pulse`, `wireplumber` (`wpctl`), `pipewire-bin` (`pw-play`), or `pulseaudio-utils` (`pactl`, `paplay`) | the Sound page and quick-settings volume say what to install |
@@ -243,12 +251,14 @@ services above running. `dkde-setup` checks the groups and offers the one
 ## Build
 
 ```
-zig build                 # all binaries into zig-out/bin
+zig build                 # all binaries into zig-out/bin, with dkde-compositor and dkde-wm
 zig build test            # unit tests
 zig build install --prefix /usr
 ```
 
 (For everyday use, build with `-Doptimize=ReleaseSafe`, or `-Doptimize=ReleaseSmall` for the smallest binaries on very old machines; see "Install" below.)
+
+`dkde-compositor` is built for wlroots 0.19; add `-Dwlroots=0.20` for 0.20. `-Dcompositor=false` and `-Dwm=false` leave out it or `dkde-wm`, with the libraries they need. `-Dapp=compositor` and `-Dapp=wm` build just them.
 
 Release builds drop debug information from the programs (all of them together are about 13 MB with `-Doptimize=ReleaseFast`; they were 134 MB with it). `-Dstrip=false` keeps it, for `perf` or a debugger. Debug builds always keep it.
 
@@ -291,6 +301,12 @@ For a package (Slackware `makepkg`, an LFS package user, or your own),
 install into a staging directory instead and archive that:
 `zig build -Doptimize=ReleaseSafe install --prefix "$PKG/usr"`.
 
+That includes **dkde-compositor** and **dkde-wm** (see "Build" for their options). The X11
+compositing manager, `dkde-xcomp`, is optional and built on its own:
+`(cd src/xcomp && zig build -Doptimize=ReleaseSafe install --prefix /usr/local)`.
+`packaging/build.sh` builds and installs everything in one go
+(`packaging/PACKAGING.md`).
+
 **3. First-run check.** `dkde-session` runs `dkde-setup --once` at your first login, so this step happens by itself. To run it by hand as your normal user (or again later):
 
 ```
@@ -306,7 +322,8 @@ group change.
 
 - *From a text console*, with no login manager: log in and run
   `dkde-session`. It makes `XDG_RUNTIME_DIR` if your system does not, starts a
-  session D-Bus when it can, and runs labwc, which starts the panel.
+  session D-Bus when it can, and runs dkde-compositor (labwc if that is not
+  installed or fails to start).
 - *With greetd and the dkde login screen:* install `greetd` and `seatd` (or
   use elogind/systemd), copy `share/dkde/greetd/config.toml` to
   `/etc/greetd/config.toml` and `share/dkde/pam/greetd` to
@@ -339,12 +356,13 @@ are untested on a real system, so expect to adjust paths.
 scripts/dev-session.sh
 ```
 
-This starts labwc in a window of your current Wayland session, running the
+This starts dkde-compositor (or, if it is not built, labwc) in a window of your
+current Wayland session, running the
 panel. Click inside it, then use the Start button (or the Super key).
 
 ### WSL2 (WSLg) note
 
-labwc is built with Xwayland support and, at startup, insists that
+This applies only to the labwc backup. labwc is built with Xwayland support and, at startup, insists that
 `/tmp/.X11-unix` has the sticky bit. The Wayland session does not use X11, but on WSLg the
 directory lacks the bit and labwc exits. The script works around this with a
 private mount namespace, **which makes `sudo` fail inside the nested session**
@@ -408,7 +426,7 @@ you answer `y`.
 
 ## Using it for real
 
-Example labwc files are in `data/labwc/`: an `autostart` that restarts the
+**With the labwc backup:** example labwc files are in `data/labwc/`: an `autostart` that restarts the
 panel and keybindings for Super (start menu), Print / Shift+Print
 (screenshots), Ctrl+Shift+Esc (Task Manager) and virtual desktops
 (Ctrl+Alt+Left/Right to switch, add Shift to carry the window along), Ctrl+Alt+T for a terminal and Ctrl+Alt+L to lock. Settings > Keyboard shortcuts changes them. dkde writes labwc's own window shortcuts (Alt+Tab, Alt+F4, Super+arrows and so on) into the same list and turns off labwc's built-in set, so every shortcut is changed in one place. The
@@ -428,6 +446,10 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 dkde is released under the [MIT License](LICENSE). Copyright (c) 2026 Dakota
 James Owen Keeler.
+
+DKTermCore (dkterm), which is linked into the programs with a terminal or its colour
+schemes (dkde-term, dkde-files, dkde-edit and dkde-settings), is under
+LGPL-2.0-or-later from its release 0.2.0.
 
 Things dkde builds on keep their own licenses: GTK 4 and gtk4-layer-shell are
 dynamically linked system libraries (LGPL); libarchive (archives in the file

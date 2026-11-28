@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=dkde (labwc, backup)
+Comment=The dkde desktop on labwc, the backup compositor (support is being phased out)
+Exec=env DKDE_SESSION_TYPE=wayland DKDE_COMPOSITOR=labwc dkde-session
+TryExec=labwc
+Type=Application
+DesktopNames=dkde

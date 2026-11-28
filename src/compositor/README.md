@@ -1,7 +1,7 @@
 # dkde-compositor
 
-DKDE's own Wayland compositor (experimental; see `ai/COMPOSITOR-SPEC.md` and `ai/COMPOSITOR-SURVEY.md`).
-Written in Zig on wlroots through Zig's C interop. A standalone package: `zig build` in this folder
+DKDE's own Wayland compositor, the default for the Wayland session and the login screen (see `ai/COMPOSITOR-SPEC.md` and `ai/COMPOSITOR-SURVEY.md`).
+Written in Zig on wlroots through Zig's C interop. The main `zig build` includes it; `zig build` in this folder builds it alone
 (needs the wlroots `-dev` files, `wayland-scanner`, `wayland-protocols`). For the dkbuild image (musl,
 wlroots 0.20) see `qemu/README.md`.
 
@@ -55,10 +55,26 @@ volume, snapping, dkde-snap's regions) plus Super+digit workspaces, Super+T (flo
 
 The session programs (panel with restart, dkde-idle, dkde-polkit) are started by the compositor from a built-in
 script; `~/.config/dkde/autostart` (a shell script) replaces it. `scripts/dkde-session` runs the compositor named by
-`DKDE_COMPOSITOR`, or by a `compositor=` line in `~/.config/dkde/session.conf` (default labwc).
+`DKDE_COMPOSITOR`, or by a `compositor=` line in `~/.config/dkde/session.conf`. The default is dkde-compositor;
+labwc is the backup, used when it is missing or fails in its first ten seconds. The login screen
+(`scripts/dkde-greeter-session`) runs it as `dkde-compositor --kiosk dkde-greeter-start`: no shortcuts, no X11.
 
 Pointer: Alt+left-drag moves a window, Alt+right-drag resizes it from the nearest corner (a tiled window
 becomes floating); title bars drag as usual.
+
+## Switching consoles
+
+Ctrl+Alt+F1 … F12 switch to that virtual terminal, through the seat session (libseat: seatd, elogind or
+systemd-logind). The compositor handles these keys before anything else, so the lock screen, Scale, Expo, painting
+and `[keys]` cannot block them (a `[keys]` entry on the same keys does nothing). The keys come from the keyboard
+layout (`XF86Switch_VT_n`). Nested in another session or headless there is no seat session, and they reach
+programs like any other keys.
+With elogind or systemd-logind the request is authorised through polkit, so polkitd has to be running or
+startable over D-Bus. When a switch is refused the log says `cannot switch to console N`.
+
+While another console is shown, wlroots removes every screen and input device and adds them again on return.
+Windows stay where they were, a locked screen stays locked, and each screen gets back the mode, scale, rotation
+and position it was last given.
 
 ## Window management
 

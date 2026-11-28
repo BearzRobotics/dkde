@@ -1,6 +1,0 @@
-[Desktop Entry]
-Name=dkde (dkde-compositor)
-Comment=The dkde desktop on its own Wayland compositor (experimental)
-Exec=env DKDE_SESSION_TYPE=wayland DKDE_COMPOSITOR=dkde-compositor dkde-session
-Type=Application
-DesktopNames=dkde

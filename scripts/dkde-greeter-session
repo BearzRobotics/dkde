@@ -10,14 +10,16 @@ case "${1:-}" in
     -V|--version) echo "dkde-greeter-session @VERSION@"; exit 0 ;;
     -*) echo "dkde-greeter-session: unknown option '$1'" >&2; echo "Try 'dkde-greeter-session --help'." >&2; exit 2 ;;
 esac
-# What greetd runs for the login screen: a kiosk labwc that shows only
-# dkde-greeter and exits with it.
+# What greetd runs for the login screen: a compositor that shows only
+# dkde-greeter and exits with it. That is dkde-compositor in its kiosk mode (no
+# shortcuts); labwc is the backup, used when dkde-compositor is not installed or
+# fails as it starts. DKDE_GREETER_COMPOSITOR=labwc chooses it.
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=dkde-greeter
 
 # The login screen runs as the greetd user, which has no home to log in. Its
-# messages go to /tmp/dkde-greeter-<uid>.log (the last start only): when labwc
-# cannot start, the screen stays black with nothing to read.
+# messages go to /tmp/dkde-greeter-<uid>.log (the last start only): when the
+# compositor cannot start, the screen stays black with nothing to read.
 greeter_log="/tmp/dkde-greeter-$(id -u).log"
 if [ ! -t 2 ] && { : > "$greeter_log"; } 2>/dev/null; then
     exec >>"$greeter_log" 2>&1
@@ -47,7 +49,20 @@ if [ -z "$XDG_RUNTIME_DIR" ]; then
     mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
     export XDG_RUNTIME_DIR
 fi
-labwc -s dkde-greeter-start
-status=$?
-echo "dkde-greeter-session: labwc exited with status $status"
+compositor="${DKDE_GREETER_COMPOSITOR:-dkde-compositor}"
+command -v "$compositor" >/dev/null 2>&1 || compositor=labwc
+if [ "$compositor" = dkde-compositor ]; then
+    started=$(date +%s)
+    dkde-compositor --kiosk dkde-greeter-start
+    status=$?
+    if [ "$status" -ne 0 ] && [ $(( $(date +%s) - started )) -lt 10 ] && command -v labwc >/dev/null 2>&1; then
+        echo "dkde-greeter-session: dkde-compositor failed with status $status as it started; using labwc"
+        compositor=labwc
+    fi
+fi
+if [ "$compositor" != dkde-compositor ]; then
+    labwc -s dkde-greeter-start
+    status=$?
+fi
+echo "dkde-greeter-session: $compositor exited with status $status"
 exit "$status"

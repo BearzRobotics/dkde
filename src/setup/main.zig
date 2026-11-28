@@ -366,8 +366,8 @@ const Setup = struct {
         self.add(.{
             .title = "login-manager session entry (optional)",
             .status = .todo,
-            .command = "printf '[Desktop Entry]\\nName=dkde\\nComment=dkde desktop on labwc\\nExec=labwc\\nType=Application\\n' | sudo tee /usr/share/wayland-sessions/dkde.desktop >/dev/null",
-            .reason = "only needed to pick dkde from a graphical login screen. The session runs labwc, which reads ~/.config/labwc/autostart.",
+            .command = "printf '[Desktop Entry]\\nName=dkde\\nComment=The dkde desktop on Wayland\\nExec=env DKDE_SESSION_TYPE=wayland dkde-session\\nType=Application\\nDesktopNames=dkde\\n' | sudo tee /usr/share/wayland-sessions/dkde.desktop >/dev/null",
+            .reason = "only needed to pick dkde from a graphical login screen.",
         });
     }
 

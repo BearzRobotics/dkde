@@ -6,8 +6,8 @@
     .fingerprint = 0xd47105f400131a66,
     .dependencies = .{
         .toml = .{
-            .url = "https://github.com/BearzRobotics/toml-zig/releases/download/v0.2.0/toml-0.2.0.tar.gz",
-            .hash = "toml-0.2.0-dDatLIhiAgBq8q4SLFu0RZSUcCJLAwl49UZRIZ-fHqqx",
+            .url = "https://github.com/BearzRobotics/toml-zig/releases/download/v0.3.0/toml-0.3.0.tar.gz",
+            .hash = "toml-0.3.0-dDatLHHPAwDGJqTia2l02jhc2Hm6D0tZw1VtOAOWcm-E",
         },
     },
 }
