@@ -5,7 +5,11 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 ## Unreleased
 
 **Dependencies**
-- **Changed**: util-core 0.3.0 (from 0.1.0), which brings regex-zig 0.5.0 and yaml-zig 0.3.1. No dkde program uses it yet.
+- **Removed**: util-unix and util-core, for now. dkde reads `/etc/passwd` and `/etc/group` with its own small parser. Using a library for account changes is a proposal to discuss later (`docs/roadmap/account-management.md`).
+
+**dkde-settings**
+- **Fixed**: a new or changed password lost any spaces at its start or end, so it could not be used to log in as typed.
+- **Changed**: when a new user's password cannot be set, the account is removed again (a home folder that was already there is kept). A new administrator is made in one step.
 
 **dkde-pdf**
 - **Added**: Annotate > Stamp or Watermark puts a diagonal line of text, or a picture such as a logo or scanned signature (not a digital signature), on chosen pages.

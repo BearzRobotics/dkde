@@ -8,7 +8,8 @@
 //! password cannot be interpreted as shell code.
 
 const std = @import("std");
-const userdb = @import("util_unix").userdb;
+const userdb = @import("common").userdb;
+const testing = std.testing;
 
 pub const User = struct {
     name: []const u8,
@@ -127,14 +128,39 @@ pub fn exists(users: []const User, name: []const u8) bool {
     return false;
 }
 
+/// A password reaches the scripts as one line on stdin, so it cannot hold a
+/// line break.
+pub fn isValidPassword(text: []const u8) bool {
+    return text.len > 0 and std.mem.indexOfAny(u8, text, "\r\n\x00") == null;
+}
+
 /// `sh -c <script> sh $1=name $2=full name $3=yes|no $4=admin group`; stdin
-/// carries the new account's password on its first line.
+/// carries the new account's password on its first line. `IFS=` keeps the
+/// spaces at the ends of a password.
+///
+/// If the password is refused the new account is removed again. Its home
+/// folder goes too only when it is certain `useradd` made it: a folder that
+/// was there before (from an earlier account of that name, say) is kept.
 pub const add_script =
     \\set -e
-    \\read -r pw
-    \\useradd -m -s /bin/bash -c "$2" -- "$1"
-    \\printf '%s:%s\n' "$1" "$pw" | chpasswd
-    \\if [ "$3" = yes ]; then usermod -aG "$4" -- "$1"; fi
+    \\IFS= read -r pw
+    \\base=$(useradd -D | sed -n 's/^HOME=//p')
+    \\made_home=no
+    \\if [ -n "$base" ] && [ ! -e "$base/$1" ] && [ ! -L "$base/$1" ]; then made_home=yes; fi
+    \\if [ "$3" = yes ]; then
+    \\    useradd -m -s /bin/bash -c "$2" -G "$4" -- "$1"
+    \\else
+    \\    useradd -m -s /bin/bash -c "$2" -- "$1"
+    \\fi
+    \\if ! printf '%s:%s\n' "$1" "$pw" | chpasswd; then
+    \\    if [ "$made_home" = yes ]; then remove=-r; else remove=; fi
+    \\    if userdel $remove -- "$1"; then
+    \\        echo "The password could not be set, so the account was not created." >&2
+    \\    else
+    \\        echo "The password could not be set. The account $1 was created and could not be removed." >&2
+    \\    fi
+    \\    exit 1
+    \\fi
 ;
 
 /// `sh -c <script> sh $1=user $2=groups to join $3=groups to leave`, each
@@ -149,7 +175,7 @@ pub const groups_script =
 /// `sh -c <script> sh $1=name`; stdin carries the new password.
 pub const password_script =
     \\set -e
-    \\read -r pw
+    \\IFS= read -r pw
     \\printf '%s:%s\n' "$1" "$pw" | chpasswd
 ;
 
@@ -224,4 +250,104 @@ test "exists" {
     const users = [_]User{.{ .name = "a", .uid = 1000, .full_name = "", .shell = "/bin/sh" }};
     try std.testing.expect(exists(&users, "a"));
     try std.testing.expect(!exists(&users, "b"));
+}
+
+// The scripts run here with shell functions standing in for the account tools,
+// so no real one can be reached. Each stand-in prints what it was given.
+const stand_ins =
+    \\useradd() { if [ "$1" = -D ]; then echo "HOME=$FAKE_BASE"; return 0; fi; printf 'useradd[%s]' "$@"; echo; return "${FAIL_ADD:-0}"; }
+    \\chpasswd() { IFS= read -r line; printf 'chpasswd[%s]\n' "$line"; if [ -n "$FAIL_PASSWORD" ]; then echo refused >&2; return 1; fi; }
+    \\userdel() { printf 'userdel[%s]' "$@"; echo; return "${FAIL_DEL:-0}"; }
+    \\
+;
+
+const Ran = struct {
+    result: std.process.RunResult,
+
+    fn deinit(self: Ran) void {
+        testing.allocator.free(self.result.stdout);
+        testing.allocator.free(self.result.stderr);
+    }
+
+    fn said(self: Ran, text: []const u8) bool {
+        return std.mem.indexOf(u8, self.result.stdout, text) != null;
+    }
+
+    fn lastError(self: Ran) []const u8 {
+        const trimmed = std.mem.trimEnd(u8, self.result.stderr, "\n");
+        const at = std.mem.lastIndexOfScalar(u8, trimmed, '\n') orelse return trimmed;
+        return trimmed[at + 1 ..];
+    }
+};
+
+/// Runs `script` with `args` as its parameters and `password` on stdin.
+/// `setup` is shell text that sets what the stand-ins do.
+fn runScript(comptime script: []const u8, setup: []const u8, password: []const u8, args: []const []const u8) !Ran {
+    // $1 is the password, $2 the stand-ins' settings, $3 the script under test.
+    const outer = "pw=$1; setup=$2; inner=$3; shift 3; printf '%s\\n' \"$pw\" | sh -c \"$setup\n$inner\" sh \"$@\"";
+    var argv: std.ArrayList([]const u8) = .empty;
+    defer argv.deinit(testing.allocator);
+    try argv.appendSlice(testing.allocator, &.{ "sh", "-c", outer, "sh", password, setup, stand_ins ++ script });
+    try argv.appendSlice(testing.allocator, args);
+    return .{ .result = try std.process.run(testing.allocator, testing.io, .{ .argv = argv.items }) };
+}
+
+const spaced = "  two  spaces \\ $HOME '\" * ";
+
+test "a password reaches chpasswd exactly as typed" {
+    for ([_]Ran{
+        try runScript(add_script, "FAKE_BASE=/nonexistent-dkde", spaced, &.{ "alice", "Alice B", "no", "sudo" }),
+        try runScript(password_script, "", spaced, &.{"alice"}),
+    }) |ran| {
+        defer ran.deinit();
+        try testing.expectEqual(@as(u8, 0), ran.result.term.exited);
+        try testing.expect(ran.said("chpasswd[alice:" ++ spaced ++ "]\n"));
+        try testing.expect(!ran.said("userdel"));
+    }
+}
+
+test "an administrator is made by the one useradd call" {
+    const ran = try runScript(add_script, "FAKE_BASE=/nonexistent-dkde", "pw", &.{ "alice", "Alice B", "yes", "wheel" });
+    defer ran.deinit();
+    try testing.expect(ran.said("useradd[-m]useradd[-s]useradd[/bin/bash]useradd[-c]useradd[Alice B]useradd[-G]useradd[wheel]useradd[--]useradd[alice]\n"));
+}
+
+test "nothing else happens when useradd fails" {
+    const ran = try runScript(add_script, "FAKE_BASE=/nonexistent-dkde; FAIL_ADD=9", "pw", &.{ "alice", "", "no", "sudo" });
+    defer ran.deinit();
+    try testing.expectEqual(@as(u8, 9), ran.result.term.exited);
+    try testing.expect(!ran.said("chpasswd"));
+    try testing.expect(!ran.said("userdel"));
+}
+
+test "a refused password removes the new account" {
+    const ran = try runScript(add_script, "FAKE_BASE=/nonexistent-dkde; FAIL_PASSWORD=1", "pw", &.{ "alice", "", "no", "sudo" });
+    defer ran.deinit();
+    try testing.expectEqual(@as(u8, 1), ran.result.term.exited);
+    try testing.expect(ran.said("userdel[-r]userdel[--]userdel[alice]\n"));
+    try testing.expectEqualStrings("The password could not be set, so the account was not created.", ran.lastError());
+}
+
+test "removing the new account keeps a home folder that was already there" {
+    // /etc stands for an existing home; with no known base nothing is certain either.
+    for ([_][]const u8{ "FAKE_BASE=/; FAIL_PASSWORD=1", "FAKE_BASE=; FAIL_PASSWORD=1" }) |setup| {
+        const ran = try runScript(add_script, setup, "pw", &.{ "etc", "", "no", "sudo" });
+        defer ran.deinit();
+        try testing.expect(ran.said("userdel[--]userdel[etc]\n"));
+        try testing.expect(!ran.said("userdel[-r]"));
+    }
+}
+
+test "an account that cannot be removed is reported" {
+    const ran = try runScript(add_script, "FAKE_BASE=/nonexistent-dkde; FAIL_PASSWORD=1; FAIL_DEL=8", "pw", &.{ "alice", "", "no", "sudo" });
+    defer ran.deinit();
+    try testing.expectEqual(@as(u8, 1), ran.result.term.exited);
+    try testing.expectEqualStrings("The password could not be set. The account alice was created and could not be removed.", ran.lastError());
+}
+
+test "password rules" {
+    try testing.expect(isValidPassword(spaced));
+    try testing.expect(!isValidPassword(""));
+    try testing.expect(!isValidPassword("a\nb"));
+    try testing.expect(!isValidPassword("a\rb"));
 }

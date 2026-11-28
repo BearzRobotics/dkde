@@ -12,7 +12,6 @@ pub fn configure(ctx: *const Ctx, mod: *std.Build.Module) void {
     ctx.gtk(mod);
     ctx.desktopApi(mod);
     mod.addImport("shared", ctx.shared);
-    mod.addImport("util_unix", ctx.util_unix);
     // The Terminal page previews colour schemes with termcore's tables, and
     // offers the schemes dkde-term has.
     const termcore = ctx.dkterm().module("termcore");

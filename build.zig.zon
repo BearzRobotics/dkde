@@ -18,10 +18,6 @@
             .hash = "dkman-0.5.1-lbczzsFLBABk_hoAo5TpMv6RydQT27ZK3LZq3P5YGNpY",
             .lazy = true,
         },
-        .util_unix = .{
-            .url = "https://github.com/BearzRobotics/util-unix/archive/refs/tags/v0.4.0.tar.gz",
-            .hash = "util_unix-0.4.0-pehS_Z_1DwBbbopYAvC0z1tzhl-aLKcK0-DXk5nrfqeq",
-        },
         // yaml-zig, for the Kaitai Struct descriptions dkde-hex reads.
         .yaml = .{
             .url = "https://github.com/BearzRobotics/yaml-zig/releases/download/v0.3.1/yaml-0.3.1.tar.gz",
@@ -47,10 +43,6 @@
             .url = "https://deps.files.ghostty.org/zig_wayland-27dda01712ddf3cb46ebd93380d88b01a7c828f8.tar.gz",
             .hash = "wayland-0.7.0-dev-lQa1klz9AQB87V0pMKMdm8JvyOx32XR9FxcWnw9wh6XZ",
             .lazy = true,
-        },
-        .util_core = .{
-            .url = "https://github.com/BearzRobotics/util-core/archive/refs/tags/v0.3.0.tar.gz",
-            .hash = "util_core-0.3.0-yZFABHycQQA4OGPBr8WIkNJCj_4aWyWPtHzNFIZRkSVl",
         },
     },
     .paths = .{ "build.zig", "build.zig.zon", "src", "data", "protocols", "third_party", "LICENSE", "README.md", "CHANGELOG.md" },

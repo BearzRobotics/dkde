@@ -74,7 +74,6 @@ pub const Ctx = struct {
     core: *std.Build.Module,
     /// `core` plus the GTK widgets.
     common: *std.Build.Module,
-    util_unix: *std.Build.Module,
     /// Bindings for the Wayland protocols GTK does not expose.
     wayland_protocols: *std.Build.Module,
     /// The Wayland side of the shared desktop API (windows, workspaces, outputs, capture).
@@ -189,11 +188,6 @@ pub fn build(b: *std.Build) void {
         core.addAnonymousImport("data-" ++ name ++ ".toml", .{ .root_source_file = b.path("data/" ++ name ++ ".toml") });
     }
     core.addImport("toml", b.dependency("toml", .{ .target = target, .optimize = optimize }).module("toml"));
-    // /etc/passwd and /etc/group parsing (no NSS), shared with the other Unix tools.
-    const util_unix = b.dependency("util_unix", .{ .target = target, .optimize = optimize }).module("util_unix");
-    core.addImport("util_unix", util_unix);
-    // The shared core utilities (text, hashing, regular expressions), for the apps that need them.
-    core.addImport("util_core", b.dependency("util_core", .{ .target = target, .optimize = optimize }).module("util_core"));
 
     const common = b.addModule("common", .{ .root_source_file = b.path("src/common/root.zig"), .target = target, .optimize = optimize, .link_libc = true });
     common.addImport("core", core);
@@ -272,7 +266,6 @@ pub fn build(b: *std.Build) void {
         .build_options = build_options_mod,
         .core = core,
         .common = common,
-        .util_unix = util_unix,
         .wayland_protocols = wayland_module,
         .wldesktop = wldesktop,
         .x11desktop = x11desktop,

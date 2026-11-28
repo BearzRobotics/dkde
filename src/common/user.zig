@@ -3,9 +3,8 @@
 
 const std = @import("std");
 const glib = @import("glib2");
-const userdb = @import("util_unix").userdb;
-
 const config_mod = @import("config.zig");
+const userdb = @import("userdb.zig");
 
 /// Path of the profile picture: `[user] picture` in dkde.toml, else the
 /// conventional `~/.face`. Owned by the caller; null when there is none.

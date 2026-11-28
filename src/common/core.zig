@@ -39,6 +39,7 @@ pub const state = @import("state.zig");
 pub const toolkits = @import("toolkits.zig");
 pub const tomltext = @import("tomltext.zig");
 pub const user = @import("user.zig");
+pub const userdb = @import("userdb.zig");
 
 pub const Config = config.Config;
 pub const tr = i18n.tr;

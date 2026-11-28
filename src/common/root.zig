@@ -40,6 +40,7 @@ pub const state = core.state;
 pub const tomltext = core.tomltext;
 pub const toolkits = core.toolkits;
 pub const user = core.user;
+pub const userdb = core.userdb;
 
 // GTK parts.
 pub const contextmenu = @import("contextmenu.zig");

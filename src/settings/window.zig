@@ -1282,6 +1282,7 @@ pub const SettingsWindow = struct {
                 if (!users.isValidUsername(name)) return fail(ctx, common.tr("Use lower-case letters, digits, _ and -, starting with a letter."));
                 if (!users.isValidFullName(full)) return fail(ctx, common.tr("The full name cannot contain : or , or control characters."));
                 if (pw.len == 0) return fail(ctx, common.tr("Enter a password."));
+                if (!users.isValidPassword(pw)) return fail(ctx, common.tr("The password cannot contain line breaks."));
                 if (!std.mem.eql(u8, pw, pw2)) return fail(ctx, common.tr("The passwords do not match."));
                 const passwd = self.readText("/etc/passwd") orelse return;
                 defer self.allocator.free(passwd);
@@ -1303,6 +1304,7 @@ pub const SettingsWindow = struct {
             .set_password => {
                 const pw = fieldText(ctx, 0);
                 if (pw.len == 0) return fail(ctx, common.tr("Enter a password."));
+                if (!users.isValidPassword(pw)) return fail(ctx, common.tr("The password cannot contain line breaks."));
                 if (!std.mem.eql(u8, pw, fieldText(ctx, 1))) return fail(ctx, common.tr("The passwords do not match."));
                 var stdin_buf: [512]u8 = undefined;
                 const stdin_data = std.fmt.bufPrint(&stdin_buf, "{s}\n", .{pw}) catch return fail(ctx, common.tr("That password is too long."));

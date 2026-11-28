@@ -131,7 +131,7 @@ below for the full list and one install command.
 
 | Package | Source |
 |---|---|
-| toml-zig, util-unix, util-core, dkman (which brings md-zig, gtroff-zig and regex-zig), pdf-zig, yaml-zig, DKTermCore | GitHub releases of BearzRobotics' own libraries (TOML, YAML, /etc/passwd parsing, man pages, PDF, terminal core) |
+| toml-zig, dkman (which brings md-zig, gtroff-zig and regex-zig), pdf-zig, yaml-zig, DKTermCore | GitHub releases of BearzRobotics' own libraries (TOML, YAML, man pages, PDF, terminal core) |
 | zig-gobject (GTK bindings) | Ghostty's build of zig-gobject (`deps.files.ghostty.org`, from ghostty-org/zig-gobject), the same bindings Ghostty uses |
 | zig-wayland | `deps.files.ghostty.org`, from ifreund/zig-wayland |
 | libghostty-vt | Ghostty tag `v1.4.0` (needs Zig 0.17.1), through DKTermCore |
@@ -455,7 +455,7 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
 [LICENSE](LICENSE) for the version 2 text. Releases up to 0.3.6 were published under the
 MIT License.
 
-Libraries linked into dkde's programs include util-unix and util-core (GPL-2.0-or-later);
+Libraries linked into dkde's programs include
 DKTermCore (dkterm, LGPL-2.0-or-later; in dkde-term, dkde-files, dkde-edit and
 dkde-settings); and pdf-zig (LGPL-2.0-or-later; in dkde-pdf and dkde-pdfcheck).
 

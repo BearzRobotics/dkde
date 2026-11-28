@@ -3,7 +3,7 @@
 //! contents, so they are unit tested.
 
 const std = @import("std");
-const userdb = @import("util_unix").userdb;
+const userdb = @import("common").userdb;
 
 pub const Stat = struct {
     pid: u32,

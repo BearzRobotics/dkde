@@ -10,6 +10,4 @@ pub const data: []const []const u8 = &.{"tasks.toml"};
 pub fn configure(ctx: *const Ctx, mod: *std.Build.Module) void {
     ctx.gtk(mod);
     ctx.imports(mod, &.{"cairo1"});
-    // User names for process owners.
-    mod.addImport("util_unix", ctx.util_unix);
 }
