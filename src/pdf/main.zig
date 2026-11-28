@@ -1056,6 +1056,10 @@ const DocView = struct {
         self.rotateContext(cr, index);
         render.renderPage(self.allocator, s.doc, index, cr, self.scale(), &self.diag) catch |e|
             std.log.warn("page {d} not drawn: {s}", .{ index + 1, @errorName(e) });
+        if (self.diag.incomplete) {
+            var buf: [96]u8 = undefined;
+            self.status.setText(std.fmt.bufPrintSentinel(&buf, "Page {d}: part of this page cannot be shown.", .{index + 1}, 0) catch "");
+        }
 
         const slot = &self.cache[self.next_slot];
         self.next_slot = (self.next_slot + 1) % cache_size;

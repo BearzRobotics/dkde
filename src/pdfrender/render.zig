@@ -944,15 +944,29 @@ pub fn pageText(allocator: std.mem.Allocator, doc: *Document, index: usize) (Err
 /// Draws page `index` (0-based) onto `cr`, scaled by `scale` device pixels per
 /// PDF point, with the page's top-left at the origin of `cr`. What could not
 /// be drawn is recorded in `diag`.
+/// Records what the library says a page uses that it left out or only
+/// approximated, one `omit-...` event each. JBIG2 is not one of ours: the
+/// library cannot decode it, this renderer can, and reports its own failures.
+fn noteOmissions(omissions: display.Omissions, diag: *Diag) void {
+    inline for (@typeInfo(display.Omissions).@"struct".field_names) |name| {
+        if (@TypeOf(@field(omissions, name)) == bool and !comptime std.mem.eql(u8, name, "jbig2")) {
+            if (@field(omissions, name)) diag.note("omit-" ++ name, "");
+        }
+    }
+    diag.incomplete = omissions.contentMissing();
+}
+
 pub fn renderPage(allocator: std.mem.Allocator, doc: *Document, index: usize, cr: *cairo.Context, scale: f64, diag: *Diag) Error!void {
     const page = pdf.pages.page(&doc.doc, doc.pages, index) orelse return error.NoSuchPage;
     diag.page = index;
+    diag.incomplete = false;
     var dl = doc.renderer.render(allocator, page) catch |e| switch (e) {
         error.OutOfMemory => return error.OutOfMemory,
         error.LimitExceeded => return diag.note("page-too-complex", ""),
         else => return diag.note("page-content-unreadable", @errorName(e)),
     };
     defer dl.deinit();
+    noteOmissions(dl.omissions, diag);
 
     cr.save();
     defer cr.restore();
@@ -1060,6 +1074,29 @@ test "paths, colours and text are drawn" {
     try std.testing.expect(red[0] > 200 and red[1] < 60 and red[2] < 60);
     const white = pixel(surface, 300, 20);
     try std.testing.expect(white[0] > 240 and white[1] > 240 and white[2] > 240);
+}
+
+test "content the library leaves out is reported" {
+    const a = std.testing.allocator;
+    // A function-based shading (type 1), which the library skips.
+    const bytes = try buildPdf(a, "q /S1 sh Q", "/Shading << /S1 6 0 R >>", 0, &.{
+        .{ .dict = "<< /ShadingType 1 /ColorSpace /DeviceGray /Domain [0 1 0 1] /Function 7 0 R >>" },
+        .{ .dict = "/FunctionType 4 /Domain [0 1 0 1] /Range [0 1]", .stream = "{ pop }" },
+    });
+    defer a.free(bytes);
+    var diag = Diag.init(a);
+    diag.verbose = false;
+    defer diag.deinit();
+    const surface = try renderTest(a, bytes, &diag, 400, 200);
+    defer surface.destroy();
+    try std.testing.expect(diag.incomplete);
+    try std.testing.expectEqual(@as(?u32, 1), diag.counts.get("omit-shading"));
+
+    const plain = try buildPdf(a, "10 10 60 40 re f", "", 0, &.{});
+    defer a.free(plain);
+    const second = try renderTest(a, plain, &diag, 400, 200);
+    defer second.destroy();
+    try std.testing.expect(!diag.incomplete);
 }
 
 test "inline images are drawn, with their abbreviated keys" {

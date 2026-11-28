@@ -9,6 +9,8 @@ dkde-pdfcheck [OPTIONS] PATH...
 # DESCRIPTION
 dkde-pdfcheck draws every page of many PDF files with the DKDE renderer and reports what it could not draw, so that a large collection can be used to find gaps. It needs no display and is a developer tool. Run **dkde-pdfcheck --help** for the options of the installed version.
 
+In a report, notes whose names start with **omit-** are what the PDF library says a page uses that it leaves out (**omit-shading**, **omit-undecodable**, **omit-bad_function**, **omit-too_deep**) or only approximates (the others, such as **omit-soft_mask** or **omit-no_unicode**, text that cannot be searched).
+
 # CONVENTIONS
 Bold represents literal commands, options, and keywords.
 Italic or uppercase placeholders represent values supplied by the user.

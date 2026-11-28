@@ -18,6 +18,8 @@ pub const Diag = struct {
     verbose: bool = false,
     /// The page being drawn, for log lines.
     page: usize = 0,
+    /// The last page drawn lacks content the PDF library could not pass on.
+    incomplete: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) Diag {
         return .{ .allocator = allocator, .verbose = std.c.getenv("DKDE_PDF_LOG") != null };

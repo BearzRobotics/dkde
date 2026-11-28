@@ -15,6 +15,8 @@ Everything you add is written into the PDF as standard annotations, outline entr
 
 Links: the pointer turns into a hand over a link and a tooltip shows where it goes. A click on a link within the file goes there. A web (**http**, **https**) or email (**mailto**) link is shown in full and opened only if you agree. Nothing else is opened: not **file:** or other addresses, links to other files, or actions that run something; addresses with spaces or non-ASCII characters are refused too. Dragging over a link still selects its text.
 
+When part of a page cannot be shown, the status line says so.
+
 Limits: selection works on one page at a time. Filled form fields and text boxes use Helvetica for Western European text. For other characters an installed TrueType font that has all of them is found through fontconfig, and the part of it that is used is embedded in the file. One font must cover the whole of a field or box; **.otf** fonts with CFF outlines, **.ttc** collections and fonts that do not allow it are not used, and when no font fits, the change is refused. Hebrew, Arabic and Indic scripts are stored correctly but may be drawn wrongly (no shaping or right-to-left layout). The field keeps its own font setting, so another program that edits the value later may not have these characters. In a list box with entries no font covers, those entries show as ?. Signature fields are not filled, and XFA forms are not supported. Encrypted files and files whose structure had to be repaired when opened can be read but not edited in place.
 
 # CONVENTIONS
