@@ -36,7 +36,7 @@ are confirmed.
 6. Time zone: the page shows the current zone; changing it asks for the
    password (elevation through `dkde-polkit-ui` or sudo).
 7. Settings → Users: add a user, change a password (needs the administrator
-   password dialog).
+   password dialog). The fuller list is under "User accounts" below.
 8. `dkde-parted` on an image file or a spare disk only, never the live disk.
 9. Idle lock and screen off (Power page) with a lock program installed.
 10. `ldd` on the binaries inside the image: no missing libraries (musl: see
@@ -49,6 +49,61 @@ Restored after the restructure (2026-11-13). Checked: builds, `--help`/`--versio
 ## Archives in Files (libarchive)
 
 Checked: all five pack formats round trip with folders and symbolic links; `../`, absolute paths and a symlink escape are refused; a damaged, missing or password-protected archive fails with a sentence and leaves no partial folder; opening an archive in a window, browsing a subfolder and going Up works. Not clicked: the item context menu (Open in New Tab, Extract Here, Extract To…, Compress), rar and 7z archives made by other tools, large archives.
+
+## User accounts (Settings → Users)
+
+Added 2026-11-28, after 0.3.6: needs a build from that date or later. **Use a VM or a spare install, and
+throwaway accounts.** Checked: unit tests, with stand-ins for `useradd`, `chpasswd` and `userdel`. Not tried:
+a real account, or the Settings window after these changes. On 0.3.6, spaces at the ends of a password are lost.
+
+1. Add a standard user. `id NAME` shows no administrator group, the home folder exists, and the account can
+   log in at the greeter and start a session (its shell is `/bin/bash`: check the image has it).
+2. Add an administrator. `id NAME` shows `sudo`, `wheel` or `admin`, and `sudo -v` works for it.
+3. Add a user whose password starts and ends with a space and has `\`, `$`, quotes and a non-English letter.
+   Log in with it exactly as typed; the same without the outer spaces is refused.
+4. Change a password to another such one, and check the new one logs in and the old one does not.
+5. Refused with a message, and nothing changed: a name already taken, a bad name (capitals, a space), passwords
+   that differ, an empty password, `:` or `,` in a full name.
+6. Cancel the administrator password dialog, then give it a wrong password: nothing changes.
+7. Change a full name; give and take away another account's administrator rights.
+8. Create a group, add and remove a member, delete the group.
+9. Delete an account keeping its files (the home folder stays), then one with its files (it goes). Deleting
+   root or your own account, and removing your own administrator rights, are refused.
+10. Create an account with the name of the one whose files were kept: it is created and the old files are
+    still there (check who owns them).
+11. If the system can be made to refuse a new password (so that `chpasswd` fails): the account is removed
+    again, a home folder that was there before is kept, and the message says what happened. This may not be
+    possible to arrange; so far only the stand-ins have covered it.
+
+## Search in Files
+
+Added 2026-11-28, after 0.3.6. Checked in a private headless compositor (a debug build, a small sample
+folder, and `/usr`): `*.pdf` and `photo?.jpg`, with and without Subfolders; Location; Show in Its Folder; icon
+view; moving a result to the Trash; a result dragged onto empty space moving nothing (the same kind of drag onto
+a folder, in a normal listing, did move the file); separate searches per tab and closing tabs; Stop; the
+10 000 limit; Escape; and closing the window by Ctrl+Q and the close button. Case in other scripts, links that
+loop and unreadable folders: unit tests (the sample's loop link was also not followed in the window).
+
+Still to try (use copies or throwaway files):
+
+1. **Ctrl+Shift+F** and View > Search Subfolders turn the button on and off. The one automated try of the
+   shortcut did not register, perhaps because the window did not have the keyboard.
+2. Search for a name with accented or non-English letters, typed in the other case.
+3. In the results: open a file and a folder; rename one (it stays while the new name matches, else leaves);
+   cut or copy one and paste it into a normal folder; drag one onto a folder.
+4. Paste and New Folder are refused with a message (shortcuts and menus), and files dragged in from another
+   window are not accepted on empty space.
+5. Compress two results from different folders (refused), then two from the same one (the archive appears in
+   the folder searched).
+6. Turn hidden files on and off during a subfolder search: the search starts again with or without them.
+7. Delete, move and rename listed files from a terminal: their entries leave or change.
+8. Subfolders cannot be used in the Trash.
+9. Search the home folder and then `/`: the window stays responsive, Stop acts at once, and folders that
+   cannot be read are counted in the status line.
+10. With gvfs: search below an `sftp://` or `smb://` place (never tried), including a slow one, and rename a
+    result there.
+11. Close Files in several states (just opened, several tabs, during a search, with a removable drive
+    plugged in): it exits without a crash. Debug builds should print no leak report.
 
 ## Known gaps (not bugs)
 
