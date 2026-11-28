@@ -19,6 +19,9 @@ pub const Item = struct {
     page: usize,
     /// Quarter turns clockwise, added to the page's own rotation.
     turn: u2 = 0,
+    /// Set for a new empty page of this width and height in points; `source`
+    /// and `page` then mean nothing.
+    blank: ?[2]f64 = null,
 };
 
 pub const Error = pdf.compose.Error || error{ WriteFailed, NoSuchSource };
@@ -37,13 +40,19 @@ pub fn compose(gpa: Allocator, sources: []const *render.Document, items: []const
 
     var start: usize = 0;
     while (start < items.len) {
+        if (items[start].blank) |size| {
+            try builder.addBlankPage(size[0], size[1]);
+            if (items[start].turn != 0) try builder.setRotation(start, @as(i32, items[start].turn) * 90);
+            start += 1;
+            continue;
+        }
         const source = items[start].source;
         if (source >= sources.len) return error.NoSuchSource;
         run.clearRetainingCapacity();
         in_run.clearRetainingCapacity();
         var end = start;
         // One call may not name a page twice.
-        while (end < items.len and items[end].source == source and !in_run.contains(items[end].page)) : (end += 1) {
+        while (end < items.len and items[end].blank == null and items[end].source == source and !in_run.contains(items[end].page)) : (end += 1) {
             try run.append(gpa, items[end].page);
             try in_run.put(gpa, items[end].page, {});
         }
@@ -57,10 +66,30 @@ pub fn compose(gpa: Allocator, sources: []const *render.Document, items: []const
         start = end;
     }
 
+    // The first source gives the new file its title and the rest of its description.
+    if (sources.len > 0) {
+        var arena = std.heap.ArenaAllocator.init(gpa);
+        defer arena.deinit();
+        try builder.setInfo(try describe(arena.allocator(), sources[0]));
+    }
+
     var out: std.Io.Writer.Allocating = .init(gpa);
     defer out.deinit();
     try builder.write(&out.writer);
     return out.toOwnedSlice();
+}
+
+/// The title, author, subject and keywords `doc` gives for itself.
+fn describe(a: Allocator, doc: *render.Document) Allocator.Error!pdf.compose.Builder.Info {
+    var info: pdf.compose.Builder.Info = .{};
+    const entry = doc.doc.get(doc.doc.trailer, "Info") orelse return info;
+    const dict = entry.asDict() orelse return info;
+    inline for (.{ .{ "Title", "title" }, .{ "Author", "author" }, .{ "Subject", "subject" }, .{ "Keywords", "keywords" } }) |pair| {
+        if (doc.doc.get(dict, pair[0])) |value| {
+            if (value == .string) @field(info, pair[1]) = try pdf.write.textToUtf8(a, value.string);
+        }
+    }
+    return info;
 }
 
 // ---- editing the list ------------------------------------------------------------------------
@@ -186,6 +215,31 @@ test "pages are merged, reordered, repeated, left out and turned" {
 
     try testing.expectError(error.NoPages, compose(testing.allocator, &.{first}, &.{}));
     try testing.expectError(error.NoSuchPage, compose(testing.allocator, &.{first}, &.{.{ .source = 0, .page = 9 }}));
+}
+
+test "blank pages go between others, and the title comes along" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var file = try wordPdf(a, &.{ "one", "two" });
+    // Give the file a title through the trailer.
+    const titled = try std.mem.replaceOwned(u8, a, file, "/Root 1 0 R >>", "/Root 1 0 R /Info << /Title (My Report) /Author (Ada) >> >>");
+    file = titled;
+    const source = try render.Document.openFromMemory(testing.allocator, file);
+    defer source.close();
+    const bytes = try compose(testing.allocator, &.{source}, &.{
+        .{ .source = 0, .page = 0 },
+        .{ .source = 0, .page = 0, .blank = .{ 300, 500 } },
+        .{ .source = 0, .page = 1 },
+    });
+    defer testing.allocator.free(bytes);
+    try expectPages(bytes, &.{ "one", "", "two" });
+    const made = try render.Document.openFromMemory(testing.allocator, bytes);
+    defer made.close();
+    try testing.expectEqual(@as(f64, 500), render.pageSize(made, 1).?.h);
+    const info = try describe(a, made);
+    try testing.expectEqualStrings("My Report", info.title);
+    try testing.expectEqualStrings("Ada", info.author);
 }
 
 test "marked items move one place and stop at the ends" {

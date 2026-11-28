@@ -122,7 +122,10 @@ const Organiser = struct {
                 3 => "  \u{21bb} 270\u{b0}",
             };
             const name = self.sources.items[item.source].name;
-            const text = std.fmt.bufPrintSentinel(&buf, "{d}.   page {d} of {s}{s}", .{ i + 1, item.page + 1, name[0..utf8Prefix(name, 200)], turned }, 0) catch "?";
+            const text = if (item.blank != null)
+                std.fmt.bufPrintSentinel(&buf, "{d}.   blank page{s}", .{ i + 1, turned }, 0) catch "?"
+            else
+                std.fmt.bufPrintSentinel(&buf, "{d}.   page {d} of {s}{s}", .{ i + 1, item.page + 1, name[0..utf8Prefix(name, 200)], turned }, 0) catch "?";
             const label = gtk.Label.new(text);
             label.setXalign(0);
             label.setEllipsize(.middle);
@@ -143,6 +146,36 @@ const Organiser = struct {
         if (!self.filling) self.preview.as(gtk.Widget).queueDraw();
     }
 
+    const PageSize = struct { w: f64, h: f64 };
+
+    /// An item's size as displayed, before its extra turns.
+    fn sizeOf(self: *Organiser, item: pageops.Item) ?PageSize {
+        if (item.blank) |b| return .{ .w = b[0], .h = b[1] };
+        const size = render.pageSize(self.sources.items[item.source].doc, item.page) orelse return null;
+        return .{ .w = size.w, .h = size.h };
+    }
+
+    /// Puts an empty page after the last selected one (or at the end), the size of the page before it.
+    fn onBlank(_: *gtk.Button, self: *Organiser) callconv(.c) void {
+        if (self.items.items.len >= max_pages) return;
+        const marked = self.marks() orelse return;
+        defer self.allocator.free(marked);
+        var at = self.items.items.len;
+        if (std.mem.lastIndexOfScalar(bool, marked, true)) |last| at = last + 1;
+        // A4 when there is no page to go by.
+        var size: PageSize = .{ .w = 595, .h = 842 };
+        if (at > 0) {
+            const before = self.items.items[at - 1];
+            if (self.sizeOf(before)) |s| size = if (before.turn % 2 == 1) .{ .w = s.h, .h = s.w } else s;
+        }
+        self.items.insert(self.allocator, at, .{ .source = 0, .page = 0, .blank = .{ size.w, size.h } }) catch return;
+        const now = self.allocator.alloc(bool, self.items.items.len) catch return;
+        defer self.allocator.free(now);
+        @memset(now, false);
+        now[at] = true;
+        self.fill(now);
+    }
+
     /// The first selected page, drawn to fit.
     fn onDraw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, data: ?*anyopaque) callconv(.c) void {
         const self: *Organiser = @ptrCast(@alignCast(data.?));
@@ -152,7 +185,7 @@ const Organiser = struct {
         const index = std.mem.indexOfScalar(bool, marked, true) orelse return;
         const item = self.items.items[index];
         const doc = self.sources.items[item.source].doc;
-        const size = render.pageSize(doc, item.page) orelse return;
+        const size = self.sizeOf(item) orelse return;
         const sideways = item.turn % 2 == 1;
         const w: f64 = if (sideways) size.h else size.w;
         const h: f64 = if (sideways) size.w else size.h;
@@ -174,6 +207,7 @@ const Organiser = struct {
             3 => cr.translate(0, size.w * scale),
         }
         cr.rotate(@as(f64, @floatFromInt(item.turn)) * std.math.pi / 2.0);
+        if (item.blank != null) return;
         render.renderPage(self.allocator, doc, item.page, cr, scale, &self.diag) catch {};
     }
 
@@ -455,6 +489,7 @@ pub fn show(allocator: Allocator, parent: *gtk.Window, bytes: []const u8, path: 
     button(tools, common.tr("Rotate Right"), self, Organiser.onRight);
     button(tools, common.tr("Delete"), self, Organiser.onDelete);
     button(tools, common.tr("Add PDF\u{2026}"), self, Organiser.onAdd);
+    button(tools, common.tr("Blank Page"), self, Organiser.onBlank);
     outer.append(tools.as(gtk.Widget));
 
     self.list.setSelectionMode(.multiple);
@@ -470,7 +505,7 @@ pub fn show(allocator: Allocator, parent: *gtk.Window, bytes: []const u8, path: 
     middle.append(self.preview.as(gtk.Widget));
     outer.append(middle.as(gtk.Widget));
 
-    const note = gtk.Label.new(common.tr("Ctrl or Shift selects several pages. The result is a new file: document properties, page labels, attachments, scripts, signatures and links to other files are not copied. Leaving a page out is not redaction."));
+    const note = gtk.Label.new(common.tr("Ctrl or Shift selects several pages. The result is a new file with this document's title and author: page labels, attachments, other properties, scripts, signatures and links to other files are not copied. Leaving a page out is not redaction."));
     note.setWrap(1);
     note.setXalign(0);
     outer.append(note.as(gtk.Widget));
