@@ -2,6 +2,11 @@
 
 All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit log has the detail.
 
+## Unreleased
+
+**License**
+- **Changed**: dkde is now licensed under the GNU General Public License, version 2 or later (`GPL-2.0-or-later`); releases up to 0.3.6 were MIT. Source files carry an SPDX header. Third-party code, icons, fonts and protocol files keep their own licenses.
+
 ## 0.3.6 (2026-11-27)
 
 **Pre-release.** dkde-compositor is now the default for the session and the login screen, and that has not been tried on a real boot: the new `--kiosk` login screen, the fix for windows that start fullscreen or maximized, the default session and an actual fall back to labwc are untested (the fall back scripts were tried with stand-in programs). If the login screen gives trouble, set `command = "env DKDE_GREETER_COMPOSITOR=labwc dkde-greeter-session"` in `/etc/greetd/config.toml`. Console switching was tested in a VM, before the other changes here; not on real hardware or with two monitors. On X11, the picture can stay off after returning from another console until the output is turned off and on with `xrandr`.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Facts about the computer and its locale, for the About and Language &
 //! region pages (SPEC.md 5.5). Pure functions over file contents, so they are
 //! unit tested; the pages read the files.

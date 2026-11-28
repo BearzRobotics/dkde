@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The build of every dkde program. What each program needs (libraries,
 //! modules, embedded files, data files, a menu entry) is in its own
 //! `src/<name>/build.zig`; this file sets up what programs share and calls

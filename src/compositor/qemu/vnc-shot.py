@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Minimal RFB client: connects (no auth), asks for one raw full-screen update, saves a PNG."""
 import socket, struct, sys
 from PIL import Image

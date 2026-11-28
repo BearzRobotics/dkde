@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The shared window header (SPEC.md 6.2): a flat bar with the app icon and
 //! title at the left and the window buttons at the right, like Windows.
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! iCalendar (RFC 5545) reading and writing for calendar events, so the
 //! calendar can be exchanged with phones and other programs. Only what dkde
 //! has is carried: summary, place, notes, start and end (dates or times), a

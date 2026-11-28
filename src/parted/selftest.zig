@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! `dkde-parted --selftest IMAGE`: runs the commands the tool generates against
 //! a scratch image file, one filesystem at a time, and says what worked. It
 //! needs administrator rights (loop devices), so run it as root on a machine

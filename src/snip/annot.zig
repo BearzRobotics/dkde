@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The geometry and the data of the screenshot editor (SPEC.md 5.6): the
 //! selection and its handles, the annotations drawn over it, the numbers that
 //! place the toolbar. Plain data and arithmetic with no GTK, so it is unit

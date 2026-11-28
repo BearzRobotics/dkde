@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The GLES frame composer: draws the scene graph with our own shaders, so a frame can be zoomed,
 //! colour-filtered, and (later) have windows warped, blurred or placed in 3D. It needs wlroots' GLES2 renderer;
 //! with another renderer `Gfx.create` returns null and the render-pass composer in render.zig is used.

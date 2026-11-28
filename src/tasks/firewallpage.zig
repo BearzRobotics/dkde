@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Firewall page: ufw or firewalld (nftables by hand is shown, not edited). Rules are read as
 //! plain sentences and changed through the administrator prompt; firewall.zig parses what the
 //! tools print and builds their arguments, so nothing a person types is ever shell text.

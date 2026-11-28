@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Wallpaper slideshow helpers: which files count as images, and how the
 //! `fit` setting maps to a GTK content fit.
 

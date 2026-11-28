@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Where the picture is drawn: zoom (to fit, to the window's width, or a
 //! fixed level, around the pointer), moving a zoomed picture with the mouse,
 //! the keys or a touchpad, pinch to zoom, a backdrop behind transparent

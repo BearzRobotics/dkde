@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Pseudo-terminal plumbing (SPEC.md 5.3): `openpty`, a child started on the
 //! slave side, non-blocking reads and writes, and `TIOCSWINSZ` for resize.
 //! `openpty` and the spawn path exist in both glibc and musl.

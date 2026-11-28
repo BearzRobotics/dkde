@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Time arithmetic for the Clock app. Pure.
 
 const std = @import("std");

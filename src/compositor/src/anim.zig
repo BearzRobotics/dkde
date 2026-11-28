@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Window animation timing, with no wlroots in it so it can be tested: easing, and the transform
 //! (scale, shift, opacity) a window has at a moment of an open, restore or minimize animation.
 

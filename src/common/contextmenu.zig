@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! A small popup menu of text items, used for the right-click menus of the
 //! panel and the start menu (SPEC.md 5.7).
 

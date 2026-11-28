@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Recurrence rules (RFC 5545 section 3.3.10) for subscribed calendars.
 //!
 //! An event in dkde repeats forever (daily, weekly, monthly, yearly). A feed

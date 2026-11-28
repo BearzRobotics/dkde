@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Converting between units, for the Unit Conversion pane and for entries
 //! such as "5 km in mi" or "100 °F to °C". Each unit is a factor to its
 //! category's base unit (temperature also has an offset).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Matching a window's `app_id` to a desktop entry (SPEC.md 4.2). Used by the
 //! taskbar and the start menu.
 

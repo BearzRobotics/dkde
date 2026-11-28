@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The strip of thumbnails along the bottom (Ctrl+F9), as in Eye of GNOME
 //! and Gwenview: every picture of the folder, the one showing marked;
 //! clicking one shows it. Thumbnails are asked for only as they scroll into

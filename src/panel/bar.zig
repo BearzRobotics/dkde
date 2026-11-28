@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The taskbar surface for one output (SPEC.md 5.1): start button, a
 //! stretching area for the taskbar buttons (M2), and the clock.
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The hex view of dkde-hex: offsets, hex bytes and text, drawn row by row so
 //! only what is on screen costs anything, with a cursor, a selection and
 //! editing in either pane.

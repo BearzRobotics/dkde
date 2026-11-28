@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Exact algebra on polynomials with rational coefficients: expand, factor over the
 //! rationals, cancel common factors of a fraction, and solve polynomial equations in
 //! exact form (rational roots, square roots, complex pairs).

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # SysV-style start script for greetd, the dkde login manager.
 #
 #   Slackware:  install as /etc/rc.d/rc.greetd (chmod +x) and start it from

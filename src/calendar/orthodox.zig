@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Russian Orthodox calendar (Old Calendar): Pascha by the Julian
 //! reckoning, the Triodion and Pentecostarion counted from it, the fixed
 //! feasts and saints by their Julian dates (from liturgy-ru.txt), and the four

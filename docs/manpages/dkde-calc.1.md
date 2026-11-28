@@ -270,7 +270,7 @@ dkde-calc-guide(7), dkde-calendar(1), dkde-help(1)
 DKDE contributors.
 
 # LICENSE
-MIT. The full text is in the LICENSE file of the source code.
+GPL-2.0-or-later. The version 2 text is in the LICENSE file of the source code.
 
 # AVAILABILITY
 Source code: https://github.com/BearzRobotics/dkde

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The start menu (SPEC.md 5.2): an overlay layer surface covering the output
 //! so a click outside the menu can close it, with the menu itself in the
 //! bottom-left corner above the bar. It is built when opened and destroyed

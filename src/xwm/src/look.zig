@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The shared look of the desktop, from `[appearance]` in `~/.config/dkde/dkde.toml`
 //! (the file Settings > Personalization writes): the accent colour, dark mode and
 //! the interface font. dkde-wm uses them for its title bars, so they match the

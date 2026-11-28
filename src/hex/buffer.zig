@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The bytes being edited, with undo and redo (SPEC.md 5.6, dkde-hex). Every
 //! change is one replace: remove `removed` at `offset` and put `inserted` there.
 //! Overwriting a byte, inserting, deleting and pasting are all that one

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! How busy GPUs are, from the kernel's per-client statistics: each open
 //! DRM file of a process has an fdinfo file (/proc/PID/fdinfo/FD) with the
 //! nanoseconds each engine has spent on that client and the memory it holds

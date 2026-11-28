@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-charmap: pick Unicode characters from blocks and copy them (SPEC.md 5.6).
 
 const std = @import("std");

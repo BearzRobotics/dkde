@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Virtual desktops (SPEC.md 5.1), from `ext-workspace-v1`, which labwc offers.
 //! The panel lists the workspaces and asks the compositor to switch; the
 //! number of desktops is labwc's `<desktops><number>` setting.

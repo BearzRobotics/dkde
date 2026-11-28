@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! What the GLES frame composers share, with no GL calls in it: the shader sources, the frame post-effect
 //! settings and colour-matrix helper. src/compositor/src/gfx.zig (Wayland) and src/xcomp (X11) both use it.
 

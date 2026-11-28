@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Geometry pane of dkde-calc: a drawing canvas with points, segments, lines, circles, polygons and
 //! angles. Drag a point and every length, angle and area that depends on it changes with it. The
 //! measurements are listed under the canvas; a click on one puts its number in the calculator's entry.

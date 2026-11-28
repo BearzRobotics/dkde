@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Tidying an expression that still has unknowns in it, so a formula with
 //! some of its values filled in is shown as simply as it goes:
 //! "E = 4·v²/2" becomes "E = 2v²", "2x + 3x" becomes "5x".

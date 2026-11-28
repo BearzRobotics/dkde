@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! How a text file is stored on disk: its encoding, whether it starts with a
 //! byte-order mark, and its line endings. The editor works on UTF-8 with "\n"
 //! line ends; `decode` turns a file into that and `encode` turns it back, so

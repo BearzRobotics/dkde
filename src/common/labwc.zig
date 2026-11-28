@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Editing labwc's own files without disturbing anything else in them
 //! (SPEC.md 5.5). Both editors are textual: only the touched key changes, so
 //! comments, ordering and unrelated settings survive.

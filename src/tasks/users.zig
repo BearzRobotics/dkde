@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Users page: who is signed in, and what each user's programs use
 //! together. A user can be signed out (their session ended); signing out
 //! someone else needs the administrator password.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The parts of the compositor with no display code in them, for the X11
 //! window manager (src/xwm) to share: layout policy, shortcut parsing and
 //! the settings file.

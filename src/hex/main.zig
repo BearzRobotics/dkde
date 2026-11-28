@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-hex: a hex editor (SPEC.md 5.6). It edits a file in memory with
 //! undo and redo, and shows a data inspector for the bytes at the cursor.
 

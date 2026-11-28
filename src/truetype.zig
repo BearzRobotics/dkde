@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Reads TrueType fonts (the `FontFile2` streams embedded in PDFs, and
 //! OpenType files with TrueType outlines): the cmap, glyph outlines
 //! (simple and composite) and advance widths. Pure, and safe on bad input:

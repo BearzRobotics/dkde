@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Symbolic checks with sympy: dsolve, laplace, ilaplace, integral and derivative results.
 
 A result is never compared against dkde-calc's own derivation. Instead it is tested the way a

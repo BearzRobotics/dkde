@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Account management helpers for the User settings page. Pure functions
 //! over the contents of /etc/passwd and /etc/group, so they are unit tested,
 //! plus the fixed shell scripts used for the privileged steps.

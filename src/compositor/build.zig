@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-compositor: DKDE's own Wayland compositor (see ai/COMPOSITOR-SPEC.md).
 //! A package of its own: the main build takes it in, and it also builds alone
 //! from this folder:

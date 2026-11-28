@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Pure helpers for the image viewer: which files are images, the order
 //! they are shown in, zoom and pan arithmetic, orientation bookkeeping and
 //! the Trash's records.

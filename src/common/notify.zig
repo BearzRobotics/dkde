@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Sends a desktop notification through the session bus
 //! (org.freedesktop.Notifications), for apps that need to tell the user
 //! something later: a timer ending, an alarm. Without a bus or a notification

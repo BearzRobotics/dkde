@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Window rules, with no wlroots in it: `[[rules]]` in compositor.toml say what to do with a window
 //! that matches an application id or a title. dkde-wm can read the same rules.
 //!

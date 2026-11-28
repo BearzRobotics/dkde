@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-pdfcheck: draws every page of many PDF files with the dkde renderer
 //! and reports what it could not draw, so a large collection can be used to
 //! find the gaps. It needs no display.

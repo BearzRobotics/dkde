@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Calendars of other traditions, as arithmetic on civil days (days since
 //! 1970-01-01, see common/civil.zig). The algorithms are those of Reingold and
 //! Dershowitz, "Calendrical Calculations".

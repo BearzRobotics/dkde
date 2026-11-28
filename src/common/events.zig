@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Calendar events: what is stored, which days an event falls on, and when its
 //! reminder fires (SPEC.md 5.6, dkde-calendar). Events live in
 //! `~/.config/dkde/calendar.toml` as `[event.<id>]` groups, so the calendar app

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The on-screen display for volume and brightness keys (SPEC.md 5.1): a small
 //! pill at the bottom centre of the screen with an icon, a level bar and a
 //! label, shown for a moment on the overlay layer. It never takes input.

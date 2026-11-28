@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Network page when NetworkManager is running (an optional backend: dkde works without it,
 //! see hwpages.NetworkPage). Everything goes through `nmcli`, so there is no D-Bus code here and
 //! no password is kept: a Wi-Fi password is handed to NetworkManager, which stores it.

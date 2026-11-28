@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Low-resource start-up shared by every dkde program (SPEC.md 11).
 //!
 //! `init` must run before GTK starts. It picks GTK's renderer from

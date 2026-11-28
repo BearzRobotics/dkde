@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Keyboard shortcuts in `compositor.toml` `[keys]`, the file DKDE's compositor
 //! and window manager read (Settings > Keyboard shortcuts when the session is
 //! one of DKDE's own). The built-in set is `keys.defaults`; the file adds to it,

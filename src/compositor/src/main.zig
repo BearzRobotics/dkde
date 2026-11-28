@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-compositor, milestone 0: a minimal floating Wayland compositor on
 //! wlroots (through Zig's C interop), in the shape of wlroots' `tinywl`.
 //!

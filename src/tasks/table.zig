@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The process table of the Processes and Details pages.
 //!
 //! Processes groups what runs as Windows 11 does: Apps (each app one row,

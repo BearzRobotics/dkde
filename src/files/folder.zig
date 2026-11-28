@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The contents of one folder as a list model, kept up to date as files come
 //! and go (SPEC.md 5.4).
 //!

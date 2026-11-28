@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Editing a TOML file as text, so that comments, blank lines, ordering and
 //! formatting survive a change. The TOML library keeps comments too (0.2.0), but
 //! normalizes layout; these functions change only the lines they must.

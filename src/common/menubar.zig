@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Classic menu bars (File, Edit, View, ...) for every dkde app. Menus are
 //! described as plain data; choosing an item calls one callback with the
 //! action's name, so each app keeps a single `perform(name)` for menus,

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Rosquin calendar: 13-day weeks, a year that starts on September 21, and
 //! three ways to group the weeks. Shared by the calendar app and the panel's
 //! clock, so it is pure arithmetic on civil days (see civil.zig).

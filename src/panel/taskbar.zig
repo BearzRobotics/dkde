@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The taskbar widget (SPEC.md 5.1): one button per window, or one per
 //! application when windows are combined. A combined button shows a count and
 //! opens a list of its windows; icon-only mode hides the titles.

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 # Only the long options are ours; seatd's own -h and -v pass through to it.
 case "${1:-}" in

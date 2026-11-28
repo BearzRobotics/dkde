@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The columns of the process lists (Processes and Details): their titles,
 //! how a process shows in each, how busy figures are tinted, and how each
 //! sorts. Shared so both pages read the same.

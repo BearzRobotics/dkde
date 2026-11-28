@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Reading a photo's EXIF data (camera, exposure, date, place) for the
 //! Properties pane, and changing a JPEG's orientation tag in place so a
 //! rotation can be saved without recompressing the picture.

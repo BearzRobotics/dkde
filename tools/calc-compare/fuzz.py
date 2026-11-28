@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 import random, subprocess, os, sys, re, math, json
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEST_BIN = sys.argv[1]

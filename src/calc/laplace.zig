@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Laplace transforms of the functions a course starts with, and back again.
 //!
 //!   laplace(f, t)     sums of  c · tⁿ · e^(at) · (1, sin bt, cos bt, sinh bt or cosh bt)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-snap: snap layouts, like Windows 11's. Super+Z shows the usual arrangements (halves, thirds,
 //! quarters…) over the screen; clicking a zone puts the active window there. Super+Z again, Escape or a
 //! click outside the card closes it.

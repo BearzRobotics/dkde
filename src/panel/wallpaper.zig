@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Wallpaper surface for one output (SPEC.md 5.1): an image or a solid
 //! colour, on the `background` layer.
 

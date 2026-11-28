@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! What Settings > For developers asks for, for the compositor and the X11 window manager (which do not use
 //! `common`). The same file and keys that common/log.zig reads: `~/.config/dkde/developer.toml`, [developer]
 //! `log-level`, `log-files`. `DKDE_DEBUG` in the environment still forces debug.

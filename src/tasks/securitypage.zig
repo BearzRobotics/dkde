@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Security page: AppArmor or SELinux, whichever the kernel runs. It shows
 //! the state, the profiles (AppArmor) or settings (SELinux), and the recent
 //! refusals in plain words. Reading the profiles and the audit log, and

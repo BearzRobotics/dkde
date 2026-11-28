@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Parsing and formatting for the Performance tab. Pure functions over file
 //! contents, so they are unit tested; the widgets live in perfview.zig.
 

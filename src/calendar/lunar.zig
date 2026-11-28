@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Moon phases, computed from Jean Meeus, "Astronomical Algorithms", chapter 49
 //! (new, first quarter, full and last quarter moon, good to a minute or two for
 //! the present era).

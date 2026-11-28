@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Finding web and file addresses in terminal output that programs did not
 //! mark as links (OSC 8), so they can be underlined and opened as in GNOME
 //! Terminal and Konsole.

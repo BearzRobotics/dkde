@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The list of things the help viewer can show: DKDE's own documents
 //! (Markdown installed under share/dkde/help) and the system's manual pages,
 //! found the way man(1) finds them. Finding, reading and parsing are dkman's;

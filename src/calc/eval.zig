@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The calculator's language, without GTK, so it is unit tested.
 //!
 //! An entry is parsed into a tree, then worked out with exact numbers

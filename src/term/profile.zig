@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Terminal profiles and colour schemes (SPEC.md 5.3). A profile is a
 //! `[profile:<name>]` group of term.toml (see SPEC.md 5.5).
 

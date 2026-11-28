@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Colour filters for the whole screen, with no wlroots in them so they can be tested: matrices applied
 //! to every pixel by the GL composer (negative, grayscale, sepia, stronger contrast, and simulations of
 //! the common kinds of colour blindness for people who design for them).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Desktop notifications (SPEC.md 5.1): the panel owns
 //! `org.freedesktop.Notifications` on the session bus, when there is one,
 //! and shows each notification as a toast in the top-right corner. It speaks

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-idle: runs the lock, screen-off and sleep actions after the keyboard and
 //! pointer have been quiet for the configured time (SPEC.md 5.1). It uses
 //! `ext-idle-notify-v1` and reads `[power]` and `[menu]` of panel.toml, which it

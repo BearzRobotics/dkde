@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Checks every formula in the Formulas pane (src/calc/formulas.zig) against sympy.
 
 For each formula and each of its letters, the other letters get sample values; dkde-calc solves for the

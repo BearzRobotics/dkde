@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Copy and move jobs (SPEC.md 5.4): asynchronous, cancellable, with
 //! progress and a prompt for name conflicts. Everything goes through GIO.
 //!

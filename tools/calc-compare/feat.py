@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 C = []
 def add(cat, expr, **ov): C.append((cat, expr, ov))
 # symbolic / exact

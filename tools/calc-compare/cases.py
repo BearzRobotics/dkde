@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # (category, expression, overrides)
 # overrides: dict tool -> expression text, or None to skip that tool.
 # Tools: ours, qalc, insect, kalker. Angles are radians everywhere.

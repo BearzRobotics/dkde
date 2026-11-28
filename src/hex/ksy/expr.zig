@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Parser for the Kaitai Struct expression language. It produces a small tree
 //! that interp.zig evaluates; everything is allocated from the caller's arena.
 

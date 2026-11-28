@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Pastes that could do something the user did not mean, as Konsole warns
 //! about, and quoting paths for the shell.
 

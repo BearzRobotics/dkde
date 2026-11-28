@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The data inspector of dkde-hex: what the bytes at the cursor mean as
 //! numbers, text and bits. Pure, so it is unit tested.
 

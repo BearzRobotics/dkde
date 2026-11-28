@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Running something as administrator from a dkde app (SPEC.md 5.5, 5.7).
 //!
 //! There is no polkit agent or D-Bus in a dkde session, so this asks for the

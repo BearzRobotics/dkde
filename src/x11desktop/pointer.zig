@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! A pointer that moves and scrolls by itself on X11, through the XTEST extension written out by hand
 //! (FakeInput), so no extension headers are needed. Used by dkde-snip to scroll a page for a long capture.
 

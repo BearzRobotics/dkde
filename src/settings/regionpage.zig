@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Language & region page (SPEC.md 5.5): the user's locale. It is written
 //! to `~/.config/locale.conf`, which `dkde-session` reads at sign-in, so no
 //! administrator is needed and the system's own default is left alone. The

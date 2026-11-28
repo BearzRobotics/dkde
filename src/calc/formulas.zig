@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The formulas offered in the Formulas pane. Picking one puts it in the
 //! entry; a field for each of its letters fills values in; Enter then
 //! solves for the one left out (or tidies the formula when several are).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Application lookup logic shared by the start menu and anything else that
 //! lists or launches desktop entries (SPEC.md 5.2, 4.2).
 

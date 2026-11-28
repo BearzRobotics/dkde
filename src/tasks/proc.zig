@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Parsing of /proc for the task manager. Pure functions over file
 //! contents, so they are unit tested.
 

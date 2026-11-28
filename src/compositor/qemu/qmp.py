@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Tiny QMP client: qmp.py SOCKET cmd [json-args]   e.g. qmp.py q.sock screendump '{"filename":"/x.ppm"}'"""
 import json, socket, sys, time
 def qmp(path, cmd, args=None):

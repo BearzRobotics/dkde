@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Calendar systems the month grid can be laid out in. Events, reminders and
 //! the liturgical overlays always use the civil (Gregorian) date; a system only
 //! decides how a day is numbered and where the months begin.

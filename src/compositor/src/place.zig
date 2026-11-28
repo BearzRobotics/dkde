@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Where windows go, with no wlroots in it (so it is tested, and dkde-wm can use it too):
 //! Put (send a window to a corner, an edge or the centre), smart placement of a new window
 //! where it covers the least, and edge magnetism while a window is dragged.

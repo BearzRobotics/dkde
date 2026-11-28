@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! "… to fraction", "255 to hex", "0.25 to percent", "2024 to roman",
 //! "360 to factors": the answer shown another way. The value is worked out
 //! first (by eval), then written here; the entry itself is not changed.

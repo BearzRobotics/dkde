@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 // What the compositor takes from C: libwayland-server, wlroots, xkbcommon.
 #define WLR_USE_UNSTABLE 1
 #include <time.h>

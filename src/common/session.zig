@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Which window system the running DKDE session uses, so programs know where its
 //! settings live. DKDE's own compositor and X11 window manager read
 //! `~/.config/dkde/compositor.toml` and say who they are in the environment

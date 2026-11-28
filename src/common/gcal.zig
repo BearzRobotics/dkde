@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Google Calendar through a GNOME Online Accounts sign-in: read-only.
 //!
 //! The access token comes from GOA (goa.zig); this file only asks Google's Calendar

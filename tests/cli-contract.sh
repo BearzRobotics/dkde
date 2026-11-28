@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # DKDE-024: every installed program answers --help and --version with exit 0,
 # and rejects an unknown option with exit 2, without a display or session bus.
 #

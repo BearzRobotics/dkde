@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The file operations indicator (SPEC.md 5.4), Nautilus-style: a button in
 //! the header that appears while files are being copied or moved, drawn as
 //! a pie of the overall progress. It opens a list of the operations, each

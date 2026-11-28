@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Known-answer checks for the calculator. `probe` (run only when CALC_PROBE
 //! names a file of entries, one per line, `rad:` or `grad:` in front for that
 //! angle unit) prints what the calculator answers, for comparing with values

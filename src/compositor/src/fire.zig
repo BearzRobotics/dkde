@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Flames for the pointer, with no wlroots in them so they can be tested: a particle system that
 //! throws sparks up from a point, which shrink and fade as they rise.
 

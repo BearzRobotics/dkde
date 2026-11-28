@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-core: what every DKDE program can use without a toolkit. Needs GLib
 //! and GIO, but not GTK, so small programs (notifications, setup, the
 //! Polkit agent) do not link it. Widgets and the shared stylesheet are in

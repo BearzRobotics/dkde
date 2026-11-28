@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! "Go to": a small window to jump to any date, past or future, by civil date,
 //! by Rosquin day code, or by Rosquin year and day of the year, and to step to
 //! the next or previous Leap Day or Year-End Day.

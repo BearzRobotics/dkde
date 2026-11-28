@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-calc on the command line: the same engine and the same figure drawing as the window, with no
 //! window. It is how lessons are checked and how their figures are looked at.
 //!

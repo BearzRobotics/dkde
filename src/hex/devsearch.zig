@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Searching a whole device (or image, or process region) that is bigger than
 //! the window dkde-hex keeps in memory. The scan reads one chunk per `step`,
 //! so the caller can run it from an idle handler and keep the window alive.

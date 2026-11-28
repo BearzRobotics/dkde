@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Window layout policy, with no wlroots in it so it is easy to test, and so
 //! the X11 window manager can use the same code later.
 //!

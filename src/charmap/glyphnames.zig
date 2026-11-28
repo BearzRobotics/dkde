@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! A font's own names for its characters. Private-use characters have no
 //! Unicode name, but fonts such as Rosquin Glyphs name every glyph in the
 //! `post` table; this reads the cmap (to get from character to glyph) and

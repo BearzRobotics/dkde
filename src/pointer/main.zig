@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-pointer: a development aid that drives the pointer through
 //! `wlr-virtual-pointer`, so hover, click and scroll behaviour can be tested
 //! without hands. Not part of the desktop; it is installed with the rest only

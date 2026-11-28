@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Editing a service from the Services page: a systemd drop-in override (what `systemctl edit` writes), reverting it,
 //! and dinit's service description file. Names are validated here and reach the tools as arguments or on standard
 //! input, never inside shell text.

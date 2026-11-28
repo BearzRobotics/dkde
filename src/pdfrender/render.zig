@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Draws a PDF page with cairo from the display list that pdf-zig builds
 //! (../../../pdf-zig): pdf-zig reads the file and interprets the content
 //! streams; this file only draws what it is told.

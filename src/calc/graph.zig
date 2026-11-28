@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Graph pane: up to six functions of x drawn together, with axes and
 //! a grid, moved by dragging and zoomed with the wheel or a pinch. Pointing
 //! at a curve shows the point under the pointer; the places where a curve

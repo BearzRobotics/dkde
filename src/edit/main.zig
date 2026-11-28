@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-edit: the text editor (SPEC.md 5.6). Notepad-simple to start with,
 //! with what gedit, GNOME Text Editor and Kate offer when it is wanted:
 //! syntax colours, line numbers and the other GtkSourceView extras when

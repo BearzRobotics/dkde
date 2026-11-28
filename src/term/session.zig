@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! What dkde-term keeps between runs and reads from other programs, without
 //! GTK: the tabs of the last session, and container names from toolbox and
 //! distrobox.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Virtual desktops, served to clients as `ext-workspace-v1` (wlroots 0.19 has
 //! no helper for it, so the protocol is implemented here on libwayland).
 //!

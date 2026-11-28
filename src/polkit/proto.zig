@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The parts of dkde-polkit that are plain data handling, so they are unit
 //! tested: the line protocol of polkit's authentication helper, choosing who
 //! to authenticate as, and finding the login session. See main.zig for the

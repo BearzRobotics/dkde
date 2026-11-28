@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! GLES2 drawing for dkde-xcomp: EGL on the composite overlay window, a textured quad per window (scaled,
 //! shifted and translucent as the effects ask), blur behind translucent windows, the workspace cube, and the
 //! post pass (zoom, colour filter, lens, ripples, motion blur). The shaders and the settings for the post pass

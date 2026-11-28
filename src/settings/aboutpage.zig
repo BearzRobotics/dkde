@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The About page (SPEC.md 5.5): what this computer is, in one place, with a
 //! button that copies it for a bug report.
 

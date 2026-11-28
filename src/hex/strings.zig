@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Finds runs of printable text in a buffer, like strings(1): the first thing
 //! to do with an unknown binary.
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Compact Font Format fonts (PDF /FontFile3 with Type1C or CIDFontType0C,
 //! and the 'CFF ' table of an OpenType font): the parser and the Type 2
 //! charstring interpreter that turns a glyph into lines and cubic curves.

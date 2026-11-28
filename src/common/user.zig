@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The signed-in user: display name, profile picture and admin status.
 
 const std = @import("std");

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-tasks: Task Manager (SPEC.md 5.6), laid out as Windows 11's: a rail
 //! of pages on the left (Processes, Performance, Startup apps, Users,
 //! Details, Services, and Settings at the bottom). Everything shown is read

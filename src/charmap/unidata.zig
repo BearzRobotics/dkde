@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Unicode blocks, character names and search for the character map. Pure.
 //! The data is `unidata.txt`, made by scripts/gen-charmap-data.py.
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Runs only when KSY_FORMATS_DIR points at a clone of kaitai_struct_formats:
 //! checks that every .ksy file there loads through the YAML parser.
 

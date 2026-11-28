@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Date calculation for the Date Calculation pane, in any calendar
 //! dkde-calendar knows (calsys: Julian, Gregorian, Fixed, Rosquin, Chinese,
 //! Hebrew, Coptic, Ethiopian): the time between two dates in that

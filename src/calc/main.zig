@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-calc: the calculator (SPEC.md 5.6), on the lines of the Windows 7
 //! calculator, GNOME Calculator, KCalc and Qalculate.
 //!

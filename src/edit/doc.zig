@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! One open file in the editor: its buffer and views, how it is stored on
 //! disk, the warning shown when the file changes behind the editor's back,
 //! the second view of a split, and the extra cursors.

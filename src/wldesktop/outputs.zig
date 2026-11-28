@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Outputs from `wlr-output-management-unstable-v1`: what is connected, its
 //! modes, and requests to change mode, scale or power (spec 6.5). Heads are
 //! announced and updated by the compositor; a change is applied as one

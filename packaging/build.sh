@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Build and install dkde from the release tarball (or a checkout), for a
 # package or an image. Works offline: it uses the Zig dependencies in
 # ./zig-pkg, which the release tarball carries.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! A short description of each function, for the function browser (View > Functions).
 //! Generated from Qalculate's function metadata for the functions this calculator has.
 

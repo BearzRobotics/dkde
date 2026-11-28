@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The greetd greeter protocol: a 32-bit native-endian length, then a JSON
 //! message, over the Unix socket named by $GREETD_SOCK (see greetd-ipc(7)).
 //! Message building and parsing are pure so they can be tested; the socket

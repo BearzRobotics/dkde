@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Pixel and geometry helpers for the screenshot tool. No Wayland or GTK.
 
 const std = @import("std");

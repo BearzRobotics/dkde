@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The system tray (SPEC.md 5.1): a StatusNotifierItem host. The panel owns
 //! `org.kde.StatusNotifierWatcher` on the session bus (nothing else does in a
 //! dkde session), apps register their `StatusNotifierItem`, and each shows as

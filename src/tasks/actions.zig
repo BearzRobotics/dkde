@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! What can be done to a process, from the Processes and Details pages:
 //! end it (or its whole tree), force it to quit, suspend and resume it,
 //! efficiency mode, CPU and disk priority, which CPUs it may run on, its

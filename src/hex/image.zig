@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Copying a device, partition or process region into an image file, one
 //! chunk per `step` so the caller can run it from an idle handler.
 //! The source is only read.

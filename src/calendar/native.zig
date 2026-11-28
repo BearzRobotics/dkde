@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The native names and numerals of the Chinese, Hebrew, Coptic and Ethiopian
 //! calendars, to show beside the Latin ones. All text is UTF-8 written into a
 //! caller's buffer. They need fonts that have the scripts: the program carries

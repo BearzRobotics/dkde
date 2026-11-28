@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! A figure on a canvas, without any window: the points, shapes and styles, how they are drawn with
 //! cairo, and the operations lessons use to build one. The Geometry pane shows a Scene in a widget; the
 //! command-line renderer draws the same Scene to a PNG or SVG file.

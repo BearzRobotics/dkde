@@ -92,7 +92,7 @@ collection, or the ImHex documentation, and load your file with
 ### Details
 
 `.hexpat` files from [ImHex-Patterns](https://github.com/WerWolv/ImHex-Patterns)
-work as well. They are licensed under the GPL, so dkde does not include them.
+work as well. They are licensed under the GPL and are not included with dkde.
 **Structure ▸ Get ImHex patterns…** downloads the collection (git, or curl/wget
 with tar) into `~/.local/share/dkde/patterns`, or set `[hex] patterns-dir` in
 `hex.conf` to a clone (the folder with `patterns/` and `includes/` inside).

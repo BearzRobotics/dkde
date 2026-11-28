@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Which screen edge the panel sits on.
 
 const std = @import("std");

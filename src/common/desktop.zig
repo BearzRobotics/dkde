@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The shared desktop integration API (ai/COMPOSITOR-SPEC.md section 3.1 and 6).
 //!
 //! DKDE's shell and applications talk to the desktop through this module and

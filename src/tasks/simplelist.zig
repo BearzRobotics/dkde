@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! A sortable list of text columns for the Users, Services and Startup apps
 //! pages. The page keeps its rows; this shows them, sorted by the clicked
 //! header, and writes changed figures into the cells on screen without

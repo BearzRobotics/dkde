@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The hardware pages of the Settings app (SPEC.md 5.5): Display, Network,
 //! Bluetooth and Printers, plus the device pickers and speaker test on the
 //! Sound page. Each page drives a command-line tool (see hardware.zig) and

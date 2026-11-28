@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! A PDF open for viewing and editing, without any GTK: the document, the text
 //! layout of its pages, and every edit (highlights, notes, filled form fields).
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-snip: screenshots (SPEC.md 5.6) through `wlr-screencopy-unstable-v1`.
 //!
 //! The whole output is captured first; for a region the picture is shown

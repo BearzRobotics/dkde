@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Image decoding shared by dkde-view and the PDF renderer, in Zig, on the
 //! vendored zigimg (third_party/zigimg): PNG, JPEG (baseline and progressive),
 //! GIF, BMP, TGA, QOI, TIFF, PCX, netpbm and a few older formats. It does not

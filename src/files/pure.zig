@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Pure helpers for the file manager: no GTK, so they are unit tested.
 
 const std = @import("std");

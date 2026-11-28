@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Pending operations (SPEC.md 5.6), as in GParted: changes are queued, shown
 //! on a predicted layout, and run together when applied. Each operation is
 //! turned into commands against the layout as it will be at that point, so

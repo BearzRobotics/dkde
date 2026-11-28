@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Draws a typeset line (typeset.zig's tree): stacked fractions with a bar, raised powers, roots with
 //! their bar, and parentheses that grow with what is inside them. A line with nothing to stack stays
 //! an ordinary label (`create` returns null for it), so only lines that need it pay for the drawing.

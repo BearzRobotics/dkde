@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! How dkde-files is built; called by the top-level build.zig.
 
 const std = @import("std");

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Syntax highlighting for the entry (SpeedCrunch style): numbers, functions,
 //! constants, variables, units and currencies, operators, and brackets, with the
 //! bracket next to the cursor and its partner marked, and brackets that have no

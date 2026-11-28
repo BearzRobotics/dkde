@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Wayland implementation of the shared desktop API (core.desktop):
 //! windows from `wlr-foreign-toplevel-management`, workspaces from
 //! `ext-workspace-v1`, outputs from `wlr-output-management` and screenshots

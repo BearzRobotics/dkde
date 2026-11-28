@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-clock: stopwatch, countdown timer and alarms (SPEC.md 5.6). Timers and
 //! alarms run only while the app is open; there is no background service.
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! JPEG 2000 (JPXDecode) and JBIG2 (JBIG2Decode) images through the system's
 //! OpenJPEG and jbig2dec, the libraries poppler uses for the same images.
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The file clipboard (SPEC.md 5.4): what is put on the system clipboard when
 //! files are cut or copied, and how it is read back. Other file managers use
 //! the same two formats, so files move between them and dkde-files.

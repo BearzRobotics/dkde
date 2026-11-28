@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! A session written for reading (File > Export Session…): the entries and their
 //! answers, then the variables and functions, as plain text or as one HTML page.
 //! Unlike a .dkcalc file it cannot be opened again; it is for sharing and printing.

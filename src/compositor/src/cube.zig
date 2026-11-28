@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The desktop cube, with no wlroots in it so the geometry can be tested: each workspace is a face of a
 //! prism (a cube with four workspaces), seen from outside by a camera in front of it. At rest the front
 //! face fills the screen exactly, so entering and leaving the cube has no jump.

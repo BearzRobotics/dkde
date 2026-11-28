@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-xcomp: DKDE's X11 compositing manager. It runs next to a window manager (dkde-wm, or any other that
 //! sets _NET_WM_WINDOW_OPACITY and the EWMH desktop properties), takes over drawing the screen, and adds the
 //! effects the compositor has on Wayland that need a compositing manager on X11: real window opacity, fades and

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Indefinite integrals in closed form, by rules: powers, sums and constant multiples; exp, sin, cos,
 //! tan, ln, sqrt and the inverse trigonometric functions of a linear argument; integration by parts for
 //! a polynomial times one of those; and rational functions with distinct rational roots below

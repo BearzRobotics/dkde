@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The command-line contract every DKDE program follows (DKDE-024):
 //! `--help` and `--version` print to stdout and exit 0; an unknown option is
 //! reported on stderr and exits 2; `--` ends option processing. Operands

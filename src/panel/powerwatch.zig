@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Low-battery warnings (SPEC.md 5.1). The panel is always running, so it
 //! watches the battery itself: no daemon, no init-system timer. On the way down
 //! it warns at the low level, warns again at the critical level, and, unless

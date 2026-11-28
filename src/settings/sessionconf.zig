@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Which window system the next sign-in starts: DKDE's own Wayland compositor (the default), DKDE's
 //! X11 window manager, or labwc (the backup compositor, being phased out). dkde-session reads `~/.config/dkde/session.conf` (`compositor=` and `type=` lines);
 //! this edits those two lines and leaves every other line alone.

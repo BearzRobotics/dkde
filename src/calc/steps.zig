@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Show your work: the steps to an answer, written the way you would on paper.
 //!
 //! Each step is a line of mathematics and a short note about what was done to get

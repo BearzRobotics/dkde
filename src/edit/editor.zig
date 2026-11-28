@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The editor window: menus, tabs, find and replace, the status bar, the
 //! side panels, saving and opening, and what is remembered between runs.
 

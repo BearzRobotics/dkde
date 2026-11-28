@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! GtkSourceView 5 (the editing component of gedit and GNOME Text Editor)
 //! and libspelling, loaded with dlopen when they are installed.
 //!

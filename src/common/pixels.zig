@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Pixel format conversion for screen capture. No toolkit, no protocol.
 
 const std = @import("std");

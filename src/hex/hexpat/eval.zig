@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Runs a parsed ImHex pattern over a byte buffer and records the fields as the
 //! same tree of nodes the Kaitai interpreter produces. A failed run keeps the
 //! tree built so far and adds the problem as an error node.

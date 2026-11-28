@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Letters people paste from mathematics: the Mathematical Alphanumeric
 //! Symbols (𝑥, 𝐅, 𝒜, 𝔸, 𝛼, 𝟏 …, U+1D400–U+1D7FF) and the Letterlike
 //! Symbols used in their place (ℎ, ℝ, ℯ …) are read as the plain letters and

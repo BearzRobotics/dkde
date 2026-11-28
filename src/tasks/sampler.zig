@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! What is running, read from /proc once per refresh and shared by the
 //! Processes, Details and Users pages: each process's CPU, memory, disk and
 //! GPU use, who owns it, what it is (an app with a window, a background

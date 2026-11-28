@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Which apps are pinned to the taskbar: `[panel] taskbar-pinned` in panel.toml,
 //! desktop file IDs in order. Written only when the user pins or unpins.
 

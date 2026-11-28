@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The event editor window: title, place, dates, times, repeat, reminder, notes.
 
 const std = @import("std");

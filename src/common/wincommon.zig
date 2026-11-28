@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! What the standalone Windows calendar takes from `common`: only the pure
 //! calendar arithmetic, with no GLib and no GTK.
 pub const civil = @import("civil.zig");

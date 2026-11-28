@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Where each document was left: its page, zoom and fit, so that opening it
 //! again goes back there (as Evince and Okular do). Kept in
 //! `$XDG_STATE_HOME/dkde/pdf-places`, one line per document, the most

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The shared module of the GTK programs: everything in `core` plus the
 //! widgets and stylesheet. Programs without a window import "core" instead.
 //! See SPEC.md 4.2 and ai/DKDE-SPEC.md section 22.

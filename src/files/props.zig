@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Properties dialog (SPEC.md 5.4): name, type, size, location, timestamps
 //! and permissions.
 

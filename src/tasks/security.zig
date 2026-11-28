@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! AppArmor and SELinux, as the Security page of the task manager shows them:
 //! which one is active, the profiles or booleans, and the recent denials
 //! told in plain words. This file only parses text (aa-status --json, kernel

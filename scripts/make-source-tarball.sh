@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Makes the release source tarball: the committed source plus the Zig
 # dependencies (zig-pkg/), so it builds with no network.
 #

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! What the renderer could not do, counted and optionally logged. A page that
 //! draws wrongly leaves a trail here, so a large set of files can be checked
 //! with `dkde-pdfcheck` and the gaps sorted by how often they occur.

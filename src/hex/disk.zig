@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Block devices for dkde-hex's disk mode (SPEC.md 5.6): finding them under
 //! `/sys/block`, which of them are mounted, and reading and writing sectors.
 

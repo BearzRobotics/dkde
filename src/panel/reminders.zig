@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Calendar reminders (SPEC.md 5.6). dkde-calendar stores its events in
 //! `calendar.toml`; the panel is always running, so it keeps one timer set for
 //! the next reminder and sends a desktop notification when it falls due. No

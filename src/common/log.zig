@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Logging for every dkde program (SPEC.md 6.4). Each program's `main.zig` has
 //!
 //!     pub const std_options: std.Options = .{ .logFn = common.log.logFn, .log_level = .debug };

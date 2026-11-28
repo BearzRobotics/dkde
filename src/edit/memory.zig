@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! What the editor remembers between runs, as small text files in
 //! `$XDG_STATE_HOME/dkde/`:
 //!

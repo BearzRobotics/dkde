@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Type 1 fonts (PDF /FontFile): the PostScript font program with its
 //! eexec-encrypted private section, the encrypted charstrings and subroutines,
 //! and the Type 1 charstring interpreter. Same shape as cff.zig: the bytes are

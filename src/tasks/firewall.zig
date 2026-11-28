@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The firewall as the Firewall page of the task manager shows it: which tool manages it (ufw,
 //! firewalld, or nftables by hand), its rules in plain words, and the commands that change them.
 //! This file parses what the tools print and builds their arguments (never shell text), so it

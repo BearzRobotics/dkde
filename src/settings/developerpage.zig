@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The "For developers" page: logging for dkde's own programs, the GTK inspector and a diagnostics report.
 //! Everything here affects dkde programs only. The choices live in `developer.toml` ([developer]); dkde
 //! programs started afterwards read them (see common/log.zig), and the environment still wins over the file.

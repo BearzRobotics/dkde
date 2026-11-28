@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! nftables as the Firewall page shows and edits it: `nft -j list ruleset` read into tables, chains
 //! and rules, each rule told in plain words, and the arguments of the few changes the page makes
 //! (add a rule, delete one by its handle, set a chain's policy). Everything a person types is

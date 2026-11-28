@@ -444,12 +444,21 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-dkde is released under the [MIT License](LICENSE). Copyright (c) 2026 Dakota
-James Owen Keeler.
+Copyright (c) 2026 Dakota James Owen Keeler.
 
-DKTermCore (dkterm), which is linked into the programs with a terminal or its colour
-schemes (dkde-term, dkde-files, dkde-edit and dkde-settings), is under
-LGPL-2.0-or-later from its release 0.2.0.
+dkde is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, either version 2
+of the License, or (at your option) any later version (`GPL-2.0-or-later`). It is
+distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+[LICENSE](LICENSE) for the version 2 text. Releases up to 0.3.6 were published under the
+MIT License.
+
+Libraries linked into dkde's programs include util-unix and util-core (GPL-2.0-or-later),
+and DKTermCore (dkterm, LGPL-2.0-or-later; in dkde-term, dkde-files, dkde-edit and
+dkde-settings). dkde-calendar has fonts built in that keep their own licenses
+(`data/fonts/native/LICENSES.txt`). One of them, a Droid Sans Fallback subset, is under
+Apache-2.0, which is compatible with version 3 of the GPL but not with version 2.
 
 Things dkde builds on keep their own licenses: GTK 4 and gtk4-layer-shell are
 dynamically linked system libraries (LGPL); libarchive (archives in the file

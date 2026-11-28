@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Pure parsing and checking for the network page: `nmcli -t` (terse) output, the
 //! values typed into the address forms, and the dhcpcd.conf block used when
 //! NetworkManager is not there. No GTK and no commands run here, so it is all tested.

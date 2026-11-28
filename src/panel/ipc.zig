@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Panel IPC (SPEC.md 4.1): a Unix socket at `$XDG_RUNTIME_DIR/dkde/panel.sock`
 //! speaking one line of text per command. The reply is one line too.
 

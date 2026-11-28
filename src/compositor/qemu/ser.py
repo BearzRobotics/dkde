@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """ser.py SOCKET 'command' [idle-seconds]: send a line to the VM's serial console, print what comes back."""
 import re, socket, sys, time
 path, cmd = sys.argv[1], sys.argv[2]

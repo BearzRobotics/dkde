@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Changing AppArmor and SELinux from the Security page: the rule that would allow a refused action, the
 //! file it belongs in, and the arguments of every command the page runs (profile editing, modules, ports,
 //! file labels, the boot-time mode). Names, paths and rule text are validated here; they reach the tools

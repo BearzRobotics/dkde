@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Exact forms for results that are not fractions: 2√2, π/4, (1 + √5)/2, √6/4 + √2/4, e².
 //!
 //! A value is a sum of terms c · π^a · e^b · √r with a rational c and a squarefree whole r.

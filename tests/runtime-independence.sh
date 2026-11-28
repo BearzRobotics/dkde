@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # DKDE-020, DKDE-022, DKDE-070: each graphical program starts and keeps running
 # with the panel stopped, no session D-Bus and no other DKDE program on PATH.
 #

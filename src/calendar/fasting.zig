@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Fast and abstinence days for the Catholic calendars, as food emoji. These
 //! are a guide only: bishops' conferences and indults change the rules.
 //!

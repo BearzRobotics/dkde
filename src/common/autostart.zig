@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Startup apps: the freedesktop autostart entries (XDG Autostart spec),
 //! read from ~/.config/autostart and $XDG_CONFIG_DIRS/autostart (usually
 //! /etc/xdg/autostart). The user's file of a name replaces the system's.

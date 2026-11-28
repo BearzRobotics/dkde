@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # DKDE-014: build and install selected apps from a clean cache into a clean
 # prefix, and check that only that app's files were installed.
 #

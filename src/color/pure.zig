@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Colour conversions for the colour picker. Pure.
 
 const std = @import("std");

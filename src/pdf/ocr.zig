@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Recognising the text of scanned pages (OCR), done by OCRmyPDF (which runs
 //! Tesseract) when it is installed. This file holds the parts that need no
 //! GTK: which pages need it, the page list and the languages to ask for.

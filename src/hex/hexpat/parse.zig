@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Lexer and parser for ImHex pattern files (`.hexpat`), a C-like language that
 //! describes how bytes are laid out. The tree is evaluated by eval.zig.
 //! Everything is allocated from the caller's arena.

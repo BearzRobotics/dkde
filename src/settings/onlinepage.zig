@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Online accounts page (Accounts, in Settings): optional online calendars
 //! for dkde-calendar and the panel's reminders. Nothing here runs until the user
 //! adds an account; see src/common/feeds.zig for what an account is and is not.

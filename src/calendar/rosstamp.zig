@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Rosquin day glyph. Every day is a stack of components from
 //! RosquinGlyphs.ttf, all on the same 900x900 canvas, printed on top of one
 //! another. This file decides which components a day shows; calendar/main.zig

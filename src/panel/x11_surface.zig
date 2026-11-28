@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Where the panel's windows live on X11: the same requests the layer-shell
 //! code takes, answered with EWMH. A bar is a dock window with a strut, the
 //! wallpaper a desktop window, the Start menu a skip-taskbar dialog next to

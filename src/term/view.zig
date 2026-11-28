@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! One terminal: a pty, libghostty-vt's parser and screen state, and a GTK
 //! drawing area that renders it with Pango (SPEC.md 5.3).
 //!

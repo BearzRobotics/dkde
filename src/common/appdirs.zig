@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Where applications installed by Flatpak and Snap keep their menu entries
 //! and icons, and making sure every dkde program looks there.
 //!

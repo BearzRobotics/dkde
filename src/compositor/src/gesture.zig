@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Mouse gestures, with no wlroots in them so they can be tested: a stroke drawn with the pointer is
 //! reduced to the directions it went in (L, R, U, D), which settings map to actions.
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Ordinary differential equations in one unknown function y(x):
 //!
 //!   first order     a·y′ + b·y = f(x), f a polynomial

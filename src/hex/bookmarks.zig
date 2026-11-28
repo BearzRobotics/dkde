@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Bookmarks and comments on ranges of a file (SPEC.md 5.6). They are kept in
 //! the state folder, one small JSON file per opened path, and written only
 //! when the user adds, changes or removes one.

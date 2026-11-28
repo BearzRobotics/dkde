@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Reading pictures off the main thread, so a 50-megapixel photo or a slow
 //! network folder never freezes the window: one worker thread decodes the
 //! picture to show first, then the neighbours (so the next one appears at

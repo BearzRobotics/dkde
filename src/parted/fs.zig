@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Filesystems and the commands that make, check, label and resize them
 //! (SPEC.md 5.6). Every filesystem is a row in `table`; whether it can be used
 //! depends on which tools are installed, so the UI asks `haveTool`.

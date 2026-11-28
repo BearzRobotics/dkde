@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Where the panel's windows live: layer-shell surfaces on Wayland, EWMH windows on X11.
 
 const layer_shell = @import("layer_shell.zig");

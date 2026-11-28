@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The context menu's configuration (SPEC.md 5.4): which entries, in what
 //! order, and the commands the user added.
 

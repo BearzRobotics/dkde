@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Outputs on X11 through RandR 1.3 and up (ai/COMPOSITOR-SPEC.md 6.5): what is
 //! connected, its modes, and changes of mode and power. RandR has no
 //! per-output scale, so that is not offered. A change is applied the way

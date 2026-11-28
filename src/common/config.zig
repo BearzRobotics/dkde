@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! TOML configuration (ai/DKDE-SPEC.md section 23).
 //!
 //! A `Config` is the system defaults overlaid with the user's file, so the

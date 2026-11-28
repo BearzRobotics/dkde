@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-panel: taskbar, start menu, clock and wallpaper (SPEC.md 5.1, 5.2).
 
 const std = @import("std");

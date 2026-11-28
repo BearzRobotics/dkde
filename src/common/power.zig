@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Lock and sleep commands (SPEC.md 5.1). dkde has no lock screen of its own
 //! (see the spec) and no logind to ask, so both are commands: the configured
 //! one, or the first usual tool that is installed.

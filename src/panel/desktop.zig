@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Desktop icons (SPEC.md 5.1): the contents of the Desktop folder, drawn on
 //! the primary output's wallpaper surface. Icons are placed freely: drag one
 //! and it snaps to the grid and the position is remembered in `desktop.conf`.

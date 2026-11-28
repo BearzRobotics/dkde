@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Exchange rates for the calculator: fiat money, crypto coins and Goldbacks,
 //! each from its own public source, kept in a cache file so conversions work
 //! offline from the last update.

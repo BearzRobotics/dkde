@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-xcomp: DKDE's X11 compositing manager (see ai/COMPOSITOR-SPEC.md section 5). A separate package, like
 //! the compositor and dkde-wm, so the main build needs no X11 development files. Build it from this folder:
 //!

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Independent reference evaluator for dkde-calc entries.
 
 Uses mpmath, scipy and sympy (never dkde-calc's own code) so that a disagreement means one of the two

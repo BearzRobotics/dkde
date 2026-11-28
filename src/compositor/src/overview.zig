@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Layouts for the two overviews, with no wlroots in them so they can be tested.
 //!
 //! Scale shows every window of the workspace at once in a grid, each shrunk to fit its cell; Expo shows

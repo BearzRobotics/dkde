@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Turns an `md.Document` into plain text plus a list of styled ranges, which
 //! `main.zig` applies to a GtkTextBuffer. Keeping this free of GTK makes it
 //! testable: every range is in characters (code points), as GtkTextBuffer

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The settings window (SPEC.md 5.5): major categories on the left, a list of pages and then a page on the
 //! right. Every control writes its config file the moment it changes; the
 //! running components pick the change up through their file monitors.

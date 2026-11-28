@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Volume control for the Audio settings page. dkde has no D-Bus, so it
 //! talks to the sound server through whichever command-line tool is
 //! installed: `wpctl` (PipeWire/WirePlumber) or `pactl` (PulseAudio).

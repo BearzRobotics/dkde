@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Wobbly windows, with no wlroots in them so they can be tested: a small mesh of nodes joined by springs.
 //! The window's real rectangle moves where the compositor puts it; each node is pulled toward its place in
 //! that rectangle by a spring and toward its neighbours by others, and loses speed to friction, so the window

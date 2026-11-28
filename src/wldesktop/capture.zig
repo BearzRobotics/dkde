@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Screen capture through `wlr-screencopy-unstable-v1` (spec 6.4). Only whole
 //! outputs: the protocol has no per-window capture, so that capability is not
 //! claimed.

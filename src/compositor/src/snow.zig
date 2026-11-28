@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Falling snow for the desktop, with no wlroots in it so it can be tested: a fixed number of flakes
 //! that drift down the screen and come back at the top.
 

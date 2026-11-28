@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Byte-level analysis for dkde-hex's reverse-engineering tools (SPEC.md 5.6):
 //! checksums, entropy, histograms, searching with wildcards and for numbers,
 //! comparing two buffers, copy-as text, and simple selection transforms.

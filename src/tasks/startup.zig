@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Startup apps page: what starts when you sign in.
 //!
 //! - Startup apps: the freedesktop autostart entries (common.autostart),

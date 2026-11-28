@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Typesetting the calculator's text for display: `1/2 + 3/4` becomes two stacked fractions (the
 //! numerator over the denominator with a bar between), `x^2` a raised 2, `√x` a root with its bar.
 //! This file only reads the text into a tree; drawing it is mathview.zig. The text itself is never

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Services page: the system's services and the user's own, with their
 //! state, how they start, and the process running each; started, stopped,
 //! restarted, set to start automatically or not, and their logs. Both

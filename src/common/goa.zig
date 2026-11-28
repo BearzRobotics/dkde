@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! GNOME Online Accounts (GOA), read through its D-Bus interface.
 //!
 //! GOA is the one place on a desktop where a person signs in to Google,

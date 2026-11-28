@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-polkit: a polkit authentication agent (SPEC.md 5.12). When a program
 //! that polkit guards (GParted, NetworkManager, udisks, `pkexec`) needs the
 //! user to prove who they are, polkitd calls the agent registered for the login

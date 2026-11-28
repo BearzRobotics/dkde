@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Values with an uncertainty: `5 ± 0.1`, `12.3 ± 0.4`. The error is carried through the
 //! arithmetic the way a lab report does it (first-order propagation, independent errors):
 //!

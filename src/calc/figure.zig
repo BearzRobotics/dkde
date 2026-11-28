@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The drawing language of the lessons: a step of a lesson is a few of these operations, which the
 //! Geometry pane carries out (a point here, a circle there, a crossing worked out from two circles).
 //! Points are named, so a step can say "the circle with centre A through B".

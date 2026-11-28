@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Archives in the file manager (SPEC.md 5.4): which files are archives, and
 //! names for the results. The unpacking and packing itself is arc.zig
 //! (libarchive). Pure, so it is unit tested.

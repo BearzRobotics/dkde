@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The lid and the power button, which systemd-logind (or elogind) handles, not dkde: a drop-in file in
 //! logind.conf.d written with the administrator password (the padlock covers it) and read back by logind
 //! when told to reload. Used by the Power & lock page.

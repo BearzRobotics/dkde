@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-wm: DKDE's own X11 window manager (experimental; ai/COMPOSITOR-SPEC.md
 //! section 5). Plain XCB, no compositing. Windows are not reparented and get
 //! no frame: DKDE's programs draw their own title bars, and the layout,

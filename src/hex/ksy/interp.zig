@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Runs a loaded Kaitai format over a byte buffer and records what it found as
 //! a tree of nodes with byte ranges. Parsing stops at the first problem but
 //! keeps everything read so far, with the problem added as an error node, which

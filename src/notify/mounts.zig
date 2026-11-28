@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Looking up what a drive is called and where it is mounted, for
 //! `dkde-notify --mounted DEVICE`. A hook hands over only the device node (which
 //! the kernel names); the label, which whoever made the stick chose, is read

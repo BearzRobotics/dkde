@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Exports dkde's appearance (dark mode, accent, font, icon theme) to the other
 //! toolkits, so GTK 3, GTK 4 apps that do not load dkde's stylesheet, and Qt 5/6
 //! programs look like the rest of the desktop. Files are rewritten whenever the

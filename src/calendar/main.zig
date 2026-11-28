@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-calendar: a month calendar with events (place, date, time frame,
 //! repeat, reminder), a note for any day, and optional liturgical calendars
 //! laid over the days (SPEC.md 5.6). Everything is saved in

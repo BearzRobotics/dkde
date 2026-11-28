@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Keyboard shortcuts: the key strings, the actions, and the built-in set.
 //! No wlroots here, so it can be tested; main.zig maps the names to keysyms.
 //!

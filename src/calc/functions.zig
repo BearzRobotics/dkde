@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The calculator's library of named functions that take plain numbers:
 //! special functions, number theory, probability distributions and the
 //! money functions of a spreadsheet. `find` says whether a name is one of

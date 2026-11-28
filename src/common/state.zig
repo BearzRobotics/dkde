@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Small persistent state (recent apps, window sizes) kept in
 //! `$XDG_STATE_HOME/dkde/`, apart from configuration (SPEC.md 6.1).
 

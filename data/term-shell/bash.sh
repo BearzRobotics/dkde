@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # dkde-term's shell integration for bash, read instead of ~/.bashrc (bash
 # --rcfile). It reads the usual startup files first, then:
 #  - marks where each prompt and command starts and ends (OSC 133), so

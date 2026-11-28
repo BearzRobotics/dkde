@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The editor's side panels, as in Kate and gedit: a folder tree on the
 //! left (F9) and the results of Find in Files at the bottom.
 

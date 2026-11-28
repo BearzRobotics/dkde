@@ -872,9 +872,9 @@ shortcuts:
 
 ### 6.5 Licence
 
-dkde is MIT-licensed (`LICENSE`). New source files need no header. Do not copy
-code from GPL or LGPL projects into the tree; link such libraries dynamically
-instead.
+dkde is licensed `GPL-2.0-or-later` (`LICENSE`; MIT up to 0.3.6). Every source file starts
+with an SPDX header. Copied code must be compatible with that license and keeps its own
+notices.
 
 Fonts bundled into a binary must be under a licence that allows it (the
 SIL Open Font License does), with the licence file next to the font in

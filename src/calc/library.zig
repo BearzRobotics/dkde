@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Functions that Qalculate defines by an expression (areas and volumes, finance, small helpers),
 //! as a library: `find` gives the parameters and the body, which are worked out like a function of
 //! your own. Generated from Qalculate's functions.xml, then checked against `qalc`.

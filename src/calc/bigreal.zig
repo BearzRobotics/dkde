@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Real numbers of fixed high precision (256 bits, about 77 digits) for the
 //! functions that cannot stay exact: exp, ln, sin, cos, atan, roots and powers.
 //! A value is m·2^e with an integer mantissa kept to `prec` bits.

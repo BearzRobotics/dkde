@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Lessons as TOML files (data/learn/<course>/*.toml, and ~/.local/share/dkde/learn/ for your own).
 //! One file is one lesson:
 //!

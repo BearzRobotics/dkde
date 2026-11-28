@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Where pages sit in the scrolling column of the PDF viewer, and zoom steps.
 //! Pure, so it is unit tested.
 

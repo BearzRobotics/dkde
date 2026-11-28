@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Regressions, tests and confidence intervals on lists of numbers (as floats).
 //!
 //!   linreg      y = a·x + b                         [a, b, r²]

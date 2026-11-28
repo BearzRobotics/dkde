@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! File access through `std.Io`, so the programs do not need GLib to read or
 //! write a file. DKDE programs are single-threaded at this level (GTK's main
 //! loop does the waiting), so the global single-threaded `Io` is the right one.

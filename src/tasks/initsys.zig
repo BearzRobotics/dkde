@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Which service manager runs the system and the user's session, and what
 //! dinit says about its services. systemd is asked through systemctl and
 //! journalctl; dinit (Chimera Linux and others) through dinitctl and its

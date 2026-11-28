@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Calculus for the calculator:
 //!
 //!   diff(f, x)           the derivative of f by x, as a formula (by the rules

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-settings: the settings app (SPEC.md 5.5).
 
 const std = @import("std");

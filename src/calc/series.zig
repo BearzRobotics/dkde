@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Power series: `taylor(f, x, a, n)` and exact limits.
 //!
 //! A series is kept as a lowest power (it may be negative: a pole gives a Laurent series) and

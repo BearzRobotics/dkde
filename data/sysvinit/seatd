@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # SysV-style start script for seatd, which hands the session its display and
 # input devices on a system with no logind. Skip it if you run elogind or
 # systemd-logind. Install like data/sysvinit/greetd (Slackware: rc.seatd).

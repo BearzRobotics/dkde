@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Lists config keys the code reads that no file in data/*.toml lists, so the
 shipped defaults stay complete (SPEC.md 6.1). Run from anywhere; exit 1 if any
 are missing. Finds `"group", "key"` pairs, so keys built at run time and the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The pages of Settings and Task Manager, for the Start menu's search: typing "display" offers
 //! a link that opens Settings on the Display page (`dkde-settings --page display`). Settings keeps its
 //! own table (with categories); a test there checks that every id here is a page it knows.

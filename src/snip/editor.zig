@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The screenshot editor (SPEC.md 5.6): a full-screen overlay on the frozen
 //! screen, in the manner of Flameshot. Drag to choose an area, resize or move
 //! it by its handles, draw on it with the tools of the toolbar that floats by

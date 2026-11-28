@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The colour schemes dkde-term offers: the shared engine's (termcore) and
 //! more, so the terminal and its Settings page list the same ones.
 

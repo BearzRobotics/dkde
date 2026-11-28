@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The structure side of dkde-hex: a library of Kaitai formats found on disk,
 //! detection of which one fits a file, and the tree panel that shows a parsed
 //! file (SPEC.md 5.6).

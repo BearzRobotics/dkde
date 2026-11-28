@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Fuzz tests for the parsers that read files from outside: `.hexpat`
 //! patterns, Kaitai `.ksy` descriptions, and `/proc/PID/maps`. Under a plain
 //! `zig build test` each runs once on its seed inputs; `zig build test --fuzz`

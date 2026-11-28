@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Learn view of dkde-calc: lessons you step through while the Geometry pane (or any other pane)
 //! stays open beside it. Today these are Euclid's Elements (euclid.zig): each lesson states what is to
 //! be done in Euclid's words, then walks through it one step at a time, drawing each step on the

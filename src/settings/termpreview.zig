@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The preview in each terminal profile's Appearance section (SPEC.md 5.5): a
 //! few lines of sample text in the profile's font, colour scheme, cursor style,
 //! opacity and padding. It follows the controls as they change, before Apply.

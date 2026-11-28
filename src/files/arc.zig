@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Archives through libarchive: unpacking and packing, run by a helper process
 //! (`dkde-files --archive-extract` / `--archive-pack`) so a damaged archive
 //! can never take the file manager down. libarchive's C interface is declared

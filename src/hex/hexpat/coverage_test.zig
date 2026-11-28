@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Runs only when HEXPAT_DIR points at a clone of ImHex-Patterns: parses every
 //! pattern, runs each over a sample file without crashing, and shows two real
 //! patterns on real data.

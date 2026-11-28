@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Putting AppImages in the applications menu, with their own name and
 //! icon, as AppImageLauncher and Gear Lever do.
 //!

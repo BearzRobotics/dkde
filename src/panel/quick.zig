@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Quick settings (SPEC.md 5.1): status icons in the bar for network, sound,
 //! battery and airplane mode, and a flyout with the controls: Wi-Fi,
 //! Bluetooth and Airplane mode toggles, volume and brightness sliders, and

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Show Work for Programmer mode: the working a person would write when doing it by hand. Bitwise
 //! operations are lined up bit by bit, shifts move the bits, a negative number becomes its two's
 //! complement (invert, add one), and the answer is converted to the other bases the way it is done on

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The start-up every small dkde app shares: debug allocator, stylesheet,
 //! appearance, a non-unique GApplication and one window. `Window` needs
 //! `create(allocator, app) !*Window` and `present(*Window) void`.

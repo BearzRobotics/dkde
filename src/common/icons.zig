@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Icon themes installed on the system (SPEC.md 5.5), for the Settings picker.
 
 const std = @import("std");

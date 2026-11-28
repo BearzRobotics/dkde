@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The compositor's settings, from `~/.config/dkde/compositor.toml` (or the
 //! file named by DKDE_COMPOSITOR_CONFIG). Every key is optional and a missing
 //! file is fine: the defaults are used, and a wrong value is reported and

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Starts a compositor nested in a window of your current Wayland session,
 # running dkde-panel, so the shell can be tried without logging out (SPEC.md 8).
 # It runs dkde-compositor when that is built or installed,

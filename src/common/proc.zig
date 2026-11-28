@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Running command-line tools without blocking the UI (SPEC.md 5.5). dkde
 //! drives hardware through small tools (`nmcli`, `wpctl`, ...), so several
 //! components share this runner.

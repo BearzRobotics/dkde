@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-view: the image viewer (SPEC.md 5.6), on the lines of Eye of GNOME,
 //! Loupe, gThumb and Gwenview.
 //!

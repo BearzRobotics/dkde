@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! A terminal that other DKDE programs can host in their own window, the way
 //! Kate and Dolphin host Konsole: the file manager and the editor show one in
 //! a panel below their content (ai/DKDE-SPEC.md 6.3: the host imports this

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 import json, re, os, math, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 res = json.load(open(os.path.join(HERE, "results.json"), encoding="utf-8"))

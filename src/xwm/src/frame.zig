@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The title bar and borders drawn around windows that draw no frame of their own
 //! (xterm and the like; DKDE's GTK programs draw theirs). The geometry and the
 //! hit test are plain functions so they can be tested; drawing uses cairo and

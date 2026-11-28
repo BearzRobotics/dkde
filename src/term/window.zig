@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The terminal window (SPEC.md 5.3): client-side decorations with the tab
 //! strip in the title bar, a "+" button for a new tab with the default
 //! profile, and a dropdown listing every profile and container.

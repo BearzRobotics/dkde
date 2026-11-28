@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Window list from `wlr-foreign-toplevel-management-unstable-v1` (SPEC.md 5.1).
 //!
 //! The protocol runs on the `wl_display` the caller owns and dispatches. Windows that existed before the panel started are

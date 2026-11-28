@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The standalone Windows calendar: one .exe, no GTK, no installer, no data
 //! files (the glyph font is inside it). It draws with plain Win32 and GDI and
 //! shares the calendar rules with dkde-calendar (calsys.zig, lunar.zig,

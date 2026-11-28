@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The drop-down terminal (`dkde-term --dropdown`, bound to F12), in the
 //! manner of Guake and Yakuake: one terminal window that slides down from
 //! the top of the screen and goes away again with the same key.

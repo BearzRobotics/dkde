@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Our own frame composer: draws the scene graph with a render pass so that a window can be scaled,
 //! shifted and faded (animations, the overview). It reads the same scene graph wlr_scene keeps, so hit
 //! testing, popups and subsurfaces stay as they are. It is used only while something is transformed;

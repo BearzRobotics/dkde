@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-term: the terminal emulator (SPEC.md 5.3).
 
 const std = @import("std");

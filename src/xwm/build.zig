@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-wm: DKDE's X11 window manager (experimental; see ai/COMPOSITOR-SPEC.md
 //! section 5). A package of its own, like the compositor: the main build takes
 //! it in, and it also builds alone from this folder:

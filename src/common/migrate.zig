@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! One-time conversion of the old INI configuration to TOML
 //! (ai/DKDE-SPEC.md sections 19.5 and 23). Run on request by
 //! `dkde-setup --migrate-config`; no program converts files by itself.

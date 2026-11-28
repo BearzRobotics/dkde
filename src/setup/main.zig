@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-setup: a first-run check that finds what is missing for a working
 //! dkde session and fixes what it can.
 //!

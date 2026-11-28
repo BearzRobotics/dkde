@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-pdf: a PDF viewer and annotator on pdf-zig (SPEC.md 5.6, ai/DKDE-SPEC.md 20.1).
 //!
 //! Pages are drawn one column, rendered on demand and cached. You can zoom,

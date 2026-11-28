@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Generate src/charmap/unidata.txt from the unicode-data package.
 
     scripts/gen-charmap-data.py [/usr/share/unicode] > src/charmap/unidata.txt

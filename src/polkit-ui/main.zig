@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-polkit-ui: the dialog of the polkit agent (SPEC.md 5.12). The agent
 //! (`dkde-polkit`, which speaks only D-Bus and so costs a few megabytes while
 //! idle) starts one of these for each request and waits for it.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Numbers with units: `5 ft + 3 in`, `60 mph to km/h`, `5 kg * 2 m/s^2`
 //! (= 10 N). A quantity is an exact number and a list of units with
 //! exponents; every unit knows its dimensions (length, mass, time, current,

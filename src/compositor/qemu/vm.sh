@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Boots the dkbuild dkde ISO in QEMU with dkde-compositor in place of labwc, and gives helpers to drive it.
 #
 #   qemu/vm.sh up       start the VM and the compositor session (needs build output, see README.md)

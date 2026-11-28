@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Answers of Qalculate 5.9.0 (`qalc`, 18 digits) for the library functions,
 //! as a regression suite: each entry is checked to 11 significant digits.
 

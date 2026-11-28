@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-parted: disks and partitions (SPEC.md 5.6). It reads `lsblk`, shows each
 //! disk with a size bar, and changes disks only through `parted`, `mkfs.*`,
 //! `mount`, `umount` and the checkers, as administrator, after a confirmation.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The partition tool's data and rules (SPEC.md 5.6): reading `lsblk`, finding
 //! free space, deciding what may be touched, and building the commands. No
 //! GTK here, so all of it is tested.

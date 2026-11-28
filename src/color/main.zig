@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-color: mix a colour with sliders or type a hex code, and copy it as
 //! hex, rgb() or hsl() (SPEC.md 5.6). It cannot pick from the screen.
 

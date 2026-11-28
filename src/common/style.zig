@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Stylesheet loading (SPEC.md 6.2): the system stylesheet at application
 //! priority, then the user's overrides above it.
 

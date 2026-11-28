@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The X11 implementation of the shared desktop API (core.desktop), through
 //! EWMH and ICCCM (ai/COMPOSITOR-SPEC.md section 6): the window list from
 //! `_NET_CLIENT_LIST`, desktops from `_NET_NUMBER_OF_DESKTOPS` and friends,

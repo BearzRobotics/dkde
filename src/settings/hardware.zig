@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Command-line front ends for the hardware pages (SPEC.md 5.5): display
 //! (`wlr-randr`), network (`wpa_cli`, `ip`, `rfkill`), Bluetooth (`bluetoothctl`), printers
 //! (CUPS' `lpstat`/`lpadmin`) and sound devices (`wpctl`/`pactl`). dkde has no

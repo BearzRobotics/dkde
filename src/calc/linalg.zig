@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Linear algebra on real matrices of exact numbers: the characteristic polynomial, eigenvalues
 //! and eigenvectors, the null space, LU, QR and Cholesky factors.
 //!

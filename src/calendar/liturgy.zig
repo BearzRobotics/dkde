@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The liturgical calendars the calendar app can lay over the months: the
 //! General Roman Calendar as it is now (Novus Ordo) and as it was in 1962
 //! (the Traditional Latin Mass). Fixed days come from a text table

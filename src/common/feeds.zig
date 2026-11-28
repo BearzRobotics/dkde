@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Optional online calendars ("accounts"): calendars that live on a server and
 //! are read into dkde-calendar, and from there into the panel's reminders.
 //!

@@ -67,6 +67,8 @@ libc, init system and labwc version. Screenshots help a lot.
 
 ## Licence
 
-By contributing you agree that your work is released under the MIT License
-(see [LICENSE](LICENSE)). Do not copy code from GPL or LGPL projects into the
-tree; link such libraries dynamically instead.
+By contributing you agree that your work is released under the GNU General Public License,
+version 2 or later (see [LICENSE](LICENSE)). Start each new source file with
+`SPDX-License-Identifier: GPL-2.0-or-later` in a comment (after the `#!` line in a script).
+Code you copy in must have a license compatible with GPL-2.0-or-later; keep its copyright
+and license notices, and do not put our header in its place.

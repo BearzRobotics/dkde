@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Loads a Kaitai Struct `.ksy` description into plain Zig structures. Only the
 //! subset that describes binary layouts is understood; everything is kept in
 //! the `Format`'s arena. interp.zig walks the result over a byte buffer.

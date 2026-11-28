@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-greeter: the login screen (SPEC.md 5.10). greetd runs it, under a
 //! kiosk labwc, as an unprivileged user. It asks greetd to authenticate the
 //! chosen account and, on success, to start the dkde session.

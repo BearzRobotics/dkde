@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The calculator's numbers. Arithmetic on fractions of big integers is
 //! exact, as in Windows' and GNOME's calculators: 0.1 + 0.2 is 0.3, 1/3 × 3
 //! is 1, 2^100 has all its digits. Anything that cannot stay exact (sin,

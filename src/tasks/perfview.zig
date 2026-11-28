@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The Performance tab: a list of resources (CPU, memory, each disk, each
 //! network adapter, each GPU) on the left, and on the right the graph and the
 //! figures for the selected one, laid out as in the Windows 11 Task Manager.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! iptables as the fallback for machines with neither firewalld nor nftables tooling: `iptables -S`
 //! read into chains and rules (the same rows the nftables page shows), each rule in plain words, and
 //! the arguments of the changes the page makes. Names, ports and addresses are validated here and

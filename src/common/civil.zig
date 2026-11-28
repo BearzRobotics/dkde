@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Proleptic Gregorian calendar arithmetic with no time zones: days since
 //! 1970-01-01, weekdays, month lengths and Easter. Shared by the calendar
 //! app's events and its liturgical calendars, and by the panel's reminders.

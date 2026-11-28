@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Checks every calculator line and every exercise answer in data/learn against independent references
 (mpmath, scipy, sympy). Run from the repository root with the built binary at zig-out/bin/dkde-calc:
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Error and confirmation dialogs shared by every component (SPEC.md 4.2).
 //! Errors are shown only here, at the UI boundary (SPEC.md 6.4).
 

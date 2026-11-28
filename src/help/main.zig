@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-help: the help viewer. It shows DKDE's own documents (Markdown in
 //! share/dkde/help) and the system's manual pages (man(7) and mdoc(7), found
 //! through MANPATH) in one window, with a search box. Finding, reading and

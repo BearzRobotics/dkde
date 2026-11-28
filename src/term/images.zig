@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Pictures in the terminal: the Kitty graphics protocol, which `kitten
 //! icat`, chafa, timg, yazi, ranger and others use to show images. The
 //! protocol itself (receiving, storing and placing images) is libghostty-vt's;

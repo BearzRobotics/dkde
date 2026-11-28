@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Minimal binding for gtk4-layer-shell, covering only what dkde uses.
 //! The library must be linked before libwayland (see build.zig).
 

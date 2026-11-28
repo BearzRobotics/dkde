@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Values the plain evaluator cannot hold: complex numbers (exact while
 //! they stay Gaussian rationals: i·i is −1, (1+i)² is 2i), vectors and
 //! matrices, and the list statistics that work on them. An entry goes

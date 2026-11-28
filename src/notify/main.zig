@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-notify: sends a desktop notification from a script or a hook
 //! (SPEC.md 5.1), like notify-send but with nothing to install. It speaks to
 //! whatever notification daemon owns the session bus: the panel's own, or

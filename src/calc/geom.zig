@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The arithmetic of the geometry pane: distances, angles, areas and the like, on plain points.
 //! No toolkit in here, so it is tested on its own.
 

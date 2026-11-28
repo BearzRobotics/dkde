@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Find in the terminal's scrollback: plain text or a regular expression,
 //! with or without matching case and whole words. Every match is found at
 //! once (so all can be highlighted and counted, "3 of 12"), as in GNOME

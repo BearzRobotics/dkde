@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! The little of Fontconfig the character map needs: the installed font
 //! families, and which characters a family covers (so private-use blocks can
 //! show exactly what a font such as Rosquin Glyphs or RE_iO Script defines).

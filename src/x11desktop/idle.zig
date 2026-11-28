@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! Idle time and screen power on X11, with the two extensions written out by
 //! hand (MIT-SCREEN-SAVER for the time since the last input, DPMS for switching
 //! the screen off), so no extension headers are needed. Used by dkde-idle.

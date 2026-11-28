@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 //! dkde-files: the file manager (SPEC.md 5.4).
 
 const std = @import("std");
