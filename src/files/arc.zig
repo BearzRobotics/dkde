@@ -286,6 +286,9 @@ pub fn packAll(gpa: std.mem.Allocator, format: Format, out_arg: []const u8, dir_
             };
             if (archive_write_header(w, entry) < warn) return error.WriteFailed;
             if ((archive_entry_filetype(entry) & ae_ifmt) == ae_ifreg and archive_entry_size(entry) > 0) {
+                // A sparse file's holes are not handed over: each block says
+                // where it belongs, and an archive needs the zeros between.
+                var at: u64 = 0;
                 while (true) {
                     var buf: ?*const anyopaque = null;
                     var len: usize = 0;
@@ -293,16 +296,44 @@ pub fn packAll(gpa: std.mem.Allocator, format: Format, out_arg: []const u8, dir_
                     const rr = archive_read_data_block(disk, &buf, &len, &offset);
                     if (rr == eof) break;
                     if (rr < warn) return error.Damaged;
-                    if (archive_write_data(w, buf, len) < 0) return error.WriteFailed;
+                    // Less than was already written means the file changed under us.
+                    if (offset < 0 or @as(u64, @intCast(offset)) < at) return error.Damaged;
+                    try writeZeros(w, @as(u64, @intCast(offset)) - at);
+                    try writeAll(w, @as([*]const u8, @ptrCast(buf orelse continue))[0..len]);
+                    at = @as(u64, @intCast(offset)) + len;
                 }
+                // And the hole at the end, if there is one.
+                const size: u64 = @intCast(archive_entry_size(entry));
+                if (at < size) try writeZeros(w, size - at);
             }
-            _ = archive_write_finish_entry(w);
+            if (archive_write_finish_entry(w) < warn) return error.WriteFailed;
             // Fresh entry for the next header.
             _ = archive_entry_clear(entry);
         }
     }
     if (archive_write_close(w) != ok) return error.WriteFailed;
     try publish(part, out_z);
+}
+
+fn writeAll(w: *Archive, bytes: []const u8) !void {
+    var rest = bytes;
+    while (rest.len > 0) {
+        const n = archive_write_data(w, rest.ptr, rest.len);
+        // Taking nothing means the entry is full: the file grew meanwhile.
+        if (n <= 0) return error.WriteFailed;
+        rest = rest[@intCast(n)..];
+    }
+}
+
+const zeros: [64 * 1024]u8 = @splat(0);
+
+fn writeZeros(w: *Archive, count: u64) !void {
+    var left = count;
+    while (left > 0) {
+        const n: usize = @intCast(@min(left, zeros.len));
+        try writeAll(w, zeros[0..n]);
+        left -= n;
+    }
 }
 
 const Identity = struct {
@@ -371,6 +402,47 @@ test "every format packs and unpacks again, keeping folders and file contents" {
         const b = try readTestFile(sub, "b.txt");
         defer std.testing.allocator.free(b);
         try std.testing.expectEqualStrings("deep", b);
+    }
+}
+
+test "sparse files come out of every format byte for byte" {
+    const root = glib.Dir.makeTmp("dkde-arc-XXXXXX", null) orelse return error.NoTmp;
+    defer glib.free(root);
+    const base = std.mem.span(root);
+    const alloc = std.testing.allocator;
+    const io = std.testing.io;
+    const src = try std.fmt.allocPrintSentinel(alloc, "{s}/src", .{base}, 0);
+    defer alloc.free(src);
+    _ = glib.mkdirWithParents(src, 0o755);
+
+    // Holes in the middle and at the end, as in a disk image.
+    const size = 8 << 20;
+    const path = try std.fmt.allocPrint(alloc, "{s}/disk.img", .{src});
+    defer alloc.free(path);
+    {
+        var file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
+        try file.writePositionalAll(io, "start", 0);
+        try file.writePositionalAll(io, "middle", 4 << 20);
+        try file.setLength(io, size);
+    }
+    const want = try alloc.alloc(u8, size);
+    defer alloc.free(want);
+    @memset(want, 0);
+    @memcpy(want[0..5], "start");
+    @memcpy(want[4 << 20 ..][0..6], "middle");
+
+    for ([_]Format{ .zip, .tar_gz, .tar_xz, .tar_zst, .sevenz }) |format| {
+        const out = try std.fmt.allocPrint(alloc, "{s}/s{s}", .{ base, extension(format) });
+        defer alloc.free(out);
+        const dest = try std.fmt.allocPrint(alloc, "{s}/y-{s}", .{ base, @tagName(format) });
+        defer alloc.free(dest);
+        try packAll(alloc, format, out, src, &.{"disk.img"});
+        try extractAll(alloc, out, dest);
+        const got = try readTestFile(dest, "disk.img");
+        defer alloc.free(got);
+        try std.testing.expectEqual(want.len, got.len);
+        try std.testing.expect(std.mem.eql(u8, want, got));
     }
 }
 
