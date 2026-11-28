@@ -5,6 +5,8 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 ## Unreleased
 
 **dkde-pdf**
+- **Added**: links work. Links within a file go to their place; web and email links are shown and opened only after you agree. Other kinds (such as `file:` addresses and actions that start programs) are never opened.
+- **Fixed**: with the page fitted to the window width (the usual way a file opens), the scrollbar could be shorter than the document, so its end could not be reached. The first click in a document could also jump back to the top.
 - **Added**: form fields and text boxes can be filled with text beyond Western European, such as Greek, Cyrillic or Chinese: a suitable installed TrueType font is found and embedded (it used to be drawn as `?`). Needs the fontconfig library, which GTK already uses. See `dkde-pdf(1)` for the limits.
 
 **PDF library**

@@ -86,6 +86,14 @@ const Act = struct {
 /// What a drag on the page does.
 const Tool = enum { select, ink, text_box };
 
+/// How many bytes of `text`, at most `max`, end on a whole UTF-8 character.
+fn utf8Prefix(text: []const u8, max: usize) usize {
+    if (text.len <= max) return text.len;
+    var n = max;
+    while (n > 0 and text[n] & 0xC0 == 0x80) n -= 1;
+    return n;
+}
+
 const DocView = struct {
     allocator: std.mem.Allocator,
     host: *Window,
@@ -121,6 +129,10 @@ const DocView = struct {
     thumb_syncing: bool = false,
 
     tool: Tool = .select,
+    /// The pointer is over a link (the cursor is a hand).
+    over_link: bool = false,
+    /// The pending `onResizeIdle`, or 0.
+    resize_idle: c_uint = 0,
     /// The colour of new ink and text boxes.
     pen_color: [3]f64 = .{ 0.85, 0.1, 0.1 },
     /// The stroke being drawn (page points), on `ink_page`.
@@ -208,6 +220,9 @@ const DocView = struct {
         self.area.as(gtk.Widget).setFocusable(1);
         self.area.setDrawFunc(onDraw, self, null);
         self.scroller.setChild(self.area.as(gtk.Widget));
+        // The area is the whole document. Left on, "scroll to focus" jumps to its
+        // top when a click gives it the keyboard.
+        if (self.scroller.getChild()) |child| if (gobject.ext.cast(gtk.Viewport, child)) |viewport| viewport.setScrollToFocus(0);
         self.scroller.as(gtk.Widget).setVexpand(1);
         self.scroller.as(gtk.Widget).setHexpand(1);
         self.scroller.as(gtk.Widget).addCssClass("dkde-pdf-scroller");
@@ -225,6 +240,9 @@ const DocView = struct {
         _ = gtk.GestureDrag.signals.drag_update.connect(drag, *DocView, &onDragUpdate, self, .{});
         _ = gtk.GestureDrag.signals.drag_end.connect(drag, *DocView, &onDragEnd, self, .{});
         self.area.as(gtk.Widget).addController(drag.as(gtk.EventController));
+        const motion = gtk.EventControllerMotion.new();
+        _ = gtk.EventControllerMotion.signals.motion.connect(motion, *DocView, &onPointerMotion, self, .{});
+        self.area.as(gtk.Widget).addController(motion.as(gtk.EventController));
         const multi = gtk.GestureClick.new();
         multi.as(gtk.GestureSingle).setButton(1);
         _ = gtk.GestureClick.signals.pressed.connect(multi, *DocView, &onMultiClick, self, .{});
@@ -428,6 +446,8 @@ const DocView = struct {
 
     /// Frees everything the tab owns (its widgets go with the notebook page).
     fn deinit(self: *DocView) void {
+        if (self.resize_idle != 0) _ = glib.Source.remove(self.resize_idle);
+        self.resize_idle = 0;
         self.closeDocument();
         if (self.path) |p| self.allocator.free(p);
         if (self.needle) |n| self.allocator.free(n);
@@ -680,8 +700,19 @@ const DocView = struct {
         self.area.as(gtk.Widget).queueDraw();
     }
 
+    /// The area has a new size. The layout is redone after GTK has finished
+    /// allocating: a content size set while it is still allocating is not
+    /// taken up, which left the scrollbar shorter than the document and its
+    /// last pages out of reach.
     fn onResize(_: *gtk.DrawingArea, _: c_int, _: c_int, self: *DocView) callconv(.c) void {
+        if (self.fit != .custom and self.resize_idle == 0) self.resize_idle = glib.idleAdd(onResizeIdle, self);
+    }
+
+    fn onResizeIdle(data: ?*anyopaque) callconv(.c) c_int {
+        const self: *DocView = @ptrCast(@alignCast(data.?));
+        self.resize_idle = 0;
         if (self.fit != .custom) self.relayoutKeepingPlace();
+        return 0;
     }
 
     /// Lays out again (the zoom follows the width) and keeps the page at the
@@ -959,6 +990,8 @@ const DocView = struct {
         self.clearSelection();
         common.menubar.setChecked(self.window, "tool-ink", tool == .ink);
         common.menubar.setChecked(self.window, "tool-text", tool == .text_box);
+        self.over_link = false;
+        self.area.as(gtk.Widget).setTooltipText(null);
         self.area.as(gtk.Widget).setCursorFromName(if (tool == .select) null else "crosshair");
         self.status.setText(switch (tool) {
             .select => "",
@@ -1367,6 +1400,98 @@ const DocView = struct {
         const spot = self.spotAt(self.drag_x, self.drag_y) orelse return;
         if (self.hitField(spot)) return;
         if (self.hitAnnotation(spot)) |a| if (a.kind == .note) return self.editNote(spot.page, a.num);
+        const s = self.session orelse return;
+        if (s.linkAt(spot.page, spot.x, spot.y)) |found| self.followLink(found.target);
+    }
+
+    // ---- links -----------------------------------------------------------------------------------------
+
+    /// Shows a hand over a link, and where it goes.
+    fn onPointerMotion(_: *gtk.EventControllerMotion, x: f64, y: f64, self: *DocView) callconv(.c) void {
+        if (self.tool != .select or self.dragging) return;
+        const s = self.session orelse return;
+        const found = if (self.spotAt(x, y)) |spot| s.linkAt(spot.page, spot.x, spot.y) else null;
+        const over = self.area.as(gtk.Widget);
+        if (found) |hit| {
+            if (!self.over_link) over.setCursorFromName("pointer");
+            self.over_link = true;
+            self.setLinkTooltip(hit.target);
+        } else if (self.over_link) {
+            self.over_link = false;
+            over.setCursorFromName(null);
+            over.setTooltipText(null);
+        }
+    }
+
+    fn setLinkTooltip(self: *DocView, target: pdf.link.Target) void {
+        var buf: [320]u8 = undefined;
+        const text: ?[:0]const u8 = switch (target) {
+            .page => |dest| std.fmt.bufPrintSentinel(&buf, "Page {d}", .{dest.page + 1}, 0) catch null,
+            // The tooltip may be cut short; the question before opening shows it all.
+            .uri => |uri| std.fmt.bufPrintSentinel(&buf, "{s}", .{uri[0..utf8Prefix(uri, 300)]}, 0) catch null,
+            .named => null,
+            .unsupported => common.tr("This kind of link is not supported."),
+        };
+        self.area.as(gtk.Widget).setTooltipText(if (text) |t| t.ptr else null);
+    }
+
+    fn followLink(self: *DocView, target: pdf.link.Target) void {
+        switch (target) {
+            .page => |dest| self.goToDestination(dest),
+            .named => |name| {
+                const here = self.currentPage();
+                const eql = std.mem.eql;
+                if (eql(u8, name, "NextPage")) {
+                    self.scrollToPage(@min(here + 1, self.pages -| 1));
+                } else if (eql(u8, name, "PrevPage")) {
+                    self.scrollToPage(here -| 1);
+                } else if (eql(u8, name, "FirstPage")) {
+                    self.scrollToPage(0);
+                } else if (eql(u8, name, "LastPage")) {
+                    self.scrollToPage(self.pages -| 1);
+                } else self.status.setText(common.tr("This kind of link is not supported."));
+            },
+            .uri => |uri| self.askToOpen(uri),
+            .unsupported => self.status.setText(common.tr("This kind of link is not supported.")),
+        }
+    }
+
+    const OpenLink = struct { viewer_window: *gtk.Window, uri: [:0]u8 };
+
+    fn askToOpen(self: *DocView, uri: []const u8) void {
+        if (!session_mod.mayOpen(uri)) return self.status.setText(common.tr("Only web and email links are opened."));
+        // The document may be closed or edited while the question is up: keep a copy.
+        const ask = std.heap.c_allocator.create(OpenLink) catch return;
+        ask.* = .{ .viewer_window = self.window.as(gtk.Window), .uri = std.heap.c_allocator.dupeSentinel(u8, uri, 0) catch {
+            std.heap.c_allocator.destroy(ask);
+            return;
+        } };
+        const buttons = [_][*:0]const u8{ common.tr("Cancel"), common.tr("Open") };
+        common.dialogs.choose(ask.viewer_window, common.tr("Open this link?"), ask.uri, &buttons, 0, OpenLink, onOpenLinkChosen, ask);
+    }
+
+    fn onOpenLinkChosen(ask: *OpenLink, index: c_int) void {
+        defer {
+            std.heap.c_allocator.free(ask.uri);
+            std.heap.c_allocator.destroy(ask);
+        }
+        if (index != 1) return;
+        var err: ?*glib.Error = null;
+        if (gio.AppInfo.launchDefaultForUri(ask.uri, null, &err) == 0) {
+            if (err) |e| e.free();
+            common.dialogs.showError(ask.viewer_window, common.tr("Cannot open the link"), ask.uri);
+        }
+    }
+
+    fn goToDestination(self: *DocView, dest: pdf.outline.Destination) void {
+        const s = self.session orelse return;
+        if (dest.y) |uy| {
+            if (pdf.pages.page(&s.doc.doc, s.doc.pages, dest.page)) |p| {
+                const pt = pdf.interp.baseMatrix(p).apply(dest.x orelse 0, uy);
+                return self.scrollToPoint(dest.page, pt.y);
+            }
+        }
+        self.scrollToPage(dest.page);
     }
 
     /// Double click selects a word, triple click the line.
@@ -2131,14 +2256,7 @@ const DocView = struct {
         const index: usize = @intCast(@max(0, row.getIndex()));
         if (index >= self.rows.items.len) return;
         const dest = self.rows.items[index].item.dest orelse return self.status.setText(common.tr("This bookmark has no destination."));
-        const s = self.session orelse return;
-        if (dest.y) |uy| {
-            if (pdf.pages.page(&s.doc.doc, s.doc.pages, dest.page)) |p| {
-                const pt = pdf.interp.baseMatrix(p).apply(dest.x orelse 0, uy);
-                return self.scrollToPoint(dest.page, pt.y);
-            }
-        }
-        self.scrollToPage(dest.page);
+        self.goToDestination(dest);
     }
 
     fn selectedRow(self: *DocView) ?usize {

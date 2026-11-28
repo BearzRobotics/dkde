@@ -25,6 +25,9 @@ pub const Session = struct {
     /// Text layouts of pages, made when first asked for and dropped when the file changes.
     layouts: std.AutoHashMapUnmanaged(usize, pdf.text.Layout) = .empty,
     text_renderer: pdf.Renderer,
+    /// The links of pages, kept like `layouts`; they live in `link_arena`.
+    page_links: std.AutoHashMapUnmanaged(usize, []const pdf.link.Link) = .empty,
+    link_arena: ?std.heap.ArenaAllocator = null,
     /// Byte lengths of the file before each edit, oldest first.
     history: std.ArrayList(usize) = .empty,
     /// `history.items.len` when the file was last saved or opened.
@@ -51,6 +54,7 @@ pub const Session = struct {
     pub fn close(self: *Session) void {
         self.dropCaches();
         self.layouts.deinit(self.gpa);
+        self.page_links.deinit(self.gpa);
         self.text_renderer.deinit();
         self.history.deinit(self.gpa);
         self.doc.close();
@@ -88,6 +92,9 @@ pub const Session = struct {
         var it = self.layouts.valueIterator();
         while (it.next()) |l| l.deinit(self.gpa);
         self.layouts.clearRetainingCapacity();
+        self.page_links.clearRetainingCapacity();
+        if (self.link_arena) |*a| a.deinit();
+        self.link_arena = null;
     }
 
     /// Replaces the document with one opened from `new_bytes`.
@@ -192,6 +199,33 @@ pub const Session = struct {
     /// The form fields of the document; allocated from `arena`.
     pub fn fields(self: *Session, arena: Allocator) Allocator.Error![]pdf.form.Field {
         return pdf.form.fields(arena, &self.doc.doc, self.doc.pages);
+    }
+
+    /// The links of page `index`, in the order of its annotations.
+    pub fn links(self: *Session, index: usize) Error![]const pdf.link.Link {
+        if (self.page_links.get(index)) |found| return found;
+        const p = try self.page(index);
+        if (self.link_arena == null) self.link_arena = std.heap.ArenaAllocator.init(self.gpa);
+        const found = try pdf.link.list(self.link_arena.?.allocator(), &self.doc.doc, self.doc.pages, p);
+        try self.page_links.put(self.gpa, index, found);
+        return found;
+    }
+
+    /// The link under (`x`, `y`), in points from the top left of page `index` as displayed.
+    pub fn linkAt(self: *Session, index: usize, x: f64, y: f64) ?pdf.link.Link {
+        const found = self.links(index) catch return null;
+        if (found.len == 0) return null;
+        const m = pdf.interp.baseMatrix(self.page(index) catch return null);
+        // Later annotations lie on top.
+        var i = found.len;
+        while (i > 0) {
+            i -= 1;
+            const r = found[i].rect;
+            const a = m.apply(r.x0, r.y0);
+            const b = m.apply(r.x1, r.y1);
+            if (x >= @min(a.x, b.x) and x <= @max(a.x, b.x) and y >= @min(a.y, b.y) and y <= @max(a.y, b.y)) return found[i];
+        }
+        return null;
     }
 
     // ---- editing ----------------------------------------------------------------------
@@ -324,6 +358,20 @@ pub const Session = struct {
     }
 };
 
+/// Whether a link's address may be handed to the desktop, after the person
+/// agrees. A PDF is untrusted: only web and mail addresses are opened, never
+/// `file:` or a scheme that runs something. Only printable ASCII is accepted,
+/// so that look-alike and direction-changing characters cannot disguise the
+/// address shown in the question.
+pub fn mayOpen(uri: []const u8) bool {
+    if (uri.len == 0 or uri.len > 4096) return false;
+    for (uri) |c| if (c <= ' ' or c >= 0x7F) return false;
+    for ([_][]const u8{ "http://", "https://", "mailto:" }) |scheme| {
+        if (uri.len > scheme.len and std.ascii.startsWithIgnoreCase(uri, scheme)) return true;
+    }
+    return false;
+}
+
 fn anyNeedsEmbedding(texts: []const []const u8) bool {
     for (texts) |text| if (fonts.needsEmbedding(text)) return true;
     return false;
@@ -357,9 +405,14 @@ fn testPdf(aa: Allocator) ![]u8 {
         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
         "<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /Rect [10 10 120 30] /P 3 0 R >>",
     };
+    return buildPdf(aa, &bodies);
+}
+
+/// A file made of `bodies` as objects 1, 2, ..., the first being the catalog.
+fn buildPdf(aa: Allocator, bodies: []const []const u8) ![]u8 {
     var file: std.ArrayList(u8) = .empty;
     try file.appendSlice(aa, "%PDF-1.7\n");
-    var offs: [bodies.len]usize = undefined;
+    const offs = try aa.alloc(usize, bodies.len);
     for (bodies, 0..) |b, i| {
         offs[i] = file.items.len;
         try file.print(aa, "{d} 0 obj\n{s}\nendobj\n", .{ i + 1, b });
@@ -459,6 +512,36 @@ test "text beyond WinAnsi embeds a font and stays readable" {
     try s.setNoteText(box.num, greek ++ " 2", null);
     try testing.expect(std.mem.indexOf(u8, (try s.layout(0)).text, greek ++ " 2") != null);
     try s.undo();
+}
+
+test "only plain web and mail addresses may be opened" {
+    for ([_][]const u8{ "https://example.org/a?b=1#c", "HTTP://example.org", "mailto:someone@example.org" }) |uri| try testing.expect(mayOpen(uri));
+    for ([_][]const u8{ "", "https://", "file:///etc/passwd", "javascript:alert(1)", "smb://host/share", "/usr/bin/sh", "www.example.org", " https://example.org", "https://exa mple.org", "https://\u{202e}gro.elpmaxe", "https://ex\u{430}mple.org" }) |uri| try testing.expect(!mayOpen(uri));
+}
+
+test "a link is found under the pointer" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const s = try Session.openBytes(testing.allocator, try buildPdf(aa, &.{
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Annots [5 0 R 6 0 R] >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] >>",
+        "<< /Type /Annot /Subtype /Link /Rect [10 70 60 90] /Dest [4 0 R /XYZ 0 100 0] >>",
+        "<< /Type /Annot /Subtype /Link /Rect [100 10 190 30] /A << /S /URI /URI (https://example.org/) >> >>",
+    }));
+    defer s.close();
+    // Page y runs up in the file and down on screen: [70, 90] is 10 to 30 from the top.
+    const inside = s.linkAt(0, 20, 20) orelse return error.NoLink;
+    try testing.expectEqual(@as(usize, 1), inside.target.page.page);
+    const web = s.linkAt(0, 150, 80) orelse return error.NoLink;
+    try testing.expectEqualStrings("https://example.org/", web.target.uri);
+    try testing.expect(s.linkAt(0, 80, 50) == null);
+    try testing.expect(s.linkAt(1, 20, 20) == null);
+    // The cache goes with the document it was read from.
+    try s.addNote(0, 1, 1, .{});
+    try testing.expect(s.linkAt(0, 20, 20) != null);
 }
 
 test "bookmarks are added and removed as edits" {
