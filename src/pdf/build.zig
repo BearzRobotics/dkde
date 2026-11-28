@@ -11,5 +11,6 @@ pub fn configure(ctx: *const Ctx, mod: *std.Build.Module) void {
     ctx.imports(mod, &.{"cairo1"});
     mod.linkSystemLibrary("fontconfig", .{}); // finds a font to embed (fonts.zig)
     mod.addImport("pdfrender", ctx.pdfrender);
+    mod.addImport("imgcodec", ctx.imgcodec); // pictures to stamp on pages
     mod.addImport("pdf", ctx.pdf);
 }

@@ -12,12 +12,13 @@ const std = @import("std");
 const pdf = @import("pdf");
 const render = @import("pdfrender");
 const fonts = @import("fonts.zig");
+const stamp = @import("stamp.zig");
 
 const Allocator = std.mem.Allocator;
 
 pub const max_undo = 50;
 
-pub const Error = render.Document.OpenError || pdf.write.Error || pdf.annot.Error || pdf.form.Error || pdf.outline.EditError || pdf.draw.StampError || pdf.flatten.Error || fonts.Error || error{ NoSuchPage, NothingToUndo, CannotEdit };
+pub const Error = render.Document.OpenError || pdf.write.Error || pdf.annot.Error || pdf.form.Error || pdf.outline.EditError || pdf.draw.StampError || pdf.flatten.Error || fonts.Error || stamp.Error || error{ NoSuchPage, NothingToUndo, CannotEdit };
 
 pub const Session = struct {
     gpa: Allocator,
@@ -411,6 +412,14 @@ pub const Session = struct {
         return done;
     }
 
+    /// Draws a watermark or stamp on the pages `indices`, as one edit.
+    pub fn addStamp(self: *Session, indices: []const usize, spec: stamp.Spec) Error!void {
+        var upd = try self.begin();
+        defer upd.deinit();
+        try stamp.apply(self.gpa, &upd, self.doc.pages, indices, spec);
+        try self.commit(&upd);
+    }
+
     /// Makes the form's filled-in fields part of their pages, as one edit.
     /// This erases nothing: the file still holds the earlier version.
     pub fn flattenForm(self: *Session) Error!pdf.flatten.Result {
@@ -667,6 +676,37 @@ test "several choices, reset and flatten" {
     const history = s.history.items.len;
     try testing.expectEqual(@as(usize, 0), (try s.flattenForm()).flattened);
     try testing.expectEqual(history, s.history.items.len);
+}
+
+test "text and picture stamps are drawn on the pages asked for" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const s = try Session.openBytes(testing.allocator, try buildPdf(aa, &.{
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Rotate 90 >>",
+    }));
+    defer s.close();
+    try s.addStamp(&.{1}, .{ .what = .{ .text = "DRAFT COPY" } });
+    try testing.expect(std.mem.indexOf(u8, (try s.layout(1)).text, "DRAFT") != null);
+    try testing.expectEqual(@as(usize, 0), (try s.layout(0)).text.len);
+
+    // A 2x2 binary netpbm picture, red.
+    const picture = "P6\n2 2\n255\n" ++ "\xff\x00\x00\xff\x00\x00\xff\x00\x00\xff\x00\x00";
+    const before = s.bytes().len;
+    try s.addStamp(&.{ 0, 1 }, .{ .what = .{ .image = .{ .file = picture, .position = .top_left } }, .opacity = 1 });
+    try testing.expect(std.mem.indexOf(u8, s.bytes()[before..], "/Subtype /Image") != null or std.mem.indexOf(u8, s.bytes()[before..], "/Subtype/Image") != null);
+
+    // A failed stamp records no edit.
+    const history = s.history.items.len;
+    try testing.expectError(error.EmptyText, s.addStamp(&.{0}, .{ .what = .{ .text = "  " } }));
+    try testing.expectError(error.Unsupported, s.addStamp(&.{0}, .{ .what = .{ .image = .{ .file = "not a picture" } } }));
+    try testing.expectEqual(history, s.history.items.len);
+    try s.undo();
+    try s.undo();
+    try testing.expectEqual(@as(usize, 0), (try s.layout(1)).text.len);
 }
 
 test "bookmarks are added and removed as edits" {

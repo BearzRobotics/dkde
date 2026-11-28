@@ -5,6 +5,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 ## Unreleased
 
 **dkde-pdf**
+- **Added**: Annotate > Stamp or Watermark puts a diagonal line of text, or a picture such as a logo or scanned signature (not a digital signature), on chosen pages.
 - **Added**: File > Organise Pages reorders, rotates, deletes, extracts, splits and merges pages. The result is always a new file; the originals are not changed. Leaving a page out is not redaction.
 - **Added**: lists that take several entries can have several selected; a field or the whole form can be reset to its defaults; and Annotate > Flatten Form turns a filled form into page content (not redaction: the file keeps the earlier version).
 - **Added**: the status line says when part of a page cannot be shown, and `dkde-pdfcheck` reports what pages use that is left out or approximated (`omit-` notes).

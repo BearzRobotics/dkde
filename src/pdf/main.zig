@@ -31,6 +31,8 @@ const places = @import("places.zig");
 const render = @import("pdfrender");
 const fonts = @import("fonts.zig");
 const organise = @import("organise.zig");
+const stamp_mod = @import("stamp.zig");
+const stampdialog = @import("stampdialog.zig");
 const session_mod = @import("session.zig");
 const Session = session_mod.Session;
 
@@ -2523,6 +2525,59 @@ const DocView = struct {
         window.openFile(path);
     }
 
+    // ---- stamps and watermarks --------------------------------------------------
+
+    fn askStamp(self: *DocView) void {
+        const s = self.session orelse return;
+        if (!s.canEdit()) return self.editFailed(error.CannotEdit);
+        stampdialog.show(self.allocator, self.window.as(gtk.Window), .{ .context = self.host, .apply = applyStamp }) catch {};
+    }
+
+    /// Takes the window, not the document: it works on the tab that is showing.
+    fn applyStamp(context: *anyopaque, choice: stampdialog.Choice) bool {
+        const window: *Window = @ptrCast(@alignCast(context));
+        const self = window.active() orelse return true;
+        const s = self.session orelse return true;
+        const parent = self.window.as(gtk.Window);
+        const title = common.tr("Cannot add the stamp");
+        const indices = stamp_mod.parsePages(self.allocator, choice.pages, s.pageCount()) catch {
+            common.dialogs.showError(parent, title, common.tr("Write the pages as numbers and ranges, for example 1-3, 5, within this document."));
+            return false;
+        };
+        defer self.allocator.free(indices);
+        var file: ?[]u8 = null;
+        defer if (file) |bytes| self.allocator.free(bytes);
+        var spec: stamp_mod.Spec = .{
+            .what = undefined,
+            .opacity = choice.opacity,
+            .under = choice.under,
+        };
+        if (choice.text) |text| {
+            spec.what = .{ .text = text };
+        } else {
+            file = common.fsio.readFile(self.allocator, choice.image_path, 64 << 20) catch null;
+            const bytes = file orelse {
+                common.dialogs.showError(parent, title, common.tr("The picture file cannot be read (64 MiB at most)."));
+                return false;
+            };
+            spec.what = .{ .image = .{ .file = bytes, .position = choice.position, .width = choice.width } };
+        }
+        s.addStamp(indices, spec) catch |e| {
+            const why: [:0]const u8 = switch (e) {
+                error.EmptyText => common.tr("Write the text to put on the pages."),
+                error.Unsupported, error.UnsupportedImage, error.BadImage => common.tr("This kind of picture is not supported. PNG and JPEG work."),
+                error.TooBig, error.TooLarge => common.tr("The picture is too large."),
+                error.NoFont, error.MissingGlyph => common.tr("No installed font that can be embedded in a PDF has all of these characters."),
+                else => common.tr("The change could not be made."),
+            };
+            common.dialogs.showError(parent, title, why);
+            return false;
+        };
+        self.changed();
+        if (choice.text) |text| self.warnShaping(text);
+        return true;
+    }
+
     // ---- printing -------------------------------------------------------------------------------
 
     /// Prints the document as it is on screen, with the annotations and form
@@ -2634,6 +2689,7 @@ const DocView = struct {
             act.* = .{ .viewer = self, .action = .add_note, .page = page, .x = 40, .y = 40 };
             return self.openTextDialog(act, common.tr("New note"), "", false);
         }
+        if (eql(u8, action, "stamp")) return self.askStamp();
         if (eql(u8, action, "reset-form")) return self.resetForm(null);
         if (eql(u8, action, "flatten-form")) return self.askToFlatten();
         if (eql(u8, action, "add-bookmark")) return self.askBookmarkTitle(self.currentPage(), null);
@@ -2768,6 +2824,7 @@ const Window = struct {
                 mb.item("Annotation _Colour…", "pen-color", null),
                 .separator,
                 mb.item("Add _bookmark here", "add-bookmark", "<Control>d"),
+                mb.item("Stam_p or Watermark…", "stamp", null),
                 .separator,
                 mb.item("_Reset Form", "reset-form", null),
                 mb.item("_Flatten Form…", "flatten-form", null),
@@ -3486,4 +3543,5 @@ test {
     _ = @import("places.zig");
     _ = @import("session.zig");
     _ = @import("pageops.zig");
+    _ = @import("stamp.zig");
 }
