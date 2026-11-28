@@ -9,6 +9,9 @@
 //! at a size and an entry limit, against archives made to fill the disk.
 
 const std = @import("std");
+const gio = @import("gio2");
+const gobject = @import("gobject2");
+const ops = @import("ops.zig");
 
 const Archive = opaque {};
 const Entry = opaque {};
@@ -92,8 +95,9 @@ fn passwordMessage(a: *Archive) bool {
     return std.ascii.findIgnoreCase(s, "passphrase") != null or std.ascii.findIgnoreCase(s, "encrypted") != null or std.ascii.findIgnoreCase(s, "password") != null;
 }
 
-/// Unpacks `archive_path` into `dest` (created). The destination is built as
-/// `dest.part` and renamed, so a failed unpack leaves nothing behind.
+/// Unpacks `archive_path` into `dest` (created). It is built in a new folder of
+/// its own beside `dest` and then renamed, so a failed unpack leaves nothing
+/// behind, and nothing that was already there is touched.
 pub fn extractAll(gpa: std.mem.Allocator, archive_arg: []const u8, dest_arg: []const u8) !void {
     // The unpack runs inside the destination, so every path must be absolute first.
     const archive_path = try absolute(gpa, archive_arg);
@@ -102,14 +106,14 @@ pub fn extractAll(gpa: std.mem.Allocator, archive_arg: []const u8, dest_arg: []c
     defer gpa.free(dest);
     const src_z = try gpa.dupeSentinel(u8, archive_path, 0);
     defer gpa.free(src_z);
-    const part = try std.fmt.allocPrintSentinel(gpa, "{s}.part", .{dest}, 0);
-    defer gpa.free(part);
     const dest_z = try gpa.dupeSentinel(u8, dest, 0);
     defer gpa.free(dest_z);
-
-    removeTree(part);
-    if (std.c.mkdir(part, 0o755) != 0 and std.c._errno().* != @backingInt(std.c.E.EXIST)) return error.WriteFailed;
-    errdefer removeTree(part);
+    const part = try std.fmt.allocPrintSentinel(gpa, "{s}/.dkde-unpack-XXXXXX", .{std.fs.path.dirname(dest) orelse "/"}, 0);
+    defer gpa.free(part);
+    if (mkdtemp(part.ptr) == null) return error.WriteFailed;
+    errdefer removeWork(part);
+    // mkdtemp makes it private; give it what a new folder would have.
+    if (std.c.chmod(part, 0o755 & ~currentUmask()) != 0) return error.WriteFailed;
     if (std.c.chdir(part) != 0) return error.WriteFailed;
 
     const reader = archive_read_new() orelse return error.OutOfMemory;
@@ -158,7 +162,41 @@ pub fn extractAll(gpa: std.mem.Allocator, archive_arg: []const u8, dest_arg: []c
     _ = archive_write_close(writer);
 
     if (std.c.chdir("/") != 0) {}
-    if (std.c.rename(part, dest_z) != 0) return error.WriteFailed;
+    try publish(part, dest_z);
+}
+
+extern fn mkdtemp(template: [*:0]u8) ?[*:0]u8;
+extern fn mkstemp(template: [*:0]u8) c_int;
+extern fn umask(mask: c_uint) c_uint;
+
+fn currentUmask() c_uint {
+    const mask = umask(0o022);
+    _ = umask(mask);
+    return mask;
+}
+
+/// Gives `from` the name `to`, which must still be free.
+fn publish(from: [*:0]const u8, to: [*:0]const u8) !void {
+    const linux = std.os.linux;
+    const at = std.c.AT.FDCWD;
+    switch (linux.errno(linux.renameat2(at, from, at, to, .{ .NOREPLACE = true }))) {
+        .SUCCESS => return,
+        // A filesystem without the flag: look first.
+        .INVAL, .NOSYS, .OPNOTSUPP => {
+            if (std.c.access(to, 0) == 0) return error.WriteFailed;
+            if (std.c.rename(from, to) != 0) return error.WriteFailed;
+        },
+        else => return error.WriteFailed,
+    }
+}
+
+/// Removes the work folder this process made. Links in it are removed, never
+/// followed.
+fn removeWork(path: [*:0]const u8) void {
+    _ = std.c.chdir("/");
+    const folder = gio.File.newForPath(path);
+    defer folder.as(gobject.Object).unref();
+    ops.deleteTree(folder);
 }
 
 fn absolute(gpa: std.mem.Allocator, path: []const u8) ![]u8 {
@@ -166,17 +204,6 @@ fn absolute(gpa: std.mem.Allocator, path: []const u8) ![]u8 {
     var buf: [4096]u8 = undefined;
     const cwd = std.c.getcwd(&buf, buf.len) orelse return error.OpenFailed;
     return std.fmt.allocPrint(gpa, "{s}/{s}", .{ std.mem.sliceTo(@as([*:0]u8, @ptrCast(cwd)), 0), path });
-}
-
-extern "c" fn system(command: [*:0]const u8) c_int;
-const c_system = system;
-
-fn removeTree(path: [*:0]const u8) void {
-    // Only ever called on our own ".part" folder.
-    var buf: [4200]u8 = undefined;
-    const cmd = std.fmt.bufPrintSentinel(&buf, "rm -rf -- '{s}'", .{std.mem.span(path)}, 0) catch return;
-    if (std.mem.indexOfScalar(u8, std.mem.span(path), '\'') != null) return;
-    _ = c_system(cmd);
 }
 
 pub const Format = enum { zip, tar_gz, tar_xz, tar_zst, sevenz };
@@ -199,7 +226,8 @@ pub fn extension(f: Format) []const u8 {
     };
 }
 
-/// Packs `names` (relative to `dir`) into `out`, written as `out.part` and renamed.
+/// Packs `names` (relative to `dir`) into `out`, which must not exist. It is
+/// written to a new file of its own beside `out` and then renamed.
 pub fn packAll(gpa: std.mem.Allocator, format: Format, out_arg: []const u8, dir_arg: []const u8, names: []const []const u8) !void {
     const out = try absolute(gpa, out_arg);
     defer gpa.free(out);
@@ -208,8 +236,6 @@ pub fn packAll(gpa: std.mem.Allocator, format: Format, out_arg: []const u8, dir_
     const dir_z = try gpa.dupeSentinel(u8, dir, 0);
     defer gpa.free(dir_z);
     if (std.c.chdir(dir_z) != 0) return error.OpenFailed;
-    const part = try std.fmt.allocPrintSentinel(gpa, "{s}.part", .{out}, 0);
-    defer gpa.free(part);
     const out_z = try gpa.dupeSentinel(u8, out, 0);
     defer gpa.free(out_z);
 
@@ -228,8 +254,16 @@ pub fn packAll(gpa: std.mem.Allocator, format: Format, out_arg: []const u8, dir_
         else => ok,
     };
     if (filter_ok != ok) return error.Unsupported;
-    if (archive_write_open_filename(w, part) != ok) return error.WriteFailed;
+    const part = try std.fmt.allocPrintSentinel(gpa, "{s}/.dkde-pack-XXXXXX", .{std.fs.path.dirname(out) orelse "/"}, 0);
+    defer gpa.free(part);
+    const part_fd = mkstemp(part.ptr);
+    if (part_fd < 0) return error.WriteFailed;
     errdefer _ = std.c.unlink(part);
+    if (std.c.fchmod(part_fd, 0o666 & ~currentUmask()) != 0 or std.c.close(part_fd) != 0) return error.WriteFailed;
+    // Which file that is, so the archive is never packed into itself, whatever
+    // folder the items come from and whatever they are called.
+    const own = fileIdentity(part) orelse return error.WriteFailed;
+    if (archive_write_open_filename(w, part) != ok) return error.WriteFailed;
 
     for (names) |name| {
         const name_z = try gpa.dupeSentinel(u8, name, 0);
@@ -246,8 +280,10 @@ pub fn packAll(gpa: std.mem.Allocator, format: Format, out_arg: []const u8, dir_
             if (r < warn) return error.Damaged;
             _ = archive_read_disk_descend(disk);
             const path = archive_entry_pathname(entry) orelse continue;
-            // Never pack the archive into itself.
-            if (std.mem.eql(u8, std.mem.span(path), std.fs.path.basename(out))) continue;
+            if (fileIdentity(path)) |id| if (id.eql(own)) {
+                _ = archive_entry_clear(entry);
+                continue;
+            };
             if (archive_write_header(w, entry) < warn) return error.WriteFailed;
             if ((archive_entry_filetype(entry) & ae_ifmt) == ae_ifreg and archive_entry_size(entry) > 0) {
                 while (true) {
@@ -266,7 +302,23 @@ pub fn packAll(gpa: std.mem.Allocator, format: Format, out_arg: []const u8, dir_
         }
     }
     if (archive_write_close(w) != ok) return error.WriteFailed;
-    if (std.c.rename(part, out_z) != 0) return error.WriteFailed;
+    try publish(part, out_z);
+}
+
+const Identity = struct {
+    device: u64,
+    inode: u64,
+
+    fn eql(a: Identity, b: Identity) bool {
+        return a.device == b.device and a.inode == b.inode;
+    }
+};
+
+fn fileIdentity(path: [*:0]const u8) ?Identity {
+    const linux = std.os.linux;
+    var st: linux.Statx = undefined;
+    if (linux.errno(linux.statx(std.c.AT.FDCWD, path, linux.AT.SYMLINK_NOFOLLOW, .{ .INO = true }, &st)) != .SUCCESS) return null;
+    return .{ .device = (@as(u64, st.dev_major) << 32) | st.dev_minor, .inode = st.ino };
 }
 extern fn archive_entry_clear(*Entry) ?*Entry;
 
@@ -332,7 +384,83 @@ test "a missing or damaged archive fails and leaves nothing behind" {
     const dest = try std.fmt.allocPrint(std.testing.allocator, "{s}/out", .{base});
     defer std.testing.allocator.free(dest);
     try std.testing.expectError(error.OpenFailed, extractAll(std.testing.allocator, bad, dest));
-    const part = try std.fmt.allocPrintSentinel(std.testing.allocator, "{s}.part", .{dest}, 0);
-    defer std.testing.allocator.free(part);
-    try std.testing.expect(glib.fileTest(part, .{ .exists = true }) == 0);
+    // Neither the destination nor a work folder is left: only the file itself.
+    try std.testing.expectEqual(@as(usize, 1), try countIn(base));
+}
+
+fn countIn(dir: []const u8) !usize {
+    const z = try std.testing.allocator.dupeSentinel(u8, dir, 0);
+    defer std.testing.allocator.free(z);
+    const d = glib.Dir.open(z, 0, null) orelse return error.OpenFailed;
+    defer d.close();
+    var n: usize = 0;
+    while (@as(?[*:0]const u8, d.readName()) != null) n += 1;
+    return n;
+}
+
+test "files that happen to be named like work files are left alone" {
+    const root = glib.Dir.makeTmp("dkde-arc-XXXXXX", null) orelse return error.NoTmp;
+    defer glib.free(root);
+    const base = std.mem.span(root);
+    const alloc = std.testing.allocator;
+    const src = try std.fmt.allocPrintSentinel(alloc, "{s}/bob's", .{base}, 0);
+    defer alloc.free(src);
+    const theirs = try std.fmt.allocPrintSentinel(alloc, "{s}/project.part", .{base}, 0);
+    defer alloc.free(theirs);
+    _ = glib.mkdirWithParents(src, 0o755);
+    _ = glib.mkdirWithParents(theirs, 0o755);
+    try writeTestFile(src, "a.txt", "alpha");
+    try writeTestFile(theirs, "notes.txt", "mine");
+    try writeTestFile(base, "docs.zip.part", "an unfinished download");
+
+    const zip = try std.fmt.allocPrint(alloc, "{s}/docs.zip", .{base});
+    defer alloc.free(zip);
+    try packAll(alloc, .zip, zip, src, &.{"a.txt"});
+    const dest = try std.fmt.allocPrint(alloc, "{s}/project", .{base});
+    defer alloc.free(dest);
+    try extractAll(alloc, zip, dest);
+
+    const kept = try readTestFile(base, "docs.zip.part");
+    defer alloc.free(kept);
+    try std.testing.expectEqualStrings("an unfinished download", kept);
+    const mine = try readTestFile(theirs, "notes.txt");
+    defer alloc.free(mine);
+    try std.testing.expectEqualStrings("mine", mine);
+    // A destination that appeared meanwhile is not replaced.
+    try std.testing.expectError(error.WriteFailed, extractAll(alloc, zip, dest));
+    try std.testing.expectError(error.WriteFailed, packAll(alloc, .zip, zip, src, &.{"a.txt"}));
+    // bob's, project.part, docs.zip.part, docs.zip, project
+    try std.testing.expectEqual(@as(usize, 5), try countIn(base));
+}
+
+test "an item named like the archive is packed, and the archive never is" {
+    const root = glib.Dir.makeTmp("dkde-arc-XXXXXX", null) orelse return error.NoTmp;
+    defer glib.free(root);
+    const base = std.mem.span(root);
+    const alloc = std.testing.allocator;
+    const src = try std.fmt.allocPrintSentinel(alloc, "{s}/sub", .{base}, 0);
+    defer alloc.free(src);
+    _ = glib.mkdirWithParents(src, 0o755);
+    try writeTestFile(src, "Archive.zip", "not really a zip");
+    try writeTestFile(src, "notes.txt", "notes");
+
+    // Written beside the folder the items are in, as search results are.
+    const out = try std.fmt.allocPrint(alloc, "{s}/Archive.zip", .{base});
+    defer alloc.free(out);
+    try packAll(alloc, .zip, out, src, &.{ "Archive.zip", "notes.txt" });
+    const first = try std.fmt.allocPrint(alloc, "{s}/first", .{base});
+    defer alloc.free(first);
+    try extractAll(alloc, out, first);
+    try std.testing.expectEqual(@as(usize, 2), try countIn(first));
+
+    // Packing the folder the archive is written into leaves the archive out.
+    const whole = try std.fmt.allocPrint(alloc, "{s}/all.tar.gz", .{src});
+    defer alloc.free(whole);
+    try packAll(alloc, .tar_gz, whole, base, &.{"sub"});
+    const second = try std.fmt.allocPrint(alloc, "{s}/second", .{base});
+    defer alloc.free(second);
+    try extractAll(alloc, whole, second);
+    const inside = try std.fmt.allocPrint(alloc, "{s}/sub", .{second});
+    defer alloc.free(inside);
+    try std.testing.expectEqual(@as(usize, 2), try countIn(inside));
 }
