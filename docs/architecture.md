@@ -68,7 +68,7 @@ Programs reach windows, workspaces, outputs and screenshots through `common.desk
 
 ## Privilege
 
-Today: `common/elevate.zig` asks for the password itself and runs `sudo -S`. This contradicts the spec; see `docs/decisions/0001-architecture-realignment.md` §9. `dkde-polkit` is a Polkit *agent*; no privileged helper services exist yet.
+Today: `common/elevate.zig` asks for the password itself and runs `sudo` (first `-n` without a password, then `-S` when one is needed). This contradicts the spec; see `docs/decisions/0001-architecture-realignment.md` §9. `dkde-polkit` is a Polkit *agent*; no privileged helper services exist yet.
 
 ## Tests
 

@@ -3,13 +3,22 @@
 //!
 //! There is no polkit agent or D-Bus in a dkde session, so this asks for the
 //! user's password in a small dialog of its own and runs the command through
-//! `sudo -S`. The password goes straight to sudo's stdin and is wiped from
-//! memory afterwards; it is never put on a command line or in the
-//! environment. `-k` makes sudo always ask, so a cached ticket cannot make it
-//! mistake the first stdin line for command input.
+//! sudo. The password goes only to sudo's stdin and is wiped from memory
+//! afterwards; it is never put on a command line, in the environment or on disk.
 //!
-//! Anything the command should read from stdin is passed in `stdin_data`
-//! and arrives after the password line.
+//! sudo reads a password only when its rules want one for that command: under
+//! `NOPASSWD` it reads nothing, and the command would get whatever was written
+//! for sudo. `-k` does not change that (it only ignores a cached ticket). So
+//! each command is first tried as `sudo -k -n`, with nothing but its own
+//! input: it runs if no password is wanted. Only when sudo says it needs one
+//! is it run again with `-S` and the password ahead of the input. For a shell
+//! command with input, a marker line the shell discards up to separates the
+//! two as well.
+//!
+//! Anything the command should read from stdin is passed in `stdin_data`.
+//! Its standard output is dropped unless captured, and its error output goes
+//! to a temporary file: with pipes, a command that printed would be killed
+//! once they were closed, or would stall once they were full.
 
 const std = @import("std");
 const gio = @import("gio2");
@@ -38,15 +47,20 @@ const Job = struct {
     window: ?*gtk.Window = null,
     entry: ?*gtk.PasswordEntry = null,
     message: ?*gtk.Label = null,
-    /// Read end of the child's stderr and its pid while it runs.
+    /// While a child runs: the file its errors go to, and its pid.
     stderr_fd: c_int = -1,
     pid: glib.Pid = 0,
+    running: bool = false,
+    /// The running attempt is the one without a password (`sudo -n`).
+    probing: bool = false,
+    /// The password, from that attempt until the one that may need it.
+    secret: ?[]u8 = null,
     /// runCapture: the command's output goes to this temporary file (a
     /// file, not a pipe, so a long output cannot stall the command).
     capture: bool = false,
     out_fd: c_int = -1,
-    /// The password to keep as the unlocked session's when sudo accepts it (a copy, wiped at the end).
-    remember: ?[]u8 = null,
+    /// The unlock job: keep the password as the unlocked session's when it is accepted.
+    remember: bool = false,
     /// The password came from the unlocked session, so a refusal means it changed: lock and ask again.
     from_session: bool = false,
 };
@@ -130,7 +144,7 @@ fn unlockDone(_: *u8, _: Outcome, _: []const u8) void {}
 pub fn unlock(parent: ?*gtk.Window) void {
     if (isUnlocked()) return;
     const job = makeJob(parent, tr("Unlock administrator actions. The password is kept only in this program, until it is locked again (Settings > Accounts sets how long after the last action)."), &.{"true"}, "", false, u8, unlockDone, &unlock_data) orelse return;
-    job.remember = gpa.dupe(u8, "") catch null;
+    job.remember = true;
     prompt(job, null);
 }
 
@@ -169,6 +183,8 @@ pub fn padlock(parent: ?*gtk.Window) *gtk.Button {
 }
 
 extern fn write(fd: c_int, buf: [*]const u8, count: usize) isize;
+extern fn memfd_create(name: [*:0]const u8, flags: c_uint) c_int;
+const mfd_cloexec = 1;
 extern fn read(fd: c_int, buf: [*]u8, count: usize) isize;
 extern fn close(fd: c_int) c_int;
 extern fn lseek(fd: c_int, offset: i64, whence: c_int) i64;
@@ -265,7 +281,25 @@ fn makeJob(
         .data = data,
         .capture = capture,
     };
+    watchParent(job);
     return job;
+}
+
+/// The password dialog may open after the window that asked for it has gone.
+fn watchParent(job: *Job) void {
+    if (job.parent) |p| p.as(gobject.Object).addWeakPointer(@ptrCast(&job.parent));
+}
+
+fn unwatchParent(job: *Job) void {
+    if (job.parent) |p| p.as(gobject.Object).removeWeakPointer(@ptrCast(&job.parent));
+}
+
+fn forgetSecret(job: *Job) void {
+    if (job.secret) |s| {
+        @memset(s, 0);
+        gpa.free(s);
+        job.secret = null;
+    }
 }
 
 fn finish(job: *Job, outcome: Outcome, message: []const u8) void {
@@ -273,12 +307,10 @@ fn finish(job: *Job, outcome: Outcome, message: []const u8) void {
     const callback = job.callback;
     const target = job.target;
     const data = job.data;
+    unwatchParent(job);
     if (job.window) |w| w.destroy();
+    forgetSecret(job);
     if (job.out_fd >= 0) _ = close(job.out_fd);
-    if (job.remember) |r| {
-        @memset(r, 0);
-        a.free(r);
-    }
     @memset(job.stdin_data, 0); // it may hold a new account's password
     a.free(job.stdin_data);
     for (job.argv) |arg| a.free(arg);
@@ -357,12 +389,15 @@ fn onEntryActivate(_: *gtk.PasswordEntry, job: *Job) callconv(.c) void {
     submit(job);
 }
 
+// Once a command is running it cannot be called back, and `onChildExit` still
+// holds the job: only that ends it then.
+
 fn onCancel(_: *gtk.Button, job: *Job) callconv(.c) void {
-    finish(job, .cancelled, "");
+    if (!job.running) finish(job, .cancelled, "");
 }
 
 fn onClose(_: *gtk.Window, job: *Job) callconv(.c) c_int {
-    finish(job, .cancelled, "");
+    if (!job.running) finish(job, .cancelled, "");
     return 1;
 }
 
@@ -376,20 +411,73 @@ fn submit(job: *Job) void {
 
 // ---- running sudo ---------------------------------------------------------
 
-fn attempt(job: *Job, password: []const u8) void {
-    const a = std.heap.c_allocator;
+/// The sudo to run; the tests name their stand-in by its full path.
+var sudo_program: []const u8 = "sudo";
 
-    const prefix = [_][]const u8{ "sudo", "-S", "-k", "-p", "", "--" };
-    const argv = a.alloc(?[*:0]u8, prefix.len + job.argv.len + 1) catch return finish(job, .failed, "out of memory");
+/// Between the password and a shell command's input: the shell discards
+/// everything up to it, so a password sudo did not read goes no further.
+const input_marker = "dkde-input-6f1c3a9e5b2d4870";
+const skip_to_marker = "while IFS= read -r line; do [ \"$line\" = \"$0\" ] && break; done; exec \"$@\"";
+
+/// Runs the job with `password`: first without it, in case sudo wants none.
+fn attempt(job: *Job, password: []const u8) void {
+    if (job.running) return;
+    forgetSecret(job);
+    job.secret = gpa.dupe(u8, password) catch return finish(job, .failed, "out of memory");
+    job.probing = true;
+    spawnSudo(job);
+}
+
+/// A file in memory holding `parts`, read from its start.
+fn inputFile(parts: []const []const u8) c_int {
+    const fd = memfd_create("dkde-input", mfd_cloexec);
+    if (fd < 0) return -1;
+    for (parts) |part| {
+        var rest = part;
+        while (rest.len > 0) {
+            const n = write(fd, rest.ptr, rest.len);
+            if (n <= 0) {
+                _ = close(fd);
+                return -1;
+            }
+            rest = rest[@intCast(n)..];
+        }
+    }
+    _ = lseek(fd, 0, 0);
+    return fd;
+}
+
+/// An open file with no name.
+fn scratchFile() c_int {
+    var name: [*:0]u8 = undefined;
+    const fd = glib.fileOpenTmp("dkde-elevate-XXXXXX", &name, null);
+    if (fd >= 0) {
+        // Only the descriptor is needed; nobody else can open the file.
+        _ = glib.unlink(name);
+        glib.free(name);
+    }
+    return fd;
+}
+
+fn spawnSudo(job: *Job) void {
+    const a = std.heap.c_allocator;
+    const password = job.secret orelse "";
+    const marked = !job.probing and job.stdin_data.len > 0 and job.argv.len > 0 and std.mem.eql(u8, job.argv[0], "sh");
+
+    var words: std.ArrayList([]const u8) = .empty;
+    defer words.deinit(a);
+    const options: []const []const u8 = if (job.probing) &.{ "-k", "-n", "--" } else &.{ "-S", "-k", "-p", "", "--" };
+    words.append(a, sudo_program) catch return finish(job, .failed, "out of memory");
+    words.appendSlice(a, options) catch return finish(job, .failed, "out of memory");
+    if (marked) words.appendSlice(a, &.{ "sh", "-c", skip_to_marker, input_marker }) catch return finish(job, .failed, "out of memory");
+    for (job.argv) |arg| words.append(a, arg) catch return finish(job, .failed, "out of memory");
+
+    const argv = a.alloc(?[*:0]u8, words.items.len + 1) catch return finish(job, .failed, "out of memory");
     defer a.free(argv);
     var made: usize = 0;
     defer for (argv[0..made]) |p| a.free(std.mem.span(p.?));
-    for (prefix) |p| {
-        argv[made] = (a.dupeSentinel(u8, p, 0) catch return finish(job, .failed, "out of memory")).ptr;
-        made += 1;
-    }
-    for (job.argv) |arg| {
-        argv[made] = (a.dupeSentinel(u8, arg, 0) catch return finish(job, .failed, "out of memory")).ptr;
+    for (words.items) |word| {
+        argv[made] = (a.dupeSentinel(u8, word, 0) catch return finish(job, .failed, "out of memory")).ptr;
         made += 1;
     }
     argv[made] = null;
@@ -400,111 +488,113 @@ fn attempt(job: *Job, password: []const u8) void {
     envp = glib.environSetenv(envp, "LANGUAGE", "C", 1);
     defer glib.strfreev(envp);
 
-    var stdin_fd: c_int = -1;
-    var stdout_fd: c_int = -1;
-    var stderr_fd: c_int = -1;
-    var err: ?*glib.Error = null;
-    if (job.capture and job.out_fd < 0) {
-        var name: [*:0]u8 = undefined;
-        job.out_fd = glib.fileOpenTmp("dkde-elevate-XXXXXX", &name, null);
-        if (job.out_fd >= 0) {
-            // Only the descriptor is needed; nobody else can open the file.
-            _ = glib.unlink(name);
-            glib.free(name);
-        }
+    // The password line comes first, and only for the attempt that asks for one.
+    const parts: []const []const u8 = if (job.probing)
+        &.{job.stdin_data}
+    else if (marked)
+        &.{ password, "\n", input_marker, "\n", job.stdin_data }
+    else
+        &.{ password, "\n", job.stdin_data };
+    const stdin_fd = inputFile(parts);
+    if (stdin_fd < 0) return finish(job, .failed, "cannot pass the command its input");
+    defer _ = close(stdin_fd);
+
+    if (job.capture and job.out_fd < 0) job.out_fd = scratchFile();
+    if (job.capture and job.out_fd < 0) return finish(job, .failed, "cannot make a temporary file");
+    if (job.capture) {
+        _ = ftruncate(job.out_fd, 0);
+        _ = lseek(job.out_fd, 0, 0);
     }
-    if (job.capture and job.out_fd >= 0) _ = lseek(job.out_fd, 0, 0);
-    const spawned = if (job.capture and job.out_fd >= 0) glib.spawnAsyncWithPipesAndFds(
+    job.stderr_fd = scratchFile();
+    if (job.stderr_fd < 0) return finish(job, .failed, "cannot make a temporary file");
+
+    var err: ?*glib.Error = null;
+    const spawned = glib.spawnAsyncWithPipesAndFds(
         null,
         @ptrCast(argv.ptr),
         @ptrCast(envp),
-        .{ .search_path = true, .do_not_reap_child = true },
+        .{ .search_path = true, .do_not_reap_child = true, .stdout_to_dev_null = !job.capture },
         null,
         null,
-        -1,
-        job.out_fd,
-        -1,
+        stdin_fd,
+        if (job.capture) job.out_fd else -1,
+        job.stderr_fd,
         null,
         null,
         0,
         &job.pid,
-        &stdin_fd,
-        null,
-        &stderr_fd,
-        &err,
-    ) else glib.spawnAsyncWithPipes(
-        null,
-        @ptrCast(argv.ptr),
-        envp,
-        .{ .search_path = true, .do_not_reap_child = true },
         null,
         null,
-        &job.pid,
-        &stdin_fd,
-        &stdout_fd,
-        &stderr_fd,
+        null,
         &err,
     );
     if (spawned == 0) {
+        _ = close(job.stderr_fd);
         const message = if (err) |e| e.f_message orelse "cannot start sudo" else "cannot start sudo";
         const text = std.heap.c_allocator.dupe(u8, std.mem.span(message)) catch "cannot start sudo";
         if (err) |e| e.free();
         return finish(job, .failed, text);
     }
-    if (stdout_fd >= 0) _ = close(stdout_fd);
-    job.stderr_fd = stderr_fd;
-
-    if (job.remember != null) {
-        if (job.remember) |old| {
-            @memset(old, 0);
-            a.free(old);
-        }
-        job.remember = a.dupe(u8, password) catch null;
-    }
-    // Password line first, then whatever the command should read.
-    writeAll(stdin_fd, password);
-    writeAll(stdin_fd, "\n");
-    writeAll(stdin_fd, job.stdin_data);
-    _ = close(stdin_fd);
-
-    if (job.window) |w| w.as(gtk.Widget).setSensitive(0);
+    job.running = true;
+    // The question has been answered; do not leave it in front while the command runs.
+    if (job.window) |w| w.as(gtk.Widget).setVisible(0);
     _ = glib.childWatchAdd(job.pid, onChildExit, job);
 }
 
-fn writeAll(fd: c_int, bytes: []const u8) void {
-    var rest = bytes;
-    while (rest.len > 0) {
-        const n = write(fd, rest.ptr, rest.len);
-        if (n <= 0) return;
-        rest = rest[@intCast(n)..];
+extern fn ftruncate(fd: c_int, length: i64) c_int;
+
+/// The last of what was written to `fd`, into `buf`.
+fn readTail(fd: c_int, buf: []u8) []const u8 {
+    const size = lseek(fd, 0, 2);
+    if (size <= 0) return buf[0..0];
+    const n: usize = @min(buf.len, @as(usize, @intCast(size)));
+    _ = lseek(fd, size - @as(i64, @intCast(n)), 0);
+    var got: usize = 0;
+    while (got < n) {
+        const r = read(fd, buf[got..].ptr, n - got);
+        if (r <= 0) break;
+        got += @intCast(r);
     }
+    return buf[0..got];
+}
+
+/// Whether `sudo -n` gave up, without running the command, because it needs to
+/// authenticate. Both sudo and sudo-rs say so on a line of their own.
+fn wantsPassword(errors: []const u8) bool {
+    var lines = std.mem.splitScalar(u8, errors, '\n');
+    while (lines.next()) |line| {
+        if (!std.mem.startsWith(u8, line, "sudo:") and !std.mem.startsWith(u8, line, "sudo-rs:")) continue;
+        for ([_][]const u8{ "a password is required", "authentication is required", "a terminal is required" }) |phrase| {
+            if (std.mem.find(u8, line, phrase) != null) return true;
+        }
+    }
+    return false;
 }
 
 fn onChildExit(pid: glib.Pid, status: c_int, data: ?*anyopaque) callconv(.c) void {
     const job: *Job = @ptrCast(@alignCast(data.?));
     glib.spawnClosePid(pid);
+    job.running = false;
 
-    // The child is gone, so reading to the end cannot block.
-    var buf: [2048]u8 = undefined;
-    var len: usize = 0;
-    while (len < buf.len) {
-        const n = read(job.stderr_fd, buf[len..].ptr, buf.len - len);
-        if (n <= 0) break;
-        len += @intCast(n);
-    }
+    var buf: [4096]u8 = undefined;
+    const stderr_text = std.mem.trim(u8, readTail(job.stderr_fd, &buf), " \t\r\n");
     _ = close(job.stderr_fd);
-    const stderr_text = std.mem.trim(u8, buf[0..len], " \t\r\n");
+
+    if (job.probing and status != 0 and wantsPassword(stderr_text)) {
+        job.probing = false;
+        return spawnSudo(job);
+    }
 
     if (status == 0) {
         // The unlock job: sudo took the password, so the session keeps it.
-        if (job.remember) |r| {
-            if (r.len > 0) {
+        if (job.remember) {
+            if (job.secret) |s| {
                 if (session_password) |old| {
                     @memset(old, 0);
                     gpa.free(old);
                 }
-                session_password = r;
-                job.remember = null;
+                session_password = s;
+                job.secret = null;
                 readIdleSeconds();
                 restartIdle();
                 changed();
@@ -513,24 +603,16 @@ fn onChildExit(pid: glib.Pid, status: c_int, data: ?*anyopaque) callconv(.c) voi
         if (job.capture and job.out_fd >= 0) {
             const a = std.heap.c_allocator;
             const size = lseek(job.out_fd, 0, 2);
-            const n: usize = @intCast(std.math.clamp(size, 0, 1024 * 1024));
-            const out = a.alloc(u8, n) catch return finish(job, .ok, "");
+            const out = a.alloc(u8, @intCast(std.math.clamp(size, 0, 1024 * 1024))) catch return finish(job, .ok, "");
             defer a.free(out);
-            _ = lseek(job.out_fd, size - @as(i64, @intCast(n)), 0);
-            var got: usize = 0;
-            while (got < n) {
-                const r = read(job.out_fd, out[got..].ptr, n - got);
-                if (r <= 0) break;
-                got += @intCast(r);
-            }
-            return finish(job, .ok, out[0..got]);
+            return finish(job, .ok, readTail(job.out_fd, out));
         }
         return finish(job, .ok, "");
     }
 
-    const wrong = std.ascii.findIgnoreCase(stderr_text, "incorrect password") != null or
+    const wrong = !job.probing and (std.ascii.findIgnoreCase(stderr_text, "incorrect password") != null or
         std.ascii.findIgnoreCase(stderr_text, "sorry, try again") != null or
-        std.ascii.findIgnoreCase(stderr_text, "authentication failure") != null;
+        std.ascii.findIgnoreCase(stderr_text, "authentication failure") != null);
     if (wrong and job.from_session) {
         // The kept password no longer works: close the lock and ask for it again.
         job.from_session = false;
@@ -538,14 +620,13 @@ fn onChildExit(pid: glib.Pid, status: c_int, data: ?*anyopaque) callconv(.c) voi
         return prompt(job, tr("The password was not accepted. Enter it again."));
     }
     if (wrong and job.attempts < max_attempts) {
-        if (job.window) |w| w.as(gtk.Widget).setSensitive(1);
         return prompt(job, tr("Wrong password. Try again."));
     }
     if (wrong) return finish(job, .failed, "Wrong password.");
 
     // Report the last line: sudo and the tools print the useful part there.
     const line_start = if (std.mem.lastIndexOfScalar(u8, stderr_text, '\n')) |i| i + 1 else 0;
-    const text = std.heap.c_allocator.dupe(u8, stderr_text[line_start..]) catch "the command failed";
+    const text = stderr_text[line_start..];
     finish(job, .failed, if (text.len > 0) text else "the command failed");
 }
 
@@ -563,34 +644,59 @@ const TestResult = struct {
     }
 };
 
-/// Runs `attempt` against a stand-in `sudo` that accepts the password
-/// "secret", so the real pipe and exit-status handling is exercised.
-fn runFake(password: []const u8, stdin_data: []const u8, command: []const []const u8, attempts: usize) !TestResult {
+/// A stand-in sudo. With no policy file it asks for the password "secret" like
+/// a normal rule; run with `free` it asks for nothing, like `NOPASSWD`.
+const fake_sudo =
+    \\#!/bin/sh
+    \\ask=yes
+    \\case $0 in *-free) ask=no ;; esac
+    \\if [ "$2" = -n ]; then
+    \\    shift 3
+    \\    [ $ask = no ] && exec "$@"
+    \\    echo "sudo: interactive authentication is required" >&2
+    \\    exit 1
+    \\fi
+    \\shift 5
+    \\if [ $ask = yes ]; then
+    \\    IFS= read -r pw
+    \\    if [ "$pw" != "secret" ]; then echo "Sorry, try again." >&2; exit 1; fi
+    \\fi
+    \\exec "$@"
+    \\
+;
+
+/// As `fake_sudo`, but `-n` refuses even though no password is then read: a
+/// module that lets the user in without one.
+const forgetful_sudo =
+    \\#!/bin/sh
+    \\if [ "$2" = -n ]; then echo "sudo: a password is required" >&2; exit 1; fi
+    \\shift 5
+    \\exec "$@"
+    \\
+;
+
+const Rule = enum { password, free, forgetful };
+
+/// Runs `attempt` against a stand-in sudo, so the real file and exit-status
+/// handling is exercised. It is named by its full path: a search of PATH would
+/// go on to the real sudo if the stand-in could not be run.
+fn runFake(rule: Rule, password: []const u8, stdin_data: []const u8, command: []const []const u8, attempts: usize, capture: bool) !TestResult {
     const a = std.heap.c_allocator;
     const dir = glib.Dir.makeTmp("dkde-elevate-XXXXXX", null) orelse return error.NoTmp;
     defer glib.free(dir);
+    defer _ = std.c.rmdir(dir);
 
-    const script_path = try std.fmt.allocPrintSentinel(std.testing.allocator, "{s}/sudo", .{std.mem.span(dir)}, 0);
+    const script_path = try std.fmt.allocPrintSentinel(std.testing.allocator, "{s}/sudo{s}", .{ std.mem.span(dir), if (rule == .free) "-free" else "" }, 0);
     defer std.testing.allocator.free(script_path);
-    const script =
-        \\#!/bin/sh
-        \\IFS= read -r pw
-        \\if [ "$pw" != "secret" ]; then echo "Sorry, try again." >&2; exit 1; fi
-        \\shift 5
-        \\exec "$@"
-        \\
-    ;
-    if (glib.fileSetContents(script_path, script.ptr, script.len, null) == 0) return error.WriteFailed;
-    _ = std.c.chmod(script_path, 0o755);
+    const script: []const u8 = if (rule == .forgetful) forgetful_sudo else fake_sudo;
+    if (glib.fileSetContents(script_path, script.ptr, @intCast(script.len), null) == 0) return error.WriteFailed;
     defer _ = std.c.unlink(script_path);
+    if (std.c.chmod(script_path, 0o755) != 0) return error.ChmodFailed;
+    if (glib.fileTest(script_path, .{ .is_executable = true }) == 0) return error.NotExecutable;
 
-    const old = glib.getenv("PATH");
-    const new_path = try std.fmt.allocPrintSentinel(std.testing.allocator, "{s}:{s}", .{ std.mem.span(dir), if (old) |o| std.mem.span(o) else "/usr/bin:/bin" }, 0);
-    defer std.testing.allocator.free(new_path);
-    _ = glib.setenv("PATH", new_path, 1);
-    defer if (old) |o| {
-        _ = glib.setenv("PATH", o, 1);
-    };
+    sudo_program = script_path;
+    // Never left naming the real one while a test might run.
+    defer sudo_program = "/nonexistent/sudo";
 
     var result: TestResult = .{ .loop = glib.MainLoop.new(null, 0) };
     defer result.loop.unref();
@@ -612,6 +718,7 @@ fn runFake(password: []const u8, stdin_data: []const u8, command: []const []cons
         }.cb,
         .target = undefined,
         .data = &result,
+        .capture = capture,
     };
     attempt(job, password);
     result.loop.run();
@@ -619,19 +726,60 @@ fn runFake(password: []const u8, stdin_data: []const u8, command: []const []cons
 }
 
 test "the right password runs the command and passes stdin through" {
-    // The command succeeds only if it received the data after the password line.
-    const r = try runFake("secret", "newpw\n", &.{ "sh", "-c", "read -r x; test \"$x\" = newpw" }, 1);
+    // The command succeeds only if it received the data and nothing before it.
+    const r = try runFake(.password, "secret", "newpw\n", &.{ "sh", "-c", "read -r x; test \"$x\" = newpw" }, 1, false);
     try std.testing.expectEqual(Outcome.ok, r.outcome);
 }
 
+test "a password sudo does not ask for never reaches the command" {
+    for ([_]Rule{ .password, .free, .forgetful }) |rule| {
+        // What a root `cat > file` would save is the data and nothing else.
+        const r = try runFake(rule, "secret", "real file content\n", &.{ "sh", "-c", "cat" }, 1, true);
+        try std.testing.expectEqual(Outcome.ok, r.outcome);
+        try std.testing.expectEqualStrings("real file content\n", r.message[0..r.message_len]);
+    }
+    // A program run as administrator, with no input of its own.
+    for ([_]Rule{ .password, .free }) |rule| {
+        const r = try runFake(rule, "secret", "", &.{"cat"}, 1, true);
+        try std.testing.expectEqual(Outcome.ok, r.outcome);
+        try std.testing.expectEqualStrings("", r.message[0..r.message_len]);
+    }
+}
+
+test "a command may print freely, to either output" {
+    const noisy = "i=0; while [ $i -lt 4000 ]; do echo 'a line of ordinary output from a tool'; echo 'a warning of the same sort' >&2; i=$((i+1)); done; ";
+    const ok = try runFake(.password, "secret", "", &.{ "sh", "-c", noisy ++ "echo done > /dev/null" }, 1, false);
+    try std.testing.expectEqual(Outcome.ok, ok.outcome);
+    // The last line is the one reported, however much came before it.
+    const bad = try runFake(.password, "secret", "", &.{ "sh", "-c", noisy ++ "echo 'mkfs: it broke' >&2; exit 1" }, 1, false);
+    try std.testing.expectEqual(Outcome.failed, bad.outcome);
+    try std.testing.expectEqualStrings("mkfs: it broke", bad.message[0..bad.message_len]);
+}
+
+test "a program left behind does not hold up the answer" {
+    const started = glib.getMonotonicTime();
+    const r = try runFake(.password, "secret", "", &.{ "sh", "-c", "sleep 5 & exit 0" }, 1, false);
+    try std.testing.expectEqual(Outcome.ok, r.outcome);
+    try std.testing.expect(glib.getMonotonicTime() - started < 3 * std.time.us_per_s);
+}
+
+test "a command that fails without a password is not run twice" {
+    const r = try runFake(.free, "secret", "", &.{ "sh", "-c", "echo 'tool: a password is required for this volume' >&2; exit 2" }, 1, false);
+    try std.testing.expectEqual(Outcome.failed, r.outcome);
+    try std.testing.expectEqualStrings("tool: a password is required for this volume", r.message[0..r.message_len]);
+    try std.testing.expect(wantsPassword("sudo: a password is required"));
+    try std.testing.expect(wantsPassword("sudo-rs: interactive authentication is required"));
+    try std.testing.expect(!wantsPassword("tool: a password is required"));
+}
+
 test "a wrong password is reported once attempts run out" {
-    const r = try runFake("nope", "", &.{"true"}, max_attempts);
+    const r = try runFake(.password, "nope", "", &.{"true"}, max_attempts, false);
     try std.testing.expectEqual(Outcome.failed, r.outcome);
     try std.testing.expect(std.ascii.findIgnoreCase(r.message[0..r.message_len], "wrong password") != null);
 }
 
 test "a failing command reports its last error line" {
-    const r = try runFake("secret", "", &.{ "sh", "-c", "echo first >&2; echo useradd: user exists >&2; exit 9" }, 1);
+    const r = try runFake(.password, "secret", "", &.{ "sh", "-c", "echo first >&2; echo useradd: user exists >&2; exit 9" }, 1, false);
     try std.testing.expectEqual(Outcome.failed, r.outcome);
     try std.testing.expectEqualStrings("useradd: user exists", r.message[0..r.message_len]);
 }

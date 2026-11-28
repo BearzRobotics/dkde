@@ -18,9 +18,13 @@ before they are discussed in public. There is no bug bounty.
 
 - **The administrator-password dialog** (`common.elevate`). dkde has no polkit
   agent, so it asks for your password in its own dialog and runs the command
-  through `sudo -S -k`. The password goes to sudo's standard input, is wiped
-  from memory afterwards, and is never put on a command line or in the
-  environment. Values that users type reach the privileged scripts only as
+  through sudo. It first tries `sudo -k -n` with only the command's own input;
+  the password is sent (`sudo -S -k`) only when sudo says that command needs
+  one, so under `NOPASSWD` it cannot end up in the command's input. The
+  password is wiped from memory afterwards, and is never put on a command line,
+  in the environment or on disk. One case is not covered for programs without
+  input of their own: an authentication module that lets you in without
+  reading the password, with a sudo that does not try it under `-n`. Values that users type reach the privileged scripts only as
   positional parameters, never as script text. Reports in this area are the
   most valuable.
 - **The login screen** (`dkde-greeter`) talks to greetd over its socket and
