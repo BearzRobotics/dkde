@@ -23,6 +23,71 @@ const log = std.log.scoped(.ops);
 
 pub const Mode = enum { copy, move };
 
+/// Deletes `file` and, when it is a folder, everything in it. A link is deleted
+/// itself: what it points to is never entered. (`g_file_enumerate_children`
+/// follows a link given as the folder, whatever its flags say.)
+pub fn deleteTree(file: *gio.File) void {
+    if (file.queryFileType(.{ .nofollow_symlinks = true }, null) == .directory) {
+        if (file.enumerateChildren("standard::name", .{ .nofollow_symlinks = true }, null, null)) |children| {
+            defer children.as(gobject.Object).unref();
+            while (children.nextFile(null, null)) |child| {
+                defer child.as(gobject.Object).unref();
+                const sub = file.getChild(child.getName());
+                defer sub.as(gobject.Object).unref();
+                deleteTree(sub);
+            }
+        }
+    }
+    var err: ?*glib.Error = null;
+    if (file.delete(null, &err) == 0) {
+        if (err) |e| e.free();
+    }
+}
+
+/// Which file a path leads to, however it is spelled. A final link counts as
+/// itself. Null when there is nothing there or the place cannot say.
+const Identity = struct { device: u32, inode: u64 };
+
+fn identity(file: *gio.File) ?Identity {
+    const info = file.queryInfo("unix::device,unix::inode", .{ .nofollow_symlinks = true }, null, null) orelse return null;
+    defer info.as(gobject.Object).unref();
+    if (info.hasAttribute("unix::inode") == 0) return null;
+    return .{ .device = info.getAttributeUint32("unix::device"), .inode = info.getAttributeUint64("unix::inode") };
+}
+
+/// Whether two paths are one file: the same text, or the same entry reached
+/// through a linked or twice-mounted folder.
+fn sameFile(a: *gio.File, b: *gio.File) bool {
+    if (a.equal(b) != 0) return true;
+    const x = identity(a) orelse return false;
+    const y = identity(b) orelse return false;
+    return x.device == y.device and x.inode == y.inode;
+}
+
+extern fn realpath(path: [*:0]const u8, resolved: ?[*]u8) ?[*:0]u8;
+extern fn free(ptr: ?*anyopaque) void;
+
+/// Whether `dst` is somewhere inside the folder `src`, by path or through links.
+fn insideItself(src: *gio.File, dst: *gio.File) bool {
+    if (dst.hasPrefix(src) != 0) return true;
+    const parent = dst.getParent() orelse return false;
+    defer parent.as(gobject.Object).unref();
+    const path = parent.getPath() orelse return false;
+    defer glib.free(path);
+    const real = realpath(path, null) orelse return false;
+    defer free(@ptrCast(real));
+    var at: ?*gio.File = gio.File.newForPath(real);
+    while (at) |folder| {
+        defer folder.as(gobject.Object).unref();
+        at = folder.getParent();
+        if (sameFile(folder, src)) {
+            if (at) |rest| rest.as(gobject.Object).unref();
+            return true;
+        }
+    }
+    return false;
+}
+
 /// What the job reports to its window. All callbacks run on the main loop.
 pub const Observer = struct {
     data: *anyopaque,
@@ -286,7 +351,9 @@ pub const Job = struct {
 
         // Pasting where the files already are: a copy makes a "(copy)"
         // duplicate like other file managers, a move has nothing to do.
-        if (item.src.equal(item.dst) != 0) {
+        // This must come before any question: "Replace" on one file under two
+        // names would copy it onto itself, and a move would then delete it.
+        if (sameFile(item.src, item.dst)) {
             if (self.mode == .move) return self.advance();
             return self.keepBoth(item);
         }
@@ -306,7 +373,7 @@ pub const Job = struct {
 
         if (info.getFileType() == .directory) {
             // Copying a folder into itself would never end.
-            if (item.dst.hasPrefix(item.src) != 0) return self.fail(item, "cannot copy or move a folder into itself");
+            if (insideItself(item.src, item.dst)) return self.fail(item, "cannot copy or move a folder into itself");
             self.expandDirectory(item) catch |err| return self.fail(item, @errorName(err));
             return self.advance();
         }
@@ -691,4 +758,100 @@ test "a move within one disk renames at once" {
     const moved = try readFile(dest_path, "a.txt");
     defer std.testing.allocator.free(moved);
     try std.testing.expectEqualStrings("alpha", moved);
+}
+
+extern fn symlink(target: [*:0]const u8, path: [*:0]const u8) c_int;
+
+fn fileAt(base: []const u8, name: []const u8) !*gio.File {
+    const path = try std.fmt.allocPrintSentinel(std.testing.allocator, "{s}/{s}", .{ base, name }, 0);
+    defer std.testing.allocator.free(path);
+    return gio.File.newForPath(path);
+}
+
+fn makeFolder(base: []const u8, name: []const u8) !void {
+    const path = try std.fmt.allocPrintSentinel(std.testing.allocator, "{s}/{s}", .{ base, name }, 0);
+    defer std.testing.allocator.free(path);
+    if (glib.mkdirWithParents(path, 0o755) != 0) return error.MkdirFailed;
+}
+
+fn makeLink(base: []const u8, target: []const u8, name: []const u8) !void {
+    const to = try std.fmt.allocPrintSentinel(std.testing.allocator, "{s}/{s}", .{ base, target }, 0);
+    defer std.testing.allocator.free(to);
+    const at = try std.fmt.allocPrintSentinel(std.testing.allocator, "{s}/{s}", .{ base, name }, 0);
+    defer std.testing.allocator.free(at);
+    if (symlink(to, at) != 0) return error.LinkFailed;
+}
+
+fn expectContent(base: []const u8, name: []const u8, content: []const u8) !void {
+    const got = try readFile(base, name);
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings(content, got);
+}
+
+test "deleting a tree deletes its links, never what they point to" {
+    const root = glib.Dir.makeTmp("dkde-ops-XXXXXX", null) orelse return error.NoTmp;
+    defer glib.free(root);
+    const base = std.mem.span(root);
+    try makeFolder(base, "precious/inner");
+    try writeFile(base, "precious/keep.txt", "keep");
+    try writeFile(base, "precious/inner/deep.txt", "deep");
+    try makeFolder(base, "doomed/sub");
+    try writeFile(base, "doomed/sub/a.txt", "a");
+    // A link inside the tree, and one that is itself what is deleted.
+    try makeLink(base, "precious", "doomed/sub/link");
+    try makeLink(base, "precious", "alone");
+
+    for ([_][]const u8{ "doomed", "alone" }) |name| {
+        const file = try fileAt(base, name);
+        defer file.as(gobject.Object).unref();
+        deleteTree(file);
+        try std.testing.expectEqual(gio.FileType.unknown, file.queryFileType(.{ .nofollow_symlinks = true }, null));
+    }
+    try expectContent(base, "precious/keep.txt", "keep");
+    try expectContent(base, "precious/inner/deep.txt", "deep");
+}
+
+test "moving onto the same files through a linked folder leaves them alone" {
+    const root = glib.Dir.makeTmp("dkde-ops-XXXXXX", null) orelse return error.NoTmp;
+    defer glib.free(root);
+    const base = std.mem.span(root);
+    try makeFolder(base, "docs/folder");
+    try writeFile(base, "docs/report.txt", "report");
+    try writeFile(base, "docs/folder/inner.txt", "inner");
+    try makeLink(base, "docs", "alias");
+    const file = try fileAt(base, "docs/report.txt");
+    defer file.as(gobject.Object).unref();
+    const folder = try fileAt(base, "docs/folder");
+    defer folder.as(gobject.Object).unref();
+    const alias = try fileAt(base, "alias");
+    defer alias.as(gobject.Object).unref();
+
+    // No parent window: a conflict question here would never be answered.
+    _ = try runJob(.move, &.{ file, folder }, alias);
+    try expectContent(base, "docs/report.txt", "report");
+    try expectContent(base, "docs/folder/inner.txt", "inner");
+
+    // A copy there duplicates, as pasting where the files are does.
+    _ = try runJob(.copy, &.{file}, alias);
+    try expectContent(base, "docs/report.txt", "report");
+    try expectContent(base, "docs/report (copy 1).txt", "report");
+}
+
+test "a folder is not copied into itself by way of a link" {
+    const root = glib.Dir.makeTmp("dkde-ops-XXXXXX", null) orelse return error.NoTmp;
+    defer glib.free(root);
+    const base = std.mem.span(root);
+    try makeFolder(base, "src/sub");
+    try writeFile(base, "src/a.txt", "a");
+    try makeLink(base, "src/sub", "way-in");
+    const src = try fileAt(base, "src");
+    defer src.as(gobject.Object).unref();
+    for ([_][]const u8{ "src/sub/src", "way-in/src" }) |name| {
+        const dst = try fileAt(base, name);
+        defer dst.as(gobject.Object).unref();
+        try std.testing.expect(insideItself(src, dst));
+    }
+    const beside = try fileAt(base, "elsewhere");
+    defer beside.as(gobject.Object).unref();
+    try std.testing.expect(!insideItself(src, beside));
 }

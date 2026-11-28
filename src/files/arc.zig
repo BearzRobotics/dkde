@@ -108,7 +108,7 @@ pub fn extractAll(gpa: std.mem.Allocator, archive_arg: []const u8, dest_arg: []c
     defer gpa.free(dest_z);
 
     removeTree(part);
-    if (std.c.mkdir(part, 0o755) != 0 and std.c._errno().* != @intFromEnum(std.c.E.EXIST)) return error.WriteFailed;
+    if (std.c.mkdir(part, 0o755) != 0 and std.c._errno().* != @backingInt(std.c.E.EXIST)) return error.WriteFailed;
     errdefer removeTree(part);
     if (std.c.chdir(part) != 0) return error.WriteFailed;
 

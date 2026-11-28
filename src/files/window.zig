@@ -1175,9 +1175,9 @@ pub const FilesWindow = struct {
         if (err) |e| {
             defer e.free();
             // Already mounted is not a failure.
-            if (e.f_domain != gio.ioErrorQuark() or e.f_code != @intFromEnum(gio.IOErrorEnum.already_mounted)) {
+            if (e.f_domain != gio.ioErrorQuark() or e.f_code != @backingInt(gio.IOErrorEnum.already_mounted)) {
                 ctx.window.updateStatus();
-                if (e.f_code != @intFromEnum(gio.IOErrorEnum.failed_handled)) {
+                if (e.f_code != @backingInt(gio.IOErrorEnum.failed_handled)) {
                     var buf: [768]u8 = undefined;
                     const scheme = file.getUriScheme();
                     defer if (scheme) |sch| glib.free(sch);
@@ -1983,7 +1983,7 @@ pub const FilesWindow = struct {
         var status_buf: [512]u8 = undefined;
         self.status.setText(std.fmt.bufPrintSentinel(&status_buf, "Cannot show this folder: {s}", .{message}, 0) catch "");
         var detail_buf: [512]u8 = undefined;
-        const denied = err.f_domain == gio.ioErrorQuark() and err.f_code == @intFromEnum(gio.IOErrorEnum.permission_denied);
+        const denied = err.f_domain == gio.ioErrorQuark() and err.f_code == @backingInt(gio.IOErrorEnum.permission_denied);
         const detail = if (denied)
             common.tr("You do not have permission to view the contents of this folder.")
         else
@@ -2179,26 +2179,8 @@ pub const FilesWindow = struct {
         var files = self.selectedFiles() catch return;
         defer freeFiles(self.allocator, &files);
         for (files.items) |f| {
-            self.deleteRecursive(f);
+            ops.deleteTree(f);
             if (f.queryExists(null) == 0) self.forgetFile(f);
-        }
-    }
-
-    fn deleteRecursive(self: *FilesWindow, file: *gio.File) void {
-        if (self.isDirectory(file)) {
-            if (file.enumerateChildren("standard::name", .{ .nofollow_symlinks = true }, null, null)) |children| {
-                defer children.as(gobject.Object).unref();
-                while (children.nextFile(null, null)) |child| {
-                    defer child.as(gobject.Object).unref();
-                    const sub = file.getChild(child.getName());
-                    defer sub.as(gobject.Object).unref();
-                    self.deleteRecursive(sub);
-                }
-            }
-        }
-        var err: ?*glib.Error = null;
-        if (file.delete(null, &err) == 0) {
-            if (err) |e| e.free();
         }
     }
 
@@ -2248,7 +2230,7 @@ pub const FilesWindow = struct {
                 defer child.as(gobject.Object).unref();
                 const f = dir.getChild(child.getName());
                 defer f.as(gobject.Object).unref();
-                self.deleteRecursive(f);
+                ops.deleteTree(f);
             }
         }
         const info_dir_path = std.fmt.allocPrintSentinel(self.allocator, "{s}/Trash/info", .{std.mem.span(glib.getUserDataDir())}, 0) catch return;

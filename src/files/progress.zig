@@ -259,7 +259,7 @@ const Entry = struct {
             const left = timeLeft(&left_buf, s);
             self.detail.setText(std.fmt.bufPrintSentinel(&detail_buf, "{s} of {s}{s}{s}", .{
                 pure.formatSize(&done_buf, s.bytes_done), pure.formatSize(&total_buf, s.bytes_total),
-                if (left.len > 0) " \u{2014} " else "",                                                left,
+                if (left.len > 0) " \u{2014} " else "",   left,
             }, 0) catch "");
             self.bar.setFraction(self.fraction);
         } else if (s.files_total > 0) {

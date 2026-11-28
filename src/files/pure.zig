@@ -223,8 +223,8 @@ pub fn normalizeRemote(allocator: std.mem.Allocator, text: []const u8) !?[]u8 {
     const typed = std.mem.trim(u8, text, " \t");
     const colon = std.mem.indexOfScalar(u8, typed, ':') orelse return null;
     const aliases = [_]struct { []const u8, []const u8 }{
-        .{ "sftp", "sftp" }, .{ "ssh", "sftp" },  .{ "ftp", "ftp" },
-        .{ "ftps", "ftps" }, .{ "smb", "smb" },   .{ "samba", "smb" },
+        .{ "sftp", "sftp" }, .{ "ssh", "sftp" }, .{ "ftp", "ftp" },
+        .{ "ftps", "ftps" }, .{ "smb", "smb" },  .{ "samba", "smb" },
         .{ "cifs", "smb" },
     };
     for (aliases) |alias| {
