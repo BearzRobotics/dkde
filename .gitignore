@@ -2,3 +2,4 @@
 zig-out/
 zig-pkg/
 dist/
+docs/bugs/
