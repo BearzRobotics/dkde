@@ -2458,16 +2458,21 @@ fn loadConfig() void {
     for (warnings.items) |w| warn("{s}: {s}", .{ path, w });
 }
 
+/// --version and --help answer on stdout, like every dkde program.
+fn say(text: []const u8) void {
+    _ = std.c.write(1, text.ptr, text.len);
+}
+
 pub fn main(init: std.process.Init.Minimal) !void {
     var args = init.args.iterate();
     _ = args.next();
     if (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--version")) {
-            std.debug.print("dkde-wm {s}\n", .{version});
+            say("dkde-wm " ++ version ++ "\n");
             return;
         }
         if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            std.debug.print("Usage: dkde-wm [--help] [--version]\n\nDKDE's X11 window manager. Settings: ~/.config/dkde/compositor.toml (shared with dkde-compositor).\n", .{});
+            say("Usage: dkde-wm [--help] [--version]\n\nDKDE's X11 window manager. Settings: ~/.config/dkde/compositor.toml (shared with dkde-compositor).\n");
             return;
         }
         std.debug.print("dkde-wm: unknown option {s}\n", .{arg});

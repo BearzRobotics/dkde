@@ -8,6 +8,7 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 **Building**
 - **Changed**: a plain `zig build` now builds dkde-compositor and dkde-wm too, so it needs wlroots (`-Dwlroots=0.20` for 0.20) and the X11 libraries. `-Dcompositor=false` and `-Dwm=false` leave them out. `-Dapp=compositor`, `-Dapp=wm`, `zig build test-compositor` and `test-wm` are new; `zig build test` runs their tests. dkde-xcomp is still built from `src/xcomp`.
+- **Fixed**: `dkde-wm` and `dkde-xcomp` printed `--version` and `--help` on stderr instead of stdout.
 
 **Default compositor** (labwc deprecation, step one)
 - **Changed**: the Wayland session and the login screen run **dkde-compositor** by default. labwc is the backup: it is used when dkde-compositor is not installed or fails in its first ten seconds, or when it is chosen (the "dkde (labwc, backup)" login entry, Settings > Windows, `compositor=labwc` in `session.conf`, `DKDE_GREETER_COMPOSITOR=labwc`). New features come to dkde-compositor and dkde-wm only. labwc support is removed later, after real use of the new compositor.

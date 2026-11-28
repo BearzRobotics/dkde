@@ -893,16 +893,21 @@ fn fail(comptime fmt: []const u8, args: anytype) noreturn {
     std.process.exit(1);
 }
 
+/// --version and --help answer on stdout, like every dkde program.
+fn say(text: []const u8) void {
+    _ = std.c.write(1, text.ptr, text.len);
+}
+
 pub fn main(init: std.process.Init.Minimal) !void {
     var args = init.args.iterate();
     _ = args.next();
     if (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--version")) {
-            std.debug.print("dkde-xcomp {s}\n", .{version});
+            say("dkde-xcomp " ++ version ++ "\n");
             return;
         }
         if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            std.debug.print("Usage: dkde-xcomp [--help] [--version]\n\nDKDE's X11 compositing manager: run it next to dkde-wm for window opacity, fades,\nblur, the workspace cube, zoom, colour filters and the lens. Settings:\n~/.config/dkde/compositor.toml (shared with dkde-compositor and dkde-wm).\n", .{});
+            say("Usage: dkde-xcomp [--help] [--version]\n\nDKDE's X11 compositing manager: run it next to dkde-wm for window opacity, fades,\nblur, the workspace cube, zoom, colour filters and the lens. Settings:\n~/.config/dkde/compositor.toml (shared with dkde-compositor and dkde-wm).\n");
             return;
         }
         std.debug.print("dkde-xcomp: unknown option {s}\n", .{arg});
