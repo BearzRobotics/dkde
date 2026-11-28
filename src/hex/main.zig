@@ -1944,6 +1944,7 @@ const HexEditor = struct {
             defer disk_mod.freeInfos(self.allocator, infos);
             mounted = disk_mod.anyMounted(infos, d.path);
         } else |_| {}
+        mounted = mounted or disk_mod.inUse(self.allocator, d.path);
         const advice = disk_mod.checksumAdvice(&d.handle, d.origin);
         const first = (d.window_start / d.sector) + changed[0] * (@as(u64, d.sector) / d.sector);
         var detail: [1280]u8 = undefined;
@@ -1953,7 +1954,7 @@ const HexEditor = struct {
             d.path,
             first,
             d.sector,
-            if (mounted) " WARNING: this disk or one of its partitions is mounted. Writing under a mounted filesystem can corrupt it." else "",
+            if (mounted) " WARNING: this disk or something on it is in use (mounted, swap, encryption, LVM or RAID). Writing under it can corrupt it." else "",
             if (advice != null) "\n\nNote: " else "",
             advice orelse "",
         }, 0) catch return;
@@ -2089,7 +2090,9 @@ const HexEditor = struct {
         if (self.buffer.isModified()) {
             return common.dialogs.showError(win, common.tr("Unsaved changes"), common.tr("Write or discard your changes first; a clone copies what is on the disk."));
         }
-        if (disk_mod.sameDisk(target, d.path)) {
+        const targetz = self.allocator.dupeSentinel(u8, target, 0) catch return;
+        defer self.allocator.free(targetz);
+        if (disk_mod.sameDisk(target, d.path) or disk_mod.sameStorage(self.allocator, targetz, d.path)) {
             return common.dialogs.showError(win, common.tr("Cannot clone onto the source"), common.tr("That is the disk being copied, or a partition of it (or the other way round)."));
         }
         if (target_size < d.handle.size) {
@@ -2097,7 +2100,7 @@ const HexEditor = struct {
         }
         if (disk_mod.list(self.allocator)) |infos| {
             defer disk_mod.freeInfos(self.allocator, infos);
-            if (disk_mod.anyMounted(infos, target)) {
+            if (disk_mod.anyMounted(infos, target) or disk_mod.inUse(self.allocator, targetz)) {
                 return common.dialogs.showError(win, common.tr("Target is mounted"), common.tr("The target, or one of its partitions, is in use. Unmount it first."));
             }
         } else |_| {
@@ -2121,8 +2124,11 @@ const HexEditor = struct {
         if (index != 1) return;
         const d = self.disk orelse return;
         const win = self.window.as(gtk.Window);
-        const dest = disk_mod.Handle.openPath(target, true) catch |err| {
-            return common.dialogs.showError(win, common.tr("Cannot write to the target"), if (err == error.AccessDenied)
+        // Checked again here: the confirmation may have been open for a while.
+        const dest = disk_mod.Handle.openTarget(target) catch |err| {
+            return common.dialogs.showError(win, common.tr("Cannot write to the target"), if (err == error.Busy)
+                common.tr("The target, or something on it, is in use. Unmount or close it first. Nothing was written.")
+            else if (err == error.AccessDenied)
                 common.tr("Writing to a disk needs administrator rights. Start dkde-hex as administrator and try again.")
             else
                 common.tr("The target could not be opened."));

@@ -76,6 +76,12 @@ test "an image is a byte-for-byte copy and the source is never the destination" 
     defer src.closeHandle();
 
     try std.testing.expectError(error.SameFile, disk.Handle.createFile(src_path, src));
+    // The same file under a second name.
+    const other = try std.fmt.allocPrintSentinel(a, "{s}.link", .{src_path}, 0);
+    defer a.free(other);
+    try std.testing.expectEqual(@as(c_int, 0), std.c.link(src_path.ptr, other.ptr));
+    defer _ = std.c.unlink(other.ptr);
+    try std.testing.expectError(error.SameFile, disk.Handle.createFile(other, src));
     // Refusing must leave the source intact.
     try std.testing.expectEqual(@as(u64, size), (try disk.Handle.openPath(src_path, false)).size);
 

@@ -230,6 +230,204 @@ test "disks and their partitions are told from unrelated devices" {
     try std.testing.expect(!sameDisk("/dev/sda1", "/dev/sda2"));
 }
 
+// -- which storage is which ---------------------------------------------------------------
+
+// A device has many names (`/dev/sda2`, `/dev/disk/by-id/...`, a mapper node),
+// and what is mounted is often something built on it (encryption, LVM, RAID).
+// So storage is compared by the kernel's own tree under `sys`.
+
+const linux = std.os.linux;
+const s_ifmt = 0o170000;
+const s_ifblk = 0o060000;
+const s_ifreg = 0o100000;
+
+const DevNo = struct { major: u32, minor: u32 };
+
+const Stat = struct {
+    kind: u32,
+    /// The filesystem the file is on, and its number there.
+    on: DevNo,
+    ino: u64,
+    /// For a device node: the device it stands for.
+    device: DevNo,
+};
+
+fn statAt(fd: c_int, path: [*:0]const u8, flags: u32) ?Stat {
+    var st: linux.Statx = undefined;
+    if (linux.errno(linux.statx(fd, path, flags, .{ .TYPE = true, .INO = true }, &st)) != .SUCCESS) return null;
+    return .{
+        .kind = st.mode & s_ifmt,
+        .on = .{ .major = st.dev_major, .minor = st.dev_minor },
+        .ino = st.ino,
+        .device = .{ .major = st.rdev_major, .minor = st.rdev_minor },
+    };
+}
+
+fn statFd(fd: c_int) ?Stat {
+    return statAt(fd, "", linux.AT.EMPTY_PATH);
+}
+
+fn statPath(path: [*:0]const u8) ?Stat {
+    return statAt(std.c.AT.FDCWD, path, 0);
+}
+
+extern fn realpath(path: [*:0]const u8, resolved: ?[*]u8) ?[*:0]u8;
+extern fn free(ptr: ?*anyopaque) void;
+
+fn canonical(a: Allocator, path: []const u8) ?[]const u8 {
+    const z = a.dupeSentinel(u8, path, 0) catch return null;
+    const real = realpath(z.ptr, null) orelse return null;
+    defer free(@ptrCast(real));
+    return a.dupe(u8, std.mem.span(real)) catch null;
+}
+
+fn exists(a: Allocator, path: []const u8) bool {
+    const z = a.dupeSentinel(u8, path, 0) catch return false;
+    return glib.fileTest(z.ptr, .{ .exists = true }) != 0;
+}
+
+fn namesIn(a: Allocator, path: []const u8) []const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    const z = a.dupeSentinel(u8, path, 0) catch return &.{};
+    const dir = glib.Dir.open(z.ptr, 0, null) orelse return &.{};
+    defer dir.close();
+    while (@as(?[*:0]const u8, @ptrCast(dir.readName()))) |n| {
+        out.append(a, a.dupe(u8, std.mem.span(n)) catch break) catch break;
+    }
+    return out.items;
+}
+
+/// The plain disks and partitions that the device in sysfs folder `node` is
+/// stored on: itself, or what it is built from, however deep.
+fn storageOf(a: Allocator, node: []const u8, out: *std.ArrayList([]const u8), depth: usize) Allocator.Error!void {
+    if (depth > 8) return;
+    var from = node;
+    // A partition of an array is built from what the array is built from.
+    if (exists(a, try std.fmt.allocPrint(a, "{s}/partition", .{node}))) {
+        const parent = std.fs.path.dirname(node) orelse node;
+        if (namesIn(a, try std.fmt.allocPrint(a, "{s}/slaves", .{parent})).len > 0) from = parent;
+    }
+    const below = namesIn(a, try std.fmt.allocPrint(a, "{s}/slaves", .{from}));
+    if (below.len == 0) return out.append(a, node);
+    for (below) |name| {
+        const next = canonical(a, try std.fmt.allocPrint(a, "{s}/slaves/{s}", .{ from, name })) orelse continue;
+        try storageOf(a, next, out, depth + 1);
+    }
+}
+
+/// The storage behind device number `dev`, using the sysfs mounted at `sys`.
+fn storageOfNumber(a: Allocator, sys: []const u8, dev: DevNo) Allocator.Error![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    const link = try std.fmt.allocPrint(a, "{s}/dev/block/{d}:{d}", .{ sys, dev.major, dev.minor });
+    if (canonical(a, link)) |node| try storageOf(a, node, &out, 0);
+    return out.items;
+}
+
+/// Whether two sets of storage share bytes: the same node, or a whole disk and
+/// one of its partitions. Two partitions of one disk do not.
+fn shares(x: []const []const u8, y: []const []const u8) bool {
+    for (x) |p| for (y) |q| {
+        const short = if (p.len <= q.len) p else q;
+        const long = if (p.len <= q.len) q else p;
+        if (std.mem.startsWith(u8, long, short) and (long.len == short.len or long[short.len] == '/')) return true;
+    };
+    return false;
+}
+
+/// The device a path leads to: the device itself, or the one holding the file.
+fn deviceBehind(path: [*:0]const u8) ?DevNo {
+    const st = statPath(path) orelse return null;
+    return if (st.kind == s_ifblk) st.device else st.on;
+}
+
+/// Whether the two device nodes overlap, whatever they are called.
+pub fn sameStorage(gpa: Allocator, a_path: [:0]const u8, b_path: [:0]const u8) bool {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const x = statPath(a_path.ptr) orelse return false;
+    const y = statPath(b_path.ptr) orelse return false;
+    if (x.kind != s_ifblk or y.kind != s_ifblk) return false;
+    const left = storageOfNumber(a, "/sys", x.device) catch return true;
+    const right = storageOfNumber(a, "/sys", y.device) catch return true;
+    return shares(left, right);
+}
+
+/// The devices named by `/proc/self/mountinfo` and `/proc/swaps`: each as a
+/// path to look at, or as the number mountinfo gives.
+const Used = union(enum) { path: [:0]const u8, number: DevNo };
+
+fn usedDevices(a: Allocator, mountinfo: []const u8, swaps: []const u8) Allocator.Error![]const Used {
+    var out: std.ArrayList(Used) = .empty;
+    var lines = std.mem.splitScalar(u8, mountinfo, '\n');
+    while (lines.next()) |line| {
+        var fields = std.mem.tokenizeScalar(u8, line, ' ');
+        _ = fields.next();
+        _ = fields.next();
+        const numbers = fields.next() orelse continue;
+        const colon = std.mem.indexOfScalar(u8, numbers, ':') orelse continue;
+        const major = std.fmt.parseInt(u32, numbers[0..colon], 10) catch continue;
+        const minor = std.fmt.parseInt(u32, numbers[colon + 1 ..], 10) catch continue;
+        // Major 0 is a filesystem without one device of its own, such as btrfs.
+        if (major != 0) try out.append(a, .{ .number = .{ .major = major, .minor = minor } });
+        const dash = std.mem.find(u8, line, " - ") orelse continue;
+        var tail = std.mem.tokenizeScalar(u8, line[dash + 3 ..], ' ');
+        _ = tail.next();
+        const source = tail.next() orelse continue;
+        if (std.mem.startsWith(u8, source, "/")) try out.append(a, .{ .path = try a.dupeSentinel(u8, source, 0) });
+    }
+    var rows = std.mem.splitScalar(u8, swaps, '\n');
+    while (rows.next()) |row| {
+        var fields = std.mem.tokenizeAny(u8, row, " \t");
+        const first = fields.next() orelse continue;
+        if (std.mem.startsWith(u8, first, "/")) try out.append(a, .{ .path = try a.dupeSentinel(u8, first, 0) });
+    }
+    return out.items;
+}
+
+/// Whether the block device `path` or anything on it is in use: mounted, in use
+/// as swap, or part of encryption, LVM, RAID or btrfs. This is for warnings and
+/// early refusals; opening it exclusively is what actually protects it.
+pub fn inUse(gpa: Allocator, path: [:0]const u8) bool {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const st = statPath(path.ptr) orelse return false;
+    if (st.kind != s_ifblk) return false;
+    const target = storageOfNumber(a, "/sys", st.device) catch return true;
+
+    const used = usedDevices(a, readSmall(a, "/proc/self/mountinfo") orelse "", readSmall(a, "/proc/swaps") orelse "") catch return true;
+    for (used) |u| {
+        const dev = switch (u) {
+            .number => |n| n,
+            .path => |p| deviceBehind(p.ptr) orelse continue,
+        };
+        if (shares(target, storageOfNumber(a, "/sys", dev) catch return true)) return true;
+    }
+    // Held, whether or not anything is mounted: this device and its partitions.
+    const node = canonical(a, std.fmt.allocPrint(a, "/sys/dev/block/{d}:{d}", .{ st.device.major, st.device.minor }) catch return true) orelse return false;
+    if (held(a, node)) return true;
+    for (namesIn(a, node)) |name| {
+        const part = std.fmt.allocPrint(a, "{s}/{s}", .{ node, name }) catch return true;
+        if (exists(a, std.fmt.allocPrint(a, "{s}/partition", .{part}) catch return true) and held(a, part)) return true;
+    }
+    return false;
+}
+
+/// Whether the filesystem on device `on` is stored within `device`.
+fn onDevice(on: DevNo, device: DevNo) bool {
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const x = storageOfNumber(a, "/sys", on) catch return true;
+    const y = storageOfNumber(a, "/sys", device) catch return true;
+    return shares(x, y);
+}
+
+fn held(a: Allocator, node: []const u8) bool {
+    return namesIn(a, std.fmt.allocPrint(a, "{s}/holders", .{node}) catch return true).len > 0;
+}
+
 // -- raw access ---------------------------------------------------------------------------
 
 extern fn open(path: [*:0]const u8, flags: c_int, ...) c_int;
@@ -238,13 +436,13 @@ extern fn pread(fd: c_int, buf: [*]u8, count: usize, offset: i64) isize;
 extern fn pwrite(fd: c_int, buf: [*]const u8, count: usize, offset: i64) isize;
 extern fn lseek(fd: c_int, offset: i64, whence: c_int) i64;
 extern fn fsync(fd: c_int) c_int;
-extern fn readlink(path: [*:0]const u8, buf: [*]u8, n: usize) isize;
 extern fn ftruncate(fd: c_int, length: i64) c_int;
 
 const O_RDONLY: c_int = 0;
 const O_RDWR: c_int = 2;
 const O_WRONLY: c_int = 1;
 const O_CREAT: c_int = 0o100;
+const O_EXCL: c_int = 0o200;
 const O_CLOEXEC: c_int = 0o2000000;
 
 pub const Handle = struct {
@@ -252,13 +450,26 @@ pub const Handle = struct {
     writable: bool,
     size: u64,
 
-    pub const OpenError = error{ AccessDenied, NotFound, Failed };
+    pub const OpenError = error{ AccessDenied, NotFound, Busy, Failed };
+
+    /// Opens a device for writing over all of it. The kernel refuses one it is
+    /// using itself (mounted, swap, encryption, LVM, RAID, or any partition of
+    /// it), and keeps others from claiming it while it is open.
+    pub fn openTarget(path: [:0]const u8) OpenError!Handle {
+        const st = statPath(path.ptr) orelse return error.NotFound;
+        return openFlags(path, true, if (st.kind == s_ifblk) O_EXCL else 0);
+    }
 
     pub fn openPath(path: [:0]const u8, writable: bool) OpenError!Handle {
-        const fd = open(path.ptr, (if (writable) O_RDWR else O_RDONLY) | O_CLOEXEC);
+        return openFlags(path, writable, 0);
+    }
+
+    fn openFlags(path: [:0]const u8, writable: bool, extra: c_int) OpenError!Handle {
+        const fd = open(path.ptr, (if (writable) O_RDWR else O_RDONLY) | O_CLOEXEC | extra);
         if (fd < 0) {
             return switch (std.c._errno().*) {
                 13, 1 => error.AccessDenied, // EACCES, EPERM
+                16 => error.Busy, // EBUSY
                 2 => error.NotFound,
                 else => error.Failed,
             };
@@ -294,26 +505,25 @@ pub const Handle = struct {
         // No truncation yet: the file might be the source.
         const fd = open(path.ptr, O_WRONLY | O_CREAT | O_CLOEXEC, @as(c_uint, 0o600));
         if (fd < 0) return if (std.c._errno().* == 13 or std.c._errno().* == 1) error.AccessDenied else error.Failed;
-        // Where each descriptor really points, so the same file under two names is caught.
-        var l1: [std.fs.max_path_bytes]u8 = undefined;
-        var l2: [std.fs.max_path_bytes]u8 = undefined;
-        var n1: [32]u8 = undefined;
-        var n2: [32]u8 = undefined;
-        const p1 = std.fmt.bufPrintSentinel(&n1, "/proc/self/fd/{d}", .{fd}, 0) catch unreachable;
-        const p2 = std.fmt.bufPrintSentinel(&n2, "/proc/self/fd/{d}", .{source.fd}, 0) catch unreachable;
-        const r1 = readlink(p1.ptr, &l1, l1.len);
-        const r2 = readlink(p2.ptr, &l2, l2.len);
-        if (r1 > 0 and r2 > 0 and std.mem.eql(u8, l1[0..@intCast(r1)], l2[0..@intCast(r2)])) {
+        // By identity, not by name: a hard link or a second mount is the same file.
+        const out = statFd(fd);
+        const in = statFd(source.fd);
+        if (out == null or in == null) {
+            _ = close(fd);
+            return error.Failed;
+        }
+        if (out.?.kind != s_ifreg) {
+            _ = close(fd);
+            return error.NotAFile;
+        }
+        if (std.meta.eql(out.?.on, in.?.on) and out.?.ino == in.?.ino) {
             _ = close(fd);
             return error.SameFile;
         }
-        if (r1 > 0) {
-            l1[@intCast(r1)] = 0;
-            const resolved: [*:0]const u8 = @ptrCast(&l1);
-            if (glib.fileTest(resolved, .{ .is_regular = true }) == 0) {
-                _ = close(fd);
-                return error.NotAFile;
-            }
+        // A file on the very disk being copied would be copied into itself.
+        if (in.?.kind == s_ifblk and onDevice(out.?.on, in.?.device)) {
+            _ = close(fd);
+            return error.SameFile;
         }
         if (ftruncate(fd, 0) != 0) {
             _ = close(fd);
@@ -588,4 +798,63 @@ test "filesystems that checksum are recognised" {
     @memset(&b, 0);
     @memcpy(b[3..11], "EXFAT   ");
     try std.testing.expect(checksumAdviceOf(&b) != null);
+}
+
+extern fn symlink(target: [*:0]const u8, path: [*:0]const u8) c_int;
+
+test "storage built on a partition overlaps it and its disk, and nothing else" {
+    const tmp = glib.Dir.makeTmp("dkde-sys-XXXXXX", null) orelse return error.NoTmp;
+    defer glib.free(tmp);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const root = canonical(a, std.mem.span(tmp)).?;
+    // A disk with two partitions, and an encrypted volume on the second.
+    for ([_][]const u8{ "devices/sda/sda1", "devices/sda/sda2", "devices/dm-0/slaves", "dev/block" }) |d| {
+        const z = try std.fmt.allocPrintSentinel(a, "{s}/{s}", .{ root, d }, 0);
+        _ = glib.mkdirWithParents(z.ptr, 0o755);
+    }
+    for ([_][]const u8{ "devices/sda/sda1/partition", "devices/sda/sda2/partition" }) |f| {
+        const z = try std.fmt.allocPrintSentinel(a, "{s}/{s}", .{ root, f }, 0);
+        _ = glib.fileSetContents(z.ptr, "1", 1, null);
+    }
+    for ([_][2][]const u8{
+        .{ "devices/sda", "dev/block/8:0" },
+        .{ "devices/sda/sda1", "dev/block/8:1" },
+        .{ "devices/sda/sda2", "dev/block/8:2" },
+        .{ "devices/dm-0", "dev/block/253:0" },
+        .{ "devices/sda/sda2", "devices/dm-0/slaves/sda2" },
+    }) |l| {
+        const to = try std.fmt.allocPrintSentinel(a, "{s}/{s}", .{ root, l[0] }, 0);
+        const at = try std.fmt.allocPrintSentinel(a, "{s}/{s}", .{ root, l[1] }, 0);
+        try std.testing.expectEqual(@as(c_int, 0), symlink(to.ptr, at.ptr));
+    }
+    const disk = try storageOfNumber(a, root, .{ .major = 8, .minor = 0 });
+    const first = try storageOfNumber(a, root, .{ .major = 8, .minor = 1 });
+    const second = try storageOfNumber(a, root, .{ .major = 8, .minor = 2 });
+    const crypt = try storageOfNumber(a, root, .{ .major = 253, .minor = 0 });
+    try std.testing.expectEqual(@as(usize, 1), crypt.len);
+    try std.testing.expect(shares(crypt, second));
+    try std.testing.expect(shares(crypt, disk));
+    try std.testing.expect(!shares(crypt, first));
+    try std.testing.expect(!shares(first, second));
+    try std.testing.expect(shares(first, disk));
+}
+
+test "mounts and swap name the devices they use" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const used = try usedDevices(arena.allocator(),
+        \\36 25 253:0 / / rw,relatime shared:1 - ext4 /dev/mapper/root rw
+        \\50 36 0:44 / /data rw - btrfs /dev/sdc1 rw
+        \\51 36 0:5 / /proc rw - proc proc rw
+    ,
+        \\Filename Type Size Used Priority
+        \\/dev/sda3 partition 8388604 0 -2
+    );
+    try std.testing.expectEqual(@as(usize, 4), used.len);
+    try std.testing.expectEqual(@as(u32, 253), used[0].number.major);
+    try std.testing.expectEqualStrings("/dev/mapper/root", used[1].path);
+    try std.testing.expectEqualStrings("/dev/sdc1", used[2].path);
+    try std.testing.expectEqualStrings("/dev/sda3", used[3].path);
 }
