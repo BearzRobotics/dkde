@@ -46,6 +46,15 @@ pub fn describe(arena: Allocator, d: model.Disk, op: Op) Allocator.Error![]const
     };
 }
 
+/// Where, in MiB from the start of the disk, a partition beginning at
+/// `start_bytes` ends when made `size_mib` long. A partition may begin between
+/// two MiB marks: shrinking rounds the end up, so what was asked for still
+/// fits; growing rounds down, so it stays inside the free space.
+pub fn resizeEnd(start_bytes: u64, size_mib: u64, shrink: bool) u64 {
+    const end = start_bytes + size_mib * model.mib;
+    return if (shrink) std.math.divCeil(u64, end, model.mib) catch unreachable else end / model.mib;
+}
+
 /// The disk as it will be after `op`.
 pub fn simulate(arena: Allocator, d: model.Disk, op: Op) Allocator.Error!model.Disk {
     var out = d;
@@ -85,8 +94,7 @@ pub fn simulate(arena: Allocator, d: model.Disk, op: Op) Allocator.Error!model.D
             parts.items[i].avail = null;
         },
         .resize => |o| if (partIndex(d, o.number)) |i| {
-            const start_mib = parts.items[i].start * d.sector / model.mib;
-            parts.items[i].size = (o.new_end_mib - start_mib) * model.mib;
+            parts.items[i].size = o.new_end_mib * model.mib -| parts.items[i].start * d.sector;
             parts.items[i].used = null;
             parts.items[i].avail = null;
         },
@@ -144,10 +152,10 @@ pub fn commands(arena: Allocator, d: model.Disk, op: Op) Allocator.Error!?Cmd {
         .resize => |o| {
             const i = partIndex(d, o.number) orelse return null;
             const p = d.parts[i];
-            const start_mib = p.start * d.sector / model.mib;
-            const shrink = o.new_end_mib - start_mib < p.size / model.mib;
+            const new_size = std.math.sub(u64, o.new_end_mib * model.mib, p.start * d.sector) catch return null;
+            const shrink = new_size < p.size;
             const dev = if (d.image) "" else try fs.partitionPath(arena, d.path, o.number);
-            const argv = (try fs.resizeScript(arena, image, d.path, o.number, dev, p.fstype, start_mib, o.new_end_mib, shrink)) orelse return null;
+            const argv = (try fs.resizeScript(arena, image, d.path, o.number, dev, p.fstype, new_size / model.mib, o.new_end_mib, shrink)) orelse return null;
             return .{ .argv = argv, .root = !model.plainImage(d) or p.fstype.len > 0 };
         },
         .label => |o| {
@@ -277,6 +285,28 @@ test "commands use the layout at that point" {
     const shrink = (try commands(a, d0, .{ .resize = .{ .number = 1, .new_end_mib = 50 } })).?;
     try std.testing.expect(std.mem.indexOf(u8, shrink.argv[2], "pretend-input-tty") != null);
     try std.testing.expect((try commands(a, d0, .{ .label = .{ .number = 9, .label = "x" } })) == null);
+}
+
+test "a partition off the MiB marks never gets a filesystem bigger than itself" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // The classic first MBR partition, at sector 63.
+    var d = sampleDisk();
+    d.parts = &.{.{ .path = "/dev/sdb1", .number = 1, .start = 63, .size = 2000 * model.mib, .fstype = "ext4", .label = "", .mounts = &.{} }};
+    const end = resizeEnd(63 * 512, 1000, true);
+    try std.testing.expectEqual(@as(u64, 1001), end);
+    const c = (try commands(a, d, .{ .resize = .{ .number = 1, .new_end_mib = end } })).?;
+    try std.testing.expect(std.mem.indexOf(u8, c.argv[2], "resize2fs \"$DEV\" 1000M") != null);
+    try std.testing.expect(std.mem.indexOf(u8, c.argv[2], "resizepart 1 1001MiB") != null);
+    // Even for an end given without rounding up, the filesystem is the smaller.
+    const tight = (try commands(a, d, .{ .resize = .{ .number = 1, .new_end_mib = 1000 } })).?;
+    try std.testing.expect(std.mem.indexOf(u8, tight.argv[2], "resize2fs \"$DEV\" 999M") != null);
+    const after = try simulate(a, d, .{ .resize = .{ .number = 1, .new_end_mib = end } });
+    try std.testing.expect(after.parts[0].size >= 1000 * model.mib);
+    // Growing stays within the space measured in whole MiB.
+    try std.testing.expectEqual(@as(u64, 3000), resizeEnd(63 * 512, 3000, false));
+    try std.testing.expectEqual(@as(u64, 3001), resizeEnd(model.mib, 3000, false));
 }
 
 test "the master script runs everything once and stops on failure" {

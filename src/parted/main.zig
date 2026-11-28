@@ -1059,8 +1059,7 @@ const Parted = struct {
                     var buf: [200]u8 = undefined;
                     return self.status.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{why}, 0) catch "");
                 }
-                const start_mib = p.start * d.sector / model.mib;
-                self.queueOp(d.path, .{ .resize = .{ .number = p.number, .new_end_mib = start_mib + new_mib } });
+                self.queueOp(d.path, .{ .resize = .{ .number = p.number, .new_end_mib = ops_mod.resizeEnd(p.start * d.sector, new_mib, shrink) } });
             },
             .mount => {
                 const p = self.selectedPart() orelse return;
@@ -1149,8 +1148,7 @@ const Parted = struct {
         if (op == .resize) {
             const o = op.resize;
             for (before.parts) |p| if (p.number == o.number) {
-                const start_mib = p.start * before.sector / model.mib;
-                const shrink = o.new_end_mib - start_mib < p.size / model.mib;
+                const shrink = o.new_end_mib * model.mib -| p.start * before.sector < p.size;
                 if (fs.resizeRefusal(p.fstype, shrink)) |why| {
                     var buf: [200]u8 = undefined;
                     return self.status.setText(std.fmt.bufPrintSentinel(&buf, "{s}", .{why}, 0) catch "");

@@ -142,7 +142,9 @@ pub fn wipeScript(arena: Allocator, image: ?[]const u8, number: u32, dev: []cons
 
 /// Why this filesystem cannot be resized in this direction, or null if it can.
 pub fn resizeRefusal(fstype: []const u8, shrink: bool) ?[]const u8 {
-    if (fstype.len == 0) return null; // nothing inside to resize
+    // Not recognised is not the same as empty: cutting the partition could cut
+    // off whatever is there. Growing it harms nothing.
+    if (fstype.len == 0) return if (shrink) "What is in this partition is not recognised, so it cannot be shrunk safely." else null;
     const fs = byId(fstype) orelse return "This filesystem cannot be resized here.";
     if (shrink and fs.shrink == null) return fs.no_resize_reason;
     if (!shrink and fs.grow == null) return fs.no_resize_reason;
@@ -151,13 +153,15 @@ pub fn resizeRefusal(fstype: []const u8, shrink: bool) ?[]const u8 {
 
 /// Makes partition `number` of `disk_path` end at `new_end_mib` (it keeps its
 /// start), resizing the filesystem first when shrinking and after when growing.
-pub fn resizeScript(arena: Allocator, image: ?[]const u8, disk_path: []const u8, number: u32, dev: []const u8, fstype: []const u8, start_mib: u64, new_end_mib: u64, shrink: bool) Allocator.Error!?[]const []const u8 {
-    const new_size = new_end_mib - start_mib;
+/// `fs_mib` is the filesystem's new size: no more than the partition will hold,
+/// which is less than the MiB figures suggest when it starts between two.
+pub fn resizeScript(arena: Allocator, image: ?[]const u8, disk_path: []const u8, number: u32, dev: []const u8, fstype: []const u8, fs_mib: u64, new_end_mib: u64, shrink: bool) Allocator.Error!?[]const []const u8 {
+    if (shrink and fstype.len == 0) return null;
     var fs_cmd: ?[]const u8 = null;
     if (fstype.len > 0) {
         const fs = byId(fstype) orelse return null;
         const template = (if (shrink) fs.shrink else fs.grow) orelse return null;
-        fs_cmd = try replaceAll(arena, template, "{M}", try std.fmt.allocPrint(arena, "{d}", .{new_size}));
+        fs_cmd = try replaceAll(arena, template, "{M}", try std.fmt.allocPrint(arena, "{d}", .{fs_mib}));
     }
     // Shrinking makes parted ask "are you sure?", which `-s` answers with no; the
     // filesystem has already been shrunk, so answer yes.
@@ -305,19 +309,22 @@ test "resizing: the filesystem step goes on the right side of the partition chan
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
-    const shrink = (try resizeScript(a, null, "/dev/sdb", 1, "/dev/sdb1", "ext4", 1, 100, true)).?;
+    const shrink = (try resizeScript(a, null, "/dev/sdb", 1, "/dev/sdb1", "ext4", 99, 100, true)).?;
     try std.testing.expect(std.mem.indexOf(u8, shrink[2], "resize2fs").? < std.mem.indexOf(u8, shrink[2], "resizepart").?);
     try std.testing.expect(std.mem.indexOf(u8, shrink[2], "99M") != null);
-    const grow = (try resizeScript(a, null, "/dev/sdb", 1, "/dev/sdb1", "ext4", 1, 200, false)).?;
+    const grow = (try resizeScript(a, null, "/dev/sdb", 1, "/dev/sdb1", "ext4", 199, 200, false)).?;
     try std.testing.expect(std.mem.indexOf(u8, grow[2], "resize2fs").? > std.mem.indexOf(u8, grow[2], "resizepart").?);
     // xfs grows (mounted) but never shrinks; f2fs likewise.
-    try std.testing.expect((try resizeScript(a, null, "/dev/sdb", 1, "/dev/sdb1", "xfs", 1, 200, false)) != null);
+    try std.testing.expect((try resizeScript(a, null, "/dev/sdb", 1, "/dev/sdb1", "xfs", 199, 200, false)) != null);
     try std.testing.expect(resizeRefusal("xfs", true) != null);
     try std.testing.expect(resizeRefusal("xfs", false) == null);
     try std.testing.expect(resizeRefusal("f2fs", true) != null);
     try std.testing.expect(resizeRefusal("btrfs", true) == null);
     try std.testing.expect(resizeRefusal("udf", false) != null);
-    const img = (try resizeScript(a, "/tmp/a.img", "/tmp/a.img", 2, "", "ext4", 1, 50, true)).?;
+    const img = (try resizeScript(a, "/tmp/a.img", "/tmp/a.img", 2, "", "ext4", 49, 50, true)).?;
+    try std.testing.expect((try resizeScript(a, null, "/dev/sdb", 1, "/dev/sdb1", "", 49, 50, true)) == null);
+    try std.testing.expect(resizeRefusal("", true) != null);
+    try std.testing.expect(resizeRefusal("", false) == null);
     try std.testing.expect(std.mem.indexOf(u8, img[2], "losetup") != null);
 }
 
