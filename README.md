@@ -454,9 +454,11 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
 [LICENSE](LICENSE) for the version 2 text. Releases up to 0.3.6 were published under the
 MIT License.
 
-Libraries linked into dkde's programs include util-unix and util-core (GPL-2.0-or-later),
-and DKTermCore (dkterm, LGPL-2.0-or-later; in dkde-term, dkde-files, dkde-edit and
-dkde-settings). dkde-calendar has fonts built in that keep their own licenses
+Libraries linked into dkde's programs include util-unix and util-core (GPL-2.0-or-later);
+DKTermCore (dkterm, LGPL-2.0-or-later; in dkde-term, dkde-files, dkde-edit and
+dkde-settings); and pdf-zig (LGPL-2.0-or-later; in dkde-pdf and dkde-pdfcheck).
+
+dkde-calendar has fonts built in that keep their own licenses
 (`data/fonts/native/LICENSES.txt`). One of them, a Droid Sans Fallback subset, is under
 Apache-2.0, which is compatible with version 3 of the GPL but not with version 2.
 

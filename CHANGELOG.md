@@ -4,6 +4,9 @@ All notable changes to DKDE. Versions are the git tags (`vX.Y.Z`); the commit lo
 
 ## Unreleased
 
+**PDF library**
+- **Changed**: pdf-zig 0.6.0 (from 0.2.2), which is LGPL-2.0-or-later (it was MIT up to 0.2.2). It fixes crashes, hangs and unbounded memory use on malformed files, and edits that could damage a saved file. Form fields and annotations saved without a picture of themselves are now drawn, and search and text extraction include those values.
+
 **License**
 - **Changed**: dkde is now licensed under the GNU General Public License, version 2 or later (`GPL-2.0-or-later`); releases up to 0.3.6 were MIT. Source files carry an SPDX header. Third-party code, icons, fonts and protocol files keep their own licenses.
 
