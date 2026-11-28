@@ -30,6 +30,7 @@ const ocr = @import("ocr.zig");
 const places = @import("places.zig");
 const render = @import("pdfrender");
 const fonts = @import("fonts.zig");
+const organise = @import("organise.zig");
 const session_mod = @import("session.zig");
 const Session = session_mod.Session;
 
@@ -2504,6 +2505,24 @@ const DocView = struct {
     }
 
     /// A menu action for this tab (opening and closing tabs belong to the window).
+    fn organisePages(self: *DocView) void {
+        const s = self.session orelse return;
+        const path = self.path orelse return;
+        organise.show(self.allocator, self.window.as(gtk.Window), s.bytes(), path, .{ .context = self.host, .open = openFromOrganiser }) catch |e| {
+            const why: [:0]const u8 = switch (e) {
+                error.Encrypted => common.tr("The pages of an encrypted file cannot be organised: the new file would not be protected."),
+                error.TooManyPages => common.tr("This document has more pages than this window can handle."),
+                else => common.tr("The window could not be opened."),
+            };
+            common.dialogs.showError(self.window.as(gtk.Window), common.tr("Cannot organise the pages"), why);
+        };
+    }
+
+    fn openFromOrganiser(context: *anyopaque, path: [:0]const u8) void {
+        const window: *Window = @ptrCast(@alignCast(context));
+        window.openFile(path);
+    }
+
     // ---- printing -------------------------------------------------------------------------------
 
     /// Prints the document as it is on screen, with the annotations and form
@@ -2571,6 +2590,7 @@ const DocView = struct {
             return;
         }
         if (eql(u8, action, "print")) return self.printDocument();
+        if (eql(u8, action, "organise")) return self.organisePages();
         if (eql(u8, action, "save-as")) {
             if (self.session == null) return;
             const dialog = gtk.FileDialog.new();
@@ -2718,6 +2738,7 @@ const Window = struct {
                 mb.dynamic("Open _Recent", "recent"),
                 mb.item("_Save", "save", "<Control>s"),
                 mb.item("Save _As…", "save-as", "<Control><Shift>s"),
+                mb.item("Organise Pa_ges…", "organise", null),
                 mb.item("_Print…", "print", "<Control>p"),
                 mb.item("Recognise _Text (OCR)", "ocr", null),
                 mb.item("_Reload", "reload", "F5"),
@@ -3464,4 +3485,5 @@ test {
     _ = @import("ocr.zig");
     _ = @import("places.zig");
     _ = @import("session.zig");
+    _ = @import("pageops.zig");
 }
